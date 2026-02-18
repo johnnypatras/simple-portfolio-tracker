@@ -1,25 +1,37 @@
 "use client";
 
-import { useState, Fragment } from "react";
-import {
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  Layers,
-  TrendingUp,
-} from "lucide-react";
+import { useState, useMemo, useCallback, Fragment } from "react";
+import { Plus, TrendingUp } from "lucide-react";
 import { AddStockModal } from "./add-stock-modal";
 import { StockPositionEditor } from "./stock-position-editor";
-import { deleteStockAsset } from "@/lib/actions/stocks";
+import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
+import { useColumnConfig } from "@/lib/hooks/use-column-config";
 import { convertToBase } from "@/lib/prices/fx";
+import { deleteStockAsset } from "@/lib/actions/stocks";
 import type { FXRates } from "@/lib/prices/fx";
+import type { RenderContext, ColumnDef } from "@/lib/column-config";
 import type {
   StockAssetWithPositions,
   Broker,
-  AssetCategory,
   YahooStockPriceData,
 } from "@/lib/types";
+import {
+  getStockColumns,
+  buildStockRows,
+  formatNumber,
+  formatCurrency,
+  type StockRow,
+} from "./stock-columns";
+
+// ── Breakpoint → Tailwind class mapping ──────────────────────
+
+const HIDDEN_BELOW: Record<string, string> = {
+  sm: "hidden sm:table-cell",
+  md: "hidden md:table-cell",
+  lg: "hidden lg:table-cell",
+};
+
+// ── Component ────────────────────────────────────────────────
 
 interface StockTableProps {
   assets: StockAssetWithPositions[];
@@ -29,91 +41,61 @@ interface StockTableProps {
   fxRates: FXRates;
 }
 
-const CATEGORY_LABELS: Record<AssetCategory, string> = {
-  stock: "Stock",
-  etf_ucits: "ETF UCITS",
-  etf_non_ucits: "ETF",
-  bond: "Bond",
-  other: "Other",
-};
-
-const CATEGORY_COLORS: Record<AssetCategory, string> = {
-  stock: "text-blue-400",
-  etf_ucits: "text-purple-400",
-  etf_non_ucits: "text-emerald-400",
-  bond: "text-amber-400",
-  other: "text-zinc-400",
-};
-
 export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }: StockTableProps) {
   const [addOpen, setAddOpen] = useState(false);
-  const [editingAsset, setEditingAsset] =
-    useState<StockAssetWithPositions | null>(null);
+  const [editingAsset, setEditingAsset] = useState<StockAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  function toggleExpand(id: string) {
+  const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
-  async function handleDelete(id: string, name: string) {
-    if (
-      !confirm(
-        `Remove ${name} from your portfolio? All positions will be deleted.`
-      )
-    )
-      return;
+  const isExpanded = useCallback((id: string) => expanded.has(id), [expanded]);
+
+  const handleEdit = useCallback((asset: StockAssetWithPositions) => {
+    setEditingAsset(asset);
+  }, []);
+
+  const handleDelete = useCallback(async (id: string, name: string) => {
+    if (!confirm(`Remove ${name} from your portfolio? All positions will be deleted.`)) return;
     try {
       await deleteStockAsset(id);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete");
     }
-  }
+  }, []);
 
-  /** Look up the Yahoo price data for a given asset */
-  function getPriceForAsset(asset: StockAssetWithPositions) {
-    const key = asset.yahoo_ticker || asset.ticker;
-    return prices[key] ?? null;
-  }
-
-  function formatNumber(n: number, decimals = 2): string {
-    return new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }).format(n);
-  }
-
-  function formatCurrency(n: number, cur: string = "USD"): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: cur,
-      minimumFractionDigits: 2,
-    }).format(n);
-  }
-
-  // Compute totals: native value + converted base-currency value
-  const rows = assets.map((asset) => {
-    const priceData = getPriceForAsset(asset);
-    const pricePerShare = priceData?.price ?? 0;
-    const change24h = priceData?.change24h ?? 0;
-    const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
-    const valueNative = totalQty * pricePerShare;
-    const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
-
-    return { asset, pricePerShare, change24h, totalQty, valueNative, valueBase };
-  });
-
-  // Sort by converted value descending
-  rows.sort((a, b) => b.valueBase - a.valueBase);
-
-  const totalPortfolioValue = rows.reduce(
-    (sum, r) => sum + r.valueBase,
-    0
+  // Build computed rows
+  const rows = useMemo(
+    () => buildStockRows(assets, prices, primaryCurrency, fxRates),
+    [assets, prices, primaryCurrency, fxRates]
   );
+
+  const totalPortfolioValue = useMemo(
+    () => rows.reduce((sum, r) => sum + r.valueBase, 0),
+    [rows]
+  );
+
+  // Column definitions (stable via useMemo)
+  const columns = useMemo(
+    () => getStockColumns({ onEdit: handleEdit, onDelete: handleDelete, isExpanded, toggleExpand }),
+    [handleEdit, handleDelete, isExpanded, toggleExpand]
+  );
+
+  const {
+    orderedColumns,
+    configurableColumns,
+    toggleColumn,
+    moveColumn,
+    resetToDefaults,
+  } = useColumnConfig("colConfig:stocks", columns, 1);
+
+  const ctx: RenderContext = { primaryCurrency, fxRates };
 
   return (
     <div>
@@ -125,13 +107,21 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
             {formatCurrency(totalPortfolioValue, primaryCurrency)}
           </p>
         </div>
-        <button
-          onClick={() => setAddOpen(true)}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Asset
-        </button>
+        <div className="flex items-center gap-1.5">
+          <ColumnSettingsPopover
+            columns={configurableColumns}
+            onToggle={toggleColumn}
+            onMove={moveColumn}
+            onReset={resetToDefaults}
+          />
+          <button
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Asset
+          </button>
+        </div>
       </div>
 
       {assets.length === 0 ? (
@@ -147,180 +137,68 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
           <table className="w-full">
             <thead>
               <tr className="border-b border-zinc-800/50">
-                <th className="text-left text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5">
-                  Asset
-                </th>
-                <th className="text-left text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-24">
-                  Type
-                </th>
-                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-32">
-                  Price
-                </th>
-                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-24">
-                  Shares
-                </th>
-                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-28">
-                  Value ({primaryCurrency})
-                </th>
-                <th className="w-20 px-4 py-2.5" />
+                {orderedColumns.map((col) => {
+                  const align = col.align === "right" ? "text-right" : "text-left";
+                  const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                  const width = col.width ?? "";
+                  return (
+                    <th
+                      key={col.key}
+                      className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}
+                    >
+                      {col.renderHeader ? col.renderHeader(ctx) : col.header}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {rows.map(
-                ({
-                  asset,
-                  pricePerShare,
-                  change24h,
-                  totalQty,
-                  valueBase,
-                }) => {
-                  const isExpanded = expanded.has(asset.id);
+              {rows.map((row) => {
+                const rowExpanded = expanded.has(row.asset.id);
+                return (
+                  <Fragment key={row.id}>
+                    {/* Main row */}
+                    <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                      {orderedColumns.map((col) => {
+                        const align = col.align === "right" ? "text-right" : "text-left";
+                        const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                        return (
+                          <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
+                            {col.renderCell(row, ctx)}
+                          </td>
+                        );
+                      })}
+                    </tr>
 
-                  return (
-                    <Fragment key={asset.id}>
-                      {/* Main row */}
-                      <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => toggleExpand(asset.id)}
-                            className="flex items-center gap-2 text-left min-w-0"
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                            ) : (
-                              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                            )}
-                            <div className="min-w-0">
-                              <span className="text-sm font-medium text-zinc-200 truncate block">
-                                {asset.name}
-                              </span>
-                              <span className="text-xs text-zinc-500 uppercase">
-                                {asset.ticker}
-                                {asset.isin && (
-                                  <span className="text-zinc-600 ml-1.5 normal-case">
-                                    {asset.isin}
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`text-xs font-medium ${CATEGORY_COLORS[asset.category]}`}
-                          >
-                            {CATEGORY_LABELS[asset.category]}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {pricePerShare > 0 ? (
-                            <div>
-                              <span className="text-sm tabular-nums text-zinc-300">
-                                {formatCurrency(pricePerShare, asset.currency)}
-                              </span>
-                              <span
-                                className={`block text-xs tabular-nums ${
-                                  change24h >= 0
-                                    ? "text-emerald-400"
-                                    : "text-red-400"
-                                }`}
-                              >
-                                {change24h >= 0 ? "+" : ""}
-                                {change24h.toFixed(2)}%
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-zinc-600">
-                              No data
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm text-zinc-300 tabular-nums">
-                            {totalQty > 0 ? formatNumber(totalQty, 4) : "—"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm font-medium text-zinc-200 tabular-nums">
-                            {valueBase > 0
-                              ? formatCurrency(valueBase, primaryCurrency)
-                              : "—"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => setEditingAsset(asset)}
-                              className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
-                              title="Edit positions"
-                            >
-                              <Layers className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleDelete(asset.id, asset.name)
-                              }
-                              className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                              title="Remove asset"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                    {/* Expanded: broker breakdown */}
+                    {rowExpanded && row.asset.positions.length > 0 &&
+                      row.asset.positions.map((pos) => {
+                        const posValueNative = pos.quantity * row.pricePerShare;
+                        const posValueBase = convertToBase(posValueNative, row.asset.currency, primaryCurrency, fxRates);
+                        return (
+                          <ExpandedStockRow
+                            key={pos.id}
+                            brokerName={pos.broker_name}
+                            quantity={formatNumber(pos.quantity, 4)}
+                            value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
+                            orderedColumns={orderedColumns}
+                          />
+                        );
+                      })}
+
+                    {/* Expanded: empty positions */}
+                    {rowExpanded && row.asset.positions.length === 0 && (
+                      <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                        <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
+                          <p className="text-xs text-zinc-600">
+                            No positions — click the layers icon to add quantities
+                          </p>
                         </td>
                       </tr>
-
-                      {/* Expanded: broker breakdown */}
-                      {isExpanded &&
-                        asset.positions.length > 0 &&
-                        asset.positions.map((pos) => {
-                          const posValueNative = pos.quantity * pricePerShare;
-                          const posValueBase = convertToBase(posValueNative, asset.currency, primaryCurrency, fxRates);
-                          return (
-                            <tr
-                              key={pos.id}
-                              className="bg-zinc-950/50 border-b border-zinc-800/20"
-                            >
-                              <td className="pl-10 pr-4 py-2">
-                                <span className="text-xs text-zinc-500">
-                                  {pos.broker_name}
-                                </span>
-                              </td>
-                              <td />
-                              <td />
-                              <td className="px-4 py-2 text-right">
-                                <span className="text-xs text-zinc-400 tabular-nums">
-                                  {formatNumber(pos.quantity, 4)}
-                                </span>
-                              </td>
-                              <td className="px-4 py-2 text-right">
-                                <span className="text-xs text-zinc-400 tabular-nums">
-                                  {posValueBase > 0
-                                    ? formatCurrency(posValueBase, primaryCurrency)
-                                    : "—"}
-                                </span>
-                              </td>
-                              <td />
-                            </tr>
-                          );
-                        })}
-
-                      {isExpanded && asset.positions.length === 0 && (
-                        <tr
-                          key={`${asset.id}-empty`}
-                          className="bg-zinc-950/50 border-b border-zinc-800/20"
-                        >
-                          <td colSpan={6} className="pl-10 pr-4 py-3">
-                            <p className="text-xs text-zinc-600">
-                              No positions — click the layers icon to add
-                              quantities
-                            </p>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                }
-              )}
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -337,5 +215,52 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
         />
       )}
     </div>
+  );
+}
+
+// ── Expanded sub-row ─────────────────────────────────────────
+// Renders broker name under the Asset column, quantity under Shares,
+// value under Value, and empty cells for everything else.
+
+function ExpandedStockRow({
+  brokerName,
+  quantity,
+  value,
+  orderedColumns,
+}: {
+  brokerName: string;
+  quantity: string;
+  value: string;
+  orderedColumns: ColumnDef<StockRow>[];
+}) {
+  return (
+    <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+      {orderedColumns.map((col) => {
+        const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+
+        if (col.key === "asset") {
+          return (
+            <td key={col.key} className="pl-10 pr-4 py-2">
+              <span className="text-xs text-zinc-500">{brokerName}</span>
+            </td>
+          );
+        }
+        if (col.key === "shares") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+              <span className="text-xs text-zinc-400 tabular-nums">{quantity}</span>
+            </td>
+          );
+        }
+        if (col.key === "value") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+              <span className="text-xs text-zinc-400 tabular-nums">{value}</span>
+            </td>
+          );
+        }
+        return <td key={col.key} className={hidden} />;
+      })}
+    </tr>
   );
 }

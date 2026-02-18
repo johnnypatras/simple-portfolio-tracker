@@ -1,22 +1,35 @@
 "use client";
 
-import { useState, Fragment } from "react";
-import {
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  Layers,
-  Bitcoin,
-} from "lucide-react";
+import { useState, useMemo, useCallback, Fragment } from "react";
+import { Plus, Bitcoin } from "lucide-react";
 import { AddCryptoModal } from "./add-crypto-modal";
 import { PositionEditor } from "./position-editor";
+import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
+import { useColumnConfig } from "@/lib/hooks/use-column-config";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
+import type { RenderContext, ColumnDef } from "@/lib/column-config";
 import type {
   CryptoAssetWithPositions,
   CoinGeckoPriceData,
   Wallet,
 } from "@/lib/types";
+import {
+  getCryptoColumns,
+  buildCryptoRows,
+  formatNumber,
+  formatCurrency,
+  type CryptoRow,
+} from "./crypto-columns";
+
+// ── Breakpoint → Tailwind class mapping ──────────────────────
+
+const HIDDEN_BELOW: Record<string, string> = {
+  sm: "hidden sm:table-cell",
+  md: "hidden md:table-cell",
+  lg: "hidden lg:table-cell",
+};
+
+// ── Component ────────────────────────────────────────────────
 
 interface CryptoTableProps {
   assets: CryptoAssetWithPositions[];
@@ -26,67 +39,63 @@ interface CryptoTableProps {
 }
 
 export function CryptoTable({ assets, prices, wallets, primaryCurrency }: CryptoTableProps) {
-  // CoinGecko returns both usd and eur — pick based on user's base currency
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
+
   const [addOpen, setAddOpen] = useState(false);
-  const [editingAsset, setEditingAsset] =
-    useState<CryptoAssetWithPositions | null>(null);
+  const [editingAsset, setEditingAsset] = useState<CryptoAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  function toggleExpand(id: string) {
+  const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
-  async function handleDelete(id: string, name: string) {
-    if (
-      !confirm(
-        `Remove ${name} from your portfolio? All positions will be deleted.`
-      )
-    )
-      return;
+  const isExpanded = useCallback((id: string) => expanded.has(id), [expanded]);
+
+  const handleEdit = useCallback((asset: CryptoAssetWithPositions) => {
+    setEditingAsset(asset);
+  }, []);
+
+  const handleDelete = useCallback(async (id: string, name: string) => {
+    if (!confirm(`Remove ${name} from your portfolio? All positions will be deleted.`)) return;
     try {
       await deleteCryptoAsset(id);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete");
     }
-  }
+  }, []);
 
-  function formatNumber(n: number, decimals = 2): string {
-    return new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }).format(n);
-  }
+  // Build computed rows
+  const rows = useMemo(
+    () => buildCryptoRows(assets, prices, currencyKey, changeKey),
+    [assets, prices, currencyKey, changeKey]
+  );
 
-  function formatCurrency(n: number, cur: string = primaryCurrency): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: cur,
-      minimumFractionDigits: 2,
-    }).format(n);
-  }
+  const totalPortfolioValue = useMemo(
+    () => rows.reduce((sum, r) => sum + r.valueInBase, 0),
+    [rows]
+  );
 
-  // Compute totals using the user's primary currency
-  const rows = assets.map((asset) => {
-    const price = prices[asset.coingecko_id];
-    const priceInBase = price?.[currencyKey] ?? 0;
-    const change24h = price?.[changeKey] ?? 0;
-    const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
-    const valueInBase = totalQty * priceInBase;
+  // Column definitions (stable via useMemo)
+  const columns = useMemo(
+    () => getCryptoColumns({ onEdit: handleEdit, onDelete: handleDelete, isExpanded, toggleExpand }),
+    [handleEdit, handleDelete, isExpanded, toggleExpand]
+  );
 
-    return { asset, priceInBase, change24h, totalQty, valueInBase };
-  });
+  const {
+    orderedColumns,
+    configurableColumns,
+    toggleColumn,
+    moveColumn,
+    resetToDefaults,
+  } = useColumnConfig("colConfig:crypto", columns, 1);
 
-  // Sort by value descending
-  rows.sort((a, b) => b.valueInBase - a.valueInBase);
-
-  const totalPortfolioValue = rows.reduce((sum, r) => sum + r.valueInBase, 0);
+  const ctx: RenderContext = { primaryCurrency, fxRates: {} };
 
   return (
     <div>
@@ -95,16 +104,24 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
         <div>
           <p className="text-sm text-zinc-400">
             {assets.length} asset{assets.length !== 1 ? "s" : ""} ·{" "}
-            {formatCurrency(totalPortfolioValue)}
+            {formatCurrency(totalPortfolioValue, primaryCurrency)}
           </p>
         </div>
-        <button
-          onClick={() => setAddOpen(true)}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Asset
-        </button>
+        <div className="flex items-center gap-1.5">
+          <ColumnSettingsPopover
+            columns={configurableColumns}
+            onToggle={toggleColumn}
+            onMove={moveColumn}
+            onReset={resetToDefaults}
+          />
+          <button
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Asset
+          </button>
+        </div>
       </div>
 
       {assets.length === 0 ? (
@@ -120,162 +137,67 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
           <table className="w-full">
             <thead>
               <tr className="border-b border-zinc-800/50">
-                <th className="text-left text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5">
-                  Asset
-                </th>
-                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-28">
-                  Price
-                </th>
-                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-20">
-                  24h
-                </th>
-                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-32">
-                  Holdings
-                </th>
-                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-28">
-                  Value ({primaryCurrency})
-                </th>
-                <th className="w-20 px-4 py-2.5" />
+                {orderedColumns.map((col) => {
+                  const align = col.align === "right" ? "text-right" : "text-left";
+                  const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                  const width = col.width ?? "";
+                  return (
+                    <th
+                      key={col.key}
+                      className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}
+                    >
+                      {col.renderHeader ? col.renderHeader(ctx) : col.header}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {rows.map(
-                ({ asset, priceInBase, change24h, totalQty, valueInBase }) => {
-                  const isExpanded = expanded.has(asset.id);
-                  const changeColor =
-                    change24h > 0
-                      ? "text-emerald-400"
-                      : change24h < 0
-                        ? "text-red-400"
-                        : "text-zinc-500";
+              {rows.map((row) => {
+                const rowExpanded = expanded.has(row.asset.id);
+                return (
+                  <Fragment key={row.id}>
+                    {/* Main row */}
+                    <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                      {orderedColumns.map((col) => {
+                        const align = col.align === "right" ? "text-right" : "text-left";
+                        const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                        return (
+                          <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
+                            {col.renderCell(row, ctx)}
+                          </td>
+                        );
+                      })}
+                    </tr>
 
-                  return (
-                    <Fragment key={asset.id}>
-                      {/* Main row */}
-                      <tr
-                        className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors"
-                      >
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => toggleExpand(asset.id)}
-                            className="flex items-center gap-2 text-left min-w-0"
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                            ) : (
-                              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                            )}
-                            <div className="min-w-0">
-                              <span className="text-sm font-medium text-zinc-200 truncate block">
-                                {asset.name}
-                              </span>
-                              <span className="text-xs text-zinc-500 uppercase">
-                                {asset.ticker}
-                              </span>
-                            </div>
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm text-zinc-300 tabular-nums">
-                            {priceInBase > 0
-                              ? priceInBase >= 1
-                                ? formatCurrency(priceInBase)
-                                : `${priceInBase.toFixed(6)}`
-                              : "—"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span
-                            className={`text-sm tabular-nums ${changeColor}`}
-                          >
-                            {change24h !== 0
-                              ? `${change24h > 0 ? "+" : ""}${change24h.toFixed(1)}%`
-                              : "—"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm text-zinc-300 tabular-nums">
-                            {totalQty > 0 ? formatNumber(totalQty, 8) : "—"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm font-medium text-zinc-200 tabular-nums">
-                            {valueInBase > 0 ? formatCurrency(valueInBase) : "—"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => setEditingAsset(asset)}
-                              className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
-                              title="Edit positions"
-                            >
-                              <Layers className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleDelete(asset.id, asset.name)
-                              }
-                              className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                              title="Remove asset"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                    {/* Expanded: wallet breakdown */}
+                    {rowExpanded && row.asset.positions.length > 0 &&
+                      row.asset.positions.map((pos) => {
+                        const posValue = pos.quantity * row.priceInBase;
+                        return (
+                          <ExpandedCryptoRow
+                            key={pos.id}
+                            walletName={pos.wallet_name}
+                            quantity={formatNumber(pos.quantity, 8)}
+                            value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                            orderedColumns={orderedColumns}
+                          />
+                        );
+                      })}
+
+                    {/* Expanded: empty positions */}
+                    {rowExpanded && row.asset.positions.length === 0 && (
+                      <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                        <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
+                          <p className="text-xs text-zinc-600">
+                            No positions — click the layers icon to add quantities
+                          </p>
                         </td>
                       </tr>
-
-                      {/* Expanded: wallet breakdown */}
-                      {isExpanded &&
-                        asset.positions.length > 0 &&
-                        asset.positions.map((pos) => {
-                          const posValue = pos.quantity * priceInBase;
-                          return (
-                            <tr
-                              key={pos.id}
-                              className="bg-zinc-950/50 border-b border-zinc-800/20"
-                            >
-                              <td className="pl-10 pr-4 py-2">
-                                <span className="text-xs text-zinc-500">
-                                  {pos.wallet_name}
-                                </span>
-                              </td>
-                              <td />
-                              <td />
-                              <td className="px-4 py-2 text-right">
-                                <span className="text-xs text-zinc-400 tabular-nums">
-                                  {formatNumber(pos.quantity, 8)}
-                                </span>
-                              </td>
-                              <td className="px-4 py-2 text-right">
-                                <span className="text-xs text-zinc-400 tabular-nums">
-                                  {posValue > 0
-                                    ? formatCurrency(posValue)
-                                    : "—"}
-                                </span>
-                              </td>
-                              <td />
-                            </tr>
-                          );
-                        })}
-
-                      {isExpanded && asset.positions.length === 0 && (
-                        <tr
-                          key={`${asset.id}-empty`}
-                          className="bg-zinc-950/50 border-b border-zinc-800/20"
-                        >
-                          <td colSpan={6} className="pl-10 pr-4 py-3">
-                            <p className="text-xs text-zinc-600">
-                              No positions — click the layers icon to add
-                              quantities
-                            </p>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                }
-              )}
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -292,5 +214,53 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
         />
       )}
     </div>
+  );
+}
+
+// ── Expanded sub-row ─────────────────────────────────────────
+// Renders wallet name under the Asset column, quantity under Holdings,
+// value under Value, and empty cells for everything else.
+
+function ExpandedCryptoRow({
+  walletName,
+  quantity,
+  value,
+  orderedColumns,
+}: {
+  walletName: string;
+  quantity: string;
+  value: string;
+  orderedColumns: ColumnDef<CryptoRow>[];
+}) {
+  return (
+    <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+      {orderedColumns.map((col) => {
+        const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+
+        if (col.key === "asset") {
+          return (
+            <td key={col.key} className="pl-10 pr-4 py-2">
+              <span className="text-xs text-zinc-500">{walletName}</span>
+            </td>
+          );
+        }
+        if (col.key === "holdings") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+              <span className="text-xs text-zinc-400 tabular-nums">{quantity}</span>
+            </td>
+          );
+        }
+        if (col.key === "value") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+              <span className="text-xs text-zinc-400 tabular-nums">{value}</span>
+            </td>
+          );
+        }
+        // Empty cell for all other columns
+        return <td key={col.key} className={hidden} />;
+      })}
+    </tr>
   );
 }
