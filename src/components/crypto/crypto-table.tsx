@@ -278,7 +278,7 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
       )}
 
       {/* Modals */}
-      <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} />
       {editingAsset && (
         <PositionEditor
           open={!!editingAsset}

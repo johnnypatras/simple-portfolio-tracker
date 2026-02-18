@@ -59,22 +59,26 @@ export async function getCryptoAssetsWithPositions(): Promise<
   }));
 }
 
-/** Add a new crypto asset */
-export async function createCryptoAsset(input: CryptoAssetInput) {
+/** Add a new crypto asset. Returns the new asset's id. */
+export async function createCryptoAsset(input: CryptoAssetInput): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await supabase.from("crypto_assets").insert({
-    user_id: user.id,
-    ticker: input.ticker.toUpperCase(),
-    name: input.name,
-    coingecko_id: input.coingecko_id,
-    chain: input.chain ?? null,
-    acquisition_method: input.acquisition_method ?? null,
-  });
+  const { data, error } = await supabase
+    .from("crypto_assets")
+    .insert({
+      user_id: user.id,
+      ticker: input.ticker.toUpperCase(),
+      name: input.name,
+      coingecko_id: input.coingecko_id,
+      chain: input.chain ?? null,
+      acquisition_method: input.acquisition_method ?? null,
+    })
+    .select("id")
+    .single();
 
   if (error) {
     if (error.code === "23505") {
@@ -83,6 +87,7 @@ export async function createCryptoAsset(input: CryptoAssetInput) {
     throw new Error(error.message);
   }
   revalidatePath("/dashboard/crypto");
+  return data.id;
 }
 
 /** Remove a crypto asset and all its positions (CASCADE) */

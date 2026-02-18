@@ -1,5 +1,6 @@
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getBrokers } from "@/lib/actions/brokers";
+import { getStockPrices } from "@/lib/prices/yahoo";
 import { StockTable } from "@/components/stocks/stock-table";
 
 export default async function StocksPage() {
@@ -7,6 +8,13 @@ export default async function StocksPage() {
     getStockAssetsWithPositions(),
     getBrokers(),
   ]);
+
+  // Build Yahoo ticker list: use yahoo_ticker if set, otherwise fall back to ticker
+  const yahooTickers = assets
+    .map((a) => a.yahoo_ticker || a.ticker)
+    .filter(Boolean);
+
+  const prices = await getStockPrices(yahooTickers);
 
   return (
     <div>
@@ -16,7 +24,7 @@ export default async function StocksPage() {
           Manage your stock and ETF positions across brokers
         </p>
       </div>
-      <StockTable assets={assets} brokers={brokers} />
+      <StockTable assets={assets} brokers={brokers} prices={prices} />
     </div>
   );
 }

@@ -1,23 +1,29 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Plus, Loader2 } from "lucide-react";
+import { Search, Plus, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { createCryptoAsset } from "@/lib/actions/crypto";
-import type { CoinGeckoSearchResult } from "@/lib/types";
+import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
+import type { CoinGeckoSearchResult, Wallet } from "@/lib/types";
 
 interface AddCryptoModalProps {
   open: boolean;
   onClose: () => void;
+  wallets: Wallet[];
 }
 
-export function AddCryptoModal({ open, onClose }: AddCryptoModalProps) {
+export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CoinGeckoSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<NodeJS.Timeout>(null);
+
+  // ─── Optional initial position state ───────────────────
+  const [positionOpen, setPositionOpen] = useState(false);
+  const [positionWalletId, setPositionWalletId] = useState("");
+  const [positionQuantity, setPositionQuantity] = useState("");
 
   // Debounced search
   useEffect(() => {
@@ -55,6 +61,9 @@ export function AddCryptoModal({ open, onClose }: AddCryptoModalProps) {
       setResults([]);
       setError(null);
       setAdding(null);
+      setPositionOpen(false);
+      setPositionWalletId("");
+      setPositionQuantity("");
     }
   }, [open]);
 
@@ -63,11 +72,22 @@ export function AddCryptoModal({ open, onClose }: AddCryptoModalProps) {
     setAdding(coin.id);
 
     try {
-      await createCryptoAsset({
+      const assetId = await createCryptoAsset({
         ticker: coin.symbol,
         name: coin.name,
         coingecko_id: coin.id,
       });
+
+      // If user filled in an initial position, create it too
+      const qty = parseFloat(positionQuantity);
+      if (positionWalletId && qty > 0) {
+        await upsertPosition({
+          crypto_asset_id: assetId,
+          wallet_id: positionWalletId,
+          quantity: qty,
+        });
+      }
+
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add");
@@ -99,6 +119,63 @@ export function AddCryptoModal({ open, onClose }: AddCryptoModalProps) {
           <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
             {error}
           </p>
+        )}
+
+        {/* Optional: Initial position */}
+        {wallets.length > 0 && (
+          <div className="border border-zinc-800/50 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setPositionOpen(!positionOpen)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/30 transition-colors"
+            >
+              {positionOpen ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+              Add initial position
+              <span className="text-zinc-600">(optional)</span>
+            </button>
+
+            {positionOpen && (
+              <div className="px-3 pb-3 pt-1 border-t border-zinc-800/50">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">
+                      Wallet
+                    </label>
+                    <select
+                      value={positionWalletId}
+                      onChange={(e) => setPositionWalletId(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    >
+                      <option value="">Select wallet...</option>
+                      {wallets.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">
+                      Quantity
+                    </label>
+                    <input
+                      type="number"
+                      value={positionQuantity}
+                      onChange={(e) => setPositionQuantity(e.target.value)}
+                      placeholder="0"
+                      step="any"
+                      min="0"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 tabular-nums"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Results */}
@@ -136,6 +213,20 @@ export function AddCryptoModal({ open, onClose }: AddCryptoModalProps) {
                   </span>
                 )}
               </div>
+              {/* Price */}
+              {coin.price_usd != null && coin.price_usd > 0 && (
+                <span className="shrink-0 text-sm tabular-nums text-zinc-400">
+                  ${coin.price_usd < 1
+                    ? coin.price_usd.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 6,
+                      })
+                    : coin.price_usd.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                </span>
+              )}
               {adding === coin.id ? (
                 <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
               ) : (

@@ -96,7 +96,7 @@ export interface CryptoPositionInput {
 
 // ─── Stock/ETF entities ─────────────────────────────────
 
-export type AssetCategory = "stock" | "etf_sp500" | "etf_world" | "bond" | "other";
+export type AssetCategory = "stock" | "etf_ucits" | "etf_non_ucits" | "bond" | "other";
 
 export interface StockAsset {
   id: string;
@@ -104,8 +104,9 @@ export interface StockAsset {
   ticker: string;
   name: string;
   isin: string | null;
+  yahoo_ticker: string | null;
   category: AssetCategory;
-  currency: CurrencyType;
+  currency: string;  // free-form ISO currency code (USD, EUR, GBP, CHF, etc.)
   created_at: string;
 }
 
@@ -126,8 +127,32 @@ export interface StockAssetInput {
   ticker: string;
   name: string;
   isin?: string | null;
+  yahoo_ticker?: string | null;
   category?: AssetCategory;
-  currency?: CurrencyType;
+  currency?: string;  // ISO currency code, defaults to "USD"
+}
+
+// ─── Yahoo Finance API types ──────────────────────────────
+
+export interface YahooSearchResult {
+  symbol: string;       // e.g. "VWCE.DE", "AAPL"
+  shortname: string;    // e.g. "Vanguard FTSE All-World U.ETF R"
+  longname: string;     // e.g. "Vanguard FTSE All-World UCITS ETF USD Accumulation"
+  quoteType: string;    // e.g. "ETF", "EQUITY"
+  exchDisp: string;     // e.g. "XETRA", "NASDAQ", "London"
+  exchange: string;     // e.g. "GER", "NMS", "LSE"
+  currency?: string;    // e.g. "EUR", "USD", "GBP" — enriched from chart API
+  price?: number;       // current market price — enriched from chart API
+}
+
+export interface YahooStockPriceData {
+  [yahooTicker: string]: {
+    price: number;
+    previousClose: number;
+    change24h: number;
+    currency: string;
+    name: string;
+  };
 }
 
 export interface StockPositionInput {
@@ -145,6 +170,7 @@ export interface CoinGeckoSearchResult {
   thumb: string;
   large: string;
   market_cap_rank: number | null;
+  price_usd?: number;  // current USD price — enriched from simple/price API
 }
 
 export interface CoinGeckoPriceData {

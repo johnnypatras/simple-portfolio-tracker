@@ -59,22 +59,27 @@ export async function getStockAssetsWithPositions(): Promise<
   }));
 }
 
-/** Add a new stock/ETF asset */
-export async function createStockAsset(input: StockAssetInput) {
+/** Add a new stock/ETF asset. Returns the new asset's id. */
+export async function createStockAsset(input: StockAssetInput): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await supabase.from("stock_assets").insert({
-    user_id: user.id,
-    ticker: input.ticker.toUpperCase(),
-    name: input.name,
-    isin: input.isin ?? null,
-    category: input.category ?? "stock",
-    currency: input.currency ?? "USD",
-  });
+  const { data, error } = await supabase
+    .from("stock_assets")
+    .insert({
+      user_id: user.id,
+      ticker: input.ticker.toUpperCase(),
+      name: input.name,
+      isin: input.isin ?? null,
+      yahoo_ticker: input.yahoo_ticker ?? null,
+      category: input.category ?? "stock",
+      currency: input.currency ?? "USD",
+    })
+    .select("id")
+    .single();
 
   if (error) {
     if (error.code === "23505") {
@@ -83,6 +88,7 @@ export async function createStockAsset(input: StockAssetInput) {
     throw new Error(error.message);
   }
   revalidatePath("/dashboard/stocks");
+  return data.id;
 }
 
 /** Remove a stock asset and all its positions (CASCADE) */

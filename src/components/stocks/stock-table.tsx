@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, Fragment } from "react";
 import {
   Plus,
   Trash2,
@@ -16,59 +16,36 @@ import type {
   StockAssetWithPositions,
   Broker,
   AssetCategory,
+  YahooStockPriceData,
 } from "@/lib/types";
 
 interface StockTableProps {
   assets: StockAssetWithPositions[];
   brokers: Broker[];
+  prices: YahooStockPriceData;
 }
 
 const CATEGORY_LABELS: Record<AssetCategory, string> = {
   stock: "Stock",
-  etf_sp500: "ETF S&P500",
-  etf_world: "ETF World",
+  etf_ucits: "ETF UCITS",
+  etf_non_ucits: "ETF",
   bond: "Bond",
   other: "Other",
 };
 
 const CATEGORY_COLORS: Record<AssetCategory, string> = {
   stock: "text-blue-400",
-  etf_sp500: "text-emerald-400",
-  etf_world: "text-purple-400",
+  etf_ucits: "text-purple-400",
+  etf_non_ucits: "text-emerald-400",
   bond: "text-amber-400",
   other: "text-zinc-400",
 };
 
-export function StockTable({ assets, brokers }: StockTableProps) {
+export function StockTable({ assets, brokers, prices }: StockTableProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [editingAsset, setEditingAsset] =
     useState<StockAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
-  // Manual prices stored in localStorage: ticker → price
-  const [manualPrices, setManualPrices] = useState<Record<string, number>>({});
-  const [editingPrice, setEditingPrice] = useState<string | null>(null);
-  const [priceInput, setPriceInput] = useState("");
-
-  // Load manual prices from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("stock_manual_prices");
-      if (saved) setManualPrices(JSON.parse(saved));
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Persist prices to localStorage
-  const savePrices = useCallback((prices: Record<string, number>) => {
-    setManualPrices(prices);
-    try {
-      localStorage.setItem("stock_manual_prices", JSON.stringify(prices));
-    } catch {
-      // ignore
-    }
-  }, []);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -93,18 +70,10 @@ export function StockTable({ assets, brokers }: StockTableProps) {
     }
   }
 
-  function startEditPrice(ticker: string) {
-    setEditingPrice(ticker);
-    setPriceInput(manualPrices[ticker]?.toString() ?? "");
-  }
-
-  function savePrice(ticker: string) {
-    const price = parseFloat(priceInput);
-    if (!isNaN(price) && price >= 0) {
-      savePrices({ ...manualPrices, [ticker]: price });
-    }
-    setEditingPrice(null);
-    setPriceInput("");
+  /** Look up the Yahoo price data for a given asset */
+  function getPriceForAsset(asset: StockAssetWithPositions) {
+    const key = asset.yahoo_ticker || asset.ticker;
+    return prices[key] ?? null;
   }
 
   function formatNumber(n: number, decimals = 2): string {
@@ -124,11 +93,13 @@ export function StockTable({ assets, brokers }: StockTableProps) {
 
   // Compute totals
   const rows = assets.map((asset) => {
-    const pricePerShare = manualPrices[asset.ticker] ?? 0;
+    const priceData = getPriceForAsset(asset);
+    const pricePerShare = priceData?.price ?? 0;
+    const change24h = priceData?.change24h ?? 0;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const valueInCurrency = totalQty * pricePerShare;
 
-    return { asset, pricePerShare, totalQty, valueInCurrency };
+    return { asset, pricePerShare, change24h, totalQty, valueInCurrency };
   });
 
   // Sort by value descending
@@ -177,7 +148,7 @@ export function StockTable({ assets, brokers }: StockTableProps) {
                 <th className="text-left text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-24">
                   Type
                 </th>
-                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-28">
+                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-32">
                   Price
                 </th>
                 <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-24">
@@ -191,16 +162,19 @@ export function StockTable({ assets, brokers }: StockTableProps) {
             </thead>
             <tbody>
               {rows.map(
-                ({ asset, pricePerShare, totalQty, valueInCurrency }) => {
+                ({
+                  asset,
+                  pricePerShare,
+                  change24h,
+                  totalQty,
+                  valueInCurrency,
+                }) => {
                   const isExpanded = expanded.has(asset.id);
-                  const isEditingThisPrice = editingPrice === asset.ticker;
 
                   return (
                     <Fragment key={asset.id}>
                       {/* Main row */}
-                      <tr
-                        className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors"
-                      >
+                      <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
                         <td className="px-4 py-3">
                           <button
                             onClick={() => toggleExpand(asset.id)}
@@ -234,30 +208,26 @@ export function StockTable({ assets, brokers }: StockTableProps) {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {isEditingThisPrice ? (
-                            <input
-                              type="number"
-                              step="any"
-                              value={priceInput}
-                              onChange={(e) => setPriceInput(e.target.value)}
-                              onBlur={() => savePrice(asset.ticker)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") savePrice(asset.ticker);
-                                if (e.key === "Escape") setEditingPrice(null);
-                              }}
-                              className="w-24 px-2 py-1 bg-zinc-950 border border-blue-500/50 rounded text-zinc-100 text-sm text-right focus:outline-none"
-                              autoFocus
-                            />
+                          {pricePerShare > 0 ? (
+                            <div>
+                              <span className="text-sm tabular-nums text-zinc-300">
+                                {formatCurrency(pricePerShare, asset.currency)}
+                              </span>
+                              <span
+                                className={`block text-xs tabular-nums ${
+                                  change24h >= 0
+                                    ? "text-emerald-400"
+                                    : "text-red-400"
+                                }`}
+                              >
+                                {change24h >= 0 ? "+" : ""}
+                                {change24h.toFixed(2)}%
+                              </span>
+                            </div>
                           ) : (
-                            <button
-                              onClick={() => startEditPrice(asset.ticker)}
-                              className="text-sm tabular-nums text-zinc-300 hover:text-blue-400 transition-colors"
-                              title="Click to set price"
-                            >
-                              {pricePerShare > 0
-                                ? formatCurrency(pricePerShare, asset.currency)
-                                : "Set price"}
-                            </button>
+                            <span className="text-xs text-zinc-600">
+                              No data
+                            </span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -351,7 +321,7 @@ export function StockTable({ assets, brokers }: StockTableProps) {
       )}
 
       {/* Modals */}
-      <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} />
       {editingAsset && (
         <StockPositionEditor
           open={!!editingAsset}

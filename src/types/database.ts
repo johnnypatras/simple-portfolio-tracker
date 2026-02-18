@@ -3,8 +3,8 @@ export type WalletType = "custodial" | "non_custodial";
 export type PrivacyLabel = "anon" | "doxxed" | null;
 export type AssetCategory =
   | "stock"
-  | "etf_sp500"
-  | "etf_world"
+  | "etf_ucits"
+  | "etf_non_ucits"
   | "bond"
   | "other";
 export type ActionType = "created" | "updated" | "removed";
@@ -98,7 +98,7 @@ export interface StockAsset {
   name: string;
   isin: string | null;
   category: AssetCategory;
-  currency: Currency;
+  currency: string;  // free-form ISO currency code (USD, EUR, GBP, CHF, etc.)
   created_at: string;
 }
 
