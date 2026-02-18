@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import {
   Plus,
   Trash2,
@@ -146,10 +146,9 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
                         : "text-zinc-500";
 
                   return (
-                    <>
+                    <Fragment key={asset.id}>
                       {/* Main row */}
                       <tr
-                        key={asset.id}
                         className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors"
                       >
                         <td className="px-4 py-3">
@@ -269,7 +268,7 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 }
               )}

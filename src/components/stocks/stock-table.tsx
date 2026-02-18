@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import {
   Plus,
   Trash2,
@@ -196,10 +196,9 @@ export function StockTable({ assets, brokers }: StockTableProps) {
                   const isEditingThisPrice = editingPrice === asset.ticker;
 
                   return (
-                    <>
+                    <Fragment key={asset.id}>
                       {/* Main row */}
                       <tr
-                        key={asset.id}
                         className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors"
                       >
                         <td className="px-4 py-3">
@@ -342,7 +341,7 @@ export function StockTable({ assets, brokers }: StockTableProps) {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 }
               )}
