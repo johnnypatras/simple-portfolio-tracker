@@ -53,3 +53,63 @@ export interface BankAccountInput {
   balance?: number;
   apy?: number;
 }
+
+// ─── Crypto entities ────────────────────────────────────
+
+export interface CryptoAsset {
+  id: string;
+  user_id: string;
+  ticker: string;
+  name: string;
+  coingecko_id: string;
+  chain: string | null;
+  acquisition_method: string | null;
+  created_at: string;
+}
+
+export interface CryptoPosition {
+  id: string;
+  crypto_asset_id: string;
+  wallet_id: string;
+  quantity: number;
+  updated_at: string;
+}
+
+/** Crypto asset with nested positions and wallet names */
+export interface CryptoAssetWithPositions extends CryptoAsset {
+  positions: (CryptoPosition & { wallet_name: string })[];
+}
+
+export interface CryptoAssetInput {
+  ticker: string;
+  name: string;
+  coingecko_id: string;
+  chain?: string | null;
+  acquisition_method?: string | null;
+}
+
+export interface CryptoPositionInput {
+  crypto_asset_id: string;
+  wallet_id: string;
+  quantity: number;
+}
+
+// ─── CoinGecko API types ────────────────────────────────
+
+export interface CoinGeckoSearchResult {
+  id: string;
+  name: string;
+  symbol: string;
+  thumb: string;
+  large: string;
+  market_cap_rank: number | null;
+}
+
+export interface CoinGeckoPriceData {
+  [coinId: string]: {
+    usd: number;
+    usd_24h_change?: number;
+    eur: number;
+    eur_24h_change?: number;
+  };
+}

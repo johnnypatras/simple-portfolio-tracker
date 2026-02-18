@@ -1,15 +1,29 @@
-export default function CryptoPage() {
+import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
+import { getWallets } from "@/lib/actions/wallets";
+import { getPrices } from "@/lib/prices/coingecko";
+import { CryptoTable } from "@/components/crypto/crypto-table";
+
+export default async function CryptoPage() {
+  const [assets, wallets] = await Promise.all([
+    getCryptoAssetsWithPositions(),
+    getWallets(),
+  ]);
+
+  // Fetch live prices for all tracked coins in one batched call
+  const coinIds = assets.map((a) => a.coingecko_id);
+  const prices = await getPrices(coinIds);
+
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-zinc-100">Crypto Portfolio</h1>
+        <h1 className="text-2xl font-semibold text-zinc-100">
+          Crypto Portfolio
+        </h1>
         <p className="text-sm text-zinc-500 mt-1">
           Manage your cryptocurrency holdings across wallets
         </p>
       </div>
-      <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-8 text-center">
-        <p className="text-zinc-500">Coming in Phase 3</p>
-      </div>
+      <CryptoTable assets={assets} prices={prices} wallets={wallets} />
     </div>
   );
 }
