@@ -8,7 +8,13 @@ import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import {
+  saveSnapshot,
+  getSnapshots,
+  getSnapshotAt,
+} from "@/lib/actions/snapshots";
 import { PortfolioCards } from "@/components/dashboard/portfolio-cards";
+import { PortfolioChart } from "@/components/dashboard/portfolio-chart";
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
@@ -16,7 +22,7 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Fetch all portfolio data in parallel
+  // ── Round 1: Fetch all portfolio data in parallel ─────
   const [profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits] =
     await Promise.all([
       getProfile(),
@@ -43,14 +49,19 @@ export default async function DashboardPage() {
     ]),
   ];
 
-  // Fetch prices + FX rates in parallel
-  const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
-    getPrices(coinIds),
-    getStockPrices(yahooTickers),
-    getFXRates(primaryCurrency, allCurrencies),
-  ]);
+  // ── Round 2: Fetch prices + FX rates + snapshots in parallel
+  const [cryptoPrices, stockPrices, fxRates, chartSnapshots, snap7d, snap30d, snap1y] =
+    await Promise.all([
+      getPrices(coinIds),
+      getStockPrices(yahooTickers),
+      getFXRates(primaryCurrency, allCurrencies),
+      getSnapshots(365),          // up to 1 year of history for the chart
+      getSnapshotAt(7),           // for 7d change
+      getSnapshotAt(30),          // for 30d change
+      getSnapshotAt(365),         // for 1y change
+    ]);
 
-  // Aggregate everything into a single summary
+  // ── Aggregate into portfolio summary ──────────────────
   const summary = aggregatePortfolio({
     cryptoAssets,
     cryptoPrices,
@@ -62,6 +73,24 @@ export default async function DashboardPage() {
     fxRates,
   });
 
+  // ── Save today's snapshot (fire-and-forget) ───────────
+  // Don't await — this shouldn't block rendering
+  saveSnapshot({
+    totalValueUsd: summary.totalValueUsd,
+    totalValueEur: summary.totalValueEur,
+    cryptoValueUsd: summary.cryptoValueUsd,
+    stocksValueUsd: summary.stocksValueUsd,
+    cashValueUsd: summary.cashValueUsd,
+  }).catch(() => {}); // silently ignore errors
+
+  // Build past-snapshot map for the change card
+  const pastSnapshots = {
+    "24h": null,  // 24h uses real-time API data, not snapshots
+    "7d": snap7d,
+    "30d": snap30d,
+    "1y": snap1y,
+  };
+
   return (
     <div>
       <div className="mb-8">
@@ -71,7 +100,15 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <PortfolioCards summary={summary} />
+      <PortfolioCards summary={summary} pastSnapshots={pastSnapshots} />
+
+      <div className="mt-6">
+        <PortfolioChart
+          snapshots={chartSnapshots}
+          liveValue={summary.totalValue}
+          primaryCurrency={primaryCurrency}
+        />
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Wallet,
   TrendingUp,
@@ -9,10 +10,16 @@ import {
   PieChart,
 } from "lucide-react";
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
+import type { PortfolioSnapshot } from "@/lib/types";
 
 interface PortfolioCardsProps {
   summary: PortfolioSummary;
+  pastSnapshots: Record<string, PortfolioSnapshot | null>;
+  // keyed by period label, e.g. { "24h": snapshot, "7d": snapshot, ... }
 }
+
+const CHANGE_PERIODS = ["24h", "7d", "30d", "1y"] as const;
+type ChangePeriod = (typeof CHANGE_PERIODS)[number];
 
 function formatCurrency(value: number, currency: string): string {
   return new Intl.NumberFormat("en-US", {
@@ -23,15 +30,9 @@ function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
-interface CardDef {
-  label: string;
-  value: string;
-  sub: string;
-  icon: React.ReactNode;
-  highlight?: "green" | "red";
-}
+export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) {
+  const [changePeriod, setChangePeriod] = useState<ChangePeriod>("24h");
 
-export function PortfolioCards({ summary }: PortfolioCardsProps) {
   const {
     totalValue,
     cryptoValue,
@@ -42,76 +43,168 @@ export function PortfolioCards({ summary }: PortfolioCardsProps) {
     primaryCurrency,
   } = summary;
 
-  const changeColor = change24hPercent >= 0 ? "green" : "red";
-  const changeSign = change24hPercent >= 0 ? "+" : "";
+  // Compute change % based on selected period
+  const valueKey =
+    primaryCurrency === "EUR" ? "total_value_eur" : "total_value_usd";
 
-  const cards: CardDef[] = [
-    {
-      label: "Total Portfolio",
-      value: formatCurrency(totalValue, primaryCurrency),
-      sub: primaryCurrency,
-      icon: <Wallet className="w-4 h-4" />,
-    },
-    {
-      label: "Crypto",
-      value: formatCurrency(cryptoValue, primaryCurrency),
-      sub: "across all wallets",
-      icon: <Bitcoin className="w-4 h-4" />,
-    },
-    {
-      label: "Stocks & ETFs",
-      value: formatCurrency(stocksValue, primaryCurrency),
-      sub: "across all brokers",
-      icon: <BarChart3 className="w-4 h-4" />,
-    },
-    {
-      label: "Cash",
-      value: formatCurrency(cashValue, primaryCurrency),
-      sub: "banks + exchanges",
-      icon: <Banknote className="w-4 h-4" />,
-    },
-    {
-      label: "24h Change",
-      value: `${changeSign}${change24hPercent.toFixed(2)}%`,
-      sub: "vs yesterday",
-      icon: <TrendingUp className="w-4 h-4" />,
-      highlight: changeColor,
-    },
-    {
-      label: "Allocation",
-      value: `${allocation.crypto.toFixed(0)}% / ${allocation.stocks.toFixed(0)}% / ${allocation.cash.toFixed(0)}%`,
-      sub: "crypto / stocks / cash",
-      icon: <PieChart className="w-4 h-4" />,
-    },
-  ];
+  function getChangeForPeriod(period: ChangePeriod): {
+    percent: number;
+    available: boolean;
+  } {
+    // For 24h, use the real-time API-based change (more accurate than daily snapshots)
+    if (period === "24h") {
+      return { percent: change24hPercent, available: true };
+    }
+
+    const snapshot = pastSnapshots[period];
+    if (!snapshot) return { percent: 0, available: false };
+
+    const pastValue = snapshot[valueKey] ?? 0;
+    if (pastValue === 0) return { percent: 0, available: false };
+
+    const percent = ((totalValue - pastValue) / pastValue) * 100;
+    return { percent, available: true };
+  }
+
+  const change = getChangeForPeriod(changePeriod);
+  const changeColor =
+    !change.available ? undefined : change.percent >= 0 ? "green" : "red";
+  const changeSign =
+    !change.available ? "" : change.percent >= 0 ? "+" : "";
+  const changeValue = change.available
+    ? `${changeSign}${change.percent.toFixed(2)}%`
+    : "—";
+
+  const periodLabels: Record<ChangePeriod, string> = {
+    "24h": "vs yesterday",
+    "7d": "vs 7 days ago",
+    "30d": "vs 30 days ago",
+    "1y": "vs 1 year ago",
+  };
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {cards.map((card) => (
-        <div
-          key={card.label}
-          className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-zinc-500">{card.icon}</span>
+      {/* Total Portfolio */}
+      <StatCard
+        label="Total Portfolio"
+        value={formatCurrency(totalValue, primaryCurrency)}
+        sub={primaryCurrency}
+        icon={<Wallet className="w-4 h-4" />}
+      />
+
+      {/* Crypto */}
+      <StatCard
+        label="Crypto"
+        value={formatCurrency(cryptoValue, primaryCurrency)}
+        sub="across all wallets"
+        icon={<Bitcoin className="w-4 h-4" />}
+      />
+
+      {/* Stocks & ETFs */}
+      <StatCard
+        label="Stocks & ETFs"
+        value={formatCurrency(stocksValue, primaryCurrency)}
+        sub="across all brokers"
+        icon={<BarChart3 className="w-4 h-4" />}
+      />
+
+      {/* Cash */}
+      <StatCard
+        label="Cash"
+        value={formatCurrency(cashValue, primaryCurrency)}
+        sub="banks + exchanges"
+        icon={<Banknote className="w-4 h-4" />}
+      />
+
+      {/* Change — with period selector */}
+      <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-500">
+              <TrendingUp className="w-4 h-4" />
+            </span>
             <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-              {card.label}
+              Change
             </p>
           </div>
-          <p
-            className={`text-2xl font-semibold mt-2 tabular-nums ${
-              card.highlight === "green"
-                ? "text-emerald-400"
-                : card.highlight === "red"
-                  ? "text-red-400"
-                  : "text-zinc-100"
-            }`}
-          >
-            {card.value}
-          </p>
-          <p className="text-xs text-zinc-600 mt-1">{card.sub}</p>
+          <div className="flex gap-0.5">
+            {CHANGE_PERIODS.map((p) => (
+              <button
+                key={p}
+                onClick={() => setChangePeriod(p)}
+                className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                  p === changePeriod
+                    ? "bg-blue-600 text-white"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
-      ))}
+        <p
+          className={`text-2xl font-semibold mt-2 tabular-nums ${
+            changeColor === "green"
+              ? "text-emerald-400"
+              : changeColor === "red"
+                ? "text-red-400"
+                : "text-zinc-100"
+          }`}
+        >
+          {changeValue}
+        </p>
+        <p className="text-xs text-zinc-600 mt-1">
+          {periodLabels[changePeriod]}
+        </p>
+      </div>
+
+      {/* Allocation */}
+      <StatCard
+        label="Allocation"
+        value={`${allocation.crypto.toFixed(0)}% / ${allocation.stocks.toFixed(0)}% / ${allocation.cash.toFixed(0)}%`}
+        sub="crypto / stocks / cash"
+        icon={<PieChart className="w-4 h-4" />}
+      />
+    </div>
+  );
+}
+
+// ── Reusable stat card ──────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  icon: React.ReactNode;
+  highlight?: "green" | "red";
+}) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-zinc-500">{icon}</span>
+        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+          {label}
+        </p>
+      </div>
+      <p
+        className={`text-2xl font-semibold mt-2 tabular-nums ${
+          highlight === "green"
+            ? "text-emerald-400"
+            : highlight === "red"
+              ? "text-red-400"
+              : "text-zinc-100"
+        }`}
+      >
+        {value}
+      </p>
+      <p className="text-xs text-zinc-600 mt-1">{sub}</p>
     </div>
   );
 }

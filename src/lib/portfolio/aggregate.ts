@@ -28,6 +28,13 @@ export interface PortfolioSummary {
     cash: number;
   };
   primaryCurrency: string;
+
+  // Dual-currency values for snapshot storage (DB stores both USD and EUR)
+  totalValueUsd: number;
+  totalValueEur: number;
+  cryptoValueUsd: number;
+  stocksValueUsd: number;
+  cashValueUsd: number;
 }
 
 interface AggregateParams {
@@ -132,6 +139,42 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
         }
       : { crypto: 0, stocks: 0, cash: 0 };
 
+  // ── Dual-currency values for snapshot storage ─────────
+  // The DB stores both USD and EUR. We compute both from the base values.
+  // CoinGecko gives us both directly; for stocks/cash we use FX.
+  let cryptoValueUsd = 0;
+  let cryptoValueEur = 0;
+
+  for (const asset of cryptoAssets) {
+    const price = cryptoPrices[asset.coingecko_id];
+    if (!price) continue;
+    const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
+    cryptoValueUsd += totalQty * (price.usd ?? 0);
+    cryptoValueEur += totalQty * (price.eur ?? 0);
+  }
+
+  // For stocks and cash, convert base-currency values to the other currency
+  const eurPerUsd = fxRates["EUR"] ?? 1; // rates are relative to primaryCurrency
+
+  let stocksValueUsd: number;
+  let stocksValueEur: number;
+  let cashValueUsd: number;
+  let cashValueEur: number;
+
+  if (primaryCurrency === "USD") {
+    stocksValueUsd = stocksValue;
+    stocksValueEur = stocksValue * eurPerUsd;
+    cashValueUsd = cashValue;
+    cashValueEur = cashValue * eurPerUsd;
+  } else {
+    // primaryCurrency is EUR; fxRates["USD"] = USD per 1 EUR
+    const usdPerEur = fxRates["USD"] ?? 1;
+    stocksValueEur = stocksValue;
+    stocksValueUsd = stocksValue * usdPerEur;
+    cashValueEur = cashValue;
+    cashValueUsd = cashValue * usdPerEur;
+  }
+
   return {
     totalValue,
     cryptoValue,
@@ -140,5 +183,10 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     change24hPercent,
     allocation,
     primaryCurrency,
+    totalValueUsd: cryptoValueUsd + stocksValueUsd + cashValueUsd,
+    totalValueEur: cryptoValueEur + stocksValueEur + cashValueEur,
+    cryptoValueUsd,
+    stocksValueUsd,
+    cashValueUsd,
   };
 }

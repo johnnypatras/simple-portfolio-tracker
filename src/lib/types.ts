@@ -68,6 +68,20 @@ export interface ExchangeDeposit {
   updated_at: string;
 }
 
+// ─── Portfolio Snapshots ────────────────────────────────
+
+export interface PortfolioSnapshot {
+  id: string;
+  user_id: string;
+  snapshot_date: string;
+  total_value_usd: number;
+  total_value_eur: number;
+  crypto_value_usd: number;
+  stocks_value_usd: number;
+  cash_value_usd: number;
+  created_at: string;
+}
+
 // ─── Crypto entities ────────────────────────────────────
 
 export interface CryptoAsset {
