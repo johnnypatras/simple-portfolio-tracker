@@ -1,10 +1,66 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/actions/profile";
+import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
+import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
+import { getBankAccounts } from "@/lib/actions/bank-accounts";
+import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
+import { getPrices } from "@/lib/prices/coingecko";
+import { getStockPrices } from "@/lib/prices/yahoo";
+import { getFXRates } from "@/lib/prices/fx";
+import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { PortfolioCards } from "@/components/dashboard/portfolio-cards";
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Fetch all portfolio data in parallel
+  const [profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits] =
+    await Promise.all([
+      getProfile(),
+      getCryptoAssetsWithPositions(),
+      getStockAssetsWithPositions(),
+      getBankAccounts(),
+      getExchangeDeposits(),
+    ]);
+
+  const primaryCurrency = profile.primary_currency;
+
+  // Build ticker/coin ID lists for price fetching
+  const coinIds = cryptoAssets.map((a) => a.coingecko_id);
+  const yahooTickers = stockAssets
+    .map((a) => a.yahoo_ticker || a.ticker)
+    .filter(Boolean);
+
+  // Collect all unique currencies that need FX conversion
+  const allCurrencies = [
+    ...new Set([
+      ...stockAssets.map((a) => a.currency),
+      ...bankAccounts.map((a) => a.currency),
+      ...exchangeDeposits.map((a) => a.currency),
+    ]),
+  ];
+
+  // Fetch prices + FX rates in parallel
+  const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
+    getPrices(coinIds),
+    getStockPrices(yahooTickers),
+    getFXRates(primaryCurrency, allCurrencies),
+  ]);
+
+  // Aggregate everything into a single summary
+  const summary = aggregatePortfolio({
+    cryptoAssets,
+    cryptoPrices,
+    stockAssets,
+    stockPrices,
+    bankAccounts,
+    exchangeDeposits,
+    primaryCurrency,
+    fxRates,
+  });
 
   return (
     <div>
@@ -15,30 +71,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* Placeholder cards — will be replaced with real data in Phase 5 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[
-          { label: "Total Portfolio", value: "—", sub: "USD" },
-          { label: "Crypto", value: "—", sub: "across all wallets" },
-          { label: "Stocks & ETFs", value: "—", sub: "across all brokers" },
-          { label: "Cash", value: "—", sub: "banks + exchanges" },
-          { label: "24h Change", value: "—", sub: "vs yesterday" },
-          { label: "Allocation", value: "—", sub: "crypto / stocks / cash" },
-        ].map((card) => (
-          <div
-            key={card.label}
-            className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5"
-          >
-            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-              {card.label}
-            </p>
-            <p className="text-2xl font-semibold text-zinc-100 mt-2">
-              {card.value}
-            </p>
-            <p className="text-xs text-zinc-600 mt-1">{card.sub}</p>
-          </div>
-        ))}
-      </div>
+      <PortfolioCards summary={summary} />
     </div>
   );
 }

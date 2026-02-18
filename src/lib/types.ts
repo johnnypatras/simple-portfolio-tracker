@@ -54,6 +54,20 @@ export interface BankAccountInput {
   apy?: number;
 }
 
+// ─── Exchange Deposits (fiat on exchanges) ──────────────
+
+export interface ExchangeDeposit {
+  id: string;
+  user_id: string;
+  wallet_id: string;
+  wallet_name: string;   // joined from wallets table
+  currency: CurrencyType;
+  amount: number;
+  apy: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Crypto entities ────────────────────────────────────
 
 export interface CryptoAsset {
