@@ -237,194 +237,238 @@ export function CashTable({
           </div>
         </div>
       ) : (
-        <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800/50">
-                {orderedColumns.map((col) => {
-                  const align = col.align === "right" ? "text-right" : "text-left";
-                  const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
-                  const width = col.width ?? "";
-                  return (
-                    <th
-                      key={col.key}
-                      className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}
-                    >
-                      {col.renderHeader ? col.renderHeader(ctx) : col.header}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {/* ── Bank Accounts section ─────────────────────── */}
-              <tr className="bg-zinc-900/80">
-                <td
-                  colSpan={orderedColumns.length}
-                  className="px-4 py-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Landmark className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="text-xs font-medium text-zinc-400">
-                        Bank Accounts
-                      </span>
-                      <span className="text-xs text-zinc-600">
-                        {formatCurrency(bankTotal, primaryCurrency)}
-                      </span>
-                    </div>
-                    <button
-                      onClick={openCreateBank}
-                      className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add
-                    </button>
-                  </div>
-                </td>
-              </tr>
-
+        <>
+          {/* ── Mobile card layout ── */}
+          <div className="space-y-4 md:hidden">
+            {/* Bank Accounts */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Landmark className="w-3.5 h-3.5 text-zinc-500" />
+                  <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
+                  <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
+                </div>
+                <button onClick={openCreateBank} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+              </div>
               {bankRows.length === 0 ? (
-                <tr className="border-b border-zinc-800/30">
-                  <td
-                    colSpan={orderedColumns.length}
-                    className="px-4 py-4 text-center"
-                  >
-                    <p className="text-xs text-zinc-600">
-                      No bank accounts yet — click Add to create one
-                    </p>
-                  </td>
-                </tr>
+                <p className="text-xs text-zinc-600 px-4 py-3">No bank accounts yet</p>
               ) : (
-                bankRows.map((row) => {
-                  const groupExpanded =
-                    row.type === "bank-group" && expandedBanks.has(row.id);
-                  return (
-                    <Fragment key={row.id}>
-                      {/* Group row */}
-                      <tr className="border-b border-zinc-800/30 group hover:bg-zinc-800/20 transition-colors">
-                        {orderedColumns.map((col) => {
-                          const align =
-                            col.align === "right" ? "text-right" : "text-left";
-                          const hidden = col.hiddenBelow
-                            ? HIDDEN_BELOW[col.hiddenBelow]
-                            : "";
-                          return (
-                            <td
-                              key={col.key}
-                              className={`px-4 py-2.5 ${align} ${hidden}`}
-                            >
-                              {col.renderCell(row, ctx)}
-                            </td>
-                          );
-                        })}
-                      </tr>
-
-                      {/* Expanded: individual bank accounts */}
-                      {groupExpanded &&
-                        row.type === "bank-group" &&
-                        row.data.accounts.map((acct) => (
-                          <ExpandedBankRow
-                            key={acct.id}
-                            account={acct}
-                            orderedColumns={orderedColumns}
-                            ctx={ctx}
-                            onEdit={() => openEditBank(acct)}
-                            onDelete={() => handleDeleteBank(acct.id)}
-                          />
-                        ))}
-                    </Fragment>
-                  );
-                })
+                <div className="space-y-2">
+                  {bankRows.map((row) => {
+                    if (row.type !== "bank-group") return null;
+                    const groupExpanded = expandedBanks.has(row.id);
+                    return (
+                      <div key={row.id} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
+                        <button onClick={() => toggleExpand(row.id)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
+                          <div className="text-left min-w-0">
+                            <p className="text-sm font-medium text-zinc-200 truncate">{row.data.bankName}</p>
+                            <p className="text-xs text-zinc-500">{row.data.accounts.length} account{row.data.accounts.length !== 1 ? "s" : ""}</p>
+                          </div>
+                          <div className="text-right shrink-0 ml-3">
+                            <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(row.data.totalValue, primaryCurrency)}</p>
+                            {row.data.weightedApy > 0 && <p className="text-xs text-emerald-400">~{row.data.weightedApy.toFixed(1)}% APY</p>}
+                          </div>
+                        </button>
+                        {groupExpanded && (
+                          <div className="px-4 pb-3 border-t border-zinc-800/30 space-y-2 pt-3">
+                            {row.data.accounts.map((acct) => {
+                              const acctValueBase = convertToBase(acct.balance, acct.currency, primaryCurrency, fxRates);
+                              return (
+                                <div key={acct.id} className="flex items-center justify-between text-xs">
+                                  <div>
+                                    <span className="text-zinc-400">{acct.name}</span>
+                                    <span className="text-zinc-600 ml-1.5">{acct.currency}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-zinc-300 tabular-nums">{formatCurrency(acctValueBase, primaryCurrency)}</span>
+                                    <button onClick={() => openEditBank(acct)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
+                                    <button onClick={() => handleDeleteBank(acct.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
+            </div>
 
-              {/* ── Exchange Deposits section ─────────────────── */}
-              <tr className="bg-zinc-900/80">
-                <td
-                  colSpan={orderedColumns.length}
-                  className="px-4 py-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Wallet className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="text-xs font-medium text-zinc-400">
-                        Exchange Deposits
-                      </span>
-                      <span className="text-xs text-zinc-600">
-                        {formatCurrency(depositTotal, primaryCurrency)}
-                      </span>
-                    </div>
-                    <button
-                      onClick={openCreateExchange}
-                      disabled={wallets.length === 0}
-                      className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 transition-colors"
-                      title={wallets.length === 0 ? "Add a wallet first in Settings" : ""}
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add
-                    </button>
-                  </div>
-                </td>
-              </tr>
-
+            {/* Exchange Deposits */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Wallet className="w-3.5 h-3.5 text-zinc-500" />
+                  <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
+                  <span className="text-xs text-zinc-600">{formatCurrency(depositTotal, primaryCurrency)}</span>
+                </div>
+                <button onClick={openCreateExchange} disabled={wallets.length === 0} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 transition-colors">
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+              </div>
               {exchRows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={orderedColumns.length}
-                    className="px-4 py-4 text-center"
-                  >
-                    <p className="text-xs text-zinc-600">
-                      {wallets.length === 0
-                        ? "Add a wallet in Settings first, then track fiat deposits here"
-                        : "No exchange deposits yet — click Add to create one"}
-                    </p>
+                <p className="text-xs text-zinc-600 px-4 py-3">{wallets.length === 0 ? "Add a wallet in Settings first" : "No exchange deposits yet"}</p>
+              ) : (
+                <div className="space-y-2">
+                  {exchRows.map((row) => {
+                    if (row.type !== "exchange-group") return null;
+                    const groupExpanded = expandedBanks.has(row.id);
+                    return (
+                      <div key={row.id} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
+                        <button onClick={() => toggleExpand(row.id)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
+                          <div className="text-left min-w-0">
+                            <p className="text-sm font-medium text-zinc-200 truncate">{row.data.walletName}</p>
+                            <p className="text-xs text-zinc-500">{row.data.deposits.length} deposit{row.data.deposits.length !== 1 ? "s" : ""}</p>
+                          </div>
+                          <div className="text-right shrink-0 ml-3">
+                            <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(row.data.totalValue, primaryCurrency)}</p>
+                            {row.data.weightedApy > 0 && <p className="text-xs text-emerald-400">~{row.data.weightedApy.toFixed(1)}% APY</p>}
+                          </div>
+                        </button>
+                        {groupExpanded && (
+                          <div className="px-4 pb-3 border-t border-zinc-800/30 space-y-2 pt-3">
+                            {row.data.deposits.map((dep) => {
+                              const depValueBase = convertToBase(dep.amount, dep.currency, primaryCurrency, fxRates);
+                              return (
+                                <div key={dep.id} className="flex items-center justify-between text-xs">
+                                  <div>
+                                    <span className="text-zinc-400">{dep.currency} deposit</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-zinc-300 tabular-nums">{formatCurrency(depValueBase, primaryCurrency)}</span>
+                                    <button onClick={() => openEditExchange(dep)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
+                                    <button onClick={() => handleDeleteExchange(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Desktop table layout ── */}
+          <div className="hidden md:block bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-x-auto">
+            <table className="w-full min-w-[600px]">
+              <thead>
+                <tr className="border-b border-zinc-800/50">
+                  {orderedColumns.map((col) => {
+                    const align = col.align === "right" ? "text-right" : "text-left";
+                    const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                    const width = col.width ?? "";
+                    return (
+                      <th key={col.key} className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}>
+                        {col.renderHeader ? col.renderHeader(ctx) : col.header}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="bg-zinc-900/80">
+                  <td colSpan={orderedColumns.length} className="px-4 py-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Landmark className="w-3.5 h-3.5 text-zinc-500" />
+                        <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
+                        <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
+                      </div>
+                      <button onClick={openCreateBank} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+                        <Plus className="w-3 h-3" /> Add
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ) : (
-                exchRows.map((row) => {
-                  const groupExpanded =
-                    row.type === "exchange-group" && expandedBanks.has(row.id);
-                  return (
-                    <Fragment key={row.id}>
-                      {/* Group row */}
-                      <tr className="border-b border-zinc-800/30 last:border-0 group hover:bg-zinc-800/20 transition-colors">
-                        {orderedColumns.map((col) => {
-                          const align =
-                            col.align === "right" ? "text-right" : "text-left";
-                          const hidden = col.hiddenBelow
-                            ? HIDDEN_BELOW[col.hiddenBelow]
-                            : "";
-                          return (
-                            <td
-                              key={col.key}
-                              className={`px-4 py-2.5 ${align} ${hidden}`}
-                            >
-                              {col.renderCell(row, ctx)}
-                            </td>
-                          );
-                        })}
-                      </tr>
 
-                      {/* Expanded: individual exchange deposits */}
-                      {groupExpanded &&
-                        row.type === "exchange-group" &&
-                        row.data.deposits.map((dep) => (
-                          <ExpandedExchangeRow
-                            key={dep.id}
-                            deposit={dep}
-                            orderedColumns={orderedColumns}
-                            ctx={ctx}
-                            onEdit={() => openEditExchange(dep)}
-                            onDelete={() => handleDeleteExchange(dep.id)}
-                          />
-                        ))}
-                    </Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                {bankRows.length === 0 ? (
+                  <tr className="border-b border-zinc-800/30">
+                    <td colSpan={orderedColumns.length} className="px-4 py-4 text-center">
+                      <p className="text-xs text-zinc-600">No bank accounts yet — click Add to create one</p>
+                    </td>
+                  </tr>
+                ) : (
+                  bankRows.map((row) => {
+                    const groupExpanded = row.type === "bank-group" && expandedBanks.has(row.id);
+                    return (
+                      <Fragment key={row.id}>
+                        <tr className="border-b border-zinc-800/30 group hover:bg-zinc-800/20 transition-colors">
+                          {orderedColumns.map((col) => {
+                            const align = col.align === "right" ? "text-right" : "text-left";
+                            const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                            return (
+                              <td key={col.key} className={`px-4 py-2.5 ${align} ${hidden}`}>
+                                {col.renderCell(row, ctx)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        {groupExpanded && row.type === "bank-group" &&
+                          row.data.accounts.map((acct) => (
+                            <ExpandedBankRow key={acct.id} account={acct} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditBank(acct)} onDelete={() => handleDeleteBank(acct.id)} />
+                          ))}
+                      </Fragment>
+                    );
+                  })
+                )}
+
+                <tr className="bg-zinc-900/80">
+                  <td colSpan={orderedColumns.length} className="px-4 py-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-3.5 h-3.5 text-zinc-500" />
+                        <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
+                        <span className="text-xs text-zinc-600">{formatCurrency(depositTotal, primaryCurrency)}</span>
+                      </div>
+                      <button onClick={openCreateExchange} disabled={wallets.length === 0} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 transition-colors" title={wallets.length === 0 ? "Add a wallet first in Settings" : ""}>
+                        <Plus className="w-3 h-3" /> Add
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                {exchRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={orderedColumns.length} className="px-4 py-4 text-center">
+                      <p className="text-xs text-zinc-600">{wallets.length === 0 ? "Add a wallet in Settings first, then track fiat deposits here" : "No exchange deposits yet — click Add to create one"}</p>
+                    </td>
+                  </tr>
+                ) : (
+                  exchRows.map((row) => {
+                    const groupExpanded = row.type === "exchange-group" && expandedBanks.has(row.id);
+                    return (
+                      <Fragment key={row.id}>
+                        <tr className="border-b border-zinc-800/30 last:border-0 group hover:bg-zinc-800/20 transition-colors">
+                          {orderedColumns.map((col) => {
+                            const align = col.align === "right" ? "text-right" : "text-left";
+                            const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                            return (
+                              <td key={col.key} className={`px-4 py-2.5 ${align} ${hidden}`}>
+                                {col.renderCell(row, ctx)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        {groupExpanded && row.type === "exchange-group" &&
+                          row.data.deposits.map((dep) => (
+                            <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditExchange(dep)} onDelete={() => handleDeleteExchange(dep.id)} />
+                          ))}
+                      </Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* ── Bank Account Modal ─────────────────────────────── */}

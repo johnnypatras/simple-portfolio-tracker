@@ -116,9 +116,9 @@ export function PositionEditor({
           return (
             <div
               key={walletId}
-              className="flex items-center gap-2"
+              className="flex items-center gap-1.5 sm:gap-2"
             >
-              <span className="text-sm text-zinc-300 min-w-[100px] truncate">
+              <span className="text-sm text-zinc-300 w-20 sm:w-24 shrink-0 truncate">
                 {wallet?.name ?? "Unknown"}
               </span>
               <input
@@ -126,13 +126,13 @@ export function PositionEditor({
                 step="any"
                 value={edits[walletId] ?? "0"}
                 onChange={(e) => handleQuantityChange(walletId, e.target.value)}
-                className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 disabled={loading}
               />
               <button
                 onClick={() => handleSave(walletId)}
                 disabled={loading}
-                className="p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                 title="Save"
               >
                 {loading ? (
@@ -147,7 +147,7 @@ export function PositionEditor({
                     handleDelete(existingPosition.id, walletId)
                   }
                   disabled={loading}
-                  className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                  className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                   title="Remove"
                 >
                   <Trash2 className="w-4 h-4" />

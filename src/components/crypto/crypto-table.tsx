@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, Bitcoin } from "lucide-react";
+import { Plus, Bitcoin, Layers, Trash2 } from "lucide-react";
 import { AddCryptoModal } from "./add-crypto-modal";
 import { PositionEditor } from "./position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -133,74 +133,158 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
           </p>
         </div>
       ) : (
-        <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800/50">
-                {orderedColumns.map((col) => {
-                  const align = col.align === "right" ? "text-right" : "text-left";
-                  const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
-                  const width = col.width ?? "";
+        <>
+          {/* ── Mobile card layout ── */}
+          <div className="space-y-2 md:hidden">
+            {rows.map((row) => {
+              const rowExpanded = expanded.has(row.asset.id);
+              return (
+                <div key={row.id} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => toggleExpand(row.asset.id)}
+                    className="w-full px-4 py-3 flex items-center justify-between overflow-hidden"
+                  >
+                    <div className="text-left min-w-0">
+                      <p className="text-sm font-medium text-zinc-200 truncate">
+                        {row.asset.name}
+                      </p>
+                      <p className="text-xs text-zinc-500 uppercase">{row.asset.ticker}</p>
+                    </div>
+                    <div className="text-right shrink-0 ml-3">
+                      <p className="text-sm font-medium text-zinc-200 tabular-nums">
+                        {row.valueInBase > 0 ? formatCurrency(row.valueInBase, primaryCurrency) : "—"}
+                      </p>
+                      {row.change24h !== 0 && (
+                        <p className={`text-xs tabular-nums ${row.change24h >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {row.change24h >= 0 ? "+" : ""}{row.change24h.toFixed(2)}%
+                        </p>
+                      )}
+                    </div>
+                  </button>
+
+                  {rowExpanded && (
+                    <div className="px-4 pb-3 pt-0 border-t border-zinc-800/30">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-3 text-xs">
+                        <div>
+                          <span className="text-zinc-500">Price</span>
+                          <p className="text-zinc-300 tabular-nums">
+                            {row.priceInBase > 0 ? formatCurrency(row.priceInBase, primaryCurrency) : "No data"}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">Holdings</span>
+                          <p className="text-zinc-300 tabular-nums">
+                            {row.totalQty > 0 ? formatNumber(row.totalQty, 8) : "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {row.asset.positions.length > 0 && (
+                        <div className="mt-3 pt-2 border-t border-zinc-800/20 space-y-1">
+                          {row.asset.positions.map((pos) => {
+                            const posValue = pos.quantity * row.priceInBase;
+                            return (
+                              <div key={pos.id} className="flex justify-between text-xs">
+                                <span className="text-zinc-500">{pos.wallet_name}</span>
+                                <span className="text-zinc-400 tabular-nums">
+                                  {formatNumber(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 mt-3 pt-2 border-t border-zinc-800/20">
+                        <button
+                          onClick={() => handleEdit(row.asset)}
+                          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                        >
+                          <Layers className="w-3 h-3" />
+                          Edit positions
+                        </button>
+                        <button
+                          onClick={() => handleDelete(row.asset.id, row.asset.name)}
+                          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Desktop table layout ── */}
+          <div className="hidden md:block bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-x-auto">
+            <table className="w-full min-w-[600px]">
+              <thead>
+                <tr className="border-b border-zinc-800/50">
+                  {orderedColumns.map((col) => {
+                    const align = col.align === "right" ? "text-right" : "text-left";
+                    const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                    const width = col.width ?? "";
+                    return (
+                      <th
+                        key={col.key}
+                        className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}
+                      >
+                        {col.renderHeader ? col.renderHeader(ctx) : col.header}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const rowExpanded = expanded.has(row.asset.id);
                   return (
-                    <th
-                      key={col.key}
-                      className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}
-                    >
-                      {col.renderHeader ? col.renderHeader(ctx) : col.header}
-                    </th>
+                    <Fragment key={row.id}>
+                      <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                        {orderedColumns.map((col) => {
+                          const align = col.align === "right" ? "text-right" : "text-left";
+                          const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                          return (
+                            <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
+                              {col.renderCell(row, ctx)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {rowExpanded && row.asset.positions.length > 0 &&
+                        row.asset.positions.map((pos) => {
+                          const posValue = pos.quantity * row.priceInBase;
+                          return (
+                            <ExpandedCryptoRow
+                              key={pos.id}
+                              walletName={pos.wallet_name}
+                              quantity={formatNumber(pos.quantity, 8)}
+                              value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                              orderedColumns={orderedColumns}
+                            />
+                          );
+                        })}
+
+                      {rowExpanded && row.asset.positions.length === 0 && (
+                        <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                          <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
+                            <p className="text-xs text-zinc-600">
+                              No positions — click the layers icon to add quantities
+                            </p>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const rowExpanded = expanded.has(row.asset.id);
-                return (
-                  <Fragment key={row.id}>
-                    {/* Main row */}
-                    <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
-                      {orderedColumns.map((col) => {
-                        const align = col.align === "right" ? "text-right" : "text-left";
-                        const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
-                        return (
-                          <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
-                            {col.renderCell(row, ctx)}
-                          </td>
-                        );
-                      })}
-                    </tr>
-
-                    {/* Expanded: wallet breakdown */}
-                    {rowExpanded && row.asset.positions.length > 0 &&
-                      row.asset.positions.map((pos) => {
-                        const posValue = pos.quantity * row.priceInBase;
-                        return (
-                          <ExpandedCryptoRow
-                            key={pos.id}
-                            walletName={pos.wallet_name}
-                            quantity={formatNumber(pos.quantity, 8)}
-                            value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
-                            orderedColumns={orderedColumns}
-                          />
-                        );
-                      })}
-
-                    {/* Expanded: empty positions */}
-                    {rowExpanded && row.asset.positions.length === 0 && (
-                      <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
-                        <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
-                          <p className="text-xs text-zinc-600">
-                            No positions — click the layers icon to add quantities
-                          </p>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Modals */}

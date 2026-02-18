@@ -49,10 +49,16 @@ export function Sidebar({ email }: { email: string }) {
   const nav = (
     <>
       {/* Logo */}
-      <div className="px-4 py-6 border-b border-zinc-800/50">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-800/50">
         <h1 className="text-sm font-semibold text-zinc-200 tracking-wide">
           Portfolio Tracker
         </h1>
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors lg:hidden"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Main nav */}
@@ -118,17 +124,15 @@ export function Sidebar({ email }: { email: string }) {
 
   return (
     <>
-      {/* Mobile toggle */}
-      <button
-        onClick={() => setMobileOpen(!mobileOpen)}
-        className="fixed top-4 left-4 z-50 p-2 rounded-lg bg-zinc-800 border border-zinc-700 lg:hidden"
-      >
-        {mobileOpen ? (
-          <X className="w-5 h-5 text-zinc-300" />
-        ) : (
-          <Menu className="w-5 h-5 text-zinc-300" />
-        )}
-      </button>
+      {/* Mobile hamburger — only visible when sidebar is closed */}
+      {!mobileOpen && (
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="fixed top-4 left-4 z-50 p-2 rounded-lg lg:hidden"
+        >
+          <Menu className="w-5 h-5 text-zinc-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]" />
+        </button>
+      )}
 
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -140,7 +144,7 @@ export function Sidebar({ email }: { email: string }) {
 
       {/* Sidebar — mobile slides in, desktop always visible */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-full w-60 bg-zinc-900 border-r border-zinc-800/50 flex flex-col transition-transform duration-200 lg:translate-x-0 lg:static ${
+        className={`fixed top-0 left-0 z-40 h-full w-72 sm:w-60 bg-zinc-900 border-r border-zinc-800/50 flex flex-col transition-transform duration-200 lg:translate-x-0 lg:static lg:w-60 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

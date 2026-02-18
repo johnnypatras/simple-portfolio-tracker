@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Wallet,
   TrendingUp,
@@ -98,6 +99,7 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
         value={formatCurrency(cryptoValue, primaryCurrency)}
         sub="across all wallets"
         icon={<Bitcoin className="w-4 h-4" />}
+        href="/dashboard/crypto"
       />
 
       {/* Stocks & ETFs */}
@@ -106,6 +108,7 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
         value={formatCurrency(stocksValue, primaryCurrency)}
         sub="across all brokers"
         icon={<BarChart3 className="w-4 h-4" />}
+        href="/dashboard/stocks"
       />
 
       {/* Cash */}
@@ -114,6 +117,7 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
         value={formatCurrency(cashValue, primaryCurrency)}
         sub="banks + exchanges"
         icon={<Banknote className="w-4 h-4" />}
+        href="/dashboard/cash"
       />
 
       {/* Change — with period selector */}
@@ -178,15 +182,17 @@ function StatCard({
   sub,
   icon,
   highlight,
+  href,
 }: {
   label: string;
   value: string;
   sub: string;
   icon: React.ReactNode;
   highlight?: "green" | "red";
+  href?: string;
 }) {
-  return (
-    <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+  const content = (
+    <>
       <div className="flex items-center gap-2 mb-2">
         <span className="text-zinc-500">{icon}</span>
         <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
@@ -205,6 +211,20 @@ function StatCard({
         {value}
       </p>
       <p className="text-xs text-zinc-600 mt-1">{sub}</p>
-    </div>
+    </>
   );
+
+  const className =
+    "bg-zinc-900 border border-zinc-800/50 rounded-xl p-5" +
+    (href ? " hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors" : "");
+
+  if (href) {
+    return (
+      <Link href={href} className={`block ${className}`}>
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 }
