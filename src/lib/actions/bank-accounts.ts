@@ -34,6 +34,7 @@ export async function createBankAccount(input: BankAccountInput) {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/cash");
 }
 
 export async function updateBankAccount(id: string, input: BankAccountInput) {
@@ -52,6 +53,7 @@ export async function updateBankAccount(id: string, input: BankAccountInput) {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/cash");
 }
 
 export async function deleteBankAccount(id: string) {
@@ -60,4 +62,5 @@ export async function deleteBankAccount(id: string) {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/cash");
 }

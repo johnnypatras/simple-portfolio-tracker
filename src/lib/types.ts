@@ -54,6 +54,13 @@ export interface BankAccountInput {
   apy?: number;
 }
 
+export interface ExchangeDepositInput {
+  wallet_id: string;
+  currency: CurrencyType;
+  amount: number;
+  apy?: number;
+}
+
 // ─── Exchange Deposits (fiat on exchanges) ──────────────
 
 export interface ExchangeDeposit {
