@@ -26,7 +26,8 @@ interface CryptoTableProps {
 
 export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
   const [addOpen, setAddOpen] = useState(false);
-  const [editingAsset, setEditingAsset] = useState<CryptoAssetWithPositions | null>(null);
+  const [editingAsset, setEditingAsset] =
+    useState<CryptoAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   function toggleExpand(id: string) {
@@ -39,7 +40,12 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Remove ${name} from your portfolio? All positions will be deleted.`)) return;
+    if (
+      !confirm(
+        `Remove ${name} from your portfolio? All positions will be deleted.`
+      )
+    )
+      return;
     try {
       await deleteCryptoAsset(id);
     } catch (err) {
@@ -107,135 +113,168 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
         </div>
       ) : (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-4 px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider border-b border-zinc-800/50">
-            <span>Asset</span>
-            <span className="text-right w-20">Price</span>
-            <span className="text-right w-20">24h</span>
-            <span className="text-right w-24">Holdings</span>
-            <span className="text-right w-24">Value</span>
-            <span className="w-20" />
-          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-zinc-800/50">
+                <th className="text-left text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5">
+                  Asset
+                </th>
+                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-28">
+                  Price
+                </th>
+                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-20">
+                  24h
+                </th>
+                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-32">
+                  Holdings
+                </th>
+                <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-28">
+                  Value
+                </th>
+                <th className="w-20 px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(
+                ({ asset, priceUsd, change24h, totalQty, valueUsd }) => {
+                  const isExpanded = expanded.has(asset.id);
+                  const changeColor =
+                    change24h > 0
+                      ? "text-emerald-400"
+                      : change24h < 0
+                        ? "text-red-400"
+                        : "text-zinc-500";
 
-          {/* Rows */}
-          {rows.map(({ asset, priceUsd, change24h, totalQty, valueUsd }) => {
-            const isExpanded = expanded.has(asset.id);
-            const changeColor =
-              change24h > 0
-                ? "text-emerald-400"
-                : change24h < 0
-                  ? "text-red-400"
-                  : "text-zinc-500";
+                  return (
+                    <>
+                      {/* Main row */}
+                      <tr
+                        key={asset.id}
+                        className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors"
+                      >
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => toggleExpand(asset.id)}
+                            className="flex items-center gap-2 text-left min-w-0"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <span className="text-sm font-medium text-zinc-200 truncate block">
+                                {asset.name}
+                              </span>
+                              <span className="text-xs text-zinc-500 uppercase">
+                                {asset.ticker}
+                              </span>
+                            </div>
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm text-zinc-300 tabular-nums">
+                            {priceUsd > 0
+                              ? priceUsd >= 1
+                                ? formatCurrency(priceUsd)
+                                : `$${priceUsd.toFixed(6)}`
+                              : "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span
+                            className={`text-sm tabular-nums ${changeColor}`}
+                          >
+                            {change24h !== 0
+                              ? `${change24h > 0 ? "+" : ""}${change24h.toFixed(1)}%`
+                              : "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm text-zinc-300 tabular-nums">
+                            {totalQty > 0 ? formatNumber(totalQty, 8) : "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-medium text-zinc-200 tabular-nums">
+                            {valueUsd > 0 ? formatCurrency(valueUsd) : "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setEditingAsset(asset)}
+                              className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                              title="Edit positions"
+                            >
+                              <Layers className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleDelete(asset.id, asset.name)
+                              }
+                              className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                              title="Remove asset"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
 
-            return (
-              <div key={asset.id}>
-                {/* Main row */}
-                <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-4 px-4 py-3 items-center hover:bg-zinc-800/30 transition-colors border-b border-zinc-800/30">
-                  {/* Asset info */}
-                  <button
-                    onClick={() => toggleExpand(asset.id)}
-                    className="flex items-center gap-2 text-left min-w-0"
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                    ) : (
-                      <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <span className="text-sm font-medium text-zinc-200 truncate block">
-                        {asset.name}
-                      </span>
-                      <span className="text-xs text-zinc-500 uppercase">
-                        {asset.ticker}
-                      </span>
-                    </div>
-                  </button>
+                      {/* Expanded: wallet breakdown */}
+                      {isExpanded &&
+                        asset.positions.length > 0 &&
+                        asset.positions.map((pos) => {
+                          const posValue = pos.quantity * priceUsd;
+                          return (
+                            <tr
+                              key={pos.id}
+                              className="bg-zinc-950/50 border-b border-zinc-800/20"
+                            >
+                              <td className="pl-10 pr-4 py-2">
+                                <span className="text-xs text-zinc-500">
+                                  {pos.wallet_name}
+                                </span>
+                              </td>
+                              <td />
+                              <td />
+                              <td className="px-4 py-2 text-right">
+                                <span className="text-xs text-zinc-400 tabular-nums">
+                                  {formatNumber(pos.quantity, 8)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                <span className="text-xs text-zinc-400 tabular-nums">
+                                  {posValue > 0
+                                    ? formatCurrency(posValue)
+                                    : "—"}
+                                </span>
+                              </td>
+                              <td />
+                            </tr>
+                          );
+                        })}
 
-                  {/* Price */}
-                  <span className="text-sm text-zinc-300 text-right w-20 tabular-nums">
-                    {priceUsd > 0
-                      ? priceUsd >= 1
-                        ? formatCurrency(priceUsd)
-                        : `$${priceUsd.toFixed(6)}`
-                      : "—"}
-                  </span>
-
-                  {/* 24h change */}
-                  <span
-                    className={`text-sm text-right w-20 tabular-nums ${changeColor}`}
-                  >
-                    {change24h !== 0
-                      ? `${change24h > 0 ? "+" : ""}${change24h.toFixed(1)}%`
-                      : "—"}
-                  </span>
-
-                  {/* Total holdings */}
-                  <span className="text-sm text-zinc-300 text-right w-24 tabular-nums">
-                    {totalQty > 0 ? formatNumber(totalQty, 8) : "—"}
-                  </span>
-
-                  {/* Value */}
-                  <span className="text-sm font-medium text-zinc-200 text-right w-24 tabular-nums">
-                    {valueUsd > 0 ? formatCurrency(valueUsd) : "—"}
-                  </span>
-
-                  {/* Actions */}
-                  <div className="flex items-center justify-end gap-1 w-20">
-                    <button
-                      onClick={() => setEditingAsset(asset)}
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
-                      title="Edit positions"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(asset.id, asset.name)}
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                      title="Remove asset"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Expanded: wallet breakdown */}
-                {isExpanded && asset.positions.length > 0 && (
-                  <div className="bg-zinc-950/50 border-b border-zinc-800/30">
-                    {asset.positions.map((pos) => {
-                      const posValue = pos.quantity * priceUsd;
-                      return (
-                        <div
-                          key={pos.id}
-                          className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-4 px-4 py-2 items-center pl-10"
+                      {isExpanded && asset.positions.length === 0 && (
+                        <tr
+                          key={`${asset.id}-empty`}
+                          className="bg-zinc-950/50 border-b border-zinc-800/20"
                         >
-                          <span className="text-xs text-zinc-500">
-                            {pos.wallet_name}
-                          </span>
-                          <span className="w-20" />
-                          <span className="w-20" />
-                          <span className="text-xs text-zinc-400 text-right w-24 tabular-nums">
-                            {formatNumber(pos.quantity, 8)}
-                          </span>
-                          <span className="text-xs text-zinc-400 text-right w-24 tabular-nums">
-                            {posValue > 0 ? formatCurrency(posValue) : "—"}
-                          </span>
-                          <span className="w-20" />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {isExpanded && asset.positions.length === 0 && (
-                  <div className="bg-zinc-950/50 border-b border-zinc-800/30 px-10 py-3">
-                    <p className="text-xs text-zinc-600">
-                      No positions — click the layers icon to add quantities
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                          <td colSpan={6} className="pl-10 pr-4 py-3">
+                            <p className="text-xs text-zinc-600">
+                              No positions — click the layers icon to add
+                              quantities
+                            </p>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                }
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
