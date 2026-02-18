@@ -1,0 +1,134 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type {
+  StockAssetInput,
+  StockAssetWithPositions,
+  StockPositionInput,
+  Broker,
+} from "@/lib/types";
+
+/** Get all stock assets with their positions and broker names */
+export async function getStockAssetsWithPositions(): Promise<
+  StockAssetWithPositions[]
+> {
+  const supabase = await createServerSupabaseClient();
+
+  // Fetch assets
+  const { data: assets, error: assetsErr } = await supabase
+    .from("stock_assets")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (assetsErr) throw new Error(assetsErr.message);
+  if (!assets || assets.length === 0) return [];
+
+  // Fetch all positions for these assets
+  const assetIds = assets.map((a) => a.id);
+  const { data: positions, error: posErr } = await supabase
+    .from("stock_positions")
+    .select("*")
+    .in("stock_asset_id", assetIds);
+
+  if (posErr) throw new Error(posErr.message);
+
+  // Fetch broker names for display
+  const brokerIds = [...new Set((positions ?? []).map((p) => p.broker_id))];
+  let brokersMap: Record<string, string> = {};
+  if (brokerIds.length > 0) {
+    const { data: brokers } = await supabase
+      .from("brokers")
+      .select("id, name")
+      .in("id", brokerIds);
+    brokersMap = Object.fromEntries(
+      (brokers ?? []).map((b: Pick<Broker, "id" | "name">) => [b.id, b.name])
+    );
+  }
+
+  // Merge
+  return assets.map((asset) => ({
+    ...asset,
+    positions: (positions ?? [])
+      .filter((p) => p.stock_asset_id === asset.id)
+      .map((p) => ({
+        ...p,
+        quantity: Number(p.quantity),
+        broker_name: brokersMap[p.broker_id] ?? "Unknown",
+      })),
+  }));
+}
+
+/** Add a new stock/ETF asset */
+export async function createStockAsset(input: StockAssetInput) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase.from("stock_assets").insert({
+    user_id: user.id,
+    ticker: input.ticker.toUpperCase(),
+    name: input.name,
+    isin: input.isin ?? null,
+    category: input.category ?? "stock",
+    currency: input.currency ?? "USD",
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("This stock/ETF is already in your portfolio");
+    }
+    throw new Error(error.message);
+  }
+  revalidatePath("/dashboard/stocks");
+}
+
+/** Remove a stock asset and all its positions (CASCADE) */
+export async function deleteStockAsset(id: string) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.from("stock_assets").delete().eq("id", id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/stocks");
+}
+
+/** Upsert a position (set quantity for a stock asset at a specific broker) */
+export async function upsertStockPosition(input: StockPositionInput) {
+  const supabase = await createServerSupabaseClient();
+
+  if (input.quantity <= 0) {
+    // Remove the position if quantity is zero or negative
+    const { error } = await supabase
+      .from("stock_positions")
+      .delete()
+      .eq("stock_asset_id", input.stock_asset_id)
+      .eq("broker_id", input.broker_id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from("stock_positions").upsert(
+      {
+        stock_asset_id: input.stock_asset_id,
+        broker_id: input.broker_id,
+        quantity: input.quantity,
+      },
+      { onConflict: "stock_asset_id,broker_id" }
+    );
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath("/dashboard/stocks");
+}
+
+/** Delete a specific position */
+export async function deleteStockPosition(positionId: string) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase
+    .from("stock_positions")
+    .delete()
+    .eq("id", positionId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/stocks");
+}

@@ -94,6 +94,48 @@ export interface CryptoPositionInput {
   quantity: number;
 }
 
+// ─── Stock/ETF entities ─────────────────────────────────
+
+export type AssetCategory = "stock" | "etf_sp500" | "etf_world" | "bond" | "other";
+
+export interface StockAsset {
+  id: string;
+  user_id: string;
+  ticker: string;
+  name: string;
+  isin: string | null;
+  category: AssetCategory;
+  currency: CurrencyType;
+  created_at: string;
+}
+
+export interface StockPosition {
+  id: string;
+  stock_asset_id: string;
+  broker_id: string;
+  quantity: number;
+  updated_at: string;
+}
+
+/** Stock asset with nested positions and broker names */
+export interface StockAssetWithPositions extends StockAsset {
+  positions: (StockPosition & { broker_name: string })[];
+}
+
+export interface StockAssetInput {
+  ticker: string;
+  name: string;
+  isin?: string | null;
+  category?: AssetCategory;
+  currency?: CurrencyType;
+}
+
+export interface StockPositionInput {
+  stock_asset_id: string;
+  broker_id: string;
+  quantity: number;
+}
+
 // ─── CoinGecko API types ────────────────────────────────
 
 export interface CoinGeckoSearchResult {
