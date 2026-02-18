@@ -1,12 +1,15 @@
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getBrokers } from "@/lib/actions/brokers";
+import { getProfile } from "@/lib/actions/profile";
 import { getStockPrices } from "@/lib/prices/yahoo";
+import { getFXRates } from "@/lib/prices/fx";
 import { StockTable } from "@/components/stocks/stock-table";
 
 export default async function StocksPage() {
-  const [assets, brokers] = await Promise.all([
+  const [assets, brokers, profile] = await Promise.all([
     getStockAssetsWithPositions(),
     getBrokers(),
+    getProfile(),
   ]);
 
   // Build Yahoo ticker list: use yahoo_ticker if set, otherwise fall back to ticker
@@ -14,7 +17,12 @@ export default async function StocksPage() {
     .map((a) => a.yahoo_ticker || a.ticker)
     .filter(Boolean);
 
-  const prices = await getStockPrices(yahooTickers);
+  // Fetch prices + FX rates in parallel
+  const uniqueCurrencies = [...new Set(assets.map((a) => a.currency))];
+  const [prices, fxRates] = await Promise.all([
+    getStockPrices(yahooTickers),
+    getFXRates(profile.primary_currency, uniqueCurrencies),
+  ]);
 
   return (
     <div>
@@ -24,7 +32,13 @@ export default async function StocksPage() {
           Manage your stock and ETF positions across brokers
         </p>
       </div>
-      <StockTable assets={assets} brokers={brokers} prices={prices} />
+      <StockTable
+        assets={assets}
+        brokers={brokers}
+        prices={prices}
+        primaryCurrency={profile.primary_currency}
+        fxRates={fxRates}
+      />
     </div>
   );
 }

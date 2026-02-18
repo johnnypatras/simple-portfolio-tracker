@@ -1,12 +1,14 @@
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getWallets } from "@/lib/actions/wallets";
+import { getProfile } from "@/lib/actions/profile";
 import { getPrices } from "@/lib/prices/coingecko";
 import { CryptoTable } from "@/components/crypto/crypto-table";
 
 export default async function CryptoPage() {
-  const [assets, wallets] = await Promise.all([
+  const [assets, wallets, profile] = await Promise.all([
     getCryptoAssetsWithPositions(),
     getWallets(),
+    getProfile(),
   ]);
 
   // Fetch live prices for all tracked coins in one batched call
@@ -23,7 +25,12 @@ export default async function CryptoPage() {
           Manage your cryptocurrency holdings across wallets
         </p>
       </div>
-      <CryptoTable assets={assets} prices={prices} wallets={wallets} />
+      <CryptoTable
+        assets={assets}
+        prices={prices}
+        wallets={wallets}
+        primaryCurrency={profile.primary_currency}
+      />
     </div>
   );
 }

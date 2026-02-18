@@ -22,9 +22,13 @@ interface CryptoTableProps {
   assets: CryptoAssetWithPositions[];
   prices: CoinGeckoPriceData;
   wallets: Wallet[];
+  primaryCurrency: string;
 }
 
-export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
+export function CryptoTable({ assets, prices, wallets, primaryCurrency }: CryptoTableProps) {
+  // CoinGecko returns both usd and eur — pick based on user's base currency
+  const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
+  const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
   const [addOpen, setAddOpen] = useState(false);
   const [editingAsset, setEditingAsset] =
     useState<CryptoAssetWithPositions | null>(null);
@@ -60,29 +64,29 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
     }).format(n);
   }
 
-  function formatCurrency(n: number): string {
+  function formatCurrency(n: number, cur: string = primaryCurrency): string {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: cur,
       minimumFractionDigits: 2,
     }).format(n);
   }
 
-  // Compute totals
+  // Compute totals using the user's primary currency
   const rows = assets.map((asset) => {
     const price = prices[asset.coingecko_id];
-    const priceUsd = price?.usd ?? 0;
-    const change24h = price?.usd_24h_change ?? 0;
+    const priceInBase = price?.[currencyKey] ?? 0;
+    const change24h = price?.[changeKey] ?? 0;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
-    const valueUsd = totalQty * priceUsd;
+    const valueInBase = totalQty * priceInBase;
 
-    return { asset, priceUsd, change24h, totalQty, valueUsd };
+    return { asset, priceInBase, change24h, totalQty, valueInBase };
   });
 
   // Sort by value descending
-  rows.sort((a, b) => b.valueUsd - a.valueUsd);
+  rows.sort((a, b) => b.valueInBase - a.valueInBase);
 
-  const totalPortfolioValue = rows.reduce((sum, r) => sum + r.valueUsd, 0);
+  const totalPortfolioValue = rows.reduce((sum, r) => sum + r.valueInBase, 0);
 
   return (
     <div>
@@ -129,14 +133,14 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
                   Holdings
                 </th>
                 <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-28">
-                  Value
+                  Value ({primaryCurrency})
                 </th>
                 <th className="w-20 px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {rows.map(
-                ({ asset, priceUsd, change24h, totalQty, valueUsd }) => {
+                ({ asset, priceInBase, change24h, totalQty, valueInBase }) => {
                   const isExpanded = expanded.has(asset.id);
                   const changeColor =
                     change24h > 0
@@ -173,10 +177,10 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <span className="text-sm text-zinc-300 tabular-nums">
-                            {priceUsd > 0
-                              ? priceUsd >= 1
-                                ? formatCurrency(priceUsd)
-                                : `$${priceUsd.toFixed(6)}`
+                            {priceInBase > 0
+                              ? priceInBase >= 1
+                                ? formatCurrency(priceInBase)
+                                : `${priceInBase.toFixed(6)}`
                               : "—"}
                           </span>
                         </td>
@@ -196,7 +200,7 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <span className="text-sm font-medium text-zinc-200 tabular-nums">
-                            {valueUsd > 0 ? formatCurrency(valueUsd) : "—"}
+                            {valueInBase > 0 ? formatCurrency(valueInBase) : "—"}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -225,7 +229,7 @@ export function CryptoTable({ assets, prices, wallets }: CryptoTableProps) {
                       {isExpanded &&
                         asset.positions.length > 0 &&
                         asset.positions.map((pos) => {
-                          const posValue = pos.quantity * priceUsd;
+                          const posValue = pos.quantity * priceInBase;
                           return (
                             <tr
                               key={pos.id}

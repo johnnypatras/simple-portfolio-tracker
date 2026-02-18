@@ -12,6 +12,8 @@ import {
 import { AddStockModal } from "./add-stock-modal";
 import { StockPositionEditor } from "./stock-position-editor";
 import { deleteStockAsset } from "@/lib/actions/stocks";
+import { convertToBase } from "@/lib/prices/fx";
+import type { FXRates } from "@/lib/prices/fx";
 import type {
   StockAssetWithPositions,
   Broker,
@@ -23,6 +25,8 @@ interface StockTableProps {
   assets: StockAssetWithPositions[];
   brokers: Broker[];
   prices: YahooStockPriceData;
+  primaryCurrency: string;
+  fxRates: FXRates;
 }
 
 const CATEGORY_LABELS: Record<AssetCategory, string> = {
@@ -41,7 +45,7 @@ const CATEGORY_COLORS: Record<AssetCategory, string> = {
   other: "text-zinc-400",
 };
 
-export function StockTable({ assets, brokers, prices }: StockTableProps) {
+export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }: StockTableProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [editingAsset, setEditingAsset] =
     useState<StockAssetWithPositions | null>(null);
@@ -91,22 +95,23 @@ export function StockTable({ assets, brokers, prices }: StockTableProps) {
     }).format(n);
   }
 
-  // Compute totals
+  // Compute totals: native value + converted base-currency value
   const rows = assets.map((asset) => {
     const priceData = getPriceForAsset(asset);
     const pricePerShare = priceData?.price ?? 0;
     const change24h = priceData?.change24h ?? 0;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
-    const valueInCurrency = totalQty * pricePerShare;
+    const valueNative = totalQty * pricePerShare;
+    const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
 
-    return { asset, pricePerShare, change24h, totalQty, valueInCurrency };
+    return { asset, pricePerShare, change24h, totalQty, valueNative, valueBase };
   });
 
-  // Sort by value descending
-  rows.sort((a, b) => b.valueInCurrency - a.valueInCurrency);
+  // Sort by converted value descending
+  rows.sort((a, b) => b.valueBase - a.valueBase);
 
   const totalPortfolioValue = rows.reduce(
-    (sum, r) => sum + r.valueInCurrency,
+    (sum, r) => sum + r.valueBase,
     0
   );
 
@@ -117,7 +122,7 @@ export function StockTable({ assets, brokers, prices }: StockTableProps) {
         <div>
           <p className="text-sm text-zinc-400">
             {assets.length} asset{assets.length !== 1 ? "s" : ""} ·{" "}
-            {formatCurrency(totalPortfolioValue)}
+            {formatCurrency(totalPortfolioValue, primaryCurrency)}
           </p>
         </div>
         <button
@@ -155,7 +160,7 @@ export function StockTable({ assets, brokers, prices }: StockTableProps) {
                   Shares
                 </th>
                 <th className="text-right text-xs font-medium text-zinc-500 uppercase tracking-wider px-4 py-2.5 w-28">
-                  Value
+                  Value ({primaryCurrency})
                 </th>
                 <th className="w-20 px-4 py-2.5" />
               </tr>
@@ -167,7 +172,7 @@ export function StockTable({ assets, brokers, prices }: StockTableProps) {
                   pricePerShare,
                   change24h,
                   totalQty,
-                  valueInCurrency,
+                  valueBase,
                 }) => {
                   const isExpanded = expanded.has(asset.id);
 
@@ -237,8 +242,8 @@ export function StockTable({ assets, brokers, prices }: StockTableProps) {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <span className="text-sm font-medium text-zinc-200 tabular-nums">
-                            {valueInCurrency > 0
-                              ? formatCurrency(valueInCurrency, asset.currency)
+                            {valueBase > 0
+                              ? formatCurrency(valueBase, primaryCurrency)
                               : "—"}
                           </span>
                         </td>
@@ -268,7 +273,8 @@ export function StockTable({ assets, brokers, prices }: StockTableProps) {
                       {isExpanded &&
                         asset.positions.length > 0 &&
                         asset.positions.map((pos) => {
-                          const posValue = pos.quantity * pricePerShare;
+                          const posValueNative = pos.quantity * pricePerShare;
+                          const posValueBase = convertToBase(posValueNative, asset.currency, primaryCurrency, fxRates);
                           return (
                             <tr
                               key={pos.id}
@@ -288,8 +294,8 @@ export function StockTable({ assets, brokers, prices }: StockTableProps) {
                               </td>
                               <td className="px-4 py-2 text-right">
                                 <span className="text-xs text-zinc-400 tabular-nums">
-                                  {posValue > 0
-                                    ? formatCurrency(posValue, asset.currency)
+                                  {posValueBase > 0
+                                    ? formatCurrency(posValueBase, primaryCurrency)
                                     : "—"}
                                 </span>
                               </td>
