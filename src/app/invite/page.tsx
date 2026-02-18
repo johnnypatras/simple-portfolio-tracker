@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Mail, KeyRound, Ticket, Eye, EyeOff } from "lucide-react";
 
@@ -17,7 +16,6 @@ function InviteForm() {
   const [loading, setLoading] = useState(false);
 
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -36,58 +34,23 @@ function InviteForm() {
     setLoading(true);
 
     try {
-      // 1. Validate the invite code
-      const { data: invite, error: inviteError } = await supabase
-        .from("invite_codes")
-        .select("*")
-        .eq("code", code.trim())
-        .is("used_by", null)
-        .single();
+      // Call server-side API route (bypasses RLS for invite validation)
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim(), email, password }),
+      });
 
-      if (inviteError || !invite) {
-        setError("Invalid or already used invite code");
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Registration failed");
         setLoading(false);
         return;
-      }
-
-      // Check expiry
-      if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-        setError("This invite code has expired");
-        setLoading(false);
-        return;
-      }
-
-      // 2. Sign up the user
-      const { data: signUpData, error: signUpError } =
-        await supabase.auth.signUp({
-          email,
-          password,
-        });
-
-      if (signUpError) {
-        setError(signUpError.message);
-        setLoading(false);
-        return;
-      }
-
-      // 3. Mark invite as used
-      if (signUpData.user) {
-        await supabase
-          .from("invite_codes")
-          .update({
-            used_by: signUpData.user.id,
-            used_at: new Date().toISOString(),
-          })
-          .eq("id", invite.id);
       }
 
       setSuccess(true);
       setLoading(false);
-
-      // If email confirmation is disabled, redirect to dashboard
-      if (signUpData.session) {
-        router.push("/dashboard");
-      }
     } catch {
       setError("An unexpected error occurred");
       setLoading(false);
@@ -104,7 +67,7 @@ function InviteForm() {
           Account Created
         </h1>
         <p className="text-sm text-zinc-400 mb-6">
-          Check your email to confirm your account, then sign in.
+          Your account is ready. You can now sign in.
         </p>
         <button
           onClick={() => router.push("/login")}
