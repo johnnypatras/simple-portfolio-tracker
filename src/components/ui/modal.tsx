@@ -34,7 +34,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
     >
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl flex flex-col max-h-[85dvh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800/50 shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 md:px-5 md:py-4 border-b border-zinc-800/50 shrink-0">
           <h2 className="text-base font-semibold text-zinc-100">{title}</h2>
           <button
             onClick={onClose}
@@ -44,7 +44,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
           </button>
         </div>
         {/* Body — scrollable when content exceeds viewport */}
-        <div className="px-5 py-4 overflow-y-auto">{children}</div>
+        <div className="px-4 py-3 md:px-5 md:py-4 overflow-y-auto">{children}</div>
       </div>
     </div>
   );

@@ -174,25 +174,51 @@ export function TradeTable({
       onClose={() => setModalOpen(false)}
       title={editing ? "Edit Trade" : "Log Trade"}
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Date */}
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
-            Trade Date
-          </label>
-          <input
-            type="datetime-local"
-            value={tradeDate}
-            onChange={(e) => setTradeDate(e.target.value)}
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-            required
-          />
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Row 1: Date + Buy/Sell */}
+        <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">
+              Trade Date
+            </label>
+            <input
+              type="datetime-local"
+              value={tradeDate}
+              onChange={(e) => setTradeDate(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              onClick={() => setAction("buy")}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                action === "buy"
+                  ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30"
+                  : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              Buy
+            </button>
+            <button
+              type="button"
+              onClick={() => setAction("sell")}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                action === "sell"
+                  ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
+                  : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              Sell
+            </button>
+          </div>
         </div>
 
-        {/* Asset type + name */}
+        {/* Row 2: Asset type + name */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-sm text-zinc-400 mb-1">
               Asset Type
             </label>
             <select
@@ -202,7 +228,7 @@ export function TradeTable({
                 setAssetType(newType);
                 setAssetName("");
               }}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             >
               <option value="crypto">Crypto</option>
               <option value="stock">Stock</option>
@@ -211,14 +237,14 @@ export function TradeTable({
             </select>
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-sm text-zinc-400 mb-1">
               Asset Name
             </label>
             {assetType === "crypto" && assetOptions.crypto.length > 0 ? (
               <select
                 value={assetName}
                 onChange={(e) => setAssetName(e.target.value)}
-                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 required
               >
                 <option value="">Select asset…</option>
@@ -233,13 +259,12 @@ export function TradeTable({
                 value={assetName}
                 onChange={(e) => {
                   setAssetName(e.target.value);
-                  // Auto-fill currency from the stock asset
                   const match = assetOptions.stock.find(
                     (s) => s.ticker === e.target.value
                   );
                   if (match) setCurrency(match.currency);
                 }}
-                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 required
               >
                 <option value="">Select asset…</option>
@@ -254,10 +279,9 @@ export function TradeTable({
                 value={assetName}
                 onChange={(e) => {
                   setAssetName(e.target.value);
-                  // Auto-fill currency to match the selected cash currency
                   if (e.target.value) setCurrency(e.target.value);
                 }}
-                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 required
               >
                 <option value="">Select currency…</option>
@@ -273,48 +297,17 @@ export function TradeTable({
                 value={assetName}
                 onChange={(e) => setAssetName(e.target.value)}
                 placeholder="e.g. EUR, USD"
-                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 required
               />
             )}
           </div>
         </div>
 
-        {/* Buy / Sell toggle */}
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
-            Action
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setAction("buy")}
-              className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                action === "buy"
-                  ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30"
-                  : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Buy
-            </button>
-            <button
-              type="button"
-              onClick={() => setAction("sell")}
-              className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                action === "sell"
-                  ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
-                  : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Sell
-            </button>
-          </div>
-        </div>
-
-        {/* Quantity + Price */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Row 3: Quantity + Price + Currency */}
+        <div className="grid grid-cols-[1fr_1fr_70px] gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-sm text-zinc-400 mb-1">
               Quantity
             </label>
             <input
@@ -323,13 +316,13 @@ export function TradeTable({
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               placeholder="0"
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               required
             />
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
-              Price per unit
+            <label className="block text-sm text-zinc-400 mb-1">
+              Price
             </label>
             <input
               type="number"
@@ -337,77 +330,78 @@ export function TradeTable({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="0.00"
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               required
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">
+              Ccy
+            </label>
+            <input
+              type="text"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+              placeholder="USD"
+              maxLength={5}
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             />
           </div>
         </div>
 
-        {/* Currency */}
-        <div className="w-1/2">
-          <label className="block text-sm text-zinc-400 mb-1.5">
-            Currency
-          </label>
-          <input
-            type="text"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-            placeholder="USD"
-            maxLength={5}
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-          />
-        </div>
-
-        {/* Notes */}
+        {/* Notes — single line on mobile */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label className="block text-sm text-zinc-400 mb-1">
             Notes{" "}
             <span className="text-zinc-600 font-normal">(optional)</span>
           </label>
-          <textarea
+          <input
+            type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Why did you make this trade?"
-            rows={2}
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none"
+            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
           />
         </div>
 
-        {/* Live total preview */}
-        {parseFloat(quantity) > 0 && parseFloat(price) > 0 && (
-          <div className="text-sm text-zinc-400 bg-zinc-800/30 px-3 py-2 rounded-lg">
-            Total:{" "}
-            <span className="font-medium text-zinc-200">
-              {formatMoney(
-                (parseFloat(quantity) || 0) * (parseFloat(price) || 0),
-                currency || "USD"
-              )}
-            </span>
+        {/* Live total preview + buttons */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="text-sm text-zinc-500">
+            {parseFloat(quantity) > 0 && parseFloat(price) > 0 && (
+              <>
+                Total:{" "}
+                <span className="font-medium text-zinc-200">
+                  {formatMoney(
+                    (parseFloat(quantity) || 0) * (parseFloat(price) || 0),
+                    currency || "USD"
+                  )}
+                </span>
+              </>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setModalOpen(false)}
+              className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+            >
+              {loading ? "Saving..." : editing ? "Save Changes" : "Log Trade"}
+            </button>
+          </div>
+        </div>
 
         {error && (
           <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
             {error}
           </p>
         )}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={() => setModalOpen(false)}
-            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
-          >
-            {loading ? "Saving..." : editing ? "Save Changes" : "Log Trade"}
-          </button>
-        </div>
       </form>
     </Modal>
   );
