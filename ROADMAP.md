@@ -59,6 +59,8 @@ Time-weighted portfolio performance with interactive charts.
 - **Alerts & Notifications** — Price targets, portfolio threshold alerts
 - **Import / Export** — CSV/JSON import of positions, export portfolio snapshots
 - **Multi-user / Sharing** — Shared portfolios, read-only viewer links
+- **Asset Search** — Search functionality per asset showing location (wallets/brokers), quantities per category, etc.
+- **Donate Button** — Donate/tip button with full backend infrastructure (payment processing, thank-you flow, etc.)
 
 ---
 
