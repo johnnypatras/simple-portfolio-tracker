@@ -128,7 +128,7 @@ export function Sidebar({ email }: { email: string }) {
       {!mobileOpen && (
         <button
           onClick={() => setMobileOpen(true)}
-          className="fixed top-[4.25rem] left-4 z-50 p-2 rounded-lg lg:hidden"
+          className="fixed top-4 left-4 z-50 p-2 rounded-lg lg:hidden"
         >
           <Menu className="w-5 h-5 text-zinc-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]" />
         </button>

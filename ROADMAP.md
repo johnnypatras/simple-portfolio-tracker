@@ -26,6 +26,10 @@ Column visibility/reordering system, bank accounts grouped by bank name with exp
 ### Mobile UI Polish ✅
 Responsive sidebar, card layouts for small screens, modal overflow fixes, subtle hamburger button, LAN dev origin config.
 
+---
+
+## Upcoming Phases
+
 ### Phase 8 — Trade Diary ✅
 Structured trade log for recording significant buys and sells.
 - `trade_entries` table: date, asset type/name, buy/sell, quantity, price, currency, notes
@@ -33,23 +37,12 @@ Structured trade log for recording significant buys and sells.
 - Add/edit modal with live total preview, buy/sell toggle
 - Asset type badges (crypto/stock/cash/other) and action badges (buy/sell)
 
-### Phase 9 — Activity History / Audit Trail ✅
+### Phase 9 — Activity History / Audit Trail 🔲
 Track all portfolio changes for accountability and review.
-- Automatic change log across 23 mutations (7 action files)
-- Filterable timeline by entity type and action type, grouped by date
-- CSV export, pagination, color-coded action/entity badges
-- Fire-and-forget logging pattern (never breaks user mutations)
-
----
-
-## Upcoming Phases
-
-### Phase 10 — Performance Analytics & Charts 🔲
-Portfolio value over time charts, asset allocation visualizations, and performance metrics.
-- Historical portfolio value line chart (using snapshot data)
-- Asset allocation pie/donut chart
-- Gain/loss calculations and percentage changes
-- Time period selectors (7d, 30d, 90d, 1y, all)
+- Automatic change log (position edits, account adds/deletes)
+- Filterable timeline by asset type, date range, action type
+- Exportable history
+- Stub page exists at `/dashboard/history`
 
 ---
 
@@ -62,4 +55,4 @@ Portfolio value over time charts, asset allocation visualizations, and performan
 
 ---
 
-*Last updated after: Phase 9 — Activity History / Audit Trail*
+*Last updated after: Phase 8 — Trade Diary*
