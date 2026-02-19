@@ -240,7 +240,7 @@ export function ActivityTimeline({
   return (
     <div className={isPending ? "opacity-60 transition-opacity" : ""}>
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-6">
         <select
           value={currentEntityType ?? ""}
           onChange={(e) => updateFilter("type", e.target.value)}
@@ -267,17 +267,17 @@ export function ActivityTimeline({
 
         <div className="flex-1" />
 
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-zinc-500 shrink-0">
           {total} {total === 1 ? "entry" : "entries"}
         </span>
 
         {total > 0 && (
           <button
             onClick={handleExportCsv}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800/80 transition-colors"
+            className="shrink-0 p-2 text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800/80 transition-colors"
+            title="Export CSV"
           >
             <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Export CSV</span>
           </button>
         )}
       </div>
