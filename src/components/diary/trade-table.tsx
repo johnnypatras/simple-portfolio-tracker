@@ -72,6 +72,7 @@ function toLocalDatetime(iso?: string): string {
 interface AssetOptions {
   crypto: { ticker: string; name: string }[];
   stock: { ticker: string; name: string; currency: string }[];
+  cash: string[];
 }
 
 // ── Main Component ─────────────────────────────────────────
@@ -245,6 +246,24 @@ export function TradeTable({
                 {assetOptions.stock.map((a) => (
                   <option key={a.ticker} value={a.ticker}>
                     {a.ticker} — {a.name}
+                  </option>
+                ))}
+              </select>
+            ) : assetType === "cash" && assetOptions.cash.length > 0 ? (
+              <select
+                value={assetName}
+                onChange={(e) => {
+                  setAssetName(e.target.value);
+                  // Auto-fill currency to match the selected cash currency
+                  if (e.target.value) setCurrency(e.target.value);
+                }}
+                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                required
+              >
+                <option value="">Select currency…</option>
+                {assetOptions.cash.map((cur) => (
+                  <option key={cur} value={cur}>
+                    {cur}
                   </option>
                 ))}
               </select>

@@ -8,10 +8,11 @@ import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 export async function getAssetOptions(): Promise<{
   crypto: { ticker: string; name: string }[];
   stock: { ticker: string; name: string; currency: string }[];
+  cash: string[];
 }> {
   const supabase = await createServerSupabaseClient();
 
-  const [cryptoRes, stockRes] = await Promise.all([
+  const [cryptoRes, stockRes, bankRes] = await Promise.all([
     supabase
       .from("crypto_assets")
       .select("ticker, name")
@@ -20,11 +21,20 @@ export async function getAssetOptions(): Promise<{
       .from("stock_assets")
       .select("ticker, name, currency")
       .order("ticker"),
+    supabase
+      .from("bank_accounts")
+      .select("currency"),
   ]);
+
+  // Deduplicate bank currencies into a sorted list
+  const cashCurrencies = [
+    ...new Set((bankRes.data ?? []).map((b) => b.currency as string)),
+  ].sort();
 
   return {
     crypto: cryptoRes.data ?? [],
     stock: stockRes.data ?? [],
+    cash: cashCurrencies,
   };
 }
 
