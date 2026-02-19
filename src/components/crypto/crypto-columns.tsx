@@ -14,6 +14,170 @@ export interface CryptoRow {
   valueInBase: number;
 }
 
+// ── Acquisition type display maps ───────────────────────────
+
+export const ACQUISITION_LABELS: Record<string, string> = {
+  bought: "Bought",
+  mined: "Mined",
+  staked: "Staked",
+  airdrop: "Airdrop",
+  other: "Other",
+};
+
+export const ACQUISITION_COLORS: Record<string, string> = {
+  bought: "text-blue-400",
+  mined: "text-amber-400",
+  staked: "text-purple-400",
+  airdrop: "text-emerald-400",
+  other: "text-zinc-400",
+};
+
+// ── Position-level group types for group-by-source mode ─────
+
+/** One asset's positions sharing the same acquisition method within a group */
+export interface PositionGroupEntry {
+  row: CryptoRow;
+  positions: CryptoAssetWithPositions["positions"];
+  groupQty: number;
+  groupValue: number;
+}
+
+/** A group of entries for one acquisition method */
+export interface CryptoPositionGroup {
+  acquisitionMethod: string;
+  label: string;
+  entries: PositionGroupEntry[];
+  totalValue: number;
+  entryCount: number;
+}
+
+/** Get the dominant acquisition method for an asset's positions (used by source column in flat mode) */
+function getDominantMethod(positions: { acquisition_method?: string }[]): string {
+  const methods = positions.map((p) => p.acquisition_method ?? "bought");
+  const unique = [...new Set(methods)];
+  if (unique.length === 0) return "bought";
+  if (unique.length === 1) return unique[0];
+  return "mixed";
+}
+
+/**
+ * Build position-level groups: each asset's positions are split by acquisition_method,
+ * so an asset with bought + mined positions appears in both the "Bought" and "Mined" groups.
+ */
+export function buildCryptoPositionGroups(rows: CryptoRow[]): CryptoPositionGroup[] {
+  const groupMap = new Map<string, PositionGroupEntry[]>();
+
+  for (const row of rows) {
+    // Split this asset's positions by method
+    const byMethod = new Map<string, CryptoAssetWithPositions["positions"]>();
+    for (const pos of row.asset.positions) {
+      const method = pos.acquisition_method ?? "bought";
+      const arr = byMethod.get(method) ?? [];
+      arr.push(pos);
+      byMethod.set(method, arr);
+    }
+
+    // Create one entry per (asset, method) pair
+    for (const [method, positions] of byMethod) {
+      const groupQty = positions.reduce((sum, p) => sum + p.quantity, 0);
+      const groupValue = groupQty * row.priceInBase;
+
+      const entry: PositionGroupEntry = { row, positions, groupQty, groupValue };
+      const existing = groupMap.get(method) ?? [];
+      existing.push(entry);
+      groupMap.set(method, existing);
+    }
+  }
+
+  const groups: CryptoPositionGroup[] = [];
+  for (const [method, entries] of groupMap) {
+    const totalValue = entries.reduce((sum, e) => sum + e.groupValue, 0);
+    groups.push({
+      acquisitionMethod: method,
+      label: ACQUISITION_LABELS[method] ?? method,
+      entries: entries.sort((a, b) => b.groupValue - a.groupValue),
+      totalValue,
+      entryCount: entries.length,
+    });
+  }
+
+  groups.sort((a, b) => b.totalValue - a.totalValue);
+  return groups;
+}
+
+// ── Position-level group types for group-by-wallet mode ─────
+
+/** One asset's positions at a specific wallet within a group */
+export interface WalletGroupEntry {
+  row: CryptoRow;
+  positions: CryptoAssetWithPositions["positions"];
+  groupQty: number;
+  groupValue: number;
+}
+
+/** A group of entries for one wallet */
+export interface CryptoWalletGroup {
+  walletName: string;
+  walletType: string;  // "custodial" | "non_custodial" (or mixed → "mixed")
+  entries: WalletGroupEntry[];
+  totalValue: number;
+  entryCount: number;
+}
+
+/**
+ * Build position-level groups by wallet: each asset's positions are split by wallet_name,
+ * so an asset with positions in multiple wallets appears in multiple wallet groups.
+ */
+export function buildCryptoWalletGroups(rows: CryptoRow[]): CryptoWalletGroup[] {
+  const groupMap = new Map<string, WalletGroupEntry[]>();
+  const walletTypeMap = new Map<string, Set<string>>();
+
+  for (const row of rows) {
+    // Split this asset's positions by wallet
+    const byWallet = new Map<string, CryptoAssetWithPositions["positions"]>();
+    for (const pos of row.asset.positions) {
+      const wallet = pos.wallet_name ?? "Unknown";
+      const arr = byWallet.get(wallet) ?? [];
+      arr.push(pos);
+      byWallet.set(wallet, arr);
+
+      // Track wallet types for the group
+      const types = walletTypeMap.get(wallet) ?? new Set();
+      types.add(pos.wallet_type ?? "custodial");
+      walletTypeMap.set(wallet, types);
+    }
+
+    // Create one entry per (asset, wallet) pair
+    for (const [wallet, positions] of byWallet) {
+      const groupQty = positions.reduce((sum, p) => sum + p.quantity, 0);
+      const groupValue = groupQty * row.priceInBase;
+
+      const entry: WalletGroupEntry = { row, positions, groupQty, groupValue };
+      const existing = groupMap.get(wallet) ?? [];
+      existing.push(entry);
+      groupMap.set(wallet, existing);
+    }
+  }
+
+  const groups: CryptoWalletGroup[] = [];
+  for (const [walletName, entries] of groupMap) {
+    const totalValue = entries.reduce((sum, e) => sum + e.groupValue, 0);
+    const types = walletTypeMap.get(walletName);
+    const walletType = types && types.size === 1 ? [...types][0] : "mixed";
+
+    groups.push({
+      walletName,
+      walletType,
+      entries: entries.sort((a, b) => b.groupValue - a.groupValue),
+      totalValue,
+      entryCount: entries.length,
+    });
+  }
+
+  groups.sort((a, b) => b.totalValue - a.totalValue);
+  return groups;
+}
+
 // ── Formatters ───────────────────────────────────────────────
 
 export function formatNumber(n: number, decimals = 2): string {
@@ -169,6 +333,27 @@ export function getCryptoColumns(handlers: {
             : "—"}
         </span>
       ),
+    },
+    {
+      key: "source",
+      label: "Source",
+      header: "Source",
+      align: "left",
+      width: "w-24",
+      hiddenBelow: "md",
+      renderCell: (row) => {
+        const method = getDominantMethod(row.asset.positions);
+        if (row.asset.positions.length === 0) {
+          return <span className="text-xs text-zinc-600">—</span>;
+        }
+        return (
+          <span
+            className={`text-xs font-medium ${ACQUISITION_COLORS[method] ?? "text-zinc-400"}`}
+          >
+            {ACQUISITION_LABELS[method] ?? method}
+          </span>
+        );
+      },
     },
     {
       key: "actions",

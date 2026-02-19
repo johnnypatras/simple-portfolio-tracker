@@ -80,6 +80,110 @@ export function buildStockRows(
   return rows;
 }
 
+// ── Group type for group-by-category mode ────────────────────
+
+export interface StockGroup {
+  category: AssetCategory;
+  label: string;
+  color: string;
+  rows: StockRow[];
+  totalValue: number;
+  assetCount: number;
+}
+
+export function buildStockGroupRows(rows: StockRow[]): StockGroup[] {
+  const groupMap = new Map<AssetCategory, StockRow[]>();
+
+  for (const row of rows) {
+    const cat = row.asset.category;
+    const existing = groupMap.get(cat) ?? [];
+    existing.push(row);
+    groupMap.set(cat, existing);
+  }
+
+  const groups: StockGroup[] = [];
+  for (const [cat, groupRows] of groupMap) {
+    const totalValue = groupRows.reduce((sum, r) => sum + r.valueBase, 0);
+    groups.push({
+      category: cat,
+      label: CATEGORY_LABELS[cat],
+      color: CATEGORY_COLORS[cat],
+      rows: groupRows.sort((a, b) => b.valueBase - a.valueBase),
+      totalValue,
+      assetCount: groupRows.length,
+    });
+  }
+
+  // Sort groups by total value descending
+  groups.sort((a, b) => b.totalValue - a.totalValue);
+  return groups;
+}
+
+// ── Position-level group for group-by-broker mode ────────────
+
+/** One asset's positions at a specific broker within a group */
+export interface StockBrokerEntry {
+  row: StockRow;
+  positions: StockAssetWithPositions["positions"];
+  groupQty: number;
+  groupValue: number;
+}
+
+/** A group of entries for one broker */
+export interface StockBrokerGroup {
+  brokerName: string;
+  entries: StockBrokerEntry[];
+  totalValue: number;
+  entryCount: number;
+}
+
+/**
+ * Build position-level groups by broker: each asset's positions are split by broker_name,
+ * so an asset with positions at two brokers appears in both broker groups.
+ */
+export function buildStockBrokerGroups(rows: StockRow[]): StockBrokerGroup[] {
+  const groupMap = new Map<string, StockBrokerEntry[]>();
+
+  for (const row of rows) {
+    // Split this asset's positions by broker
+    const byBroker = new Map<string, StockAssetWithPositions["positions"]>();
+    for (const pos of row.asset.positions) {
+      const broker = pos.broker_name ?? "Unknown";
+      const arr = byBroker.get(broker) ?? [];
+      arr.push(pos);
+      byBroker.set(broker, arr);
+    }
+
+    // Create one entry per (asset, broker) pair
+    for (const [broker, positions] of byBroker) {
+      const groupQty = positions.reduce((sum, p) => sum + p.quantity, 0);
+      // Value proportional to the asset's total base value
+      const groupValue = row.totalQty > 0
+        ? row.valueBase * (groupQty / row.totalQty)
+        : 0;
+
+      const entry: StockBrokerEntry = { row, positions, groupQty, groupValue };
+      const existing = groupMap.get(broker) ?? [];
+      existing.push(entry);
+      groupMap.set(broker, existing);
+    }
+  }
+
+  const groups: StockBrokerGroup[] = [];
+  for (const [brokerName, entries] of groupMap) {
+    const totalValue = entries.reduce((sum, e) => sum + e.groupValue, 0);
+    groups.push({
+      brokerName,
+      entries: entries.sort((a, b) => b.groupValue - a.groupValue),
+      totalValue,
+      entryCount: entries.length,
+    });
+  }
+
+  groups.sort((a, b) => b.totalValue - a.totalValue);
+  return groups;
+}
+
 // ── Column definitions ───────────────────────────────────────
 
 export function getStockColumns(handlers: {

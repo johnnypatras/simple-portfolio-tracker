@@ -70,7 +70,6 @@ export interface CryptoAsset {
   name: string;
   coingecko_id: string;
   chain: string | null;
-  acquisition_method: string | null;
   created_at: string;
 }
 
@@ -79,6 +78,7 @@ export interface CryptoPosition {
   crypto_asset_id: string;
   wallet_id: string;
   quantity: number;
+  acquisition_method: string;
   updated_at: string;
 }
 

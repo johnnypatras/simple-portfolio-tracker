@@ -525,6 +525,7 @@ export function CashTable({
         open={bankModalOpen}
         onClose={() => setBankModalOpen(false)}
         editing={editingBank}
+        existingBankNames={[...new Set(bankAccounts.map((b) => b.bank_name))]}
       />
 
       {/* ── Exchange Deposit Modal ─────────────────────────── */}
@@ -546,10 +547,12 @@ function BankAccountModal({
   open,
   onClose,
   editing,
+  existingBankNames = [],
 }: {
   open: boolean;
   onClose: () => void;
   editing: BankAccount | null;
+  existingBankNames?: string[];
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -641,9 +644,18 @@ function BankAccountModal({
               value={bankName}
               onChange={(e) => setBankName(e.target.value)}
               placeholder="e.g. ING, N26"
+              list="bank-name-suggestions"
+              autoComplete="off"
               className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               required
             />
+            {existingBankNames.length > 0 && (
+              <datalist id="bank-name-suggestions">
+                {existingBankNames.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+            )}
           </div>
         </div>
 

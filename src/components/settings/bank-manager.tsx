@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Pencil, Trash2, Landmark } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Plus, Pencil, Trash2, Landmark, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import {
   createBankAccount,
@@ -10,11 +10,58 @@ import {
 } from "@/lib/actions/bank-accounts";
 import type { BankAccount, BankAccountInput, CurrencyType } from "@/lib/types";
 
+// ── Group accounts by bank_name ──────────────────────────────
+
+interface BankSettingsGroup {
+  bankName: string;
+  accounts: BankAccount[];
+}
+
+function groupByBankName(banks: BankAccount[]): BankSettingsGroup[] {
+  const map = new Map<string, BankAccount[]>();
+  for (const b of banks) {
+    const existing = map.get(b.bank_name) ?? [];
+    existing.push(b);
+    map.set(b.bank_name, existing);
+  }
+  const groups: BankSettingsGroup[] = [];
+  for (const [bankName, accounts] of map) {
+    groups.push({ bankName, accounts });
+  }
+  return groups;
+}
+
+// ── Formatter ────────────────────────────────────────────────
+
+function formatCurrency(amount: number, cur: CurrencyType) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: cur,
+    minimumFractionDigits: 2,
+  }).format(amount);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BankManager component
+// ═══════════════════════════════════════════════════════════════
+
 export function BankManager({ banks }: { banks: BankAccount[] }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Start all multi-account groups expanded so edit buttons are visible
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    const map = new Map<string, number>();
+    for (const b of banks) {
+      map.set(b.bank_name, (map.get(b.bank_name) ?? 0) + 1);
+    }
+    const expanded = new Set<string>();
+    for (const [name, count] of map) {
+      if (count > 1) expanded.add(name);
+    }
+    return expanded;
+  });
 
   // Form state
   const [name, setName] = useState("");
@@ -23,6 +70,21 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
   const [currency, setCurrency] = useState<CurrencyType>("EUR");
   const [balance, setBalance] = useState("");
   const [apy, setApy] = useState("");
+
+  const groups = useMemo(() => groupByBankName(banks), [banks]);
+  const existingBankNames = useMemo(
+    () => [...new Set(banks.map((b) => b.bank_name))],
+    [banks]
+  );
+
+  function toggleGroup(bankName: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(bankName)) next.delete(bankName);
+      else next.add(bankName);
+      return next;
+    });
+  }
 
   function openCreate() {
     setEditing(null);
@@ -85,14 +147,6 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
     }
   }
 
-  function formatCurrency(amount: number, cur: CurrencyType) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: cur,
-      minimumFractionDigits: 2,
-    }).format(amount);
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -118,46 +172,130 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
         </div>
       ) : (
         <div className="space-y-2">
-          {banks.map((b) => (
-            <div
-              key={b.id}
-              className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border border-zinc-800/50 rounded-lg group"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-zinc-200 truncate">
-                    {b.name}
-                  </p>
-                  <span className="text-xs text-zinc-600">{b.bank_name}</span>
+          {groups.map((group) => {
+            const isExpanded = expandedGroups.has(group.bankName);
+            // Single-account groups show inline (no expand/collapse)
+            const isSingle = group.accounts.length === 1;
+            const currencies = [...new Set(group.accounts.map((a) => a.currency))];
+            const currencyLabel = currencies.length === 1 ? currencies[0] : currencies.join(", ");
+
+            if (isSingle) {
+              const b = group.accounts[0];
+              return (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border border-zinc-800/50 rounded-lg group"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-zinc-200 truncate">
+                        {b.bank_name}
+                      </p>
+                      <span className="text-xs text-zinc-600">{b.name}</span>
+                      <span className="text-xs text-zinc-600">{b.currency}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-xs text-zinc-400">
+                        {formatCurrency(b.balance, b.currency)}
+                      </span>
+                      {b.apy > 0 && (
+                        <span className="text-xs text-emerald-400">
+                          {b.apy}% APY
+                        </span>
+                      )}
+                      <span className="text-xs text-zinc-600">{b.region}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => openEdit(b)}
+                      className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(b.id)}
+                      className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-xs text-zinc-400">
-                    {formatCurrency(b.balance, b.currency)}
-                  </span>
-                  {b.apy > 0 && (
-                    <span className="text-xs text-emerald-400">
-                      {b.apy}% APY
+              );
+            }
+
+            // Multi-account group: collapsible
+            return (
+              <div
+                key={group.bankName}
+                className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg overflow-hidden"
+              >
+                <button
+                  onClick={() => toggleGroup(group.bankName)}
+                  className="w-full flex items-center justify-between px-4 py-3"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {isExpanded ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    )}
+                    <span className="text-sm font-medium text-zinc-200 truncate">
+                      {group.bankName}
                     </span>
-                  )}
-                  <span className="text-xs text-zinc-600">{b.region}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => openEdit(b)}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
+                    <span className="text-xs text-zinc-600">
+                      {group.accounts.length} accounts · {currencyLabel}
+                    </span>
+                  </div>
                 </button>
-                <button
-                  onClick={() => handleDelete(b.id)}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-zinc-800/30 px-4 pb-3 space-y-1 pt-2">
+                    {group.accounts.map((b) => (
+                      <div
+                        key={b.id}
+                        className="flex items-center justify-between py-2 px-2 rounded-lg group/item hover:bg-zinc-800/20"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-zinc-300">
+                              {b.name}
+                            </span>
+                            <span className="text-xs text-zinc-600">{b.currency}</span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-0.5">
+                            <span className="text-xs text-zinc-400">
+                              {formatCurrency(b.balance, b.currency)}
+                            </span>
+                            {b.apy > 0 && (
+                              <span className="text-xs text-emerald-400">
+                                {b.apy}% APY
+                              </span>
+                            )}
+                            <span className="text-xs text-zinc-600">{b.region}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEdit(b)}
+                            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(b.id)}
+                            className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -176,7 +314,7 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Savings"
+                placeholder="e.g. Savings EUR"
                 className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 required
               />
@@ -189,10 +327,22 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
                 type="text"
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
-                placeholder="e.g. ING, N26"
+                placeholder="e.g. Revolut, ING"
+                list="settings-bank-name-suggestions"
+                autoComplete="off"
                 className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 required
               />
+              {existingBankNames.length > 0 && (
+                <datalist id="settings-bank-name-suggestions">
+                  {existingBankNames.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
+              )}
+              <p className="text-xs text-zinc-600 mt-1">
+                Use the same name to group accounts under one bank
+              </p>
             </div>
           </div>
 

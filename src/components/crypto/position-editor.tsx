@@ -5,12 +5,18 @@ import { Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { upsertPosition, deletePosition } from "@/lib/actions/crypto";
 import type { CryptoAssetWithPositions, Wallet } from "@/lib/types";
+import { ACQUISITION_TYPES } from "@/lib/types";
 
 interface PositionEditorProps {
   open: boolean;
   onClose: () => void;
   asset: CryptoAssetWithPositions;
   wallets: Wallet[];
+}
+
+interface PositionEdit {
+  quantity: string;
+  acquisition: string;
 }
 
 export function PositionEditor({
@@ -22,11 +28,14 @@ export function PositionEditor({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Track edits: walletId → quantity string
-  const [edits, setEdits] = useState<Record<string, string>>(() => {
-    const map: Record<string, string> = {};
+  // Track edits: walletId → { quantity, acquisition }
+  const [edits, setEdits] = useState<Record<string, PositionEdit>>(() => {
+    const map: Record<string, PositionEdit> = {};
     asset.positions.forEach((p) => {
-      map[p.wallet_id] = p.quantity.toString();
+      map[p.wallet_id] = {
+        quantity: p.quantity.toString(),
+        acquisition: p.acquisition_method ?? "bought",
+      };
     });
     return map;
   });
@@ -39,19 +48,32 @@ export function PositionEditor({
   const availableWallets = wallets.filter((w) => !usedWalletIds.has(w.id));
 
   function handleQuantityChange(walletId: string, value: string) {
-    setEdits((prev) => ({ ...prev, [walletId]: value }));
+    setEdits((prev) => ({
+      ...prev,
+      [walletId]: { ...prev[walletId], quantity: value },
+    }));
+  }
+
+  function handleAcquisitionChange(walletId: string, value: string) {
+    setEdits((prev) => ({
+      ...prev,
+      [walletId]: { ...prev[walletId], acquisition: value },
+    }));
   }
 
   async function handleSave(walletId: string) {
     setError(null);
     setLoading(true);
 
-    const qty = parseFloat(edits[walletId] ?? "0");
+    const edit = edits[walletId];
+    const qty = parseFloat(edit?.quantity ?? "0");
+    const method = edit?.acquisition ?? "bought";
     try {
       await upsertPosition({
         crypto_asset_id: asset.id,
         wallet_id: walletId,
         quantity: qty,
+        acquisition_method: method,
       });
       // If zero, remove from local state
       if (qty <= 0) {
@@ -87,7 +109,10 @@ export function PositionEditor({
 
   function handleAddWallet() {
     if (!addingWallet) return;
-    setEdits((prev) => ({ ...prev, [addingWallet]: "0" }));
+    setEdits((prev) => ({
+      ...prev,
+      [addingWallet]: { quantity: "0", acquisition: "bought" },
+    }));
     setAddingWallet("");
   }
 
@@ -101,6 +126,8 @@ export function PositionEditor({
       title={`${asset.name} (${asset.ticker}) Positions`}
     >
       <div className="space-y-4">
+        <p className="text-xs text-zinc-500">Positions by wallet</p>
+
         {allWalletIds.length === 0 && (
           <p className="text-sm text-zinc-500 text-center py-4">
             No positions yet — add a wallet below
@@ -112,47 +139,68 @@ export function PositionEditor({
           const existingPosition = asset.positions.find(
             (p) => p.wallet_id === walletId
           );
+          const edit = edits[walletId];
 
           return (
-            <div
-              key={walletId}
-              className="flex items-center gap-1.5 sm:gap-2"
-            >
-              <span className="text-sm text-zinc-300 w-20 sm:w-24 shrink-0 truncate">
-                {wallet?.name ?? "Unknown"}
-              </span>
-              <input
-                type="number"
-                step="any"
-                value={edits[walletId] ?? "0"}
-                onChange={(e) => handleQuantityChange(walletId, e.target.value)}
-                className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                disabled={loading}
-              />
-              <button
-                onClick={() => handleSave(walletId)}
-                disabled={loading}
-                className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
-                title="Save"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-              </button>
-              {existingPosition && (
-                <button
-                  onClick={() =>
-                    handleDelete(existingPosition.id, walletId)
+            <div key={walletId} className="space-y-1.5">
+              {/* Wallet name header */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-zinc-300 truncate">
+                  {wallet?.name ?? "Unknown"}
+                </span>
+              </div>
+              {/* Quantity + Acquisition + Actions */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  value={edit?.quantity ?? "0"}
+                  onChange={(e) =>
+                    handleQuantityChange(walletId, e.target.value)
                   }
+                  className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                   disabled={loading}
-                  className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
-                  title="Remove"
+                  placeholder="Quantity"
+                />
+                <select
+                  value={edit?.acquisition ?? "bought"}
+                  onChange={(e) =>
+                    handleAcquisitionChange(walletId, e.target.value)
+                  }
+                  className="w-24 sm:w-28 px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 shrink-0"
+                  disabled={loading}
                 >
-                  <Trash2 className="w-4 h-4" />
+                  {ACQUISITION_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => handleSave(walletId)}
+                  disabled={loading}
+                  className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                  title="Save"
+                >
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
                 </button>
-              )}
+                {existingPosition && (
+                  <button
+                    onClick={() =>
+                      handleDelete(existingPosition.id, walletId)
+                    }
+                    disabled={loading}
+                    className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                    title="Remove"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

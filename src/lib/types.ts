@@ -89,6 +89,18 @@ export interface PortfolioSnapshot {
   created_at: string;
 }
 
+// ─── Crypto acquisition types ───────────────────────────
+
+export type AcquisitionType = "bought" | "mined" | "staked" | "airdrop" | "other";
+
+export const ACQUISITION_TYPES: { value: AcquisitionType; label: string }[] = [
+  { value: "bought", label: "Bought" },
+  { value: "mined", label: "Mined" },
+  { value: "staked", label: "Staked" },
+  { value: "airdrop", label: "Airdrop" },
+  { value: "other", label: "Other" },
+];
+
 // ─── Crypto entities ────────────────────────────────────
 
 export interface CryptoAsset {
@@ -98,7 +110,6 @@ export interface CryptoAsset {
   name: string;
   coingecko_id: string;
   chain: string | null;
-  acquisition_method: string | null;
   created_at: string;
 }
 
@@ -107,12 +118,13 @@ export interface CryptoPosition {
   crypto_asset_id: string;
   wallet_id: string;
   quantity: number;
+  acquisition_method: string;
   updated_at: string;
 }
 
 /** Crypto asset with nested positions and wallet names */
 export interface CryptoAssetWithPositions extends CryptoAsset {
-  positions: (CryptoPosition & { wallet_name: string })[];
+  positions: (CryptoPosition & { wallet_name: string; wallet_type: WalletType })[];
 }
 
 export interface CryptoAssetInput {
@@ -120,13 +132,13 @@ export interface CryptoAssetInput {
   name: string;
   coingecko_id: string;
   chain?: string | null;
-  acquisition_method?: string | null;
 }
 
 export interface CryptoPositionInput {
   crypto_asset_id: string;
   wallet_id: string;
   quantity: number;
+  acquisition_method?: string;
 }
 
 // ─── Stock/ETF entities ─────────────────────────────────

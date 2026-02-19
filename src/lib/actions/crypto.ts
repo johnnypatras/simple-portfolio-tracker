@@ -34,16 +34,19 @@ export async function getCryptoAssetsWithPositions(): Promise<
 
   if (posErr) throw new Error(posErr.message);
 
-  // Fetch wallet names for display
+  // Fetch wallet names + types for display
   const walletIds = [...new Set((positions ?? []).map((p) => p.wallet_id))];
-  let walletsMap: Record<string, string> = {};
+  let walletsMap: Record<string, { name: string; wallet_type: Wallet["wallet_type"] }> = {};
   if (walletIds.length > 0) {
     const { data: wallets } = await supabase
       .from("wallets")
-      .select("id, name")
+      .select("id, name, wallet_type")
       .in("id", walletIds);
     walletsMap = Object.fromEntries(
-      (wallets ?? []).map((w: Pick<Wallet, "id" | "name">) => [w.id, w.name])
+      (wallets ?? []).map((w: Pick<Wallet, "id" | "name" | "wallet_type">) => [
+        w.id,
+        { name: w.name, wallet_type: w.wallet_type },
+      ])
     );
   }
 
@@ -52,11 +55,15 @@ export async function getCryptoAssetsWithPositions(): Promise<
     ...asset,
     positions: (positions ?? [])
       .filter((p) => p.crypto_asset_id === asset.id)
-      .map((p) => ({
-        ...p,
-        quantity: Number(p.quantity),
-        wallet_name: walletsMap[p.wallet_id] ?? "Unknown",
-      })),
+      .map((p) => {
+        const walletInfo = walletsMap[p.wallet_id];
+        return {
+          ...p,
+          quantity: Number(p.quantity),
+          wallet_name: walletInfo?.name ?? "Unknown",
+          wallet_type: walletInfo?.wallet_type ?? "custodial" as const,
+        };
+      }),
   }));
 }
 
@@ -76,7 +83,6 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
       name: input.name,
       coingecko_id: input.coingecko_id,
       chain: input.chain ?? null,
-      acquisition_method: input.acquisition_method ?? null,
     })
     .select("id")
     .single();
@@ -154,6 +160,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
         crypto_asset_id: input.crypto_asset_id,
         wallet_id: input.wallet_id,
         quantity: input.quantity,
+        acquisition_method: input.acquisition_method ?? "bought",
       },
       { onConflict: "crypto_asset_id,wallet_id" }
     );

@@ -5,6 +5,7 @@ import { Search, Plus, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
 import type { CoinGeckoSearchResult, Wallet } from "@/lib/types";
+import { ACQUISITION_TYPES } from "@/lib/types";
 
 interface AddCryptoModalProps {
   open: boolean;
@@ -24,6 +25,7 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionWalletId, setPositionWalletId] = useState("");
   const [positionQuantity, setPositionQuantity] = useState("");
+  const [acquisitionType, setAcquisitionType] = useState("bought");
 
   // Debounced search
   useEffect(() => {
@@ -64,6 +66,7 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
       setPositionOpen(false);
       setPositionWalletId("");
       setPositionQuantity("");
+      setAcquisitionType("bought");
     }
   }, [open]);
 
@@ -78,13 +81,14 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
         coingecko_id: coin.id,
       });
 
-      // If user filled in an initial position, create it too
+      // If user filled in an initial position, create it with its acquisition method
       const qty = parseFloat(positionQuantity);
       if (positionWalletId && qty > 0) {
         await upsertPosition({
           crypto_asset_id: assetId,
           wallet_id: positionWalletId,
           quantity: qty,
+          acquisition_method: acquisitionType,
         });
       }
 
@@ -121,7 +125,7 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
           </p>
         )}
 
-        {/* Optional: Initial position */}
+        {/* Optional: Initial position (with acquisition type) */}
         {wallets.length > 0 && (
           <div className="border border-zinc-800/50 rounded-lg overflow-hidden">
             <button
@@ -172,6 +176,22 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 tabular-nums"
                     />
                   </div>
+                </div>
+                <div className="mt-3">
+                  <label className="block text-xs text-zinc-500 mb-1">
+                    How was this acquired?
+                  </label>
+                  <select
+                    value={acquisitionType}
+                    onChange={(e) => setAcquisitionType(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  >
+                    {ACQUISITION_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )}
