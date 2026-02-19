@@ -315,7 +315,7 @@ export function TradeTable({
               step="any"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              placeholder="0"
+              placeholder="Qty"
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               required
             />
@@ -329,7 +329,7 @@ export function TradeTable({
               step="any"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              placeholder="0.00"
+              placeholder="Price"
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               required
             />
@@ -518,7 +518,7 @@ export function TradeTable({
                   {t.notes || "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center justify-end gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => openEdit(t)}
                       className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
