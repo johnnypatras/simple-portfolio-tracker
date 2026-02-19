@@ -30,7 +30,7 @@ export default async function StocksPage() {
       <div className="mb-8">
         <div className="flex items-center gap-3">
           <MobileMenuButton />
-          <h1 className="text-2xl font-semibold text-zinc-100">Stocks & ETFs</h1>
+          <h1 className="text-2xl font-semibold text-zinc-100">Equities</h1>
         </div>
         <p className="text-sm text-zinc-500 mt-1">
           Manage your stock and ETF positions across brokers

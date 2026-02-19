@@ -108,44 +108,65 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
   const ctx: RenderContext = { primaryCurrency, fxRates };
 
+  const totalPositions = useMemo(
+    () => assets.reduce((sum, a) => sum + a.positions.length, 0),
+    [assets]
+  );
+
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-sm text-zinc-400">
-            {assets.length} asset{assets.length !== 1 ? "s" : ""} ·{" "}
-            {formatCurrency(totalPortfolioValue, primaryCurrency)}
-          </p>
+      {/* ── Summary header ─────────────────────────────────── */}
+      <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              Total Equities
+            </p>
+            <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
+              {formatCurrency(totalPortfolioValue, primaryCurrency)}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right text-xs text-zinc-500 space-y-0.5">
+              <p>
+                {assets.length} asset{assets.length !== 1 ? "s" : ""}
+              </p>
+              <p>
+                {totalPositions} position{totalPositions !== 1 ? "s" : ""}
+              </p>
+            </div>
+            {assets.length > 0 && (
+              <button
+                onClick={toggleExpandAll}
+                className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                title={allExpanded ? "Collapse all" : "Expand all"}
+              >
+                {allExpanded ? (
+                  <ChevronsDownUp className="w-4 h-4" />
+                ) : (
+                  <ChevronsUpDown className="w-4 h-4" />
+                )}
+              </button>
+            )}
+            <ColumnSettingsPopover
+              columns={configurableColumns}
+              onToggle={toggleColumn}
+              onMove={moveColumn}
+              onReset={resetToDefaults}
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          {assets.length > 0 && (
-            <button
-              onClick={toggleExpandAll}
-              className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-              title={allExpanded ? "Collapse all" : "Expand all"}
-            >
-              {allExpanded ? (
-                <ChevronsDownUp className="w-4 h-4" />
-              ) : (
-                <ChevronsUpDown className="w-4 h-4" />
-              )}
-            </button>
-          )}
-          <ColumnSettingsPopover
-            columns={configurableColumns}
-            onToggle={toggleColumn}
-            onMove={moveColumn}
-            onReset={resetToDefaults}
-          />
-          <button
-            onClick={() => setAddOpen(true)}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Asset
-          </button>
-        </div>
+      </div>
+
+      {/* ── Action bar ───────────────────────────────────── */}
+      <div className="flex items-center justify-end mt-2 mb-3">
+        <button
+          onClick={() => setAddOpen(true)}
+          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add Asset
+        </button>
       </div>
 
       {assets.length === 0 ? (

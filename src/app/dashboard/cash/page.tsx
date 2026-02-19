@@ -29,10 +29,10 @@ export default async function CashPage() {
       <div className="mb-8">
         <div className="flex items-center gap-3">
           <MobileMenuButton />
-          <h1 className="text-2xl font-semibold text-zinc-100">Cash</h1>
+          <h1 className="text-2xl font-semibold text-zinc-100">Banks & Deposits</h1>
         </div>
         <p className="text-sm text-zinc-500 mt-1">
-          Bank accounts and exchange deposits
+          Bank accounts and exchange / broker deposits
         </p>
       </div>
       <CashTable

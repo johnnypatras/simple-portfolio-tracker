@@ -14,14 +14,15 @@ import {
   LogOut,
   Menu,
   X,
+  Activity,
 } from "lucide-react";
 import { useSidebar } from "@/components/sidebar-context";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/crypto", label: "Crypto", icon: Bitcoin },
-  { href: "/dashboard/stocks", label: "Stocks & ETFs", icon: TrendingUp },
-  { href: "/dashboard/cash", label: "Cash", icon: Landmark },
+  { href: "/dashboard/stocks", label: "Equities", icon: TrendingUp },
+  { href: "/dashboard/cash", label: "Banks & Deposits", icon: Landmark },
   { href: "/dashboard/history", label: "History", icon: History },
   { href: "/dashboard/diary", label: "Diary", icon: BookOpen },
 ];
@@ -131,6 +132,16 @@ export function Sidebar({ email }: { email: string }) {
         <div className="px-3 pt-3">
           <p className="text-xs text-zinc-600 truncate">{email}</p>
         </div>
+
+        {/* Dev mode indicator */}
+        {process.env.NODE_ENV === "development" && (
+          <div className="px-3 pt-2 pb-1">
+            <div className="flex items-center gap-1.5 text-xs text-emerald-500/70">
+              <Activity className="w-3 h-3" />
+              <span>dev</span>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

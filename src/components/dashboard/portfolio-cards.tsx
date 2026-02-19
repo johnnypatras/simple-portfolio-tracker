@@ -102,18 +102,18 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
         href="/dashboard/crypto"
       />
 
-      {/* Stocks & ETFs */}
+      {/* Equities */}
       <StatCard
-        label="Stocks & ETFs"
+        label="Equities"
         value={formatCurrency(stocksValue, primaryCurrency)}
         sub="across all brokers"
         icon={<BarChart3 className="w-4 h-4" />}
         href="/dashboard/stocks"
       />
 
-      {/* Cash */}
+      {/* Banks & Deposits */}
       <StatCard
-        label="Cash"
+        label="Banks & Deposits"
         value={formatCurrency(cashValue, primaryCurrency)}
         sub="banks + exchanges"
         icon={<Banknote className="w-4 h-4" />}

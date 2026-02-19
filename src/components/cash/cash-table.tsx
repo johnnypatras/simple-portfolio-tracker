@@ -181,25 +181,30 @@ export function CashTable({
     });
   }, [allGroupIds]);
 
+  // ── Add chooser ─────────────────────────────────────────
+  const [addChooserOpen, setAddChooserOpen] = useState(false);
+
   // ── Bank modal form helpers ───────────────────────────────
   function openCreateBank() {
+    setAddChooserOpen(false);
     setEditingBank(null);
     setBankModalOpen(true);
   }
 
   function openCreateExchange() {
+    setAddChooserOpen(false);
     setEditingExch(null);
     setExchModalOpen(true);
   }
 
   return (
-    <div className="space-y-8">
+    <div>
       {/* ── Summary header ─────────────────────────────────── */}
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-              Total Cash
+              Total Banks &amp; Deposits
             </p>
             <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
               {formatCurrency(totalCash, primaryCurrency)}
@@ -239,6 +244,17 @@ export function CashTable({
         </div>
       </div>
 
+      {/* ── Action bar ───────────────────────────────────── */}
+      <div className="flex items-center justify-end mt-2 mb-3">
+        <button
+          onClick={() => setAddChooserOpen(true)}
+          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add Asset
+        </button>
+      </div>
+
       {/* ── Single unified table ─────────────────────────────── */}
       {!hasAnyRows ? (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
@@ -247,39 +263,24 @@ export function CashTable({
           <p className="text-xs text-zinc-600 mt-1">
             Add a bank account or exchange deposit to get started
           </p>
-          <div className="flex items-center justify-center gap-2 mt-4">
-            <button
-              onClick={openCreateBank}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Add Account
-            </button>
-            <button
-              onClick={openCreateExchange}
-              disabled={wallets.length === 0}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Add Deposit
-            </button>
-          </div>
+          <button
+            onClick={() => setAddChooserOpen(true)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 mx-auto mt-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+          >
+            <Plus className="w-3 h-3" />
+            Add Asset
+          </button>
         </div>
       ) : (
         <>
           {/* ── Mobile card layout ── */}
-          <div className="space-y-4 md:hidden">
+          <div className="space-y-2 md:hidden">
             {/* Bank Accounts */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Landmark className="w-3.5 h-3.5 text-zinc-500" />
-                  <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
-                  <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
-                </div>
-                <button onClick={openCreateBank} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
-                  <Plus className="w-3 h-3" /> Add
-                </button>
+              <div className="flex items-center gap-2 mb-2">
+                <Landmark className="w-3.5 h-3.5 text-zinc-500" />
+                <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
+                <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
               </div>
               {bankRows.length === 0 ? (
                 <p className="text-xs text-zinc-600 px-4 py-3">No bank accounts yet</p>
@@ -327,17 +328,12 @@ export function CashTable({
               )}
             </div>
 
-            {/* Exchange Deposits */}
+            {/* Exchange / Broker Deposits */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Wallet className="w-3.5 h-3.5 text-zinc-500" />
-                  <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
-                  <span className="text-xs text-zinc-600">{formatCurrency(depositTotal, primaryCurrency)}</span>
-                </div>
-                <button onClick={openCreateExchange} disabled={wallets.length === 0} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 transition-colors">
-                  <Plus className="w-3 h-3" /> Add
-                </button>
+              <div className="flex items-center gap-2 mb-2">
+                <Wallet className="w-3.5 h-3.5 text-zinc-500" />
+                <span className="text-xs font-medium text-zinc-400">Exchange / Broker Deposits</span>
+                <span className="text-xs text-zinc-600">{formatCurrency(depositTotal, primaryCurrency)}</span>
               </div>
               {exchRows.length === 0 ? (
                 <p className="text-xs text-zinc-600 px-4 py-3">{wallets.length === 0 ? "Add a wallet in Settings first" : "No exchange deposits yet"}</p>
@@ -405,15 +401,10 @@ export function CashTable({
               <tbody>
                 <tr className="bg-zinc-900/80">
                   <td colSpan={orderedColumns.length} className="px-4 py-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Landmark className="w-3.5 h-3.5 text-zinc-500" />
-                        <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
-                        <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
-                      </div>
-                      <button onClick={openCreateBank} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
-                        <Plus className="w-3 h-3" /> Add
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <Landmark className="w-3.5 h-3.5 text-zinc-500" />
+                      <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
+                      <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
                     </div>
                   </td>
                 </tr>
@@ -451,15 +442,10 @@ export function CashTable({
 
                 <tr className="bg-zinc-900/80">
                   <td colSpan={orderedColumns.length} className="px-4 py-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Wallet className="w-3.5 h-3.5 text-zinc-500" />
-                        <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
-                        <span className="text-xs text-zinc-600">{formatCurrency(depositTotal, primaryCurrency)}</span>
-                      </div>
-                      <button onClick={openCreateExchange} disabled={wallets.length === 0} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 transition-colors" title={wallets.length === 0 ? "Add a wallet first in Settings" : ""}>
-                        <Plus className="w-3 h-3" /> Add
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <Wallet className="w-3.5 h-3.5 text-zinc-500" />
+                      <span className="text-xs font-medium text-zinc-400">Exchange / Broker Deposits</span>
+                      <span className="text-xs text-zinc-600">{formatCurrency(depositTotal, primaryCurrency)}</span>
                     </div>
                   </td>
                 </tr>
@@ -499,6 +485,41 @@ export function CashTable({
           </div>
         </>
       )}
+
+      {/* ── Add Type Chooser ────────────────────────────────── */}
+      <Modal
+        open={addChooserOpen}
+        onClose={() => setAddChooserOpen(false)}
+        title="What would you like to add?"
+      >
+        <div className="space-y-2">
+          <button
+            onClick={openCreateBank}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors text-left"
+          >
+            <Landmark className="w-5 h-5 text-zinc-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Bank Account</p>
+              <p className="text-xs text-zinc-500">Savings, checking, or other bank accounts</p>
+            </div>
+          </button>
+          <button
+            onClick={openCreateExchange}
+            disabled={wallets.length === 0}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 disabled:opacity-40 disabled:hover:border-zinc-800 disabled:hover:bg-transparent transition-colors text-left"
+          >
+            <Wallet className="w-5 h-5 text-zinc-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Exchange / Broker Deposit</p>
+              <p className="text-xs text-zinc-500">
+                {wallets.length === 0
+                  ? "Add a wallet in Settings first"
+                  : "Fiat deposits on crypto exchanges or brokers"}
+              </p>
+            </div>
+          </button>
+        </div>
+      </Modal>
 
       {/* ── Bank Account Modal ─────────────────────────────── */}
       <BankAccountModal
