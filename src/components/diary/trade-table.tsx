@@ -176,7 +176,7 @@ export function TradeTable({
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         {/* Row 1: Date + Buy/Sell */}
-        <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+        <div className="grid grid-cols-[1fr_120px] gap-3">
           <div>
             <label className="block text-sm text-zinc-400 mb-1">
               Trade Date
@@ -189,29 +189,34 @@ export function TradeTable({
               required
             />
           </div>
-          <div className="grid grid-cols-2 gap-1">
-            <button
-              type="button"
-              onClick={() => setAction("buy")}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                action === "buy"
-                  ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30"
-                  : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Buy
-            </button>
-            <button
-              type="button"
-              onClick={() => setAction("sell")}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                action === "sell"
-                  ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
-                  : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Sell
-            </button>
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">
+              Side
+            </label>
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => setAction("buy")}
+                className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  action === "buy"
+                    ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30"
+                    : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Buy
+              </button>
+              <button
+                type="button"
+                onClick={() => setAction("sell")}
+                className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  action === "sell"
+                    ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
+                    : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Sell
+              </button>
+            </div>
           </div>
         </div>
 
