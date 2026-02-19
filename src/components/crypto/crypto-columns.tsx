@@ -7,6 +7,7 @@ import type { CryptoAssetWithPositions, CoinGeckoPriceData } from "@/lib/types";
 export interface CryptoRow {
   id: string;
   asset: CryptoAssetWithPositions;
+  priceUsd: number;
   priceInBase: number;
   change24h: number;
   totalQty: number;
@@ -40,12 +41,13 @@ export function buildCryptoRows(
 ): CryptoRow[] {
   const rows = assets.map((asset) => {
     const price = prices[asset.coingecko_id];
+    const priceUsd = price?.usd ?? 0;
     const priceInBase = price?.[currencyKey] ?? 0;
     const change24h = price?.[changeKey] ?? 0;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const valueInBase = totalQty * priceInBase;
 
-    return { id: asset.id, asset, priceInBase, change24h, totalQty, valueInBase };
+    return { id: asset.id, asset, priceUsd, priceInBase, change24h, totalQty, valueInBase };
   });
 
   // Sort by value descending
@@ -91,21 +93,19 @@ export function getCryptoColumns(handlers: {
     },
     {
       key: "price",
-      label: "Price",
-      header: "Price",
+      label: "Price (USD)",
+      header: "Price (USD)",
       align: "right",
       width: "w-28",
       renderCell: (row) => (
         <span className="text-sm text-zinc-300 tabular-nums">
-          {row.priceInBase > 0
-            ? row.priceInBase >= 1
-              ? formatCurrency(row.priceInBase, "USD") // placeholder — header shows actual currency
-              : `${row.priceInBase.toFixed(6)}`
+          {row.priceUsd > 0
+            ? row.priceUsd >= 1
+              ? formatCurrency(row.priceUsd, "USD")
+              : `$${row.priceUsd.toFixed(6)}`
             : "—"}
         </span>
       ),
-      renderHeader: (ctx) =>
-        `Price (${ctx.primaryCurrency})`,
     },
     {
       key: "change24h",

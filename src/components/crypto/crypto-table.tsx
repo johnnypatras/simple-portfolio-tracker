@@ -166,9 +166,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                     <div className="px-4 pb-3 pt-0 border-t border-zinc-800/30">
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-3 text-xs">
                         <div>
-                          <span className="text-zinc-500">Price</span>
+                          <span className="text-zinc-500">Price (USD)</span>
                           <p className="text-zinc-300 tabular-nums">
-                            {row.priceInBase > 0 ? formatCurrency(row.priceInBase, primaryCurrency) : "No data"}
+                            {row.priceUsd > 0 ? formatCurrency(row.priceUsd, "USD") : "No data"}
                           </p>
                         </div>
                         <div>
