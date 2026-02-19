@@ -33,6 +33,7 @@ firebase-debug.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -40,3 +41,8 @@ firebase-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# tooling / local-only
+.serena/
+supabase/.temp/
+.audit-report.md

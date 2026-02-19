@@ -80,7 +80,7 @@ export function ColumnSettingsPopover({
 
           {/* Column list */}
           <div className="py-1">
-            {columns.map((col, idx) => {
+            {columns.map((col) => {
               const visibleIdx = visibleColumns.findIndex(
                 (v) => v.key === col.key
               );

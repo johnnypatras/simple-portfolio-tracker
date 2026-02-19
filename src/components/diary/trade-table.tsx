@@ -237,7 +237,7 @@ export function TradeTable({
             >
               <option value="crypto">Crypto</option>
               <option value="stock">Stock</option>
-              <option value="cash">Cash</option>
+              <option value="cash">Banks &amp; Deposits</option>
               <option value="other">Other</option>
             </select>
           </div>

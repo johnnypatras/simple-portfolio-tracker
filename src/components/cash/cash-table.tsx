@@ -7,7 +7,6 @@ import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
-import type { RenderContext } from "@/lib/column-config";
 import {
   createBankAccount,
   updateBankAccount,
@@ -25,7 +24,7 @@ import {
   formatCurrency,
   type CashRow,
 } from "@/components/cash/cash-columns";
-import type { ColumnDef } from "@/lib/column-config";
+import type { ColumnDef, RenderContext } from "@/lib/column-config";
 import type {
   BankAccount,
   BankAccountInput,
@@ -82,7 +81,7 @@ export function CashTable({
   const openEditBank = useCallback((bank: BankAccount) => {
     setEditingBank(bank);
     setBankModalOpen(true);
-  }, []);
+  }, [setBankModalOpen]);
 
   const handleDeleteBank = useCallback(async (id: string) => {
     if (!confirm("Delete this bank account?")) return;
@@ -100,7 +99,7 @@ export function CashTable({
   const openEditExchange = useCallback((deposit: ExchangeDeposit) => {
     setEditingExch(deposit);
     setExchModalOpen(true);
-  }, []);
+  }, [setExchModalOpen]);
 
   const handleDeleteExchange = useCallback(async (id: string) => {
     if (!confirm("Delete this exchange deposit?")) return;

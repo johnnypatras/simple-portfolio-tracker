@@ -1,36 +1,111 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Simple Portfolio Tracker
+
+A self-hosted portfolio tracker for crypto, stocks, and bank deposits. Track your holdings, monitor live prices, and view your portfolio's performance over time.
+
+Built with Next.js, Supabase, and Tailwind CSS. Runs entirely on your own infrastructure — your financial data never touches third-party servers.
+
+<!-- TODO: Add a screenshot here -->
+<!-- ![Dashboard](docs/screenshot.png) -->
+
+## Features
+
+- **Dashboard** — portfolio value chart with historical snapshots
+- **Crypto** — live prices from CoinGecko, search by name or ticker, multi-currency display
+- **Stocks** — live quotes from Yahoo Finance, search and add any listed stock
+- **Banks & Deposits** — track bank accounts and exchange deposits
+- **Trade Diary** — log buy/sell trades across all asset types
+- **Activity History** — audit trail of all portfolio changes
+- **Settings** — customizable columns, primary currency, invite-only user registration
+- **Mobile-friendly** — fully responsive dark-themed UI
+- **MFA support** — optional TOTP two-factor authentication
+
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Framework | [Next.js 16](https://nextjs.org) (App Router, React 19) |
+| Database & Auth | [Supabase](https://supabase.com) (Postgres + Row Level Security) |
+| Styling | [Tailwind CSS 4](https://tailwindcss.com) |
+| Charts | [Recharts](https://recharts.org) |
+| Icons | [Lucide React](https://lucide.dev) |
+| Language | TypeScript (strict mode) |
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- [Node.js](https://nodejs.org) 18+
+- A free [Supabase](https://supabase.com) account
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/johnnypatras/simple-portfolio-tracker.git
+cd simple-portfolio-tracker
+npm install
+```
+
+### 2. Set up Supabase
+
+1. Create a new project at [supabase.com](https://supabase.com)
+2. Go to the **SQL Editor** in your Supabase dashboard
+3. Run each migration file from `supabase/migrations/` **in order** (001, 002, ... 009)
+
+### 3. Configure environment variables
+
+```bash
+cp .env.example .env.local
+```
+
+Open `.env.local` and fill in your keys:
+
+| Variable | Where to find it |
+|----------|-----------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → **Project URL** |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API → **anon / public** key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → **service_role / secret** key |
+| `NEXT_PUBLIC_COINGECKO_API_KEY` | *(Optional)* [CoinGecko API](https://www.coingecko.com/en/api/pricing) — free tier works without it |
+
+> **Note:** If you skip this step, the app will show a friendly setup page with these instructions when you open it.
+
+### 4. Create your first user
+
+The app uses invite-only registration. To create the first user:
+
+1. Go to your Supabase dashboard → **Authentication** → **Users**
+2. Click **Add user** → **Create new user**
+3. Enter an email and password — this will be your login
+
+### 5. Run the dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) and sign in.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── (protected)/        # Auth-gated routes (dashboard, crypto, stocks, etc.)
+│   ├── api/                # API routes (crypto prices, stock quotes, auth)
+│   ├── login/              # Login page
+│   └── setup/              # Setup page (shown when env vars are missing)
+├── components/             # React components
+│   ├── cash/               # Bank & deposit tables
+│   ├── crypto/             # Crypto table & modals
+│   ├── dashboard/          # Portfolio chart & summary
+│   ├── diary/              # Trade diary table
+│   ├── stocks/             # Stock table & modals
+│   └── ui/                 # Shared UI components (sidebar, modals, column config)
+└── lib/                    # Utilities & hooks
+    ├── hooks/              # Custom React hooks
+    ├── prices/             # CoinGecko API client
+    └── supabase/           # Supabase client (browser, server, middleware)
+```
 
-## Learn More
+## License
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[MIT](LICENSE)

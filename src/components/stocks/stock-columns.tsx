@@ -1,7 +1,7 @@
 import { Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
-import type { ColumnDef, RenderContext } from "@/lib/column-config";
+import type { ColumnDef } from "@/lib/column-config";
 import type {
   StockAssetWithPositions,
   AssetCategory,

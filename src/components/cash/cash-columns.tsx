@@ -1,7 +1,7 @@
-import { ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
-import type { ColumnDef, RenderContext } from "@/lib/column-config";
+import type { ColumnDef } from "@/lib/column-config";
 import type { BankAccount, ExchangeDeposit } from "@/lib/types";
 
 // ── Bank group (computed, not a DB type) ────────────────────
@@ -162,33 +162,6 @@ export function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
-// ── Action button helpers ────────────────────────────────────
-
-function ActionButtons({
-  onEdit,
-  onDelete,
-}: {
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-      <button
-        onClick={onEdit}
-        className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-      >
-        <Pencil className="w-3.5 h-3.5" />
-      </button>
-      <button
-        onClick={onDelete}
-        className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
-    </div>
-  );
-}
-
 // ═══════════════════════════════════════════════════════════════
 // Unified Cash Columns
 // ═══════════════════════════════════════════════════════════════
@@ -266,7 +239,7 @@ export function getCashColumns(handlers: {
       align: "left",
       hiddenBelow: "lg",
       appliesTo: "bank",
-      renderCell: (row) => {
+      renderCell: () => {
         // Bank name is already shown in the group's "name" column
         return null;
       },

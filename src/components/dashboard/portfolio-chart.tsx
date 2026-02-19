@@ -17,6 +17,10 @@ interface PortfolioChartProps {
   primaryCurrency: string;
 }
 
+// Module-level constant: today's date string (stable for the lifetime of the page)
+const TODAY = new Date().toISOString().split("T")[0];
+const TODAY_MS = new Date(TODAY + "T00:00:00").getTime();
+
 const PERIODS = [
   { label: "7D", days: 7 },
   { label: "30D", days: 30 },
@@ -64,7 +68,7 @@ export function PortfolioChart({
     const cutoff =
       period.days === Infinity
         ? null
-        : new Date(Date.now() - period.days * 86_400_000)
+        : new Date(TODAY_MS - period.days * 86_400_000)
             .toISOString()
             .split("T")[0];
 
@@ -78,10 +82,9 @@ export function PortfolioChart({
     }));
 
     // Append today's live value as the last point
-    const today = new Date().toISOString().split("T")[0];
     const lastDate = points[points.length - 1]?.date;
-    if (lastDate !== today) {
-      points.push({ date: today, value: liveValue });
+    if (lastDate !== TODAY) {
+      points.push({ date: TODAY, value: liveValue });
     } else {
       // Update today's point with live value (fresher than snapshot)
       points[points.length - 1].value = liveValue;

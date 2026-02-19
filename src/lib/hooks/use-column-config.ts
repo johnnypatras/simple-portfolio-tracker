@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ColumnDef, ColumnConfigState } from "@/lib/column-config";
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -73,29 +73,30 @@ export function useColumnConfig<T>(
 ): UseColumnConfigReturn<T> {
   const defaults = useMemo(() => getDefaultVisibleKeys(allColumns), [allColumns]);
 
-  // Start with defaults (SSR-safe)
-  const [visibleKeys, setVisibleKeys] = useState<string[]>(defaults);
-  const [hydrated, setHydrated] = useState(false);
-
-  // Hydrate from localStorage on mount
-  useEffect(() => {
+  // Hydrate from localStorage via lazy initializer (SSR-safe)
+  const [visibleKeys, setVisibleKeys] = useState<string[]>(() => {
+    if (typeof window === "undefined") return defaults;
     const saved = readStorage(storageKey);
-    if (saved) {
-      setVisibleKeys(reconcile(saved, allColumns, version));
-    }
-    setHydrated(true);
-  }, [storageKey, allColumns, version]);
+    return saved ? reconcile(saved, allColumns, version) : defaults;
+  });
 
-  // Persist to localStorage whenever visibleKeys change (after hydration)
+  // Skip persisting on the very first effect run to avoid writing defaults
+  // back to storage before the lazy initializer has resolved
+  const mountedRef = useRef(false);
   useEffect(() => {
-    if (!hydrated) return;
+    mountedRef.current = true;
+  }, []);
+
+  // Persist to localStorage whenever visibleKeys change (skip first render)
+  useEffect(() => {
+    if (!mountedRef.current) return;
     const state: ColumnConfigState = { version, visibleKeys };
     try {
       localStorage.setItem(storageKey, JSON.stringify(state));
     } catch {
       // Storage full or unavailable — silently ignore
     }
-  }, [storageKey, version, visibleKeys, hydrated]);
+  }, [storageKey, version, visibleKeys]);
 
   // ── Derived: ordered columns ──────────────────────────────
 
@@ -112,7 +113,6 @@ export function useColumnConfig<T>(
   // ── Derived: configurable columns for the popover ─────────
 
   const configurableColumns = useMemo(() => {
-    const visibleSet = new Set(visibleKeys);
     // Show in current user order, with hidden ones appended at the end
     const ordered: { key: string; label: string; visible: boolean }[] = [];
     const addedKeys = new Set<string>();
