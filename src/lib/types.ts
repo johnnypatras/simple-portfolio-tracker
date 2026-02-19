@@ -216,3 +216,35 @@ export interface CoinGeckoPriceData {
     eur_24h_change?: number;
   };
 }
+
+// ─── Trade Diary ────────────────────────────────────────
+
+export type TradeAssetType = "crypto" | "stock" | "cash" | "other";
+export type TradeAction = "buy" | "sell";
+
+export interface TradeEntry {
+  id: string;
+  user_id: string;
+  trade_date: string;
+  asset_type: TradeAssetType;
+  asset_name: string;
+  action: TradeAction;
+  quantity: number;
+  price: number;
+  currency: string;
+  total_value: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TradeEntryInput {
+  trade_date: string;
+  asset_type: TradeAssetType;
+  asset_name: string;
+  action: TradeAction;
+  quantity: number;
+  price: number;
+  currency?: string;
+  notes?: string;
+}

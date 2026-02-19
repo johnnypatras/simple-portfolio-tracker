@@ -30,13 +30,12 @@ Responsive sidebar, card layouts for small screens, modal overflow fixes, subtle
 
 ## Upcoming Phases
 
-### Phase 8 — Trade Diary 🔲
-Record investment thoughts and decisions alongside portfolio data.
-- Journal entries with date stamps
-- Tag entries to specific assets (BTC, ETH, stocks, etc.)
-- Mood / conviction indicators
-- Rich text or markdown notes
-- Stub page exists at `/dashboard/diary`
+### Phase 8 — Trade Diary ✅
+Structured trade log for recording significant buys and sells.
+- `trade_entries` table: date, asset type/name, buy/sell, quantity, price, currency, notes
+- CRUD server actions, desktop table + mobile card layouts
+- Add/edit modal with live total preview, buy/sell toggle
+- Asset type badges (crypto/stock/cash/other) and action badges (buy/sell)
 
 ### Phase 9 — Activity History / Audit Trail 🔲
 Track all portfolio changes for accountability and review.
@@ -56,4 +55,4 @@ Track all portfolio changes for accountability and review.
 
 ---
 
-*Last updated after: Mobile UI Polish completion*
+*Last updated after: Phase 8 — Trade Diary*
