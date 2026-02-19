@@ -142,7 +142,7 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
                   <span className="text-xs text-zinc-600">{b.region}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={() => openEdit(b)}
                   className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
