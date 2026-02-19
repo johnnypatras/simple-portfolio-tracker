@@ -4,6 +4,30 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 
+/** Lightweight asset name lists for the trade diary dropdown */
+export async function getAssetOptions(): Promise<{
+  crypto: { ticker: string; name: string }[];
+  stock: { ticker: string; name: string; currency: string }[];
+}> {
+  const supabase = await createServerSupabaseClient();
+
+  const [cryptoRes, stockRes] = await Promise.all([
+    supabase
+      .from("crypto_assets")
+      .select("ticker, name")
+      .order("ticker"),
+    supabase
+      .from("stock_assets")
+      .select("ticker, name, currency")
+      .order("ticker"),
+  ]);
+
+  return {
+    crypto: cryptoRes.data ?? [],
+    stock: stockRes.data ?? [],
+  };
+}
+
 export async function getTradeEntries(): Promise<TradeEntry[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase

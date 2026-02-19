@@ -1,8 +1,11 @@
-import { getTradeEntries } from "@/lib/actions/trades";
+import { getTradeEntries, getAssetOptions } from "@/lib/actions/trades";
 import { TradeTable } from "@/components/diary/trade-table";
 
 export default async function DiaryPage() {
-  const trades = await getTradeEntries();
+  const [trades, assetOptions] = await Promise.all([
+    getTradeEntries(),
+    getAssetOptions(),
+  ]);
 
   return (
     <div>
@@ -12,7 +15,7 @@ export default async function DiaryPage() {
           Log your significant buys and sells
         </p>
       </div>
-      <TradeTable trades={trades} />
+      <TradeTable trades={trades} assetOptions={assetOptions} />
     </div>
   );
 }

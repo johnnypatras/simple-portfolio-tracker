@@ -67,9 +67,22 @@ function toLocalDatetime(iso?: string): string {
   return local.toISOString().slice(0, 16);
 }
 
+// ── Props ───────────────────────────────────────────────────
+
+interface AssetOptions {
+  crypto: { ticker: string; name: string }[];
+  stock: { ticker: string; name: string; currency: string }[];
+}
+
 // ── Main Component ─────────────────────────────────────────
 
-export function TradeTable({ trades }: { trades: TradeEntry[] }) {
+export function TradeTable({
+  trades,
+  assetOptions,
+}: {
+  trades: TradeEntry[];
+  assetOptions: AssetOptions;
+}) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TradeEntry | null>(null);
   const [loading, setLoading] = useState(false);
@@ -183,7 +196,11 @@ export function TradeTable({ trades }: { trades: TradeEntry[] }) {
             </label>
             <select
               value={assetType}
-              onChange={(e) => setAssetType(e.target.value as TradeAssetType)}
+              onChange={(e) => {
+                const newType = e.target.value as TradeAssetType;
+                setAssetType(newType);
+                setAssetName("");
+              }}
               className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             >
               <option value="crypto">Crypto</option>
@@ -196,14 +213,51 @@ export function TradeTable({ trades }: { trades: TradeEntry[] }) {
             <label className="block text-sm text-zinc-400 mb-1.5">
               Asset Name
             </label>
-            <input
-              type="text"
-              value={assetName}
-              onChange={(e) => setAssetName(e.target.value)}
-              placeholder="e.g. BTC, AAPL"
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-              required
-            />
+            {assetType === "crypto" && assetOptions.crypto.length > 0 ? (
+              <select
+                value={assetName}
+                onChange={(e) => setAssetName(e.target.value)}
+                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                required
+              >
+                <option value="">Select asset…</option>
+                {assetOptions.crypto.map((a) => (
+                  <option key={a.ticker} value={a.ticker}>
+                    {a.ticker} — {a.name}
+                  </option>
+                ))}
+              </select>
+            ) : assetType === "stock" && assetOptions.stock.length > 0 ? (
+              <select
+                value={assetName}
+                onChange={(e) => {
+                  setAssetName(e.target.value);
+                  // Auto-fill currency from the stock asset
+                  const match = assetOptions.stock.find(
+                    (s) => s.ticker === e.target.value
+                  );
+                  if (match) setCurrency(match.currency);
+                }}
+                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                required
+              >
+                <option value="">Select asset…</option>
+                {assetOptions.stock.map((a) => (
+                  <option key={a.ticker} value={a.ticker}>
+                    {a.ticker} — {a.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={assetName}
+                onChange={(e) => setAssetName(e.target.value)}
+                placeholder="e.g. EUR, USD"
+                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                required
+              />
+            )}
           </div>
         </div>
 
