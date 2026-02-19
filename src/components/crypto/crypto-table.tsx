@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, Bitcoin, Layers, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { Plus, Bitcoin, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { AddCryptoModal } from "./add-crypto-modal";
 import { PositionEditor } from "./position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -227,7 +227,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                           onClick={() => handleEdit(row.asset)}
                           className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                         >
-                          <Layers className="w-3 h-3" />
+                          <Pencil className="w-3 h-3" />
                           Edit positions
                         </button>
                         <button

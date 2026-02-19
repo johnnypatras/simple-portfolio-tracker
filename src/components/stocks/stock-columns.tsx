@@ -1,4 +1,4 @@
-import { Layers, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef, RenderContext } from "@/lib/column-config";
@@ -201,7 +201,7 @@ export function getStockColumns(handlers: {
             className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
             title="Edit positions"
           >
-            <Layers className="w-3.5 h-3.5" />
+            <Pencil className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => handlers.onDelete(row.asset.id, row.asset.name)}

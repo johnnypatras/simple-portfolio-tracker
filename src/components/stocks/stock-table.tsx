@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, TrendingUp, Layers, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { AddStockModal } from "./add-stock-modal";
 import { StockPositionEditor } from "./stock-position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -241,7 +241,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                           onClick={() => handleEdit(row.asset)}
                           className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                         >
-                          <Layers className="w-3 h-3" />
+                          <Pencil className="w-3 h-3" />
                           Edit positions
                         </button>
                         <button
