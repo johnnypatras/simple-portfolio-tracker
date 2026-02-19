@@ -15,7 +15,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useSidebar } from "@/components/sidebar-context";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -30,11 +30,24 @@ const bottomItems = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
+/** Inline hamburger button — rendered inside page header for proper alignment */
+export function MobileMenuButton() {
+  const { setMobileOpen } = useSidebar();
+  return (
+    <button
+      onClick={() => setMobileOpen(true)}
+      className="p-1 -ml-1 rounded-lg lg:hidden"
+    >
+      <Menu className="w-5 h-5 text-zinc-400" />
+    </button>
+  );
+}
+
 export function Sidebar({ email }: { email: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const { mobileOpen, setMobileOpen } = useSidebar();
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -124,16 +137,6 @@ export function Sidebar({ email }: { email: string }) {
 
   return (
     <>
-      {/* Mobile hamburger — only visible when sidebar is closed */}
-      {!mobileOpen && (
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="fixed top-4 left-4 z-50 p-2 rounded-lg lg:hidden"
-        >
-          <Menu className="w-5 h-5 text-zinc-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]" />
-        </button>
-      )}
-
       {/* Mobile overlay */}
       {mobileOpen && (
         <div

@@ -4,6 +4,7 @@ import { getWallets } from "@/lib/actions/wallets";
 import { getProfile } from "@/lib/actions/profile";
 import { getFXRates } from "@/lib/prices/fx";
 import { CashTable } from "@/components/cash/cash-table";
+import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function CashPage() {
   const [bankAccounts, exchangeDeposits, wallets, profile] = await Promise.all([
@@ -26,7 +27,10 @@ export default async function CashPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-zinc-100">Cash</h1>
+        <div className="flex items-center gap-3">
+          <MobileMenuButton />
+          <h1 className="text-2xl font-semibold text-zinc-100">Cash</h1>
+        </div>
         <p className="text-sm text-zinc-500 mt-1">
           Bank accounts and exchange deposits
         </p>

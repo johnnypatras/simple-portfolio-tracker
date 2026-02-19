@@ -3,6 +3,7 @@ import { getWallets } from "@/lib/actions/wallets";
 import { getProfile } from "@/lib/actions/profile";
 import { getPrices } from "@/lib/prices/coingecko";
 import { CryptoTable } from "@/components/crypto/crypto-table";
+import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function CryptoPage() {
   const [assets, wallets, profile] = await Promise.all([
@@ -18,9 +19,12 @@ export default async function CryptoPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-zinc-100">
-          Crypto Portfolio
-        </h1>
+        <div className="flex items-center gap-3">
+          <MobileMenuButton />
+          <h1 className="text-2xl font-semibold text-zinc-100">
+            Crypto Portfolio
+          </h1>
+        </div>
         <p className="text-sm text-zinc-500 mt-1">
           Manage your cryptocurrency holdings across wallets
         </p>

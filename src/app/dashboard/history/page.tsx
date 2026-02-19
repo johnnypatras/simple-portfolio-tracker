@@ -1,5 +1,6 @@
 import { getActivityLogs } from "@/lib/actions/activity-log";
 import { ActivityTimeline } from "@/components/history/activity-timeline";
+import { MobileMenuButton } from "@/components/sidebar";
 import type { ActionType, EntityType } from "@/lib/types";
 
 const VALID_ENTITY_TYPES: EntityType[] = [
@@ -42,9 +43,12 @@ export default async function HistoryPage({
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-zinc-100">
-          Activity History
-        </h1>
+        <div className="flex items-center gap-3">
+          <MobileMenuButton />
+          <h1 className="text-2xl font-semibold text-zinc-100">
+            Activity History
+          </h1>
+        </div>
         <p className="text-sm text-zinc-500 mt-1">
           Audit trail of all portfolio changes
         </p>

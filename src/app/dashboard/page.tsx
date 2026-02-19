@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/snapshots";
 import { PortfolioCards } from "@/components/dashboard/portfolio-cards";
 import { PortfolioChart } from "@/components/dashboard/portfolio-chart";
+import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
@@ -94,7 +95,10 @@ export default async function DashboardPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-zinc-100">Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <MobileMenuButton />
+          <h1 className="text-2xl font-semibold text-zinc-100">Dashboard</h1>
+        </div>
         <p className="text-sm text-zinc-500 mt-1">
           Welcome back{user?.email ? `, ${user.email}` : ""}
         </p>

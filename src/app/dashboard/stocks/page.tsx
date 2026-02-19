@@ -4,6 +4,7 @@ import { getProfile } from "@/lib/actions/profile";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { StockTable } from "@/components/stocks/stock-table";
+import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function StocksPage() {
   const [assets, brokers, profile] = await Promise.all([
@@ -27,7 +28,10 @@ export default async function StocksPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-zinc-100">Stocks & ETFs</h1>
+        <div className="flex items-center gap-3">
+          <MobileMenuButton />
+          <h1 className="text-2xl font-semibold text-zinc-100">Stocks & ETFs</h1>
+        </div>
         <p className="text-sm text-zinc-500 mt-1">
           Manage your stock and ETF positions across brokers
         </p>
