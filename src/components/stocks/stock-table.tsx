@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, TrendingUp, Layers, Trash2 } from "lucide-react";
+import { Plus, TrendingUp, Layers, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { AddStockModal } from "./add-stock-modal";
 import { StockPositionEditor } from "./stock-position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -83,6 +83,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     [rows]
   );
 
+  const allExpanded = rows.length > 0 && rows.every((r) => expanded.has(r.id));
+
+  const toggleExpandAll = useCallback(() => {
+    setExpanded((prev) => {
+      if (rows.every((r) => prev.has(r.id))) return new Set();
+      return new Set(rows.map((r) => r.id));
+    });
+  }, [rows]);
+
   // Column definitions (stable via useMemo)
   const columns = useMemo(
     () => getStockColumns({ onEdit: handleEdit, onDelete: handleDelete, isExpanded, toggleExpand }),
@@ -110,6 +119,19 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
           </p>
         </div>
         <div className="flex items-center gap-1.5">
+          {assets.length > 0 && (
+            <button
+              onClick={toggleExpandAll}
+              className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              title={allExpanded ? "Collapse all" : "Expand all"}
+            >
+              {allExpanded ? (
+                <ChevronsDownUp className="w-4 h-4" />
+              ) : (
+                <ChevronsUpDown className="w-4 h-4" />
+              )}
+            </button>
+          )}
           <ColumnSettingsPopover
             columns={configurableColumns}
             onToggle={toggleColumn}

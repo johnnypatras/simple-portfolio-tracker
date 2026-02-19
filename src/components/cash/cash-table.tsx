@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, Landmark, Wallet, Pencil, Trash2 } from "lucide-react";
+import { Plus, Landmark, Wallet, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -165,6 +165,22 @@ export function CashTable({
 
   const hasAnyRows = bankAccounts.length > 0 || exchangeDeposits.length > 0;
 
+  const allGroupIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const r of bankRows) if (r.type === "bank-group") ids.push(r.id);
+    for (const r of exchRows) if (r.type === "exchange-group") ids.push(r.id);
+    return ids;
+  }, [bankRows, exchRows]);
+
+  const allExpanded = allGroupIds.length > 0 && allGroupIds.every((id) => expandedBanks.has(id));
+
+  const toggleExpandAll = useCallback(() => {
+    setExpandedBanks((prev) => {
+      if (allGroupIds.every((id) => prev.has(id))) return new Set();
+      return new Set(allGroupIds);
+    });
+  }, [allGroupIds]);
+
   // ── Bank modal form helpers ───────────────────────────────
   function openCreateBank() {
     setEditingBank(null);
@@ -200,6 +216,19 @@ export function CashTable({
                 {exchangeDeposits.length !== 1 ? "s" : ""}
               </p>
             </div>
+            {allGroupIds.length > 0 && (
+              <button
+                onClick={toggleExpandAll}
+                className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                title={allExpanded ? "Collapse all" : "Expand all"}
+              >
+                {allExpanded ? (
+                  <ChevronsDownUp className="w-4 h-4" />
+                ) : (
+                  <ChevronsUpDown className="w-4 h-4" />
+                )}
+              </button>
+            )}
             <ColumnSettingsPopover
               columns={configurableColumns}
               onToggle={toggleColumn}
