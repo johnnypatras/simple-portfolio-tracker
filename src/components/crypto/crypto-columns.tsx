@@ -93,19 +93,31 @@ export function getCryptoColumns(handlers: {
     },
     {
       key: "price",
-      label: "Price (USD)",
-      header: "Price (USD)",
+      label: "Price",
+      header: "Price",
       align: "right",
-      width: "w-28",
-      renderCell: (row) => (
-        <span className="text-sm text-zinc-300 tabular-nums">
-          {row.priceUsd > 0
-            ? row.priceUsd >= 1
-              ? formatCurrency(row.priceUsd, "USD")
-              : `$${row.priceUsd.toFixed(6)}`
-            : "—"}
-        </span>
-      ),
+      width: "w-32",
+      renderCell: (row, ctx) => {
+        const showBase = ctx.primaryCurrency.toUpperCase() !== "USD";
+        return (
+          <div className="tabular-nums">
+            <span className="text-sm text-zinc-300">
+              {row.priceUsd > 0
+                ? row.priceUsd >= 1
+                  ? formatCurrency(row.priceUsd, "USD")
+                  : `$${row.priceUsd.toFixed(6)}`
+                : "—"}
+            </span>
+            {showBase && row.priceInBase > 0 && (
+              <span className="block text-xs text-zinc-500">
+                {row.priceInBase >= 1
+                  ? formatCurrency(row.priceInBase, ctx.primaryCurrency)
+                  : `${row.priceInBase.toFixed(6)}`}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "change24h",

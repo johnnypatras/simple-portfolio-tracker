@@ -170,6 +170,11 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                           <p className="text-zinc-300 tabular-nums">
                             {row.priceUsd > 0 ? formatCurrency(row.priceUsd, "USD") : "No data"}
                           </p>
+                          {primaryCurrency.toUpperCase() !== "USD" && row.priceInBase > 0 && (
+                            <p className="text-zinc-500 tabular-nums mt-0.5">
+                              {formatCurrency(row.priceInBase, primaryCurrency)}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <span className="text-zinc-500">Holdings</span>
