@@ -32,9 +32,9 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800/50">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800/50 shrink-0">
           <h2 className="text-base font-semibold text-zinc-100">{title}</h2>
           <button
             onClick={onClose}
@@ -43,8 +43,8 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
             <X className="w-4 h-4" />
           </button>
         </div>
-        {/* Body */}
-        <div className="px-5 py-4">{children}</div>
+        {/* Body — scrollable when content exceeds viewport */}
+        <div className="px-5 py-4 overflow-y-auto">{children}</div>
       </div>
     </div>
   );
