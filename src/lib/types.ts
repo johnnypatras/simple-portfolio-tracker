@@ -248,3 +248,30 @@ export interface TradeEntryInput {
   currency?: string;
   notes?: string;
 }
+
+// ─── Activity Log / Audit Trail ────────────────────────
+
+export type ActionType = "created" | "updated" | "removed";
+export type EntityType =
+  | "crypto_asset"
+  | "stock_asset"
+  | "wallet"
+  | "broker"
+  | "bank_account"
+  | "exchange_deposit"
+  | "crypto_position"
+  | "stock_position"
+  | "diary_entry"
+  | "goal_price"
+  | "trade_entry";
+
+export interface ActivityLog {
+  id: string;
+  user_id: string;
+  action: ActionType;
+  entity_type: EntityType;
+  entity_name: string;
+  description: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}

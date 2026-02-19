@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ExchangeDeposit, ExchangeDepositInput } from "@/lib/types";
+import { logActivity } from "@/lib/actions/activity-log";
 
 export async function getExchangeDeposits(): Promise<ExchangeDeposit[]> {
   const supabase = await createServerSupabaseClient();
@@ -36,6 +37,13 @@ export async function createExchangeDeposit(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  // Fetch wallet name for logging
+  const { data: wallet } = await supabase
+    .from("wallets")
+    .select("name")
+    .eq("id", input.wallet_id)
+    .single();
+
   const { error } = await supabase.from("exchange_deposits").insert({
     user_id: user.id,
     wallet_id: input.wallet_id,
@@ -54,6 +62,14 @@ export async function createExchangeDeposit(
     throw new Error(error.message);
   }
 
+  const label = `${input.amount} ${input.currency} on ${wallet?.name ?? "Unknown"}`;
+  await logActivity({
+    action: "created",
+    entity_type: "exchange_deposit",
+    entity_name: label,
+    description: `Added exchange deposit: ${label}`,
+    details: { ...input, wallet_name: wallet?.name },
+  });
   revalidatePath("/dashboard/cash");
 }
 
@@ -62,6 +78,14 @@ export async function updateExchangeDeposit(
   input: ExchangeDepositInput
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
+
+  // Fetch wallet name for logging
+  const { data: wallet } = await supabase
+    .from("wallets")
+    .select("name")
+    .eq("id", input.wallet_id)
+    .single();
+
   const { error } = await supabase
     .from("exchange_deposits")
     .update({
@@ -81,16 +105,42 @@ export async function updateExchangeDeposit(
     throw new Error(error.message);
   }
 
+  const label = `${input.amount} ${input.currency} on ${wallet?.name ?? "Unknown"}`;
+  await logActivity({
+    action: "updated",
+    entity_type: "exchange_deposit",
+    entity_name: label,
+    description: `Updated exchange deposit: ${label}`,
+    details: { ...input, wallet_name: wallet?.name },
+  });
   revalidatePath("/dashboard/cash");
 }
 
 export async function deleteExchangeDeposit(id: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
+  // Fetch details before deleting
+  const { data: existing } = await supabase
+    .from("exchange_deposits")
+    .select("amount, currency, wallets(name)")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase
     .from("exchange_deposits")
     .delete()
     .eq("id", id);
 
   if (error) throw new Error(error.message);
+  const walletName =
+    (existing?.wallets as unknown as { name: string } | null)?.name ?? "Unknown";
+  const label = existing
+    ? `${existing.amount} ${existing.currency} on ${walletName}`
+    : "Unknown";
+  await logActivity({
+    action: "removed",
+    entity_type: "exchange_deposit",
+    entity_name: label,
+    description: `Removed exchange deposit: ${label}`,
+  });
   revalidatePath("/dashboard/cash");
 }

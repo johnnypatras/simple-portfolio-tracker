@@ -8,6 +8,7 @@ import type {
   CryptoPositionInput,
   Wallet,
 } from "@/lib/types";
+import { logActivity } from "@/lib/actions/activity-log";
 
 /** Get all crypto assets with their positions and wallet names */
 export async function getCryptoAssetsWithPositions(): Promise<
@@ -86,6 +87,13 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
     }
     throw new Error(error.message);
   }
+  await logActivity({
+    action: "created",
+    entity_type: "crypto_asset",
+    entity_name: `${input.ticker.toUpperCase()} (${input.name})`,
+    description: `Added crypto asset ${input.ticker.toUpperCase()}`,
+    details: { ...input },
+  });
   revalidatePath("/dashboard/crypto");
   return data.id;
 }
@@ -93,15 +101,37 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
 /** Remove a crypto asset and all its positions (CASCADE) */
 export async function deleteCryptoAsset(id: string) {
   const supabase = await createServerSupabaseClient();
+  // Fetch name before deleting for the activity log
+  const { data: existing } = await supabase
+    .from("crypto_assets")
+    .select("ticker, name")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase.from("crypto_assets").delete().eq("id", id);
 
   if (error) throw new Error(error.message);
+  const label = existing ? `${existing.ticker} (${existing.name})` : "Unknown";
+  await logActivity({
+    action: "removed",
+    entity_type: "crypto_asset",
+    entity_name: label,
+    description: `Removed crypto asset ${existing?.ticker ?? id}`,
+  });
   revalidatePath("/dashboard/crypto");
 }
 
 /** Upsert a position (set quantity for a crypto asset in a specific wallet) */
 export async function upsertPosition(input: CryptoPositionInput) {
   const supabase = await createServerSupabaseClient();
+
+  // Fetch asset ticker for logging
+  const { data: asset } = await supabase
+    .from("crypto_assets")
+    .select("ticker")
+    .eq("id", input.crypto_asset_id)
+    .single();
+  const ticker = asset?.ticker ?? "Unknown";
 
   if (input.quantity <= 0) {
     // Remove the position if quantity is zero or negative
@@ -111,6 +141,13 @@ export async function upsertPosition(input: CryptoPositionInput) {
       .eq("crypto_asset_id", input.crypto_asset_id)
       .eq("wallet_id", input.wallet_id);
     if (error) throw new Error(error.message);
+    await logActivity({
+      action: "removed",
+      entity_type: "crypto_position",
+      entity_name: ticker,
+      description: `Removed ${ticker} position (qty set to 0)`,
+      details: { ...input },
+    });
   } else {
     const { error } = await supabase.from("crypto_positions").upsert(
       {
@@ -121,6 +158,13 @@ export async function upsertPosition(input: CryptoPositionInput) {
       { onConflict: "crypto_asset_id,wallet_id" }
     );
     if (error) throw new Error(error.message);
+    await logActivity({
+      action: "updated",
+      entity_type: "crypto_position",
+      entity_name: ticker,
+      description: `Set ${ticker} position to ${input.quantity}`,
+      details: { ...input },
+    });
   }
 
   revalidatePath("/dashboard/crypto");
@@ -129,11 +173,26 @@ export async function upsertPosition(input: CryptoPositionInput) {
 /** Delete a specific position */
 export async function deletePosition(positionId: string) {
   const supabase = await createServerSupabaseClient();
+  // Fetch asset ticker before deleting
+  const { data: pos } = await supabase
+    .from("crypto_positions")
+    .select("crypto_asset_id, crypto_assets(ticker)")
+    .eq("id", positionId)
+    .single();
+  const ticker =
+    (pos?.crypto_assets as unknown as { ticker: string } | null)?.ticker ?? "Unknown";
+
   const { error } = await supabase
     .from("crypto_positions")
     .delete()
     .eq("id", positionId);
 
   if (error) throw new Error(error.message);
+  await logActivity({
+    action: "removed",
+    entity_type: "crypto_position",
+    entity_name: ticker,
+    description: `Removed ${ticker} position`,
+  });
   revalidatePath("/dashboard/crypto");
 }

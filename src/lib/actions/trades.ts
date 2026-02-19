@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { TradeEntry, TradeEntryInput } from "@/lib/types";
+import { logActivity } from "@/lib/actions/activity-log";
 
 /** Lightweight asset name lists for the trade diary dropdown */
 export async function getAssetOptions(): Promise<{
@@ -72,6 +73,13 @@ export async function createTradeEntry(input: TradeEntryInput) {
   });
 
   if (error) throw new Error(error.message);
+  await logActivity({
+    action: "created",
+    entity_type: "trade_entry",
+    entity_name: `${input.action.toUpperCase()} ${input.asset_name.trim()}`,
+    description: `Logged ${input.action} of ${input.quantity} ${input.asset_name.trim()} at ${input.price} ${input.currency ?? "USD"}`,
+    details: { ...input, total_value: Math.round(totalValue * 100) / 100 },
+  });
   revalidatePath("/dashboard/diary");
 }
 
@@ -95,16 +103,39 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
     .eq("id", id);
 
   if (error) throw new Error(error.message);
+  await logActivity({
+    action: "updated",
+    entity_type: "trade_entry",
+    entity_name: `${input.action.toUpperCase()} ${input.asset_name.trim()}`,
+    description: `Updated trade: ${input.action} ${input.quantity} ${input.asset_name.trim()} at ${input.price} ${input.currency ?? "USD"}`,
+    details: { ...input, total_value: Math.round(totalValue * 100) / 100 },
+  });
   revalidatePath("/dashboard/diary");
 }
 
 export async function deleteTradeEntry(id: string) {
   const supabase = await createServerSupabaseClient();
+  // Fetch details before deleting
+  const { data: existing } = await supabase
+    .from("trade_entries")
+    .select("action, asset_name, quantity, price, currency")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase
     .from("trade_entries")
     .delete()
     .eq("id", id);
 
   if (error) throw new Error(error.message);
+  const label = existing
+    ? `${existing.action.toUpperCase()} ${existing.asset_name}`
+    : "Unknown trade";
+  await logActivity({
+    action: "removed",
+    entity_type: "trade_entry",
+    entity_name: label,
+    description: `Removed trade: ${label}`,
+  });
   revalidatePath("/dashboard/diary");
 }

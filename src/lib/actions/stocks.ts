@@ -8,6 +8,7 @@ import type {
   StockPositionInput,
   Broker,
 } from "@/lib/types";
+import { logActivity } from "@/lib/actions/activity-log";
 
 /** Get all stock assets with their positions and broker names */
 export async function getStockAssetsWithPositions(): Promise<
@@ -87,6 +88,13 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
     }
     throw new Error(error.message);
   }
+  await logActivity({
+    action: "created",
+    entity_type: "stock_asset",
+    entity_name: `${input.ticker.toUpperCase()} (${input.name})`,
+    description: `Added stock asset ${input.ticker.toUpperCase()}`,
+    details: { ...input },
+  });
   revalidatePath("/dashboard/stocks");
   return data.id;
 }
@@ -94,15 +102,36 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
 /** Remove a stock asset and all its positions (CASCADE) */
 export async function deleteStockAsset(id: string) {
   const supabase = await createServerSupabaseClient();
+  const { data: existing } = await supabase
+    .from("stock_assets")
+    .select("ticker, name")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase.from("stock_assets").delete().eq("id", id);
 
   if (error) throw new Error(error.message);
+  const label = existing ? `${existing.ticker} (${existing.name})` : "Unknown";
+  await logActivity({
+    action: "removed",
+    entity_type: "stock_asset",
+    entity_name: label,
+    description: `Removed stock asset ${existing?.ticker ?? id}`,
+  });
   revalidatePath("/dashboard/stocks");
 }
 
 /** Upsert a position (set quantity for a stock asset at a specific broker) */
 export async function upsertStockPosition(input: StockPositionInput) {
   const supabase = await createServerSupabaseClient();
+
+  // Fetch asset ticker for logging
+  const { data: asset } = await supabase
+    .from("stock_assets")
+    .select("ticker")
+    .eq("id", input.stock_asset_id)
+    .single();
+  const ticker = asset?.ticker ?? "Unknown";
 
   if (input.quantity <= 0) {
     // Remove the position if quantity is zero or negative
@@ -112,6 +141,13 @@ export async function upsertStockPosition(input: StockPositionInput) {
       .eq("stock_asset_id", input.stock_asset_id)
       .eq("broker_id", input.broker_id);
     if (error) throw new Error(error.message);
+    await logActivity({
+      action: "removed",
+      entity_type: "stock_position",
+      entity_name: ticker,
+      description: `Removed ${ticker} position (qty set to 0)`,
+      details: { ...input },
+    });
   } else {
     const { error } = await supabase.from("stock_positions").upsert(
       {
@@ -122,6 +158,13 @@ export async function upsertStockPosition(input: StockPositionInput) {
       { onConflict: "stock_asset_id,broker_id" }
     );
     if (error) throw new Error(error.message);
+    await logActivity({
+      action: "updated",
+      entity_type: "stock_position",
+      entity_name: ticker,
+      description: `Set ${ticker} position to ${input.quantity}`,
+      details: { ...input },
+    });
   }
 
   revalidatePath("/dashboard/stocks");
@@ -130,11 +173,25 @@ export async function upsertStockPosition(input: StockPositionInput) {
 /** Delete a specific position */
 export async function deleteStockPosition(positionId: string) {
   const supabase = await createServerSupabaseClient();
+  const { data: pos } = await supabase
+    .from("stock_positions")
+    .select("stock_asset_id, stock_assets(ticker)")
+    .eq("id", positionId)
+    .single();
+  const ticker =
+    (pos?.stock_assets as unknown as { ticker: string } | null)?.ticker ?? "Unknown";
+
   const { error } = await supabase
     .from("stock_positions")
     .delete()
     .eq("id", positionId);
 
   if (error) throw new Error(error.message);
+  await logActivity({
+    action: "removed",
+    entity_type: "stock_position",
+    entity_name: ticker,
+    description: `Removed ${ticker} position`,
+  });
   revalidatePath("/dashboard/stocks");
 }
