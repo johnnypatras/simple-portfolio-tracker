@@ -262,6 +262,152 @@ export function buildTickerGroups(
   return { groups, singles };
 }
 
+// ── Sorting ───────────────────────────────────────────────────
+
+export type SortKey = "value" | "name" | "type" | "change" | "currency";
+export type SortDirection = "asc" | "desc";
+
+export const DEFAULT_SORT_KEY: SortKey = "value";
+export const DEFAULT_SORT_DIR: SortDirection = "desc";
+
+export const SORT_OPTIONS: { key: SortKey; label: string; defaultDir: SortDirection }[] = [
+  { key: "value", label: "Value", defaultDir: "desc" },
+  { key: "name", label: "Name", defaultDir: "asc" },
+  { key: "type", label: "Type", defaultDir: "asc" },
+  { key: "change", label: "24h %", defaultDir: "desc" },
+  { key: "currency", label: "Currency", defaultDir: "asc" },
+];
+
+/** Maps column keys to sort keys (for clickable desktop headers) */
+export const COLUMN_TO_SORT: Record<string, SortKey | undefined> = {
+  asset: "name",
+  type: "type",
+  currency: "currency",
+  price: "change",
+  value: "value",
+};
+
+/** Union type for flat-mode items (single row or ticker group) */
+export type FlatItem =
+  | { kind: "single"; row: StockRow; value: number }
+  | { kind: "ticker-group"; group: TickerGroup; value: number };
+
+/** Extract a comparable sort value from a FlatItem */
+function flatItemSortVal(item: FlatItem, key: SortKey): string | number {
+  if (item.kind === "single") {
+    const { row } = item;
+    switch (key) {
+      case "value": return row.valueBase;
+      case "name": return row.asset.name.toLowerCase();
+      case "type": return CATEGORY_LABELS[row.asset.category];
+      case "change": return row.change24h;
+      case "currency": return row.asset.currency;
+    }
+  } else {
+    const { group } = item;
+    switch (key) {
+      case "value": return group.totalValueBase;
+      case "name": return group.name.toLowerCase();
+      case "type": return CATEGORY_LABELS[group.category];
+      case "change": return group.weightedChange24h;
+      case "currency": return group.rows[0]?.asset.currency ?? "";
+    }
+  }
+}
+
+/** Sort flat-mode items by the given key and direction */
+export function sortFlatItems(
+  items: FlatItem[],
+  key: SortKey,
+  dir: SortDirection
+): FlatItem[] {
+  return [...items].sort((a, b) => {
+    const av = flatItemSortVal(a, key);
+    const bv = flatItemSortVal(b, key);
+    if (av < bv) return dir === "asc" ? -1 : 1;
+    if (av > bv) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+}
+
+/** Sort StockRows by key (used within groups) */
+export function sortRows(
+  rows: StockRow[],
+  key: SortKey,
+  dir: SortDirection
+): StockRow[] {
+  return [...rows].sort((a, b) => {
+    let av: string | number, bv: string | number;
+    switch (key) {
+      case "value": av = a.valueBase; bv = b.valueBase; break;
+      case "name": av = a.asset.name.toLowerCase(); bv = b.asset.name.toLowerCase(); break;
+      case "type": av = CATEGORY_LABELS[a.asset.category]; bv = CATEGORY_LABELS[b.asset.category]; break;
+      case "change": av = a.change24h; bv = b.change24h; break;
+      case "currency": av = a.asset.currency; bv = b.asset.currency; break;
+    }
+    if (av < bv) return dir === "asc" ? -1 : 1;
+    if (av > bv) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+}
+
+// ── Currency group for group-by-currency mode ─────────────────
+
+/** Currency color map — covers common currencies, falls back to zinc */
+export const CURRENCY_COLORS: Record<string, string> = {
+  EUR: "text-blue-400",
+  USD: "text-emerald-400",
+  GBP: "text-amber-400",
+  CHF: "text-red-400",
+  JPY: "text-rose-400",
+  CAD: "text-orange-400",
+  AUD: "text-teal-400",
+  SEK: "text-sky-400",
+  NOK: "text-indigo-400",
+  DKK: "text-violet-400",
+};
+
+export function getCurrencyColor(currency: string): string {
+  return CURRENCY_COLORS[currency] ?? "text-zinc-400";
+}
+
+export interface StockCurrencyGroup {
+  currency: string;
+  rows: StockRow[];
+  totalValue: number;
+  assetCount: number;
+}
+
+/**
+ * Groups stock rows by their native currency. Each listing is treated
+ * individually (no ticker grouping), so VWCE.DE (EUR) and VWCE (USD)
+ * end up in separate currency groups.
+ */
+export function buildStockCurrencyGroups(rows: StockRow[]): StockCurrencyGroup[] {
+  const groupMap = new Map<string, StockRow[]>();
+
+  for (const row of rows) {
+    const cur = row.asset.currency;
+    const existing = groupMap.get(cur) ?? [];
+    existing.push(row);
+    groupMap.set(cur, existing);
+  }
+
+  const groups: StockCurrencyGroup[] = [];
+  for (const [currency, groupRows] of groupMap) {
+    const totalValue = groupRows.reduce((sum, r) => sum + r.valueBase, 0);
+    groups.push({
+      currency,
+      rows: groupRows.sort((a, b) => b.valueBase - a.valueBase),
+      totalValue,
+      assetCount: groupRows.length,
+    });
+  }
+
+  groups.sort((a, b) => b.totalValue - a.totalValue);
+  return groups;
+}
+
 // ── Column definitions ───────────────────────────────────────
 
 export function getStockColumns(handlers: {
@@ -313,6 +459,19 @@ export function getStockColumns(handlers: {
       renderCell: (row) => (
         <span className={`text-xs font-medium ${CATEGORY_COLORS[row.asset.category]}`}>
           {CATEGORY_LABELS[row.asset.category]}
+        </span>
+      ),
+    },
+    {
+      key: "currency",
+      label: "Currency",
+      header: "Currency",
+      align: "left",
+      width: "w-16",
+      hiddenBelow: "sm",
+      renderCell: (row) => (
+        <span className="text-xs text-zinc-400">
+          {row.asset.currency}
         </span>
       ),
     },

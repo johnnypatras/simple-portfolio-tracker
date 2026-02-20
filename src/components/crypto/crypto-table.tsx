@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
-import { Plus, Bitcoin, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Bitcoin, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import { AddCryptoModal } from "./add-crypto-modal";
 import { PositionEditor } from "./position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -19,12 +19,19 @@ import {
   buildCryptoRows,
   buildCryptoPositionGroups,
   buildCryptoWalletGroups,
+  sortCryptoRows,
   formatNumber,
   formatCurrency,
   ACQUISITION_COLORS,
   ACQUISITION_LABELS,
   GROUP_PALETTE,
+  CRYPTO_SORT_OPTIONS,
+  COLUMN_TO_SORT,
+  DEFAULT_SORT_KEY,
+  DEFAULT_SORT_DIR,
   type CryptoRow,
+  type CryptoSortKey,
+  type SortDirection,
 } from "./crypto-columns";
 
 // ── Group mode ──────────────────────────────────────────────
@@ -63,7 +70,33 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
   const [editingAsset, setEditingAsset] = useState<CryptoAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState<CryptoGroupMode>("flat");
+  const [sortKey, setSortKey] = useState<CryptoSortKey>(DEFAULT_SORT_KEY);
+  const [sortDir, setSortDir] = useState<SortDirection>(DEFAULT_SORT_DIR);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const handleSort = useCallback((key: CryptoSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      const opt = CRYPTO_SORT_OPTIONS.find((o) => o.key === key);
+      setSortKey(key);
+      setSortDir(opt?.defaultDir ?? "desc");
+    }
+  }, [sortKey]);
+
+  const handleResetSort = useCallback(() => {
+    setSortKey(DEFAULT_SORT_KEY);
+    setSortDir(DEFAULT_SORT_DIR);
+  }, []);
+
+  const isDefaultSort = sortKey === DEFAULT_SORT_KEY && sortDir === DEFAULT_SORT_DIR;
+
+  const handleCycleSort = useCallback(() => {
+    const idx = CRYPTO_SORT_OPTIONS.findIndex((o) => o.key === sortKey);
+    const next = CRYPTO_SORT_OPTIONS[(idx + 1) % CRYPTO_SORT_OPTIONS.length];
+    setSortKey(next.key);
+    setSortDir(next.defaultDir);
+  }, [sortKey]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => {
@@ -89,15 +122,21 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     }
   }, []);
 
-  // Build computed rows
-  const rows = useMemo(
+  // Build computed rows (unsorted — used for totals and grouping)
+  const baseRows = useMemo(
     () => buildCryptoRows(assets, prices, currencyKey, changeKey),
     [assets, prices, currencyKey, changeKey]
   );
 
+  // Sorted rows for flat mode rendering
+  const rows = useMemo(
+    () => sortCryptoRows(baseRows, sortKey, sortDir),
+    [baseRows, sortKey, sortDir]
+  );
+
   const totalPortfolioValue = useMemo(
-    () => rows.reduce((sum, r) => sum + r.valueInBase, 0),
-    [rows]
+    () => baseRows.reduce((sum, r) => sum + r.valueInBase, 0),
+    [baseRows]
   );
 
   // Position-level groups for source mode
@@ -110,6 +149,25 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
   const walletGroups = useMemo(
     () => (groupMode === "wallet" ? buildCryptoWalletGroups(rows) : []),
     [groupMode, rows]
+  );
+
+  // Sort entries within a group (reuses the same sort key/dir as flat mode)
+  const sortEntries = useCallback(
+    <T extends { row: CryptoRow; groupValue: number }>(entries: T[]): T[] => {
+      return [...entries].sort((a, b) => {
+        let av: string | number, bv: string | number;
+        switch (sortKey) {
+          case "value": av = a.groupValue; bv = b.groupValue; break;
+          case "name": av = a.row.asset.name.toLowerCase(); bv = b.row.asset.name.toLowerCase(); break;
+          case "change": av = a.row.change24h; bv = b.row.change24h; break;
+          case "source": av = ""; bv = ""; break; // irrelevant inside a source group
+        }
+        if (av < bv) return sortDir === "asc" ? -1 : 1;
+        if (av > bv) return sortDir === "asc" ? 1 : -1;
+        return 0;
+      });
+    },
+    [sortKey, sortDir]
   );
 
   const isGrouped = groupMode !== "flat";
@@ -263,6 +321,36 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                     )}
                   </div>
                 </button>
+                {/* Mobile sort cycle (no column headers on mobile) */}
+                {assets.length > 1 && (
+                  <button
+                    onClick={handleCycleSort}
+                    className="md:hidden p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                    title={`Sort: ${CRYPTO_SORT_OPTIONS.find((o) => o.key === sortKey)?.label}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <ArrowUpDown className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-medium">
+                        {CRYPTO_SORT_OPTIONS.find((o) => o.key === sortKey)?.label}
+                      </span>
+                      {sortDir === "desc" ? (
+                        <ArrowDown className="w-3 h-3" />
+                      ) : (
+                        <ArrowUp className="w-3 h-3" />
+                      )}
+                    </div>
+                  </button>
+                )}
+                {/* Reset sort (all sizes) */}
+                {!isDefaultSort && (
+                  <button
+                    onClick={handleResetSort}
+                    className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-colors"
+                    title="Reset sort"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button
                   onClick={toggleExpandAll}
                   className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
@@ -344,7 +432,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
 
                       {isGroupOpen && (
                         <div className="space-y-2 ml-6">
-                          {group.entries.map((entry) => (
+                          {sortEntries(group.entries).map((entry) => (
                             <MobileCryptoCard
                               key={`${group.acquisitionMethod}:${entry.row.id}`}
                               row={entry.row}
@@ -397,7 +485,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
 
                         {isGroupOpen && (
                           <div className="space-y-2 ml-6">
-                            {group.entries.map((entry) => (
+                            {sortEntries(group.entries).map((entry) => (
                               <MobileCryptoCard
                                 key={`${group.walletName}:${entry.row.id}`}
                                 row={entry.row}
@@ -438,12 +526,27 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                     const align = col.align === "right" ? "text-right" : "text-left";
                     const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                     const width = col.width ?? "";
+                    const colSortKey = COLUMN_TO_SORT[col.key];
+                    const isSortable = !!colSortKey;
+                    const isActiveSort = colSortKey === sortKey;
                     return (
                       <th
                         key={col.key}
-                        className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}
+                        className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width} ${
+                          isSortable ? "cursor-pointer select-none hover:text-zinc-300 transition-colors" : ""
+                        }`}
+                        onClick={isSortable ? () => handleSort(colSortKey) : undefined}
                       >
-                        {col.renderHeader ? col.renderHeader(ctx) : col.header}
+                        <span className={`inline-flex items-center gap-1 ${align === "text-right" ? "justify-end" : ""}`}>
+                          {col.renderHeader ? col.renderHeader(ctx) : col.header}
+                          {isSortable && (
+                            isActiveSort
+                              ? sortDir === "desc"
+                                ? <ArrowDown className="w-3 h-3 text-zinc-400" />
+                                : <ArrowUp className="w-3 h-3 text-zinc-400" />
+                              : <ArrowUpDown className="w-3 h-3 text-zinc-700" />
+                          )}
+                        </span>
                       </th>
                     );
                   })}

@@ -265,10 +265,18 @@ export function CashTable({
                 {bankAccounts.length} bank account
                 {bankAccounts.length !== 1 ? "s" : ""}
               </p>
-              <p>
-                {exchangeDeposits.length + brokerDeposits.length} deposit
-                {exchangeDeposits.length + brokerDeposits.length !== 1 ? "s" : ""}
-              </p>
+              {exchangeDeposits.length > 0 && (
+                <p>
+                  {exchangeDeposits.length} exchange deposit
+                  {exchangeDeposits.length !== 1 ? "s" : ""}
+                </p>
+              )}
+              {brokerDeposits.length > 0 && (
+                <p>
+                  {brokerDeposits.length} broker deposit
+                  {brokerDeposits.length !== 1 ? "s" : ""}
+                </p>
+              )}
             </div>
             {allGroupIds.length > 0 && (
               <button
@@ -377,15 +385,15 @@ export function CashTable({
               )}
             </div>
 
-            {/* Exchange / Broker Deposits */}
+            {/* Exchange Deposits */}
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Wallet className="w-3.5 h-3.5 text-zinc-500" />
-                <span className="text-xs font-medium text-zinc-400">Exchange / Broker Deposits</span>
-                <span className="text-xs text-zinc-600">{formatCurrency(depositTotal, primaryCurrency)}</span>
+                <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
+                <span className="text-xs text-zinc-600">{formatCurrency(exchangeDepositTotal, primaryCurrency)}</span>
               </div>
-              {exchRows.length === 0 && brokerDepRows.length === 0 ? (
-                <p className="text-xs text-zinc-600 px-4 py-3">{wallets.length === 0 && brokers.length === 0 ? "Add a wallet or broker in Settings first" : "No deposits yet"}</p>
+              {exchRows.length === 0 ? (
+                <p className="text-xs text-zinc-600 px-4 py-3">{wallets.length === 0 ? "Add a wallet in Settings first" : "No exchange deposits yet"}</p>
               ) : (
                 <div className="space-y-2">
                   {exchRows.map((row) => {
@@ -425,6 +433,21 @@ export function CashTable({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+
+            {/* Broker Deposits */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Briefcase className="w-3.5 h-3.5 text-zinc-500" />
+                <span className="text-xs font-medium text-zinc-400">Broker Deposits</span>
+                <span className="text-xs text-zinc-600">{formatCurrency(brokerDepositTotal, primaryCurrency)}</span>
+              </div>
+              {brokerDepRows.length === 0 ? (
+                <p className="text-xs text-zinc-600 px-4 py-3">{brokers.length === 0 ? "Add a broker in Settings first" : "No broker deposits yet"}</p>
+              ) : (
+                <div className="space-y-2">
                   {brokerDepRows.map((row) => {
                     if (row.type !== "broker-group") return null;
                     const groupExpanded = expandedBanks.has(row.id);
@@ -530,65 +553,82 @@ export function CashTable({
                   <td colSpan={orderedColumns.length} className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <Wallet className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="text-xs font-medium text-zinc-400">Exchange / Broker Deposits</span>
-                      <span className="text-xs text-zinc-600">{formatCurrency(depositTotal, primaryCurrency)}</span>
+                      <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
+                      <span className="text-xs text-zinc-600">{formatCurrency(exchangeDepositTotal, primaryCurrency)}</span>
                     </div>
                   </td>
                 </tr>
 
-                {exchRows.length === 0 && brokerDepRows.length === 0 ? (
+                {exchRows.length === 0 ? (
                   <tr>
                     <td colSpan={orderedColumns.length} className="px-4 py-4 text-center">
-                      <p className="text-xs text-zinc-600">{wallets.length === 0 && brokers.length === 0 ? "Add a wallet or broker in Settings first" : "No deposits yet — click Add to create one"}</p>
+                      <p className="text-xs text-zinc-600">{wallets.length === 0 ? "Add a wallet in Settings first" : "No exchange deposits yet — click Add to create one"}</p>
                     </td>
                   </tr>
                 ) : (
-                  <>
-                    {exchRows.map((row) => {
-                      const groupExpanded = row.type === "exchange-group" && expandedBanks.has(row.id);
-                      return (
-                        <Fragment key={row.id}>
-                          <tr className="border-b border-zinc-800/30 last:border-0 group hover:bg-zinc-800/20 transition-colors">
-                            {orderedColumns.map((col) => {
-                              const align = col.align === "right" ? "text-right" : "text-left";
-                              const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
-                              return (
-                                <td key={col.key} className={`px-4 py-2.5 ${align} ${hidden}`}>
-                                  {col.renderCell(row, ctx)}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                          {groupExpanded && row.type === "exchange-group" &&
-                            row.data.deposits.map((dep) => (
-                              <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditExchange(dep)} onDelete={() => handleDeleteExchange(dep.id)} />
-                            ))}
-                        </Fragment>
-                      );
-                    })}
-                    {brokerDepRows.map((row) => {
-                      const groupExpanded = row.type === "broker-group" && expandedBanks.has(row.id);
-                      return (
-                        <Fragment key={row.id}>
-                          <tr className="border-b border-zinc-800/30 last:border-0 group hover:bg-zinc-800/20 transition-colors">
-                            {orderedColumns.map((col) => {
-                              const align = col.align === "right" ? "text-right" : "text-left";
-                              const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
-                              return (
-                                <td key={col.key} className={`px-4 py-2.5 ${align} ${hidden}`}>
-                                  {col.renderCell(row, ctx)}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                          {groupExpanded && row.type === "broker-group" &&
-                            row.data.deposits.map((dep) => (
-                              <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditBrokerDeposit(dep)} onDelete={() => handleDeleteBrokerDeposit(dep.id)} />
-                            ))}
-                        </Fragment>
-                      );
-                    })}
-                  </>
+                  exchRows.map((row) => {
+                    const groupExpanded = row.type === "exchange-group" && expandedBanks.has(row.id);
+                    return (
+                      <Fragment key={row.id}>
+                        <tr className="border-b border-zinc-800/30 last:border-0 group hover:bg-zinc-800/20 transition-colors">
+                          {orderedColumns.map((col) => {
+                            const align = col.align === "right" ? "text-right" : "text-left";
+                            const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                            return (
+                              <td key={col.key} className={`px-4 py-2.5 ${align} ${hidden}`}>
+                                {col.renderCell(row, ctx)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        {groupExpanded && row.type === "exchange-group" &&
+                          row.data.deposits.map((dep) => (
+                            <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditExchange(dep)} onDelete={() => handleDeleteExchange(dep.id)} />
+                          ))}
+                      </Fragment>
+                    );
+                  })
+                )}
+
+                <tr className="bg-zinc-900/80">
+                  <td colSpan={orderedColumns.length} className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="w-3.5 h-3.5 text-zinc-500" />
+                      <span className="text-xs font-medium text-zinc-400">Broker Deposits</span>
+                      <span className="text-xs text-zinc-600">{formatCurrency(brokerDepositTotal, primaryCurrency)}</span>
+                    </div>
+                  </td>
+                </tr>
+
+                {brokerDepRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={orderedColumns.length} className="px-4 py-4 text-center">
+                      <p className="text-xs text-zinc-600">{brokers.length === 0 ? "Add a broker in Settings first" : "No broker deposits yet — click Add to create one"}</p>
+                    </td>
+                  </tr>
+                ) : (
+                  brokerDepRows.map((row) => {
+                    const groupExpanded = row.type === "broker-group" && expandedBanks.has(row.id);
+                    return (
+                      <Fragment key={row.id}>
+                        <tr className="border-b border-zinc-800/30 last:border-0 group hover:bg-zinc-800/20 transition-colors">
+                          {orderedColumns.map((col) => {
+                            const align = col.align === "right" ? "text-right" : "text-left";
+                            const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                            return (
+                              <td key={col.key} className={`px-4 py-2.5 ${align} ${hidden}`}>
+                                {col.renderCell(row, ctx)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        {groupExpanded && row.type === "broker-group" &&
+                          row.data.deposits.map((dep) => (
+                            <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditBrokerDeposit(dep)} onDelete={() => handleDeleteBrokerDeposit(dep.id)} />
+                          ))}
+                      </Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>

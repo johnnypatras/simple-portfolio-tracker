@@ -341,27 +341,19 @@ export function getCashColumns(handlers: {
       header: "Currency",
       align: "left",
       renderCell: (row) => {
+        let currencies: string[];
         if (row.type === "bank-group") {
-          const currencies = [
-            ...new Set(row.data.accounts.map((a) => a.currency)),
-          ];
-          return (
-            <span className="text-xs text-zinc-500">
-              {currencies.length === 1 ? currencies[0] : "—"}
-            </span>
-          );
+          currencies = [...new Set(row.data.accounts.map((a) => a.currency))];
+        } else if (row.type === "exchange-group" || row.type === "broker-group") {
+          currencies = [...new Set(row.data.deposits.map((d) => d.currency))];
+        } else {
+          return null;
         }
-        if (row.type === "exchange-group" || row.type === "broker-group") {
-          const currencies = [
-            ...new Set(row.data.deposits.map((d) => d.currency)),
-          ];
-          return (
-            <span className="text-xs text-zinc-500">
-              {currencies.length === 1 ? currencies[0] : "—"}
-            </span>
-          );
-        }
-        return null;
+        return (
+          <span className="text-xs text-zinc-500">
+            {currencies.join(", ")}
+          </span>
+        );
       },
     },
 

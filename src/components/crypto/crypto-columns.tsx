@@ -232,6 +232,53 @@ export function buildCryptoRows(
   return rows;
 }
 
+// ── Sorting ───────────────────────────────────────────────────
+
+export type CryptoSortKey = "value" | "name" | "change" | "source";
+export type SortDirection = "asc" | "desc";
+
+export const DEFAULT_SORT_KEY: CryptoSortKey = "value";
+export const DEFAULT_SORT_DIR: SortDirection = "desc";
+
+export const CRYPTO_SORT_OPTIONS: { key: CryptoSortKey; label: string; defaultDir: SortDirection }[] = [
+  { key: "value", label: "Value", defaultDir: "desc" },
+  { key: "name", label: "Name", defaultDir: "asc" },
+  { key: "change", label: "24h %", defaultDir: "desc" },
+  { key: "source", label: "Source", defaultDir: "asc" },
+];
+
+/** Maps column keys to sort keys (for clickable desktop headers) */
+export const COLUMN_TO_SORT: Record<string, CryptoSortKey | undefined> = {
+  asset: "name",
+  change24h: "change",
+  value: "value",
+  source: "source",
+};
+
+/** Sort crypto rows by key and direction */
+export function sortCryptoRows(
+  rows: CryptoRow[],
+  key: CryptoSortKey,
+  dir: SortDirection
+): CryptoRow[] {
+  return [...rows].sort((a, b) => {
+    let av: string | number, bv: string | number;
+    switch (key) {
+      case "value": av = a.valueInBase; bv = b.valueInBase; break;
+      case "name": av = a.asset.name.toLowerCase(); bv = b.asset.name.toLowerCase(); break;
+      case "change": av = a.change24h; bv = b.change24h; break;
+      case "source": {
+        av = getDominantMethod(a.asset.positions);
+        bv = getDominantMethod(b.asset.positions);
+        break;
+      }
+    }
+    if (av < bv) return dir === "asc" ? -1 : 1;
+    if (av > bv) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+}
+
 // ── Column definitions ───────────────────────────────────────
 
 export function getCryptoColumns(handlers: {
