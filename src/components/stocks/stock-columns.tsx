@@ -63,7 +63,7 @@ export function formatNumber(n: number, decimals = 2): string {
 /** Format quantities (shares) — strips trailing zeros while keeping up to maxDecimals precision */
 export function formatQuantity(n: number, maxDecimals: number): string {
   return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: maxDecimals,
   }).format(n);
 }
@@ -413,6 +413,52 @@ export function buildStockCurrencyGroups(rows: StockRow[]): StockCurrencyGroup[]
   }
 
   groups.sort((a, b) => b.totalValue - a.totalValue);
+  return groups;
+}
+
+// ── Subcategory group for group-by-subcategory mode ────────
+
+export interface StockSubcategoryGroup {
+  subcategory: string;       // display label ("S&P 500", "World", or "Uncategorized")
+  isUncategorized: boolean;  // true for the fallback bucket
+  rows: StockRow[];
+  totalValue: number;
+  assetCount: number;
+}
+
+/**
+ * Groups stock rows by their user-defined subcategory.
+ * Assets without a subcategory fall into an "Uncategorized" group.
+ */
+export function buildStockSubcategoryGroups(rows: StockRow[]): StockSubcategoryGroup[] {
+  const UNCATEGORIZED = "Uncategorized";
+  const groupMap = new Map<string, StockRow[]>();
+
+  for (const row of rows) {
+    const key = row.asset.subcategory?.trim() || UNCATEGORIZED;
+    const existing = groupMap.get(key) ?? [];
+    existing.push(row);
+    groupMap.set(key, existing);
+  }
+
+  const groups: StockSubcategoryGroup[] = [];
+  for (const [subcategory, groupRows] of groupMap) {
+    const totalValue = groupRows.reduce((sum, r) => sum + r.valueBase, 0);
+    groups.push({
+      subcategory,
+      isUncategorized: subcategory === UNCATEGORIZED,
+      rows: groupRows.sort((a, b) => b.valueBase - a.valueBase),
+      totalValue,
+      assetCount: groupRows.length,
+    });
+  }
+
+  // Sort groups by total value descending, but push "Uncategorized" to the end
+  groups.sort((a, b) => {
+    if (a.isUncategorized && !b.isUncategorized) return 1;
+    if (!a.isUncategorized && b.isUncategorized) return -1;
+    return b.totalValue - a.totalValue;
+  });
   return groups;
 }
 

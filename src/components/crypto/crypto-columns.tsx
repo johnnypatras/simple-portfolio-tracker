@@ -203,7 +203,7 @@ export function formatNumber(n: number, decimals = 2): string {
 /** Format quantities (holdings) — strips trailing zeros while keeping up to maxDecimals precision */
 export function formatQuantity(n: number, maxDecimals: number): string {
   return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: maxDecimals,
   }).format(n);
 }

@@ -21,10 +21,10 @@ import {
   buildStockGroupRows,
   buildStockBrokerGroups,
   buildStockCurrencyGroups,
+  buildStockSubcategoryGroups,
   buildTickerGroups,
   sortFlatItems,
   sortRows,
-  formatNumber,
   formatQuantity,
   formatCurrency,
   getCurrencyColor,
@@ -52,14 +52,15 @@ const HIDDEN_BELOW: Record<string, string> = {
 
 // ── Group mode ──────────────────────────────────────────────
 
-type StockGroupMode = "flat" | "type" | "broker" | "currency";
+type StockGroupMode = "flat" | "type" | "broker" | "currency" | "subcategory";
 
-const GROUP_MODE_CYCLE: StockGroupMode[] = ["flat", "type", "broker", "currency"];
+const GROUP_MODE_CYCLE: StockGroupMode[] = ["flat", "type", "broker", "currency", "subcategory"];
 const GROUP_MODE_LABELS: Record<StockGroupMode, string> = {
   flat: "Flat list",
   type: "Group by type",
   broker: "Group by broker",
   currency: "Group by currency",
+  subcategory: "Group by subcategory",
 };
 
 // ── Component ────────────────────────────────────────────────
@@ -161,6 +162,21 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     [groupMode, rows]
   );
 
+  // Grouped rows for group-by-subcategory mode
+  const subcategoryGroups = useMemo(
+    () => (groupMode === "subcategory" ? buildStockSubcategoryGroups(rows) : []),
+    [groupMode, rows]
+  );
+
+  // Existing subcategories for autocomplete in add modal
+  const existingSubcategories = useMemo(() => {
+    const subs = new Set<string>();
+    for (const a of assets) {
+      if (a.subcategory) subs.add(a.subcategory);
+    }
+    return [...subs].sort();
+  }, [assets]);
+
   const isGrouped = groupMode !== "flat";
 
   // Auto-expand everything when entering any mode (flat or grouped)
@@ -178,7 +194,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
       ? typeGroups.map((g) => g.category)
       : groupMode === "broker"
       ? brokerGroups.map((g) => g.brokerName)
-      : currencyGroups.map((g) => g.currency);
+      : groupMode === "currency"
+      ? currencyGroups.map((g) => g.currency)
+      : subcategoryGroups.map((g) => g.subcategory);
     if (groupKeys.length > 0) {
       setExpandedGroups(new Set(groupKeys));
       setExpanded(new Set(rows.map((r) => r.id)));
@@ -189,7 +207,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
   // Check if all ticker groups are expanded (relevant for flat + type modes)
   const allTickerGroupsExpanded = useMemo(() => {
-    if (groupMode === "broker" || groupMode === "currency") return true;
+    if (groupMode === "broker" || groupMode === "currency" || groupMode === "subcategory") return true;
     const tickers = new Set<string>();
     for (const r of rows) tickers.add(r.asset.ticker);
     return [...tickers].every((t) => expandedTickerGroups.has(t));
@@ -202,7 +220,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
       ? typeGroups.length > 0 && typeGroups.every((g) => expandedGroups.has(g.category))
       : groupMode === "broker"
       ? brokerGroups.length > 0 && brokerGroups.every((g) => expandedGroups.has(g.brokerName))
-      : currencyGroups.length > 0 && currencyGroups.every((g) => expandedGroups.has(g.currency))
+      : groupMode === "currency"
+      ? currencyGroups.length > 0 && currencyGroups.every((g) => expandedGroups.has(g.currency))
+      : subcategoryGroups.length > 0 && subcategoryGroups.every((g) => expandedGroups.has(g.subcategory))
   );
 
   const allGroupAssetsExpanded =
@@ -222,7 +242,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
           ? typeGroups.map((g) => g.category)
           : groupMode === "broker"
           ? brokerGroups.map((g) => g.brokerName)
-          : currencyGroups.map((g) => g.currency);
+          : groupMode === "currency"
+          ? currencyGroups.map((g) => g.currency)
+          : subcategoryGroups.map((g) => g.subcategory);
         setExpandedGroups(new Set(groupKeys));
         setExpanded(new Set(rows.map((r) => r.id)));
         if (groupMode === "type") setExpandedTickerGroups(allTickerKeys);
@@ -237,7 +259,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
         setExpandedTickerGroups(allTickerKeys);
       }
     }
-  }, [rows, typeGroups, brokerGroups, currencyGroups, groupMode, isGrouped, allGroupsExpanded, expanded, allTickerGroupsExpanded]);
+  }, [rows, typeGroups, brokerGroups, currencyGroups, subcategoryGroups, groupMode, isGrouped, allGroupsExpanded, expanded, allTickerGroupsExpanded]);
 
   const toggleGroupExpand = useCallback((groupKey: string) => {
     setExpandedGroups((prev) => {
@@ -254,6 +276,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
         }
         if (groupMode === "currency") {
           const group = currencyGroups.find((g) => g.currency === groupKey);
+          return group?.rows.map((r) => r.id) ?? [];
+        }
+        if (groupMode === "subcategory") {
+          const group = subcategoryGroups.find((g) => g.subcategory === groupKey);
           return group?.rows.map((r) => r.id) ?? [];
         }
         const group = brokerGroups.find((g) => g.brokerName === groupKey);
@@ -274,7 +300,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
       return next;
     });
-  }, [groupMode, typeGroups, brokerGroups, currencyGroups]);
+  }, [groupMode, typeGroups, brokerGroups, currencyGroups, subcategoryGroups]);
 
   const toggleTickerGroupExpand = useCallback((ticker: string) => {
     setExpandedTickerGroups((prev) => {
@@ -376,7 +402,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                   )}
                   {isGrouped && (
                     <span className="text-[10px] font-medium">
-                      {groupMode === "type" ? "Type" : groupMode === "broker" ? "Broker" : "Currency"}
+                      {groupMode === "type" ? "Type" : groupMode === "broker" ? "Broker" : groupMode === "currency" ? "Currency" : "Subcat"}
                     </span>
                   )}
                 </button>
@@ -576,6 +602,53 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                         )}
                         <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                           {group.currency}
+                        </span>
+                        <span className="text-[11px] text-zinc-600">
+                          ({group.assetCount})
+                        </span>
+                        <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
+                          {formatCurrency(group.totalValue, primaryCurrency)}
+                        </span>
+                      </button>
+
+                      {isGroupOpen && (
+                        <div className="space-y-2 ml-6">
+                          {sortRows(group.rows, sortKey, sortDir).map((row) => (
+                            <MobileStockCard
+                              key={row.id}
+                              row={row}
+                              expanded={expanded.has(row.asset.id)}
+                              toggleExpand={toggleExpand}
+                              handleEdit={handleEdit}
+                              handleDelete={handleDelete}
+                              primaryCurrency={primaryCurrency}
+                              fxRates={fxRates}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              : groupMode === "subcategory"
+              ? subcategoryGroups.map((group, gi) => {
+                  const isGroupOpen = expandedGroups.has(group.subcategory);
+                  const groupColor = group.isUncategorized
+                    ? "text-zinc-500"
+                    : GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                  return (
+                    <div key={`mgroup:sub:${group.subcategory}`}>
+                      <button
+                        onClick={() => toggleGroupExpand(group.subcategory)}
+                        className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-blue-500/40"
+                      >
+                        {isGroupOpen ? (
+                          <ChevronDown className="w-3 h-3 text-zinc-500" />
+                        ) : (
+                          <ChevronRight className="w-3 h-3 text-zinc-500" />
+                        )}
+                        <span className={`text-sm font-semibold tracking-wider ${groupColor} ${group.isUncategorized ? "italic" : "uppercase"}`}>
+                          {group.subcategory}
                         </span>
                         <span className="text-[11px] text-zinc-600">
                           ({group.assetCount})
@@ -896,6 +969,88 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                         </Fragment>
                       );
                     })
+                  : groupMode === "subcategory"
+                  ? subcategoryGroups.map((group, gi) => {
+                      const isGroupOpen = expandedGroups.has(group.subcategory);
+                      const groupColor = group.isUncategorized
+                        ? "text-zinc-500"
+                        : GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                      return (
+                        <Fragment key={`group:sub:${group.subcategory}`}>
+                          <tr
+                            className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
+                            onClick={() => toggleGroupExpand(group.subcategory)}
+                          >
+                            <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                {isGroupOpen ? (
+                                  <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                                ) : (
+                                  <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                                )}
+                                <span className={`text-sm font-semibold tracking-wider ${groupColor} ${group.isUncategorized ? "italic" : "uppercase"}`}>
+                                  {group.subcategory}
+                                </span>
+                                <span className="text-[11px] text-zinc-600">
+                                  {group.assetCount} asset{group.assetCount !== 1 ? "s" : ""}
+                                </span>
+                                <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
+                                  {formatCurrency(group.totalValue, primaryCurrency)}
+                                </span>
+                              </div>
+                            </td>
+                            <td />
+                          </tr>
+
+                          {isGroupOpen &&
+                            sortRows(group.rows, sortKey, sortDir).map((row) => {
+                              const rowExpanded = expanded.has(row.asset.id);
+                              return (
+                                <Fragment key={row.id}>
+                                  <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                                    {orderedColumns.map((col, ci) => {
+                                      const align = col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
+                                      const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                                      const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
+                                      return (
+                                        <td key={col.key} className={`${pl} py-3 ${align} ${hidden}`}>
+                                          {col.renderCell(row, ctx)}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+
+                                  {rowExpanded && row.asset.positions.length > 0 &&
+                                    row.asset.positions.map((pos) => {
+                                      const posValueNative = pos.quantity * row.pricePerShare;
+                                      const posValueBase = convertToBase(posValueNative, row.asset.currency, primaryCurrency, fxRates);
+                                      return (
+                                        <ExpandedStockRow
+                                          key={pos.id}
+                                          brokerName={pos.broker_name}
+                                          quantity={formatQuantity(pos.quantity, 4)}
+                                          value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
+                                          orderedColumns={orderedColumns}
+                                          grouped
+                                        />
+                                      );
+                                    })}
+
+                                  {rowExpanded && row.asset.positions.length === 0 && (
+                                    <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                                      <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
+                                        <p className="text-xs text-zinc-600">
+                                          No positions — click edit to add quantities
+                                        </p>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
+                        </Fragment>
+                      );
+                    })
                   : flatItems.map((item) =>
                       item.kind === "single" ? (
                         <FlatSingleRow
@@ -931,7 +1086,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
       )}
 
       {/* Modals */}
-      <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} />
+      <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} />
       {editingAsset && (
         <StockPositionEditor
           open={!!editingAsset}

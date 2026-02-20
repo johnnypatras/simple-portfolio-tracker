@@ -175,6 +175,7 @@ export interface StockAsset {
   yahoo_ticker: string | null;
   category: AssetCategory;
   currency: string;  // free-form ISO currency code (USD, EUR, GBP, CHF, etc.)
+  subcategory: string | null;  // user-defined grouping (e.g. "S&P 500", "World", "US Bonds")
   created_at: string;
 }
 
@@ -198,6 +199,7 @@ export interface StockAssetInput {
   yahoo_ticker?: string | null;
   category?: AssetCategory;
   currency?: string;  // ISO currency code, defaults to "USD"
+  subcategory?: string | null;
 }
 
 // ─── Yahoo Finance API types ──────────────────────────────

@@ -78,6 +78,7 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
       yahoo_ticker: input.yahoo_ticker ?? null,
       category: input.category ?? "stock",
       currency: input.currency ?? "USD",
+      subcategory: input.subcategory?.trim() || null,
     })
     .select("id")
     .single();
@@ -100,6 +101,27 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
   });
   revalidatePath("/dashboard/stocks");
   return data.id;
+}
+
+/** Update a stock asset's editable fields (subcategory, etc.) */
+export async function updateStockAsset(
+  id: string,
+  fields: { subcategory?: string | null }
+) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("stock_assets")
+    .update({ subcategory: fields.subcategory?.trim() || null })
+    .eq("id", id)
+    .eq("user_id", user.id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/stocks");
 }
 
 /** Remove a stock asset and all its positions (CASCADE) */
