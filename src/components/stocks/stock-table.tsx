@@ -941,6 +941,7 @@ function MobileStockCard({
   overrideQty,
   overrideValue,
   groupPositions,
+  isVariant,
 }: {
   row: StockRow;
   expanded: boolean;
@@ -952,6 +953,7 @@ function MobileStockCard({
   overrideQty?: number;
   overrideValue?: number;
   groupPositions?: StockAssetWithPositions["positions"];
+  isVariant?: boolean;
 }) {
   const displayQty = overrideQty ?? row.totalQty;
   const displayValue = overrideValue ?? row.valueBase;
@@ -965,10 +967,24 @@ function MobileStockCard({
         className="w-full px-4 py-3 flex items-center justify-between overflow-hidden"
       >
         <div className="text-left min-w-0">
-          <p className="text-sm font-medium text-zinc-200 truncate">
-            {row.asset.name}
-          </p>
-          <p className="text-xs text-zinc-500 uppercase">{row.asset.ticker}</p>
+          {isVariant ? (
+            <>
+              <p className="text-xs font-medium text-zinc-300 truncate">
+                {row.asset.yahoo_ticker || row.asset.ticker}
+              </p>
+              <p className="text-[11px] text-zinc-600">
+                {row.asset.currency}
+                {row.asset.isin && ` · ${row.asset.isin}`}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-zinc-200 truncate">
+                {row.asset.name}
+              </p>
+              <p className="text-xs text-zinc-500 uppercase">{row.asset.ticker}</p>
+            </>
+          )}
         </div>
         <div className="text-right shrink-0 ml-3">
           <p className="text-sm font-semibold text-zinc-100 tabular-nums">
@@ -1532,6 +1548,7 @@ function MobileTickerGroupCard({
               handleDelete={handleDelete}
               primaryCurrency={primaryCurrency}
               fxRates={fxRates}
+              isVariant
             />
           ))}
         </div>
