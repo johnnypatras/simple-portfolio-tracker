@@ -191,7 +191,48 @@ export function buildCryptoWalletGroups(rows: CryptoRow[]): CryptoWalletGroup[] 
   return groups;
 }
 
-// ── Position-level group types for group-by-subcategory mode ─
+// ── Asset-level group types for group-by-chain mode ──────────
+
+/** A group of crypto assets sharing the same chain/network */
+export interface CryptoChainGroup {
+  chain: string;
+  label: string;
+  rows: CryptoRow[];
+  totalValue: number;
+  entryCount: number;
+}
+
+/**
+ * Build asset-level groups by chain. Each asset belongs to exactly one group.
+ * Assets without a chain go into "Uncategorized".
+ */
+export function buildCryptoChainGroups(rows: CryptoRow[]): CryptoChainGroup[] {
+  const groupMap = new Map<string, CryptoRow[]>();
+
+  for (const row of rows) {
+    const key = row.asset.chain?.trim() || "__uncategorized__";
+    const arr = groupMap.get(key) ?? [];
+    arr.push(row);
+    groupMap.set(key, arr);
+  }
+
+  const groups: CryptoChainGroup[] = [];
+  for (const [key, groupRows] of groupMap) {
+    const totalValue = groupRows.reduce((sum, r) => sum + r.valueInBase, 0);
+    groups.push({
+      chain: key,
+      label: key === "__uncategorized__" ? "Uncategorized" : key,
+      rows: groupRows.sort((a, b) => b.valueInBase - a.valueInBase),
+      totalValue,
+      entryCount: groupRows.length,
+    });
+  }
+
+  groups.sort((a, b) => b.totalValue - a.totalValue);
+  return groups;
+}
+
+// ── Asset-level group types for group-by-subcategory mode ────
 
 /** A group of crypto assets sharing the same subcategory */
 export interface CryptoSubcategoryGroup {
@@ -461,6 +502,38 @@ export function getCryptoColumns(handlers: {
           >
             {ACQUISITION_LABELS[method] ?? method}
           </span>
+        );
+      },
+    },
+    {
+      key: "chain",
+      label: "Chain",
+      header: "Chain",
+      align: "left",
+      width: "w-24",
+      hiddenBelow: "md",
+      renderCell: (row) => {
+        const chain = row.asset.chain?.trim();
+        return chain ? (
+          <span className="text-xs text-zinc-400">{chain}</span>
+        ) : (
+          <span className="text-xs text-zinc-600">—</span>
+        );
+      },
+    },
+    {
+      key: "subcategory",
+      label: "Subcategory",
+      header: "Subcat.",
+      align: "left",
+      width: "w-24",
+      hiddenBelow: "md",
+      renderCell: (row) => {
+        const sub = row.asset.subcategory?.trim();
+        return sub ? (
+          <span className="text-xs text-zinc-400">{sub}</span>
+        ) : (
+          <span className="text-xs text-zinc-600">—</span>
         );
       },
     },
