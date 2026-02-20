@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { upsertStockPosition, deleteStockPosition } from "@/lib/actions/stocks";
+import { upsertStockPosition, deleteStockPosition, updateStockAsset } from "@/lib/actions/stocks";
 import type { StockAssetWithPositions, Broker } from "@/lib/types";
 
 interface StockPositionEditorProps {
@@ -11,6 +11,7 @@ interface StockPositionEditorProps {
   onClose: () => void;
   asset: StockAssetWithPositions;
   brokers: Broker[];
+  existingSubcategories: string[];
 }
 
 export function StockPositionEditor({
@@ -18,9 +19,28 @@ export function StockPositionEditor({
   onClose,
   asset,
   brokers,
+  existingSubcategories,
 }: StockPositionEditorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Subcategory editing
+  const [subcategory, setSubcategory] = useState(asset.subcategory ?? "");
+  const [subcategoryOpen, setSubcategoryOpen] = useState(false);
+  const [subcategorySaving, setSubcategorySaving] = useState(false);
+  const subcategoryChanged = (subcategory.trim() || null) !== (asset.subcategory ?? null);
+
+  async function handleSubcategorySave() {
+    setSubcategorySaving(true);
+    setError(null);
+    try {
+      await updateStockAsset(asset.id, { subcategory: subcategory.trim() || null });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update subcategory");
+    } finally {
+      setSubcategorySaving(false);
+    }
+  }
 
   // Track edits: brokerId → quantity string
   const [edits, setEdits] = useState<Record<string, string>>(() => {
@@ -101,6 +121,72 @@ export function StockPositionEditor({
       title={`${asset.name} (${asset.ticker}) Positions`}
     >
       <div className="space-y-4">
+        {/* Subcategory */}
+        <div className="relative">
+          <label className="block text-xs text-zinc-500 mb-1">
+            Subcategory{" "}
+            <span className="text-zinc-600">(e.g. &quot;S&amp;P 500&quot;, &quot;World&quot;, &quot;US Bonds&quot;)</span>
+          </label>
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={subcategory}
+                onChange={(e) => {
+                  setSubcategory(e.target.value);
+                  setSubcategoryOpen(true);
+                }}
+                onFocus={() => setSubcategoryOpen(true)}
+                onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
+                placeholder="Type or pick..."
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              />
+              {subcategoryOpen && existingSubcategories.length > 0 && (() => {
+                const filtered = existingSubcategories.filter(
+                  (s) =>
+                    s.toLowerCase().includes(subcategory.toLowerCase()) &&
+                    s.toLowerCase() !== subcategory.toLowerCase()
+                );
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                    {filtered.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setSubcategory(s);
+                          setSubcategoryOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+            {subcategoryChanged && (
+              <button
+                onClick={handleSubcategorySave}
+                disabled={subcategorySaving}
+                className="p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                title="Save subcategory"
+              >
+                {subcategorySaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-zinc-800/50" />
+
         {allBrokerIds.length === 0 && (
           <p className="text-sm text-zinc-500 text-center py-4">
             No positions yet — add a broker below

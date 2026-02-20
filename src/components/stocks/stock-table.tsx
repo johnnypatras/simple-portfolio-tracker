@@ -1093,6 +1093,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
           onClose={() => setEditingAsset(null)}
           asset={editingAsset}
           brokers={brokers}
+          existingSubcategories={existingSubcategories}
         />
       )}
     </div>
