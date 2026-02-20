@@ -317,7 +317,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:stocks", columns, 1);
+  } = useColumnConfig("colConfig:stocks", columns, 2);
 
   const ctx: RenderContext = { primaryCurrency, fxRates };
 

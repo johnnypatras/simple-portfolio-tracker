@@ -506,6 +506,7 @@ export function getStockColumns(handlers: {
       header: "Shares",
       align: "right",
       width: "w-24",
+      defaultVisible: false,
       renderCell: (row) => (
         <span className="text-sm text-zinc-300 tabular-nums">
           {row.totalQty > 0 ? formatNumber(row.totalQty, 4) : "—"}
