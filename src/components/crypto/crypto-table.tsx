@@ -176,6 +176,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     return [...subs].sort();
   }, [assets]);
 
+  // Existing chains for combobox autocomplete
+  const existingChains = useMemo(() => {
+    const chains = new Set<string>();
+    for (const a of assets) {
+      if (a.chain?.trim()) chains.add(a.chain.trim());
+    }
+    return [...chains].sort();
+  }, [assets]);
+
   // Sort entries within a group (reuses the same sort key/dir as flat mode)
   const sortEntries = useCallback(
     <T extends { row: CryptoRow; groupValue: number }>(entries: T[]): T[] => {
@@ -1011,7 +1020,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
       )}
 
       {/* Modals */}
-      <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} />
+      <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} existingChains={existingChains} />
       {editingAsset && (
         <PositionEditor
           open={!!editingAsset}

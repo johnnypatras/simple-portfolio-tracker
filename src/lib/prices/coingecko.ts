@@ -61,3 +61,118 @@ export async function getPrices(
 
   return res.json();
 }
+
+// ── Coin detail (chain + categories) ──────────────────────
+
+export interface CoinGeckoDetail {
+  asset_platform_id: string | null;
+  categories: string[];
+}
+
+/**
+ * Fetch minimal detail for a single coin — just the platform + categories.
+ * Used to auto-detect chain and subcategory when adding a new crypto asset.
+ */
+export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | null> {
+  const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`;
+  const res = await fetch(url, { headers: headers(), next: { revalidate: 3600 } });
+
+  if (!res.ok) {
+    console.error("[coingecko] Coin detail failed:", res.status);
+    return null;
+  }
+
+  const data = await res.json();
+  return {
+    asset_platform_id: data.asset_platform_id ?? null,
+    categories: Array.isArray(data.categories) ? data.categories : [],
+  };
+}
+
+// ── Mapping helpers ───────────────────────────────────────
+
+/** Map CoinGecko asset_platform_id to a friendly chain name */
+const PLATFORM_TO_CHAIN: Record<string, string> = {
+  ethereum: "Ethereum",
+  "binance-smart-chain": "BNB Chain",
+  "polygon-pos": "Polygon",
+  "arbitrum-one": "Arbitrum",
+  "optimistic-ethereum": "Optimism",
+  avalanche: "Avalanche",
+  solana: "Solana",
+  base: "Base",
+  fantom: "Fantom",
+  cronos: "Cronos",
+  near: "NEAR",
+  "stacks-mainnet": "Stacks",
+  tron: "Tron",
+  stellar: "Stellar",
+  cosmos: "Cosmos",
+  polkadot: "Polkadot",
+  cardano: "Cardano",
+  algorand: "Algorand",
+  sui: "Sui",
+  aptos: "Aptos",
+  celo: "Celo",
+  mantle: "Mantle",
+  blast: "Blast",
+  linea: "Linea",
+  "zksync-era": "zkSync",
+  scroll: "Scroll",
+};
+
+/** Well-known L1 native coins (where asset_platform_id is null) */
+const NATIVE_CHAIN_MAP: Record<string, string> = {
+  bitcoin: "Bitcoin",
+  ethereum: "Ethereum",
+  solana: "Solana",
+  cardano: "Cardano",
+  polkadot: "Polkadot",
+  avalanche: "Avalanche",
+  near: "NEAR",
+  cosmos: "Cosmos",
+  algorand: "Algorand",
+  fantom: "Fantom",
+  sui: "Sui",
+  aptos: "Aptos",
+  tron: "Tron",
+  stellar: "Stellar",
+};
+
+/** Map CoinGecko categories to our subcategory labels.
+ *  First match wins — order matters (more specific first). */
+const CATEGORY_TO_SUBCATEGORY: [RegExp, string][] = [
+  [/stablecoin/i, "Stablecoin"],
+  [/layer 1/i, "L1"],
+  [/layer 2/i, "L2"],
+  [/decentralized finance|defi/i, "DeFi"],
+  [/meme/i, "Meme"],
+  [/gaming|play.to.earn/i, "Gaming"],
+  [/nft|non.fungible/i, "NFT"],
+  [/real world asset|rwa/i, "RWA"],
+  [/oracle/i, "Oracle"],
+  [/exchange.based|exchange token/i, "Exchange Token"],
+  [/privacy/i, "Privacy"],
+  [/artificial intelligence|ai /i, "AI"],
+  [/liquid staking/i, "Liquid Staking"],
+  [/governance/i, "Governance"],
+];
+
+/** Derive a friendly chain name from CoinGecko detail */
+export function inferChain(coinId: string, detail: CoinGeckoDetail): string {
+  if (detail.asset_platform_id) {
+    return PLATFORM_TO_CHAIN[detail.asset_platform_id] ?? detail.asset_platform_id;
+  }
+  // Native coin — use the coin's own chain
+  return NATIVE_CHAIN_MAP[coinId] ?? "";
+}
+
+/** Derive a subcategory from CoinGecko categories list */
+export function inferSubcategory(categories: string[]): string {
+  for (const cat of categories) {
+    for (const [pattern, label] of CATEGORY_TO_SUBCATEGORY) {
+      if (pattern.test(cat)) return label;
+    }
+  }
+  return "";
+}

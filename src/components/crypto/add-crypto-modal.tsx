@@ -12,9 +12,10 @@ interface AddCryptoModalProps {
   onClose: () => void;
   wallets: Wallet[];
   existingSubcategories: string[];
+  existingChains: string[];
 }
 
-export function AddCryptoModal({ open, onClose, wallets, existingSubcategories }: AddCryptoModalProps) {
+export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, existingChains }: AddCryptoModalProps) {
   // ─── Search phase state ──────────────────────────────────
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CoinGeckoSearchResult[]>([]);
@@ -24,17 +25,20 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories }
   // ─── Form phase state ────────────────────────────────────
   const [selectedCoin, setSelectedCoin] = useState<CoinGeckoSearchResult | null>(null);
   const [adding, setAdding] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ─── Chain + subcategory state ────────────────────────────
+  const [chain, setChain] = useState("");
+  const [chainDropdownOpen, setChainDropdownOpen] = useState(false);
+  const [subcategory, setSubcategory] = useState("");
+  const [subcategoryDropdownOpen, setSubcategoryDropdownOpen] = useState(false);
 
   // ─── Optional initial position state ───────────────────
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionWalletId, setPositionWalletId] = useState("");
   const [positionQuantity, setPositionQuantity] = useState("");
   const [acquisitionType, setAcquisitionType] = useState("bought");
-
-  // ─── Subcategory state ──────────────────────────────────
-  const [subcategory, setSubcategory] = useState("");
-  const [subcategoryDropdownOpen, setSubcategoryDropdownOpen] = useState(false);
 
   // Debounced search
   useEffect(() => {
@@ -73,19 +77,39 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories }
       setSelectedCoin(null);
       setError(null);
       setAdding(false);
+      setDetecting(false);
+      setChain("");
+      setChainDropdownOpen(false);
+      setSubcategory("");
+      setSubcategoryDropdownOpen(false);
       setPositionOpen(false);
       setPositionWalletId("");
       setPositionQuantity("");
       setAcquisitionType("bought");
-      setSubcategory("");
-      setSubcategoryDropdownOpen(false);
     }
   }, [open]);
 
-  // ─── Handle selection: move to form phase ──────────────
-  function handleSelect(coin: CoinGeckoSearchResult) {
+  // ─── Handle selection: move to form phase + fetch detail ──
+  async function handleSelect(coin: CoinGeckoSearchResult) {
     setSelectedCoin(coin);
     setError(null);
+    setChain("");
+    setSubcategory("");
+
+    // Fetch chain + subcategory from CoinGecko detail API
+    setDetecting(true);
+    try {
+      const res = await fetch(`/api/crypto/detail?id=${encodeURIComponent(coin.id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.chain) setChain(data.chain);
+        if (data.subcategory) setSubcategory(data.subcategory);
+      }
+    } catch {
+      // Detection failed silently — user can fill manually
+    } finally {
+      setDetecting(false);
+    }
   }
 
   // ─── Go back to search ────────────────────────────────
@@ -107,6 +131,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories }
         ticker: selectedCoin.symbol,
         name: selectedCoin.name,
         coingecko_id: selectedCoin.id,
+        chain: chain.trim() || null,
         subcategory: subcategory.trim() || null,
       });
 
@@ -260,50 +285,105 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories }
             </div>
           </div>
 
+          {detecting && (
+            <div className="flex items-center gap-2 text-xs text-zinc-500 mb-3">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Detecting chain &amp; category…
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Subcategory */}
-            <div className="relative">
-              <label className="block text-xs text-zinc-500 mb-1">
-                Subcategory <span className="text-zinc-600">(optional — e.g. L1, Ethereum L2, DeFi, Stablecoin)</span>
-              </label>
-              <input
-                type="text"
-                value={subcategory}
-                onChange={(e) => {
-                  setSubcategory(e.target.value);
-                  setSubcategoryDropdownOpen(true);
-                }}
-                onFocus={() => setSubcategoryDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setSubcategoryDropdownOpen(false), 150)}
-                placeholder="Type or pick a subcategory..."
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-              />
-              {subcategoryDropdownOpen && existingSubcategories.length > 0 && (() => {
-                const filtered = existingSubcategories.filter(
-                  (s) =>
-                    s.toLowerCase().includes(subcategory.toLowerCase()) &&
-                    s.toLowerCase() !== subcategory.toLowerCase()
-                );
-                if (filtered.length === 0) return null;
-                return (
-                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
-                    {filtered.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setSubcategory(s);
-                          setSubcategoryDropdownOpen(false);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()}
+            {/* Chain + Subcategory row */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Chain */}
+              <div className="relative">
+                <label className="block text-xs text-zinc-500 mb-1">
+                  Chain <span className="text-zinc-600">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={chain}
+                  onChange={(e) => {
+                    setChain(e.target.value);
+                    setChainDropdownOpen(true);
+                  }}
+                  onFocus={() => setChainDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setChainDropdownOpen(false), 150)}
+                  placeholder="e.g. Ethereum, Solana..."
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+                {chainDropdownOpen && existingChains.length > 0 && (() => {
+                  const filtered = existingChains.filter(
+                    (s) =>
+                      s.toLowerCase().includes(chain.toLowerCase()) &&
+                      s.toLowerCase() !== chain.toLowerCase()
+                  );
+                  if (filtered.length === 0) return null;
+                  return (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                      {filtered.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setChain(s);
+                            setChainDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Subcategory */}
+              <div className="relative">
+                <label className="block text-xs text-zinc-500 mb-1">
+                  Subcategory <span className="text-zinc-600">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={subcategory}
+                  onChange={(e) => {
+                    setSubcategory(e.target.value);
+                    setSubcategoryDropdownOpen(true);
+                  }}
+                  onFocus={() => setSubcategoryDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setSubcategoryDropdownOpen(false), 150)}
+                  placeholder="e.g. L1, DeFi..."
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+                {subcategoryDropdownOpen && existingSubcategories.length > 0 && (() => {
+                  const filtered = existingSubcategories.filter(
+                    (s) =>
+                      s.toLowerCase().includes(subcategory.toLowerCase()) &&
+                      s.toLowerCase() !== subcategory.toLowerCase()
+                  );
+                  if (filtered.length === 0) return null;
+                  return (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                      {filtered.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setSubcategory(s);
+                            setSubcategoryDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
             {/* Optional: Initial position (with acquisition type) */}
