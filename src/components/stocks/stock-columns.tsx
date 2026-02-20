@@ -450,6 +450,19 @@ export function getStockColumns(handlers: {
       ),
     },
     {
+      key: "currency",
+      label: "Currency",
+      header: "Currency",
+      align: "center",
+      width: "w-20",
+      hiddenBelow: "sm",
+      renderCell: (row) => (
+        <span className="text-xs text-zinc-400">
+          {row.asset.currency}
+        </span>
+      ),
+    },
+    {
       key: "type",
       label: "Type",
       header: "Type",
@@ -459,19 +472,6 @@ export function getStockColumns(handlers: {
       renderCell: (row) => (
         <span className={`text-xs font-medium ${CATEGORY_COLORS[row.asset.category]}`}>
           {CATEGORY_LABELS[row.asset.category]}
-        </span>
-      ),
-    },
-    {
-      key: "currency",
-      label: "Currency",
-      header: "Currency",
-      align: "left",
-      width: "w-16",
-      hiddenBelow: "sm",
-      renderCell: (row) => (
-        <span className="text-xs text-zinc-400">
-          {row.asset.currency}
         </span>
       ),
     },

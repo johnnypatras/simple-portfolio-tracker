@@ -626,7 +626,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
               <thead>
                 <tr className="border-b border-zinc-800/50">
                   {orderedColumns.map((col) => {
-                    const align = col.align === "right" ? "text-right" : "text-left";
+                    const align = col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
                     const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                     const width = col.width ?? "";
                     const colSortKey = COLUMN_TO_SORT[col.key];
@@ -640,7 +640,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                         }`}
                         onClick={isSortable ? () => handleSort(colSortKey) : undefined}
                       >
-                        <span className={`inline-flex items-center gap-1 ${align === "text-right" ? "justify-end" : ""}`}>
+                        <span className={`inline-flex items-center gap-1 ${align === "text-right" ? "justify-end" : align === "text-center" ? "justify-center" : ""}`}>
                           {col.renderHeader ? col.renderHeader(ctx) : col.header}
                           {isSortable && (
                             isActiveSort
@@ -740,7 +740,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                 <Fragment key={`${group.brokerName}:${row.id}`}>
                                   <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
                                     {orderedColumns.map((col, ci) => {
-                                      const align = col.align === "right" ? "text-right" : "text-left";
+                                      const align = col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
                                       const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                                       const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
                                       // Override shares/value for per-broker values
@@ -838,7 +838,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                 <Fragment key={row.id}>
                                   <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
                                     {orderedColumns.map((col, ci) => {
-                                      const align = col.align === "right" ? "text-right" : "text-left";
+                                      const align = col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
                                       const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                                       const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
                                       return (
@@ -1126,7 +1126,7 @@ function FlatSingleRow({
     <Fragment>
       <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
         {orderedColumns.map((col) => {
-          const align = col.align === "right" ? "text-right" : "text-left";
+          const align = col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
           const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
           return (
             <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
@@ -1231,7 +1231,7 @@ function TickerGroupRows({
             <Fragment key={row.id}>
               <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors opacity-85">
                 {orderedColumns.map((col, ci) => {
-                  const align = col.align === "right" ? "text-right" : "text-left";
+                  const align = col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
                   const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                   const pl = ci === 0 ? variantPl : "px-4";
 
@@ -1341,7 +1341,7 @@ function TypeGroupInnerRows({
             <Fragment key={row.id}>
               <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
                 {orderedColumns.map((col, ci) => {
-                  const align = col.align === "right" ? "text-right" : "text-left";
+                  const align = col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
                   const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                   const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
                   return (
@@ -1399,7 +1399,7 @@ function TypeGroupInnerRows({
             <Fragment key={row.id}>
               <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
                 {orderedColumns.map((col, ci) => {
-                  const align = col.align === "right" ? "text-right" : "text-left";
+                  const align = col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
                   const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                   const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
                   return (

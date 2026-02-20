@@ -21,8 +21,8 @@ export interface ColumnDef<TRow> {
   pinned?: "left" | "right";
   /** Whether this column is visible by default (default: true) */
   defaultVisible?: boolean;
-  /** Text alignment — maps to "text-left" or "text-right" */
-  align?: "left" | "right";
+  /** Text alignment — maps to "text-left", "text-center", or "text-right" */
+  align?: "left" | "center" | "right";
   /** Hide this column below a Tailwind breakpoint */
   hiddenBelow?: "sm" | "md" | "lg";
   /** Fixed Tailwind width class, e.g. "w-28" */
