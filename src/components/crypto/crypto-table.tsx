@@ -572,7 +572,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.acquisitionMethod)}
                           >
-                            <td colSpan={orderedColumns.length} className="px-4 py-2.5">
+                            <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
                               <div className="flex items-center gap-2">
                                 {isGroupOpen ? (
                                   <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -594,6 +594,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                 </span>
                               </div>
                             </td>
+                            <td />
                           </tr>
 
                           {isGroupOpen &&
@@ -621,7 +622,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                               className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                               onClick={() => toggleGroupExpand(group.walletName)}
                             >
-                              <td colSpan={orderedColumns.length} className="px-4 py-2.5">
+                              <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
                                 <div className="flex items-center gap-2">
                                   {isGroupOpen ? (
                                     <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -644,6 +645,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                   </span>
                                 </div>
                               </td>
+                              <td />
                             </tr>
 
                             {isGroupOpen &&
