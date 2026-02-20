@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, Wallet as WalletIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { createWallet, updateWallet, deleteWallet } from "@/lib/actions/wallets";
 import type { Wallet, WalletInput, WalletType, PrivacyLabel } from "@/lib/types";
+import { parseWalletChains, serializeChains } from "@/lib/types";
 
 const walletTypeLabels: Record<WalletType, string> = {
   custodial: "Exchange / Custodial",
@@ -32,14 +33,14 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
   const [name, setName] = useState("");
   const [walletType, setWalletType] = useState<WalletType>("custodial");
   const [privacyLabel, setPrivacyLabel] = useState<PrivacyLabel | "">("");
-  const [chain, setChain] = useState("");
+  const [selectedChains, setSelectedChains] = useState<string[]>([]);
 
   function openCreate() {
     setEditing(null);
     setName("");
     setWalletType("custodial");
     setPrivacyLabel("");
-    setChain("");
+    setSelectedChains([]);
     setError(null);
     setModalOpen(true);
   }
@@ -49,7 +50,7 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
     setName(wallet.name);
     setWalletType(wallet.wallet_type);
     setPrivacyLabel(wallet.privacy_label ?? "");
-    setChain(wallet.chain ?? "");
+    setSelectedChains(parseWalletChains(wallet.chain));
     setError(null);
     setModalOpen(true);
   }
@@ -63,7 +64,7 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
       name,
       wallet_type: walletType,
       privacy_label: privacyLabel || null,
-      chain: chain || null,
+      chain: serializeChains(selectedChains),
     };
 
     try {
@@ -123,15 +124,15 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
                 <p className="text-sm font-medium text-zinc-200 truncate">
                   {w.name}
                 </p>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className="text-xs text-zinc-500">
                     {walletTypeLabels[w.wallet_type]}
                   </span>
-                  {w.chain && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
-                      {w.chain}
+                  {parseWalletChains(w.chain).map((c) => (
+                    <span key={c} className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                      {c}
                     </span>
-                  )}
+                  ))}
                   {w.privacy_label && (
                     <span
                       className={`text-xs px-1.5 py-0.5 rounded ${
@@ -196,24 +197,34 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
 
           <div>
             <label className="block text-sm text-zinc-400 mb-1.5">
-              Chain <span className="text-zinc-600">(optional{walletType === "non_custodial" ? " — recommended for self-custody" : ""})</span>
+              Chains <span className="text-zinc-600">(optional{walletType === "non_custodial" ? " — recommended for self-custody" : ""})</span>
             </label>
-            <select
-              value={WELL_KNOWN_CHAINS.includes(chain) ? chain : chain ? "__custom__" : ""}
-              onChange={(e) => {
-                if (e.target.value === "__custom__") return;
-                setChain(e.target.value);
-              }}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-            >
-              <option value="">Any / Multi-chain</option>
-              {WELL_KNOWN_CHAINS.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-              {chain && !WELL_KNOWN_CHAINS.includes(chain) && (
-                <option value="__custom__">{chain} (custom)</option>
-              )}
-            </select>
+            <p className="text-xs text-zinc-600 mb-2">
+              {selectedChains.length === 0 ? "No chains selected — wallet works with any chain" : `${selectedChains.length} selected`}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {WELL_KNOWN_CHAINS.map((c) => {
+                const active = selectedChains.includes(c);
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() =>
+                      setSelectedChains((prev) =>
+                        active ? prev.filter((x) => x !== c) : [...prev, c]
+                      )
+                    }
+                    className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                      active
+                        ? "bg-blue-600/20 border-blue-500/40 text-blue-300"
+                        : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div>

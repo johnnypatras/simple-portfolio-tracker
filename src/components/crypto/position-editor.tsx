@@ -5,7 +5,7 @@ import { Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
 import type { CryptoAssetWithPositions, Wallet } from "@/lib/types";
-import { ACQUISITION_TYPES } from "@/lib/types";
+import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
 
 interface PositionEditorProps {
   open: boolean;
@@ -73,8 +73,10 @@ export function PositionEditor({
   const usedWalletIds = new Set(asset.positions.map((p) => p.wallet_id));
   const availableWallets = wallets.filter((w) => {
     if (usedWalletIds.has(w.id)) return false;
-    // If asset has a chain and wallet has a chain, they must match
-    if (asset.chain && w.chain && w.chain !== asset.chain) return false;
+    // If asset has a chain and wallet has chains, check for overlap
+    if (asset.chain && w.chain) {
+      return parseWalletChains(w.chain).includes(asset.chain);
+    }
     return true;
   });
 

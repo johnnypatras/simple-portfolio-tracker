@@ -43,6 +43,18 @@ export interface WalletInput {
   chain?: string | null;
 }
 
+/** Parse comma-separated chain string into an array. Returns [] for null/empty. */
+export function parseWalletChains(chain: string | null | undefined): string[] {
+  if (!chain) return [];
+  return chain.split(",").map((c) => c.trim()).filter(Boolean);
+}
+
+/** Serialize chain array back to comma-separated string. Returns null for empty. */
+export function serializeChains(chains: string[]): string | null {
+  const filtered = chains.filter(Boolean);
+  return filtered.length > 0 ? filtered.join(",") : null;
+}
+
 export interface BrokerInput {
   name: string;
 }

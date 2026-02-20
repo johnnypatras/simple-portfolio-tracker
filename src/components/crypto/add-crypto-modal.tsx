@@ -5,7 +5,7 @@ import { Search, Loader2, ChevronDown, ChevronRight, ArrowLeft } from "lucide-re
 import { Modal } from "@/components/ui/modal";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
 import type { CoinGeckoSearchResult, Wallet } from "@/lib/types";
-import { ACQUISITION_TYPES } from "@/lib/types";
+import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
 
 interface AddCryptoModalProps {
   open: boolean;
@@ -46,8 +46,8 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
     return wallets.filter((w) => {
       // Wallets with no chain set (multi-chain / exchange) are always compatible
       if (!w.chain) return true;
-      // Otherwise, must match the selected chain
-      return w.chain === chain;
+      // Check if any of the wallet's chains match the selected chain
+      return parseWalletChains(w.chain).includes(chain);
     });
   }, [wallets, chain]);
 
@@ -428,11 +428,14 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                           className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                         >
                           <option value="">Select wallet...</option>
-                          {compatibleWallets.map((w) => (
-                            <option key={w.id} value={w.id}>
-                              {w.name}{w.chain ? ` (${w.chain})` : ""}
-                            </option>
-                          ))}
+                          {compatibleWallets.map((w) => {
+                            const chains = parseWalletChains(w.chain);
+                            return (
+                              <option key={w.id} value={w.id}>
+                                {w.name}{chains.length > 0 ? ` (${chains.join(", ")})` : ""}
+                              </option>
+                            );
+                          })}
                         </select>
                         {chain && compatibleWallets.length === 0 && (
                           <p className="text-xs text-amber-400/80 mt-1">
