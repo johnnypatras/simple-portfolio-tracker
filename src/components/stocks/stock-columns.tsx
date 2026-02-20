@@ -197,6 +197,71 @@ export function buildStockBrokerGroups(rows: StockRow[]): StockBrokerGroup[] {
   return groups;
 }
 
+// ── Ticker group for multi-exchange listings ─────────────────
+
+/** Group of assets sharing the same display ticker (e.g. VWCE.DE + VWCE.AS) */
+export interface TickerGroup {
+  ticker: string;
+  name: string;
+  category: AssetCategory;
+  rows: StockRow[];
+  totalValueBase: number;
+  weightedChange24h: number;
+}
+
+/**
+ * Groups stock rows by display ticker. Tickers with 2+ assets become
+ * TickerGroups; single-variant tickers remain as plain StockRows.
+ */
+export function buildTickerGroups(
+  rows: StockRow[]
+): { groups: TickerGroup[]; singles: StockRow[] } {
+  const tickerMap = new Map<string, StockRow[]>();
+
+  for (const row of rows) {
+    const t = row.asset.ticker;
+    const arr = tickerMap.get(t) ?? [];
+    arr.push(row);
+    tickerMap.set(t, arr);
+  }
+
+  const groups: TickerGroup[] = [];
+  const singles: StockRow[] = [];
+
+  for (const [ticker, tickerRows] of tickerMap) {
+    if (tickerRows.length < 2) {
+      singles.push(tickerRows[0]);
+      continue;
+    }
+
+    // Sort variants by value descending
+    tickerRows.sort((a, b) => b.valueBase - a.valueBase);
+
+    const totalValueBase = tickerRows.reduce((sum, r) => sum + r.valueBase, 0);
+    const weightedChange24h =
+      totalValueBase > 0
+        ? tickerRows.reduce((sum, r) => sum + r.valueBase * r.change24h, 0) /
+          totalValueBase
+        : 0;
+
+    // Use largest variant as representative
+    const primary = tickerRows[0];
+
+    groups.push({
+      ticker,
+      name: primary.asset.name,
+      category: primary.asset.category,
+      rows: tickerRows,
+      totalValueBase,
+      weightedChange24h,
+    });
+  }
+
+  // Sort groups by total value descending
+  groups.sort((a, b) => b.totalValueBase - a.totalValueBase);
+  return { groups, singles };
+}
+
 // ── Column definitions ───────────────────────────────────────
 
 export function getStockColumns(handlers: {

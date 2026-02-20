@@ -84,6 +84,9 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
 
   if (error) {
     if (error.code === "23505") {
+      if (error.message?.includes("stock_assets_user_yahoo_ticker_unique")) {
+        throw new Error("You already have this exact exchange listing in your portfolio");
+      }
       throw new Error("This stock/ETF is already in your portfolio");
     }
     throw new Error(error.message);

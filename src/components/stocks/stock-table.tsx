@@ -20,12 +20,14 @@ import {
   buildStockRows,
   buildStockGroupRows,
   buildStockBrokerGroups,
+  buildTickerGroups,
   formatNumber,
   formatCurrency,
   CATEGORY_LABELS,
   CATEGORY_COLORS,
   GROUP_PALETTE,
   type StockRow,
+  type TickerGroup,
 } from "./stock-columns";
 
 // ── Breakpoint → Tailwind class mapping ──────────────────────
@@ -63,6 +65,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState<StockGroupMode>("flat");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedTickerGroups, setExpandedTickerGroups] = useState<Set<string>>(new Set());
 
   const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => {
@@ -115,8 +118,13 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
   // Auto-expand everything when entering any mode (flat or grouped)
   useEffect(() => {
+    // Auto-expand all ticker groups (used in flat + type modes)
+    const allTickers = new Set<string>();
+    for (const r of rows) allTickers.add(r.asset.ticker);
+
     if (groupMode === "flat") {
       setExpanded(new Set(rows.map((r) => r.id)));
+      setExpandedTickerGroups(allTickers);
       return;
     }
     const groupKeys = groupMode === "type"
@@ -125,11 +133,20 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     if (groupKeys.length > 0) {
       setExpandedGroups(new Set(groupKeys));
       setExpanded(new Set(rows.map((r) => r.id)));
+      if (groupMode === "type") setExpandedTickerGroups(allTickers);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupMode]);
 
-  const allExpanded = rows.length > 0 && rows.every((r) => expanded.has(r.id));
+  // Check if all ticker groups are expanded (relevant for flat + type modes)
+  const allTickerGroupsExpanded = useMemo(() => {
+    if (groupMode === "broker") return true;
+    const tickers = new Set<string>();
+    for (const r of rows) tickers.add(r.asset.ticker);
+    return [...tickers].every((t) => expandedTickerGroups.has(t));
+  }, [rows, expandedTickerGroups, groupMode]);
+
+  const allExpanded = rows.length > 0 && rows.every((r) => expanded.has(r.id)) && allTickerGroupsExpanded;
 
   const allGroupsExpanded = isGrouped && (
     groupMode === "type"
@@ -138,28 +155,36 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
   );
 
   const allGroupAssetsExpanded =
-    allGroupsExpanded && rows.length > 0 && rows.every((r) => expanded.has(r.id));
+    allGroupsExpanded && rows.length > 0 && rows.every((r) => expanded.has(r.id)) && allTickerGroupsExpanded;
 
   const toggleExpandAll = useCallback(() => {
+    const allTickerKeys = new Set<string>();
+    for (const r of rows) allTickerKeys.add(r.asset.ticker);
+
     if (isGrouped) {
-      // Expand/collapse both levels: groups AND asset rows within them
-      if (allGroupsExpanded && rows.every((r) => expanded.has(r.id))) {
+      if (allGroupsExpanded && rows.every((r) => expanded.has(r.id)) && allTickerGroupsExpanded) {
         setExpandedGroups(new Set());
         setExpanded(new Set());
+        setExpandedTickerGroups(new Set());
       } else {
         const groupKeys = groupMode === "type"
           ? typeGroups.map((g) => g.category)
           : brokerGroups.map((g) => g.brokerName);
         setExpandedGroups(new Set(groupKeys));
         setExpanded(new Set(rows.map((r) => r.id)));
+        if (groupMode === "type") setExpandedTickerGroups(allTickerKeys);
       }
     } else {
-      setExpanded((prev) => {
-        if (rows.every((r) => prev.has(r.id))) return new Set();
-        return new Set(rows.map((r) => r.id));
-      });
+      const isFullyExpanded = rows.every((r) => expanded.has(r.id)) && allTickerGroupsExpanded;
+      if (isFullyExpanded) {
+        setExpanded(new Set());
+        setExpandedTickerGroups(new Set());
+      } else {
+        setExpanded(new Set(rows.map((r) => r.id)));
+        setExpandedTickerGroups(allTickerKeys);
+      }
     }
-  }, [rows, typeGroups, brokerGroups, groupMode, isGrouped, allGroupsExpanded, expanded]);
+  }, [rows, typeGroups, brokerGroups, groupMode, isGrouped, allGroupsExpanded, expanded, allTickerGroupsExpanded]);
 
   const toggleGroupExpand = useCallback((groupKey: string) => {
     setExpandedGroups((prev) => {
@@ -193,6 +218,30 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
       return next;
     });
   }, [groupMode, typeGroups, brokerGroups]);
+
+  const toggleTickerGroupExpand = useCallback((ticker: string) => {
+    setExpandedTickerGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticker)) next.delete(ticker);
+      else next.add(ticker);
+      return next;
+    });
+  }, []);
+
+  // Ticker groups for flat mode: merge multi-variant groups + singles into sorted list
+  const flatItems = useMemo(() => {
+    if (groupMode !== "flat") return [];
+    const { groups: tGroups, singles } = buildTickerGroups(rows);
+    const items: (
+      | { kind: "single"; row: StockRow; value: number }
+      | { kind: "ticker-group"; group: TickerGroup; value: number }
+    )[] = [
+      ...tGroups.map((g) => ({ kind: "ticker-group" as const, group: g, value: g.totalValueBase })),
+      ...singles.map((r) => ({ kind: "single" as const, row: r, value: r.valueBase })),
+    ];
+    items.sort((a, b) => b.value - a.value);
+    return items;
+  }, [groupMode, rows]);
 
   // Column definitions (stable via useMemo)
   const columns = useMemo(
@@ -340,20 +389,17 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                       </button>
 
                       {isGroupOpen && (
-                        <div className="space-y-2 ml-6">
-                          {group.rows.map((row) => (
-                            <MobileStockCard
-                              key={row.id}
-                              row={row}
-                              expanded={expanded.has(row.asset.id)}
-                              toggleExpand={toggleExpand}
-                              handleEdit={handleEdit}
-                              handleDelete={handleDelete}
-                              primaryCurrency={primaryCurrency}
-                              fxRates={fxRates}
-                            />
-                          ))}
-                        </div>
+                        <MobileTypeGroupInner
+                          groupRows={group.rows}
+                          expanded={expanded}
+                          toggleExpand={toggleExpand}
+                          expandedTickerGroups={expandedTickerGroups}
+                          toggleTickerGroupExpand={toggleTickerGroupExpand}
+                          handleEdit={handleEdit}
+                          handleDelete={handleDelete}
+                          primaryCurrency={primaryCurrency}
+                          fxRates={fxRates}
+                        />
                       )}
                     </div>
                   );
@@ -406,18 +452,33 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                     </div>
                   );
                 })
-              : rows.map((row) => (
-                <MobileStockCard
-                  key={row.id}
-                  row={row}
-                  expanded={expanded.has(row.asset.id)}
-                  toggleExpand={toggleExpand}
-                  handleEdit={handleEdit}
-                  handleDelete={handleDelete}
-                  primaryCurrency={primaryCurrency}
-                  fxRates={fxRates}
-                />
-              ))}
+              : flatItems.map((item) =>
+                item.kind === "single" ? (
+                  <MobileStockCard
+                    key={item.row.id}
+                    row={item.row}
+                    expanded={expanded.has(item.row.asset.id)}
+                    toggleExpand={toggleExpand}
+                    handleEdit={handleEdit}
+                    handleDelete={handleDelete}
+                    primaryCurrency={primaryCurrency}
+                    fxRates={fxRates}
+                  />
+                ) : (
+                  <MobileTickerGroupCard
+                    key={`mtg:${item.group.ticker}`}
+                    group={item.group}
+                    isOpen={expandedTickerGroups.has(item.group.ticker)}
+                    toggleOpen={() => toggleTickerGroupExpand(item.group.ticker)}
+                    expanded={expanded}
+                    toggleExpand={toggleExpand}
+                    handleEdit={handleEdit}
+                    handleDelete={handleDelete}
+                    primaryCurrency={primaryCurrency}
+                    fxRates={fxRates}
+                  />
+                )
+              )}
           </div>
 
           {/* ── Desktop table layout ── */}
@@ -470,52 +531,17 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                             </td>
                           </tr>
 
-                          {isGroupOpen &&
-                            group.rows.map((row) => {
-                              const rowExpanded = expanded.has(row.asset.id);
-                              return (
-                                <Fragment key={row.id}>
-                                  <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
-                                    {orderedColumns.map((col, ci) => {
-                                      const align = col.align === "right" ? "text-right" : "text-left";
-                                      const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
-                                      const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
-                                      return (
-                                        <td key={col.key} className={`${pl} py-3 ${align} ${hidden}`}>
-                                          {col.renderCell(row, ctx)}
-                                        </td>
-                                      );
-                                    })}
-                                  </tr>
-
-                                  {rowExpanded && row.asset.positions.length > 0 &&
-                                    row.asset.positions.map((pos) => {
-                                      const posValueNative = pos.quantity * row.pricePerShare;
-                                      const posValueBase = convertToBase(posValueNative, row.asset.currency, primaryCurrency, fxRates);
-                                      return (
-                                        <ExpandedStockRow
-                                          key={pos.id}
-                                          brokerName={pos.broker_name}
-                                          quantity={formatNumber(pos.quantity, 4)}
-                                          value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
-                                          orderedColumns={orderedColumns}
-                                          grouped
-                                        />
-                                      );
-                                    })}
-
-                                  {rowExpanded && row.asset.positions.length === 0 && (
-                                    <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
-                                      <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
-                                        <p className="text-xs text-zinc-600">
-                                          No positions — click edit to add quantities
-                                        </p>
-                                      </td>
-                                    </tr>
-                                  )}
-                                </Fragment>
-                              );
-                            })}
+                          {isGroupOpen && <TypeGroupInnerRows
+                            groupRows={group.rows}
+                            expanded={expanded}
+                            toggleExpand={toggleExpand}
+                            expandedTickerGroups={expandedTickerGroups}
+                            toggleTickerGroupExpand={toggleTickerGroupExpand}
+                            orderedColumns={orderedColumns}
+                            ctx={ctx}
+                            primaryCurrency={primaryCurrency}
+                            fxRates={fxRates}
+                          />}
                         </Fragment>
                       );
                     })
@@ -619,49 +645,34 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                         </Fragment>
                       );
                     })
-                  : rows.map((row) => {
-                      const rowExpanded = expanded.has(row.asset.id);
-                      return (
-                        <Fragment key={row.id}>
-                          <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
-                            {orderedColumns.map((col) => {
-                              const align = col.align === "right" ? "text-right" : "text-left";
-                              const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
-                              return (
-                                <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
-                                  {col.renderCell(row, ctx)}
-                                </td>
-                              );
-                            })}
-                          </tr>
-
-                          {rowExpanded && row.asset.positions.length > 0 &&
-                            row.asset.positions.map((pos) => {
-                              const posValueNative = pos.quantity * row.pricePerShare;
-                              const posValueBase = convertToBase(posValueNative, row.asset.currency, primaryCurrency, fxRates);
-                              return (
-                                <ExpandedStockRow
-                                  key={pos.id}
-                                  brokerName={pos.broker_name}
-                                  quantity={formatNumber(pos.quantity, 4)}
-                                  value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
-                                  orderedColumns={orderedColumns}
-                                />
-                              );
-                            })}
-
-                          {rowExpanded && row.asset.positions.length === 0 && (
-                            <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
-                              <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
-                                <p className="text-xs text-zinc-600">
-                                  No positions — click edit to add quantities
-                                </p>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
+                  : flatItems.map((item) =>
+                      item.kind === "single" ? (
+                        <FlatSingleRow
+                          key={item.row.id}
+                          row={item.row}
+                          expanded={expanded}
+                          orderedColumns={orderedColumns}
+                          ctx={ctx}
+                          primaryCurrency={primaryCurrency}
+                          fxRates={fxRates}
+                        />
+                      ) : (
+                        <TickerGroupRows
+                          key={`tg:${item.group.ticker}`}
+                          group={item.group}
+                          isOpen={expandedTickerGroups.has(item.group.ticker)}
+                          toggleOpen={() => toggleTickerGroupExpand(item.group.ticker)}
+                          expanded={expanded}
+                          toggleExpand={toggleExpand}
+                          orderedColumns={orderedColumns}
+                          ctx={ctx}
+                          primaryCurrency={primaryCurrency}
+                          fxRates={fxRates}
+                          headerPl="px-4"
+                          variantPl="pl-10 pr-4"
+                        />
+                      )
+                    )}
               </tbody>
             </table>
           </div>
@@ -855,5 +866,525 @@ function ExpandedStockRow({
         return <td key={col.key} className={hidden} />;
       })}
     </tr>
+  );
+}
+
+// ── Flat mode: single row (no ticker group) ─────────────────
+
+function FlatSingleRow({
+  row,
+  expanded,
+  orderedColumns,
+  ctx,
+  primaryCurrency,
+  fxRates,
+}: {
+  row: StockRow;
+  expanded: Set<string>;
+  orderedColumns: ColumnDef<StockRow>[];
+  ctx: RenderContext;
+  primaryCurrency: string;
+  fxRates: FXRates;
+}) {
+  const rowExpanded = expanded.has(row.asset.id);
+  return (
+    <Fragment>
+      <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+        {orderedColumns.map((col) => {
+          const align = col.align === "right" ? "text-right" : "text-left";
+          const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+          return (
+            <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
+              {col.renderCell(row, ctx)}
+            </td>
+          );
+        })}
+      </tr>
+      {rowExpanded && row.asset.positions.length > 0 &&
+        row.asset.positions.map((pos) => {
+          const posValueNative = pos.quantity * row.pricePerShare;
+          const posValueBase = convertToBase(posValueNative, row.asset.currency, primaryCurrency, fxRates);
+          return (
+            <ExpandedStockRow
+              key={pos.id}
+              brokerName={pos.broker_name}
+              quantity={formatNumber(pos.quantity, 4)}
+              value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
+              orderedColumns={orderedColumns}
+            />
+          );
+        })}
+      {rowExpanded && row.asset.positions.length === 0 && (
+        <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+          <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
+            <p className="text-xs text-zinc-600">
+              No positions — click edit to add quantities
+            </p>
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+}
+
+// ── Desktop: ticker group header + variant rows ─────────────
+
+function TickerGroupRows({
+  group,
+  isOpen,
+  toggleOpen,
+  expanded,
+  toggleExpand,
+  orderedColumns,
+  ctx,
+  primaryCurrency,
+  fxRates,
+  headerPl,
+  variantPl,
+}: {
+  group: TickerGroup;
+  isOpen: boolean;
+  toggleOpen: () => void;
+  expanded: Set<string>;
+  toggleExpand: (id: string) => void;
+  orderedColumns: ColumnDef<StockRow>[];
+  ctx: RenderContext;
+  primaryCurrency: string;
+  fxRates: FXRates;
+  headerPl: string;   // "px-4" for flat, "pl-12" for inside type groups
+  variantPl: string;   // "pl-10 pr-4" for flat, "pl-16 pr-4" for inside type groups
+}) {
+  return (
+    <Fragment>
+      {/* Ticker group header */}
+      <tr
+        className="border-b border-zinc-800/30 bg-zinc-900/60 cursor-pointer hover:bg-zinc-800/40 transition-colors"
+        onClick={toggleOpen}
+      >
+        <td colSpan={orderedColumns.length} className={`${headerPl} py-2.5`}>
+          <div className="flex items-center gap-2">
+            {isOpen ? (
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            )}
+            <span className="text-sm font-medium text-zinc-200">{group.name}</span>
+            <span className="text-xs text-zinc-500 uppercase">{group.ticker}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+              {group.rows.length} listings
+            </span>
+            <span
+              className={`text-xs tabular-nums ${
+                group.weightedChange24h >= 0 ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {group.weightedChange24h >= 0 ? "+" : ""}
+              {group.weightedChange24h.toFixed(2)}%
+            </span>
+            <span className="ml-auto text-sm font-medium text-zinc-200 tabular-nums">
+              {formatCurrency(group.totalValueBase, primaryCurrency)}
+            </span>
+          </div>
+        </td>
+      </tr>
+
+      {/* Variant rows (one per exchange listing) */}
+      {isOpen &&
+        group.rows.map((row) => {
+          const rowExpanded = expanded.has(row.asset.id);
+          return (
+            <Fragment key={row.id}>
+              <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                {orderedColumns.map((col, ci) => {
+                  const align = col.align === "right" ? "text-right" : "text-left";
+                  const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                  const pl = ci === 0 ? variantPl : "px-4";
+
+                  if (col.key === "asset") {
+                    return (
+                      <td key={col.key} className={`${pl} py-3`}>
+                        <button
+                          onClick={() => toggleExpand(row.asset.id)}
+                          className="flex items-center gap-2 text-left min-w-0"
+                        >
+                          {rowExpanded ? (
+                            <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <span className="text-sm text-zinc-300 truncate block">
+                              {row.asset.yahoo_ticker || row.asset.ticker}
+                            </span>
+                            <span className="text-xs text-zinc-600">
+                              {row.asset.currency}
+                              {row.asset.isin && ` · ${row.asset.isin}`}
+                            </span>
+                          </div>
+                        </button>
+                      </td>
+                    );
+                  }
+
+                  return (
+                    <td key={col.key} className={`${pl} py-3 ${align} ${hidden}`}>
+                      {col.renderCell(row, ctx)}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {rowExpanded && row.asset.positions.length > 0 &&
+                row.asset.positions.map((pos) => {
+                  const posValueNative = pos.quantity * row.pricePerShare;
+                  const posValueBase = convertToBase(posValueNative, row.asset.currency, primaryCurrency, fxRates);
+                  return (
+                    <ExpandedStockRow
+                      key={pos.id}
+                      brokerName={pos.broker_name}
+                      quantity={formatNumber(pos.quantity, 4)}
+                      value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
+                      orderedColumns={orderedColumns}
+                      grouped
+                    />
+                  );
+                })}
+
+              {rowExpanded && row.asset.positions.length === 0 && (
+                <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                  <td colSpan={orderedColumns.length} className="pl-14 pr-4 py-3">
+                    <p className="text-xs text-zinc-600">
+                      No positions — click edit to add quantities
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
+    </Fragment>
+  );
+}
+
+// ── Desktop: type-group inner rows (with ticker grouping) ───
+
+function TypeGroupInnerRows({
+  groupRows,
+  expanded,
+  toggleExpand,
+  expandedTickerGroups,
+  toggleTickerGroupExpand,
+  orderedColumns,
+  ctx,
+  primaryCurrency,
+  fxRates,
+}: {
+  groupRows: StockRow[];
+  expanded: Set<string>;
+  toggleExpand: (id: string) => void;
+  expandedTickerGroups: Set<string>;
+  toggleTickerGroupExpand: (ticker: string) => void;
+  orderedColumns: ColumnDef<StockRow>[];
+  ctx: RenderContext;
+  primaryCurrency: string;
+  fxRates: FXRates;
+}) {
+  const { groups: innerTGs, singles } = buildTickerGroups(groupRows);
+
+  // Fast path: no multi-ticker groups → render like before
+  if (innerTGs.length === 0) {
+    return (
+      <>
+        {groupRows.map((row) => {
+          const rowExpanded = expanded.has(row.asset.id);
+          return (
+            <Fragment key={row.id}>
+              <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                {orderedColumns.map((col, ci) => {
+                  const align = col.align === "right" ? "text-right" : "text-left";
+                  const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                  const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
+                  return (
+                    <td key={col.key} className={`${pl} py-3 ${align} ${hidden}`}>
+                      {col.renderCell(row, ctx)}
+                    </td>
+                  );
+                })}
+              </tr>
+              {rowExpanded && row.asset.positions.length > 0 &&
+                row.asset.positions.map((pos) => {
+                  const posValueNative = pos.quantity * row.pricePerShare;
+                  const posValueBase = convertToBase(posValueNative, row.asset.currency, primaryCurrency, fxRates);
+                  return (
+                    <ExpandedStockRow
+                      key={pos.id}
+                      brokerName={pos.broker_name}
+                      quantity={formatNumber(pos.quantity, 4)}
+                      value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
+                      orderedColumns={orderedColumns}
+                      grouped
+                    />
+                  );
+                })}
+              {rowExpanded && row.asset.positions.length === 0 && (
+                <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                  <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
+                    <p className="text-xs text-zinc-600">
+                      No positions — click edit to add quantities
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
+      </>
+    );
+  }
+
+  // Merge ticker groups + singles, sorted by value
+  const items: (
+    | { kind: "single"; row: StockRow; value: number }
+    | { kind: "ticker-group"; group: TickerGroup; value: number }
+  )[] = [
+    ...innerTGs.map((g) => ({ kind: "ticker-group" as const, group: g, value: g.totalValueBase })),
+    ...singles.map((r) => ({ kind: "single" as const, row: r, value: r.valueBase })),
+  ];
+  items.sort((a, b) => b.value - a.value);
+
+  return (
+    <>
+      {items.map((item) => {
+        if (item.kind === "single") {
+          const row = item.row;
+          const rowExpanded = expanded.has(row.asset.id);
+          return (
+            <Fragment key={row.id}>
+              <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                {orderedColumns.map((col, ci) => {
+                  const align = col.align === "right" ? "text-right" : "text-left";
+                  const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                  const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
+                  return (
+                    <td key={col.key} className={`${pl} py-3 ${align} ${hidden}`}>
+                      {col.renderCell(row, ctx)}
+                    </td>
+                  );
+                })}
+              </tr>
+              {rowExpanded && row.asset.positions.length > 0 &&
+                row.asset.positions.map((pos) => {
+                  const posValueNative = pos.quantity * row.pricePerShare;
+                  const posValueBase = convertToBase(posValueNative, row.asset.currency, primaryCurrency, fxRates);
+                  return (
+                    <ExpandedStockRow
+                      key={pos.id}
+                      brokerName={pos.broker_name}
+                      quantity={formatNumber(pos.quantity, 4)}
+                      value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
+                      orderedColumns={orderedColumns}
+                      grouped
+                    />
+                  );
+                })}
+              {rowExpanded && row.asset.positions.length === 0 && (
+                <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                  <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
+                    <p className="text-xs text-zinc-600">
+                      No positions — click edit to add quantities
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        }
+
+        // Ticker group within type group (deeper indent)
+        return (
+          <TickerGroupRows
+            key={`tg:${item.group.ticker}`}
+            group={item.group}
+            isOpen={expandedTickerGroups.has(item.group.ticker)}
+            toggleOpen={() => toggleTickerGroupExpand(item.group.ticker)}
+            expanded={expanded}
+            toggleExpand={toggleExpand}
+            orderedColumns={orderedColumns}
+            ctx={ctx}
+            primaryCurrency={primaryCurrency}
+            fxRates={fxRates}
+            headerPl="pl-12"
+            variantPl="pl-16 pr-4"
+          />
+        );
+      })}
+    </>
+  );
+}
+
+// ── Mobile: ticker group card ───────────────────────────────
+
+function MobileTickerGroupCard({
+  group,
+  isOpen,
+  toggleOpen,
+  expanded,
+  toggleExpand,
+  handleEdit,
+  handleDelete,
+  primaryCurrency,
+  fxRates,
+}: {
+  group: TickerGroup;
+  isOpen: boolean;
+  toggleOpen: () => void;
+  expanded: Set<string>;
+  toggleExpand: (id: string) => void;
+  handleEdit: (asset: StockAssetWithPositions) => void;
+  handleDelete: (id: string, name: string) => void;
+  primaryCurrency: string;
+  fxRates: FXRates;
+}) {
+  return (
+    <div>
+      <button
+        onClick={toggleOpen}
+        className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-zinc-600/40"
+      >
+        {isOpen ? (
+          <ChevronDown className="w-3 h-3 text-zinc-500" />
+        ) : (
+          <ChevronRight className="w-3 h-3 text-zinc-500" />
+        )}
+        <div className="text-left min-w-0">
+          <span className="text-sm font-medium text-zinc-200 truncate block">{group.name}</span>
+          <span className="text-xs text-zinc-500 uppercase">
+            {group.ticker}
+            <span className="text-[10px] text-zinc-600 ml-1.5 normal-case">
+              {group.rows.length} listings
+            </span>
+          </span>
+        </div>
+        <div className="ml-auto text-right shrink-0">
+          <span className="text-sm font-medium text-zinc-200 tabular-nums">
+            {formatCurrency(group.totalValueBase, primaryCurrency)}
+          </span>
+          {group.weightedChange24h !== 0 && (
+            <span
+              className={`block text-xs tabular-nums ${
+                group.weightedChange24h >= 0 ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {group.weightedChange24h >= 0 ? "+" : ""}
+              {group.weightedChange24h.toFixed(2)}%
+            </span>
+          )}
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="space-y-2 ml-6">
+          {group.rows.map((row) => (
+            <MobileStockCard
+              key={row.id}
+              row={row}
+              expanded={expanded.has(row.asset.id)}
+              toggleExpand={toggleExpand}
+              handleEdit={handleEdit}
+              handleDelete={handleDelete}
+              primaryCurrency={primaryCurrency}
+              fxRates={fxRates}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Mobile: type-group inner cards (with ticker grouping) ───
+
+function MobileTypeGroupInner({
+  groupRows,
+  expanded,
+  toggleExpand,
+  expandedTickerGroups,
+  toggleTickerGroupExpand,
+  handleEdit,
+  handleDelete,
+  primaryCurrency,
+  fxRates,
+}: {
+  groupRows: StockRow[];
+  expanded: Set<string>;
+  toggleExpand: (id: string) => void;
+  expandedTickerGroups: Set<string>;
+  toggleTickerGroupExpand: (ticker: string) => void;
+  handleEdit: (asset: StockAssetWithPositions) => void;
+  handleDelete: (id: string, name: string) => void;
+  primaryCurrency: string;
+  fxRates: FXRates;
+}) {
+  const { groups: innerTGs, singles } = buildTickerGroups(groupRows);
+
+  // Fast path: no multi-ticker groups
+  if (innerTGs.length === 0) {
+    return (
+      <div className="space-y-2 ml-6">
+        {groupRows.map((row) => (
+          <MobileStockCard
+            key={row.id}
+            row={row}
+            expanded={expanded.has(row.asset.id)}
+            toggleExpand={toggleExpand}
+            handleEdit={handleEdit}
+            handleDelete={handleDelete}
+            primaryCurrency={primaryCurrency}
+            fxRates={fxRates}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const items: (
+    | { kind: "single"; row: StockRow; value: number }
+    | { kind: "ticker-group"; group: TickerGroup; value: number }
+  )[] = [
+    ...innerTGs.map((g) => ({ kind: "ticker-group" as const, group: g, value: g.totalValueBase })),
+    ...singles.map((r) => ({ kind: "single" as const, row: r, value: r.valueBase })),
+  ];
+  items.sort((a, b) => b.value - a.value);
+
+  return (
+    <div className="space-y-2 ml-6">
+      {items.map((item) =>
+        item.kind === "single" ? (
+          <MobileStockCard
+            key={item.row.id}
+            row={item.row}
+            expanded={expanded.has(item.row.asset.id)}
+            toggleExpand={toggleExpand}
+            handleEdit={handleEdit}
+            handleDelete={handleDelete}
+            primaryCurrency={primaryCurrency}
+            fxRates={fxRates}
+          />
+        ) : (
+          <MobileTickerGroupCard
+            key={`mtg:${item.group.ticker}`}
+            group={item.group}
+            isOpen={expandedTickerGroups.has(item.group.ticker)}
+            toggleOpen={() => toggleTickerGroupExpand(item.group.ticker)}
+            expanded={expanded}
+            toggleExpand={toggleExpand}
+            handleEdit={handleEdit}
+            handleDelete={handleDelete}
+            primaryCurrency={primaryCurrency}
+            fxRates={fxRates}
+          />
+        )
+      )}
+    </div>
   );
 }
