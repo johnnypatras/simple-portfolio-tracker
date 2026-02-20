@@ -75,6 +75,27 @@ export interface ExchangeDeposit {
   updated_at: string;
 }
 
+// ─── Broker Deposits (fiat on brokers) ───────────────────
+
+export interface BrokerDepositInput {
+  broker_id: string;
+  currency: CurrencyType;
+  amount: number;
+  apy?: number;
+}
+
+export interface BrokerDeposit {
+  id: string;
+  user_id: string;
+  broker_id: string;
+  broker_name: string;   // joined from brokers table
+  currency: CurrencyType;
+  amount: number;
+  apy: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Portfolio Snapshots ────────────────────────────────
 
 export interface PortfolioSnapshot {
@@ -273,6 +294,7 @@ export type EntityType =
   | "exchange_deposit"
   | "crypto_position"
   | "stock_position"
+  | "broker_deposit"
   | "diary_entry"
   | "goal_price"
   | "trade_entry";

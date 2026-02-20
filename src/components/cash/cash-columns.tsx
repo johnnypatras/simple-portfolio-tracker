@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef } from "@/lib/column-config";
-import type { BankAccount, ExchangeDeposit } from "@/lib/types";
+import type { BankAccount, BrokerDeposit, ExchangeDeposit } from "@/lib/types";
 
 // ── Bank group (computed, not a DB type) ────────────────────
 
@@ -23,11 +23,21 @@ export interface ExchangeGroup {
   weightedApy: number;
 }
 
+// ── Broker group (computed, not a DB type) ────────────────────
+
+export interface BrokerGroup {
+  brokerName: string;
+  deposits: BrokerDeposit[];
+  totalValue: number;
+  weightedApy: number;
+}
+
 // ── Tagged union row type ─────────────────────────────────────
 
 export type CashRow =
   | { type: "bank-group"; data: BankGroup; id: string }
-  | { type: "exchange-group"; data: ExchangeGroup; id: string };
+  | { type: "exchange-group"; data: ExchangeGroup; id: string }
+  | { type: "broker-group"; data: BrokerGroup; id: string };
 
 // ── Build bank group rows ─────────────────────────────────────
 
@@ -151,6 +161,61 @@ export function buildExchangeGroupRows(
   return rows;
 }
 
+// ── Build broker group rows ────────────────────────────────────
+
+export function buildBrokerGroupRows(
+  deposits: BrokerDeposit[],
+  primaryCurrency: string,
+  fxRates: FXRates
+): CashRow[] {
+  const groupMap = new Map<string, BrokerDeposit[]>();
+  for (const dep of deposits) {
+    const existing = groupMap.get(dep.broker_name) ?? [];
+    existing.push(dep);
+    groupMap.set(dep.broker_name, existing);
+  }
+
+  const rows: CashRow[] = [];
+  for (const [brokerName, deps] of groupMap) {
+    const totalValue = deps.reduce(
+      (sum, d) =>
+        sum + convertToBase(d.amount, d.currency, primaryCurrency, fxRates),
+      0
+    );
+
+    const weightedApy =
+      totalValue > 0
+        ? deps.reduce(
+            (sum, d) =>
+              sum +
+              d.apy *
+                (convertToBase(d.amount, d.currency, primaryCurrency, fxRates) /
+                  totalValue),
+            0
+          )
+        : deps.reduce((sum, d) => sum + d.apy, 0) / deps.length;
+
+    rows.push({
+      type: "broker-group",
+      id: `broker-group:${brokerName}`,
+      data: {
+        brokerName,
+        deposits: deps.sort((a, b) => b.amount - a.amount),
+        totalValue,
+        weightedApy,
+      },
+    });
+  }
+
+  rows.sort((a, b) => {
+    const av = a.type === "broker-group" ? a.data.totalValue : 0;
+    const bv = b.type === "broker-group" ? b.data.totalValue : 0;
+    return bv - av;
+  });
+
+  return rows;
+}
+
 // ── Shared formatter ─────────────────────────────────────────
 
 export function formatCurrency(value: number, currency: string): string {
@@ -171,6 +236,8 @@ export function getCashColumns(handlers: {
   onDeleteBank: (id: string) => void;
   onEditExchange: (d: ExchangeDeposit) => void;
   onDeleteExchange: (id: string) => void;
+  onEditBrokerDeposit: (d: BrokerDeposit) => void;
+  onDeleteBrokerDeposit: (id: string) => void;
   isExpanded: (id: string) => boolean;
   toggleExpand: (id: string) => void;
 }): ColumnDef<CashRow>[] {
@@ -227,6 +294,28 @@ export function getCashColumns(handlers: {
             </button>
           );
         }
+        if (row.type === "broker-group") {
+          const expanded = handlers.isExpanded(row.id);
+          return (
+            <button
+              onClick={() => handlers.toggleExpand(row.id)}
+              className="flex items-center gap-2 text-left min-w-0"
+            >
+              {expanded ? (
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              )}
+              <span className="text-sm font-medium text-zinc-200">
+                {row.data.brokerName}
+              </span>
+              <span className="text-xs text-zinc-600">
+                {row.data.deposits.length} deposit
+                {row.data.deposits.length !== 1 ? "s" : ""}
+              </span>
+            </button>
+          );
+        }
         return null;
       },
     },
@@ -262,7 +351,7 @@ export function getCashColumns(handlers: {
             </span>
           );
         }
-        if (row.type === "exchange-group") {
+        if (row.type === "exchange-group" || row.type === "broker-group") {
           const currencies = [
             ...new Set(row.data.deposits.map((d) => d.currency)),
           ];
@@ -291,7 +380,7 @@ export function getCashColumns(handlers: {
             </span>
           );
         }
-        if (row.type === "exchange-group") {
+        if (row.type === "exchange-group" || row.type === "broker-group") {
           return (
             <span className="text-sm font-medium text-zinc-200 tabular-nums">
               {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
@@ -312,7 +401,7 @@ export function getCashColumns(handlers: {
       hiddenBelow: "sm",
       renderHeader: (ctx) => `Value (${ctx.primaryCurrency})`,
       renderCell: (row, ctx) => {
-        if (row.type === "bank-group" || row.type === "exchange-group") {
+        if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") {
           return (
             <span className="text-sm font-medium text-zinc-200 tabular-nums">
               {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
@@ -332,7 +421,7 @@ export function getCashColumns(handlers: {
       width: "w-16",
       hiddenBelow: "md",
       renderCell: (row) => {
-        if (row.type === "bank-group" || row.type === "exchange-group") {
+        if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") {
           return row.data.weightedApy > 0 ? (
             <span className="text-sm text-emerald-400">
               ~{row.data.weightedApy.toFixed(1)}%
@@ -375,7 +464,7 @@ export function getCashColumns(handlers: {
       width: "w-20",
       renderCell: (row) => {
         // Groups have no actions — edit/delete lives on the expanded sub-rows
-        if (row.type === "bank-group" || row.type === "exchange-group") return null;
+        if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") return null;
         return null;
       },
     },

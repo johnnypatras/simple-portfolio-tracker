@@ -38,6 +38,19 @@ export const CATEGORY_COLORS: Record<AssetCategory, string> = {
   other: "text-zinc-400",
 };
 
+// ── Rotating palette for dynamic groups (brokers) ───────────
+
+export const GROUP_PALETTE = [
+  "text-blue-400",
+  "text-purple-400",
+  "text-amber-400",
+  "text-emerald-400",
+  "text-sky-400",
+  "text-rose-400",
+  "text-teal-400",
+  "text-orange-400",
+];
+
 // ── Formatters ───────────────────────────────────────────────
 
 export function formatNumber(n: number, decimals = 2): string {

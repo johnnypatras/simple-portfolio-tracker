@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
 import { Plus, Bitcoin, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight } from "lucide-react";
 import { AddCryptoModal } from "./add-crypto-modal";
 import { PositionEditor } from "./position-editor";
@@ -23,6 +23,7 @@ import {
   formatCurrency,
   ACQUISITION_COLORS,
   ACQUISITION_LABELS,
+  GROUP_PALETTE,
   type CryptoRow,
 } from "./crypto-columns";
 
@@ -112,6 +113,22 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
   );
 
   const isGrouped = groupMode !== "flat";
+
+  // Auto-expand everything when entering any mode (flat or grouped)
+  useEffect(() => {
+    if (groupMode === "flat") {
+      setExpanded(new Set(rows.map((r) => r.id)));
+      return;
+    }
+    const groupKeys = groupMode === "source"
+      ? sourceGroups.map((g) => g.acquisitionMethod)
+      : walletGroups.map((g) => g.walletName);
+    if (groupKeys.length > 0) {
+      setExpandedGroups(new Set(groupKeys));
+      setExpanded(new Set(rows.map((r) => r.id)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupMode]);
 
   const allExpanded = rows.length > 0 && rows.every((r) => expanded.has(r.id));
 
@@ -303,30 +320,30 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                     <div key={`mgroup:${group.acquisitionMethod}`}>
                       <button
                         onClick={() => toggleGroupExpand(group.acquisitionMethod)}
-                        className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40"
+                        className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-blue-500/40"
                       >
                         {isGroupOpen ? (
-                          <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+                          <ChevronDown className="w-3 h-3 text-zinc-500" />
                         ) : (
-                          <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                          <ChevronRight className="w-3 h-3 text-zinc-500" />
                         )}
                         <span
-                          className={`text-sm font-medium ${
+                          className={`text-sm font-semibold uppercase tracking-wider ${
                             ACQUISITION_COLORS[group.acquisitionMethod] ?? "text-zinc-400"
                           }`}
                         >
                           {group.label}
                         </span>
-                        <span className="text-xs text-zinc-500">
+                        <span className="text-[11px] text-zinc-600">
                           ({group.entryCount})
                         </span>
-                        <span className="ml-auto text-sm font-medium text-zinc-200 tabular-nums">
+                        <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                           {formatCurrency(group.totalValue, primaryCurrency)}
                         </span>
                       </button>
 
                       {isGroupOpen && (
-                        <div className="space-y-2 ml-2">
+                        <div className="space-y-2 ml-6">
                           {group.entries.map((entry) => (
                             <MobileCryptoCard
                               key={`${group.acquisitionMethod}:${entry.row.id}`}
@@ -347,21 +364,22 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                   );
                 })
               : groupMode === "wallet"
-                ? walletGroups.map((group) => {
+                ? walletGroups.map((group, gi) => {
                     const isGroupOpen = expandedGroups.has(group.walletName);
                     const wtInfo = WALLET_TYPE_LABELS[group.walletType];
+                    const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
                     return (
                       <div key={`mwgroup:${group.walletName}`}>
                         <button
                           onClick={() => toggleGroupExpand(group.walletName)}
-                          className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40"
+                          className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-blue-500/40"
                         >
                           {isGroupOpen ? (
-                            <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+                            <ChevronDown className="w-3 h-3 text-zinc-500" />
                           ) : (
-                            <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                            <ChevronRight className="w-3 h-3 text-zinc-500" />
                           )}
-                          <span className="text-sm font-medium text-zinc-200">
+                          <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                             {group.walletName}
                           </span>
                           {wtInfo && (
@@ -369,16 +387,16 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                               {wtInfo.label}
                             </span>
                           )}
-                          <span className="text-xs text-zinc-500">
+                          <span className="text-[11px] text-zinc-600">
                             ({group.entryCount})
                           </span>
-                          <span className="ml-auto text-sm font-medium text-zinc-200 tabular-nums">
+                          <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                             {formatCurrency(group.totalValue, primaryCurrency)}
                           </span>
                         </button>
 
                         {isGroupOpen && (
-                          <div className="space-y-2 ml-2">
+                          <div className="space-y-2 ml-6">
                             {group.entries.map((entry) => (
                               <MobileCryptoCard
                                 key={`${group.walletName}:${entry.row.id}`}
@@ -438,27 +456,27 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                       return (
                         <Fragment key={`group:${group.acquisitionMethod}`}>
                           <tr
-                            className="border-b border-zinc-800/30 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
+                            className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.acquisitionMethod)}
                           >
-                            <td colSpan={orderedColumns.length} className="px-4 py-3">
+                            <td colSpan={orderedColumns.length} className="px-4 py-2.5">
                               <div className="flex items-center gap-2">
                                 {isGroupOpen ? (
-                                  <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                  <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
                                 ) : (
-                                  <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                  <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
                                 )}
                                 <span
-                                  className={`text-sm font-medium ${
+                                  className={`text-sm font-semibold uppercase tracking-wider ${
                                     ACQUISITION_COLORS[group.acquisitionMethod] ?? "text-zinc-400"
                                   }`}
                                 >
                                   {group.label}
                                 </span>
-                                <span className="text-xs text-zinc-500">
+                                <span className="text-[11px] text-zinc-600">
                                   {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                 </span>
-                                <span className="ml-auto text-sm font-medium text-zinc-200 tabular-nums">
+                                <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                   {formatCurrency(group.totalValue, primaryCurrency)}
                                 </span>
                               </div>
@@ -480,23 +498,24 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                       );
                     })
                   : groupMode === "wallet"
-                    ? walletGroups.map((group) => {
+                    ? walletGroups.map((group, gi) => {
                         const isGroupOpen = expandedGroups.has(group.walletName);
                         const wtInfo = WALLET_TYPE_LABELS[group.walletType];
+                        const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
                         return (
                           <Fragment key={`wgroup:${group.walletName}`}>
                             <tr
-                              className="border-b border-zinc-800/30 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
+                              className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                               onClick={() => toggleGroupExpand(group.walletName)}
                             >
-                              <td colSpan={orderedColumns.length} className="px-4 py-3">
+                              <td colSpan={orderedColumns.length} className="px-4 py-2.5">
                                 <div className="flex items-center gap-2">
                                   {isGroupOpen ? (
-                                    <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                    <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
                                   ) : (
-                                    <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                    <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
                                   )}
-                                  <span className="text-sm font-medium text-zinc-200">
+                                  <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                                     {group.walletName}
                                   </span>
                                   {wtInfo && (
@@ -504,10 +523,10 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                       {wtInfo.label}
                                     </span>
                                   )}
-                                  <span className="text-xs text-zinc-500">
+                                  <span className="text-[11px] text-zinc-600">
                                     {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                   </span>
-                                  <span className="ml-auto text-sm font-medium text-zinc-200 tabular-nums">
+                                  <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                     {formatCurrency(group.totalValue, primaryCurrency)}
                                   </span>
                                 </div>
@@ -614,13 +633,14 @@ function GroupedCryptoEntryRows({
   return (
     <Fragment>
       <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
-        {orderedColumns.map((col) => {
+        {orderedColumns.map((col, ci) => {
           const align = col.align === "right" ? "text-right" : "text-left";
           const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+          const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
           // Override holdings/value/source for per-group values
           if (col.key === "holdings") {
             return (
-              <td key={col.key} className={`px-4 py-3 text-right ${hidden}`}>
+              <td key={col.key} className={`${pl} py-3 text-right ${hidden}`}>
                 <span className="text-sm text-zinc-300 tabular-nums">
                   {entry.groupQty > 0 ? formatNumber(entry.groupQty, 8) : "—"}
                 </span>
@@ -629,7 +649,7 @@ function GroupedCryptoEntryRows({
           }
           if (col.key === "value") {
             return (
-              <td key={col.key} className={`px-4 py-3 text-right ${hidden}`}>
+              <td key={col.key} className={`${pl} py-3 text-right ${hidden}`}>
                 <span className="text-sm font-medium text-zinc-200 tabular-nums">
                   {entry.groupValue > 0 ? formatCurrency(entry.groupValue, primaryCurrency) : "—"}
                 </span>
@@ -638,13 +658,13 @@ function GroupedCryptoEntryRows({
           }
           if (col.key === "source") {
             return (
-              <td key={col.key} className={`px-4 py-3 text-left ${hidden}`}>
+              <td key={col.key} className={`${pl} py-3 text-left ${hidden}`}>
                 <span className="text-xs text-zinc-600">—</span>
               </td>
             );
           }
           return (
-            <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
+            <td key={col.key} className={`${pl} py-3 ${align} ${hidden}`}>
               {col.renderCell(row, ctx)}
             </td>
           );
@@ -663,13 +683,14 @@ function GroupedCryptoEntryRows({
               value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
               acquisitionMethod={pos.acquisition_method ?? "bought"}
               orderedColumns={orderedColumns}
+              grouped
             />
           );
         })}
 
       {rowExpanded && entry.positions.length === 0 && (
         <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
-          <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
+          <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
             <p className="text-xs text-zinc-600">
               No positions — click edit to add quantities
             </p>
@@ -696,6 +717,7 @@ function ExpandedCryptoRow({
   value,
   acquisitionMethod,
   orderedColumns,
+  grouped,
 }: {
   walletName: string;
   walletType?: WalletType;
@@ -703,8 +725,10 @@ function ExpandedCryptoRow({
   value: string;
   acquisitionMethod: string;
   orderedColumns: ColumnDef<CryptoRow>[];
+  grouped?: boolean;
 }) {
   const wtInfo = walletType ? WALLET_TYPE_LABELS[walletType] : null;
+  const assetPl = grouped ? "pl-16" : "pl-10";
 
   return (
     <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
@@ -713,7 +737,7 @@ function ExpandedCryptoRow({
 
         if (col.key === "asset") {
           return (
-            <td key={col.key} className="pl-10 pr-4 py-2">
+            <td key={col.key} className={`${assetPl} pr-4 py-2`}>
               <span className="text-xs text-zinc-500">{walletName}</span>
               {wtInfo && (
                 <span className={`ml-1.5 text-[10px] font-medium ${wtInfo.color}`}>

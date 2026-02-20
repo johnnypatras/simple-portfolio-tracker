@@ -32,6 +32,19 @@ export const ACQUISITION_COLORS: Record<string, string> = {
   other: "text-zinc-400",
 };
 
+// ── Rotating palette for dynamic groups (wallets, brokers) ──
+
+export const GROUP_PALETTE = [
+  "text-blue-400",
+  "text-purple-400",
+  "text-amber-400",
+  "text-emerald-400",
+  "text-sky-400",
+  "text-rose-400",
+  "text-teal-400",
+  "text-orange-400",
+];
+
 // ── Position-level group types for group-by-source mode ─────
 
 /** One asset's positions sharing the same acquisition method within a group */
