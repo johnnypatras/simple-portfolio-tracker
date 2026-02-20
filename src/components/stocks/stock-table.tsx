@@ -357,7 +357,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                     setGroupMode(next);
                     setExpandedGroups(new Set());
                   }}
-                  className={`p-1.5 rounded-lg transition-colors ${
+                  className={`p-1.5 rounded-lg transition-colors min-w-[4.5rem] flex items-center justify-center gap-1 ${
                     isGrouped
                       ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
@@ -365,16 +365,16 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                   title={GROUP_MODE_LABELS[GROUP_MODE_CYCLE[(GROUP_MODE_CYCLE.indexOf(groupMode) + 1) % GROUP_MODE_CYCLE.length]]}
                 >
                   {isGrouped ? (
-                    <List className="w-4 h-4" />
+                    <List className="w-4 h-4 shrink-0" />
                   ) : (
-                    <Layers className="w-4 h-4" />
+                    <Layers className="w-4 h-4 shrink-0" />
+                  )}
+                  {isGrouped && (
+                    <span className="text-[10px] font-medium">
+                      {groupMode === "type" ? "Type" : groupMode === "broker" ? "Broker" : "Currency"}
+                    </span>
                   )}
                 </button>
-                {isGrouped && (
-                  <span className="text-[10px] text-blue-400/70 -ml-1.5">
-                    {groupMode === "type" ? "Type" : groupMode === "broker" ? "Broker" : "Currency"}
-                  </span>
-                )}
                 {/* Mobile sort cycle (no column headers on mobile) */}
                 {assets.length > 1 && (
                   <button
