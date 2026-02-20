@@ -5,7 +5,7 @@ import { Search, Loader2, ChevronDown, ChevronRight, ArrowLeft } from "lucide-re
 import { Modal } from "@/components/ui/modal";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
 import type { CoinGeckoSearchResult, Wallet } from "@/lib/types";
-import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
+import { ACQUISITION_TYPES, parseWalletChains, getWalletChainTokens } from "@/lib/types";
 
 interface AddCryptoModalProps {
   open: boolean;
@@ -429,10 +429,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                         >
                           <option value="">Select wallet...</option>
                           {compatibleWallets.map((w) => {
-                            const chains = parseWalletChains(w.chain);
+                            const tokens = getWalletChainTokens(w.chain);
+                            const label = tokens.map((t) => t.toLowerCase() === "evm" ? "EVM" : t).join(", ");
                             return (
                               <option key={w.id} value={w.id}>
-                                {w.name}{chains.length > 0 ? ` (${chains.join(", ")})` : ""}
+                                {w.name}{label ? ` (${label})` : ""}
                               </option>
                             );
                           })}

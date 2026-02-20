@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, Wallet as WalletIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { createWallet, updateWallet, deleteWallet } from "@/lib/actions/wallets";
 import type { Wallet, WalletInput, WalletType, PrivacyLabel } from "@/lib/types";
-import { parseWalletChains, serializeChains } from "@/lib/types";
+import { parseWalletChains, serializeChains, getWalletChainTokens, EVM_CHAINS, NON_EVM_CHAINS, isEvmChain } from "@/lib/types";
 
 const walletTypeLabels: Record<WalletType, string> = {
   custodial: "Exchange / Custodial",
@@ -16,12 +16,6 @@ const privacyLabels: Record<PrivacyLabel, string> = {
   anon: "Anonymous",
   doxxed: "KYC / Doxxed",
 };
-
-const WELL_KNOWN_CHAINS = [
-  "Bitcoin", "Ethereum", "Solana", "Cardano", "Polkadot", "Avalanche",
-  "BNB Chain", "Polygon", "Arbitrum", "Optimism", "Base", "NEAR",
-  "Cosmos", "Fantom", "Sui", "Aptos", "Tron", "Stellar",
-];
 
 export function WalletManager({ wallets }: { wallets: Wallet[] }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -128,9 +122,9 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
                   <span className="text-xs text-zinc-500">
                     {walletTypeLabels[w.wallet_type]}
                   </span>
-                  {parseWalletChains(w.chain).map((c) => (
-                    <span key={c} className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
-                      {c}
+                  {getWalletChainTokens(w.chain).map((token) => (
+                    <span key={token} className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                      {token.toLowerCase() === "evm" ? "EVM Compatible" : token}
                     </span>
                   ))}
                   {w.privacy_label && (
@@ -200,10 +194,54 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
               Chains <span className="text-zinc-600">(optional{walletType === "non_custodial" ? " — recommended for self-custody" : ""})</span>
             </label>
             <p className="text-xs text-zinc-600 mb-2">
-              {selectedChains.length === 0 ? "No chains selected — wallet works with any chain" : `${selectedChains.length} selected`}
+              {selectedChains.length === 0 ? "No chains selected — wallet works with any chain" : (() => {
+                const evmAll = EVM_CHAINS.every((c) => selectedChains.includes(c));
+                const nonEvmSelected = selectedChains.filter((c) => !isEvmChain(c));
+                const parts: string[] = [];
+                if (evmAll) parts.push("EVM");
+                else {
+                  const evmCount = selectedChains.filter((c) => isEvmChain(c)).length;
+                  if (evmCount > 0) parts.push(`${evmCount} EVM chain${evmCount > 1 ? "s" : ""}`);
+                }
+                parts.push(...nonEvmSelected);
+                return parts.join(", ");
+              })()}
             </p>
+
+            {/* EVM group toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                const hasAllEvm = EVM_CHAINS.every((c) => selectedChains.includes(c));
+                if (hasAllEvm) {
+                  // Remove all EVM chains
+                  setSelectedChains((prev) => prev.filter((c) => !isEvmChain(c)));
+                } else {
+                  // Add all EVM chains
+                  setSelectedChains((prev) => {
+                    const set = new Set(prev);
+                    for (const c of EVM_CHAINS) set.add(c);
+                    return [...set];
+                  });
+                }
+              }}
+              className={`w-full px-3 py-2 text-sm rounded-lg border transition-colors mb-2 ${
+                EVM_CHAINS.every((c) => selectedChains.includes(c))
+                  ? "bg-blue-600/20 border-blue-500/40 text-blue-300"
+                  : selectedChains.some((c) => isEvmChain(c))
+                    ? "bg-blue-600/10 border-blue-500/20 text-blue-400"
+                    : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+              }`}
+            >
+              EVM Compatible
+              <span className="text-xs ml-1.5 opacity-60">
+                (Ethereum, Polygon, Arbitrum, Base, etc.)
+              </span>
+            </button>
+
+            {/* Non-EVM individual chains */}
             <div className="flex flex-wrap gap-1.5">
-              {WELL_KNOWN_CHAINS.map((c) => {
+              {NON_EVM_CHAINS.map((c) => {
                 const active = selectedChains.includes(c);
                 return (
                   <button

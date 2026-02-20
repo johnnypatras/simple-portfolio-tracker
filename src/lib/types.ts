@@ -43,16 +43,66 @@ export interface WalletInput {
   chain?: string | null;
 }
 
-/** Parse comma-separated chain string into an array. Returns [] for null/empty. */
+/** All EVM-compatible chains. The "evm" token in wallet.chain expands to these. */
+export const EVM_CHAINS = [
+  "Ethereum", "BNB Chain", "Polygon", "Arbitrum", "Optimism", "Avalanche",
+  "Base", "Fantom", "Cronos", "Celo", "Mantle", "Blast", "Linea", "zkSync", "Scroll",
+] as const;
+
+const EVM_SET = new Set<string>(EVM_CHAINS);
+
+/** Non-EVM chains that need explicit selection. */
+export const NON_EVM_CHAINS = [
+  "Bitcoin", "Solana", "Cardano", "Polkadot", "NEAR", "Cosmos",
+  "Sui", "Aptos", "Tron", "Stellar",
+] as const;
+
+/**
+ * Parse wallet chain string into an expanded array of chain names.
+ * The special token "evm" expands to all EVM-compatible chains.
+ * Returns [] for null/empty (= any chain).
+ */
 export function parseWalletChains(chain: string | null | undefined): string[] {
   if (!chain) return [];
-  return chain.split(",").map((c) => c.trim()).filter(Boolean);
+  const tokens = chain.split(",").map((c) => c.trim()).filter(Boolean);
+  const result: string[] = [];
+  for (const t of tokens) {
+    if (t.toLowerCase() === "evm") {
+      for (const c of EVM_CHAINS) {
+        if (!result.includes(c)) result.push(c);
+      }
+    } else {
+      if (!result.includes(t)) result.push(t);
+    }
+  }
+  return result;
 }
 
-/** Serialize chain array back to comma-separated string. Returns null for empty. */
+/** Check if a chain name is EVM-compatible. */
+export function isEvmChain(chain: string): boolean {
+  return EVM_SET.has(chain);
+}
+
+/** Serialize chain selection back to storage string. Uses "evm" shorthand when possible. */
 export function serializeChains(chains: string[]): string | null {
   const filtered = chains.filter(Boolean);
-  return filtered.length > 0 ? filtered.join(",") : null;
+  if (filtered.length === 0) return null;
+
+  // Check if all EVM chains are selected — collapse to "evm" token
+  const hasAllEvm = EVM_CHAINS.every((c) => filtered.includes(c));
+  const nonEvmSelected = filtered.filter((c) => !EVM_SET.has(c));
+
+  if (hasAllEvm) {
+    const parts = ["evm", ...nonEvmSelected];
+    return parts.join(",");
+  }
+  return filtered.join(",");
+}
+
+/** Get the raw tokens stored in chain (without expanding "evm"). For display purposes. */
+export function getWalletChainTokens(chain: string | null | undefined): string[] {
+  if (!chain) return [];
+  return chain.split(",").map((c) => c.trim()).filter(Boolean);
 }
 
 export interface BrokerInput {
