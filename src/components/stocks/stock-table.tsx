@@ -971,7 +971,7 @@ function MobileStockCard({
           <p className="text-xs text-zinc-500 uppercase">{row.asset.ticker}</p>
         </div>
         <div className="text-right shrink-0 ml-3">
-          <p className="text-sm font-medium text-zinc-200 tabular-nums">
+          <p className="text-sm font-semibold text-zinc-100 tabular-nums">
             {displayValue > 0 ? formatCurrency(displayValue, primaryCurrency) : "—"}
           </p>
           {row.change24h !== 0 && (
@@ -994,7 +994,7 @@ function MobileStockCard({
             </div>
             <div>
               <span className="text-zinc-500">Shares</span>
-              <p className="text-zinc-300 tabular-nums">
+              <p className="text-zinc-500 tabular-nums">
                 {displayQty > 0 ? formatNumber(displayQty, 4) : "—"}
               </p>
             </div>
@@ -1006,7 +1006,7 @@ function MobileStockCard({
             </div>
             <div>
               <span className="text-zinc-500">Value ({primaryCurrency})</span>
-              <p className="text-zinc-300 tabular-nums">
+              <p className="font-semibold text-zinc-100 tabular-nums">
                 {displayValue > 0 ? formatCurrency(displayValue, primaryCurrency) : "—"}
               </p>
             </div>
@@ -1196,7 +1196,7 @@ function TickerGroupRows({
         className="border-b border-zinc-800/30 border-l-2 border-l-zinc-500/30 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
         onClick={toggleOpen}
       >
-        <td colSpan={orderedColumns.length} className={`${headerPl} py-3`}>
+        <td colSpan={orderedColumns.length - 1} className={`${headerPl} py-3`}>
           <div className="flex items-center gap-2">
             {isOpen ? (
               <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
@@ -1221,6 +1221,7 @@ function TickerGroupRows({
             </span>
           </div>
         </td>
+        <td />
       </tr>
 
       {/* Variant rows (one per exchange listing) — visually lighter than header */}
