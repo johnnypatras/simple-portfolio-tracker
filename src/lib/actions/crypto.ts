@@ -83,6 +83,7 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
       name: input.name,
       coingecko_id: input.coingecko_id,
       chain: input.chain ?? null,
+      subcategory: input.subcategory?.trim() || null,
     })
     .select("id")
     .single();
@@ -102,6 +103,44 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
   });
   revalidatePath("/dashboard/crypto");
   return data.id;
+}
+
+/** Update mutable fields on an existing crypto asset (chain, subcategory) */
+export async function updateCryptoAsset(
+  id: string,
+  fields: { chain?: string | null; subcategory?: string | null }
+) {
+  const supabase = await createServerSupabaseClient();
+
+  // Build dynamic payload — only include fields that were explicitly passed
+  const updatePayload: Record<string, unknown> = {};
+  if (fields.chain !== undefined) updatePayload.chain = fields.chain?.trim() || null;
+  if (fields.subcategory !== undefined) updatePayload.subcategory = fields.subcategory?.trim() || null;
+  if (Object.keys(updatePayload).length === 0) return;
+
+  const { error } = await supabase
+    .from("crypto_assets")
+    .update(updatePayload)
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+
+  // Fetch name for logging
+  const { data: asset } = await supabase
+    .from("crypto_assets")
+    .select("ticker, name")
+    .eq("id", id)
+    .single();
+
+  const label = asset ? `${asset.ticker} (${asset.name})` : "Unknown";
+  await logActivity({
+    action: "updated",
+    entity_type: "crypto_asset",
+    entity_name: label,
+    description: `Updated ${asset?.ticker ?? id} metadata`,
+    details: { ...fields },
+  });
+  revalidatePath("/dashboard/crypto");
 }
 
 /** Remove a crypto asset and all its positions (CASCADE) */

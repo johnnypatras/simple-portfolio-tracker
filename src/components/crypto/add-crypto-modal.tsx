@@ -11,9 +11,10 @@ interface AddCryptoModalProps {
   open: boolean;
   onClose: () => void;
   wallets: Wallet[];
+  existingSubcategories: string[];
 }
 
-export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) {
+export function AddCryptoModal({ open, onClose, wallets, existingSubcategories }: AddCryptoModalProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CoinGeckoSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -26,6 +27,10 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
   const [positionWalletId, setPositionWalletId] = useState("");
   const [positionQuantity, setPositionQuantity] = useState("");
   const [acquisitionType, setAcquisitionType] = useState("bought");
+
+  // ─── Subcategory state ──────────────────────────────────
+  const [subcategory, setSubcategory] = useState("");
+  const [subcategoryDropdownOpen, setSubcategoryDropdownOpen] = useState(false);
 
   // Debounced search
   useEffect(() => {
@@ -67,6 +72,8 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
       setPositionWalletId("");
       setPositionQuantity("");
       setAcquisitionType("bought");
+      setSubcategory("");
+      setSubcategoryDropdownOpen(false);
     }
   }, [open]);
 
@@ -79,6 +86,7 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
         ticker: coin.symbol,
         name: coin.name,
         coingecko_id: coin.id,
+        subcategory: subcategory.trim() || null,
       });
 
       // If user filled in an initial position, create it with its acquisition method
@@ -124,6 +132,51 @@ export function AddCryptoModal({ open, onClose, wallets }: AddCryptoModalProps) 
             {error}
           </p>
         )}
+
+        {/* Subcategory */}
+        <div className="relative">
+          <label className="block text-xs text-zinc-500 mb-1">
+            Subcategory <span className="text-zinc-600">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={subcategory}
+            onChange={(e) => {
+              setSubcategory(e.target.value);
+              setSubcategoryDropdownOpen(true);
+            }}
+            onFocus={() => setSubcategoryDropdownOpen(true)}
+            onBlur={() => setTimeout(() => setSubcategoryDropdownOpen(false), 150)}
+            placeholder="e.g. L1, Ethereum L2, DeFi, Stablecoin..."
+            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+          />
+          {subcategoryDropdownOpen && existingSubcategories.length > 0 && (() => {
+            const filtered = existingSubcategories.filter(
+              (s) =>
+                s.toLowerCase().includes(subcategory.toLowerCase()) &&
+                s.toLowerCase() !== subcategory.toLowerCase()
+            );
+            if (filtered.length === 0) return null;
+            return (
+              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                {filtered.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setSubcategory(s);
+                      setSubcategoryDropdownOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
 
         {/* Optional: Initial position (with acquisition type) */}
         {wallets.length > 0 && (

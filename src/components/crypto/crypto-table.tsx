@@ -19,8 +19,8 @@ import {
   buildCryptoRows,
   buildCryptoPositionGroups,
   buildCryptoWalletGroups,
+  buildCryptoSubcategoryGroups,
   sortCryptoRows,
-  formatNumber,
   formatQuantity,
   formatCurrency,
   ACQUISITION_COLORS,
@@ -37,13 +37,14 @@ import {
 
 // ── Group mode ──────────────────────────────────────────────
 
-type CryptoGroupMode = "flat" | "source" | "wallet";
+type CryptoGroupMode = "flat" | "source" | "wallet" | "subcategory";
 
-const GROUP_MODE_CYCLE: CryptoGroupMode[] = ["flat", "source", "wallet"];
+const GROUP_MODE_CYCLE: CryptoGroupMode[] = ["flat", "source", "wallet", "subcategory"];
 const GROUP_MODE_LABELS: Record<CryptoGroupMode, string> = {
   flat: "Flat list",
   source: "Group by source",
   wallet: "Group by wallet",
+  subcategory: "Group by subcategory",
 };
 
 // ── Breakpoint → Tailwind class mapping ──────────────────────
@@ -152,6 +153,21 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     [groupMode, rows]
   );
 
+  // Asset-level groups for subcategory mode
+  const subcategoryGroups = useMemo(
+    () => (groupMode === "subcategory" ? buildCryptoSubcategoryGroups(rows) : []),
+    [groupMode, rows]
+  );
+
+  // Existing subcategories for combobox autocomplete
+  const existingSubcategories = useMemo(() => {
+    const subs = new Set<string>();
+    for (const a of assets) {
+      if (a.subcategory?.trim()) subs.add(a.subcategory.trim());
+    }
+    return [...subs].sort();
+  }, [assets]);
+
   // Sort entries within a group (reuses the same sort key/dir as flat mode)
   const sortEntries = useCallback(
     <T extends { row: CryptoRow; groupValue: number }>(entries: T[]): T[] => {
@@ -179,9 +195,12 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
       setExpanded(new Set(rows.map((r) => r.id)));
       return;
     }
-    const groupKeys = groupMode === "source"
-      ? sourceGroups.map((g) => g.acquisitionMethod)
-      : walletGroups.map((g) => g.walletName);
+    const groupKeys =
+      groupMode === "source"
+        ? sourceGroups.map((g) => g.acquisitionMethod)
+        : groupMode === "wallet"
+          ? walletGroups.map((g) => g.walletName)
+          : subcategoryGroups.map((g) => g.subcategory);
     if (groupKeys.length > 0) {
       setExpandedGroups(new Set(groupKeys));
       setExpanded(new Set(rows.map((r) => r.id)));
@@ -194,7 +213,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
   const allGroupsExpanded = isGrouped && (
     groupMode === "source"
       ? sourceGroups.length > 0 && sourceGroups.every((g) => expandedGroups.has(g.acquisitionMethod))
-      : walletGroups.length > 0 && walletGroups.every((g) => expandedGroups.has(g.walletName))
+      : groupMode === "wallet"
+        ? walletGroups.length > 0 && walletGroups.every((g) => expandedGroups.has(g.walletName))
+        : subcategoryGroups.length > 0 && subcategoryGroups.every((g) => expandedGroups.has(g.subcategory))
   );
 
   const allGroupAssetsExpanded =
@@ -207,9 +228,12 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
         setExpandedGroups(new Set());
         setExpanded(new Set());
       } else {
-        const groupKeys = groupMode === "source"
-          ? sourceGroups.map((g) => g.acquisitionMethod)
-          : walletGroups.map((g) => g.walletName);
+        const groupKeys =
+          groupMode === "source"
+            ? sourceGroups.map((g) => g.acquisitionMethod)
+            : groupMode === "wallet"
+              ? walletGroups.map((g) => g.walletName)
+              : subcategoryGroups.map((g) => g.subcategory);
         setExpandedGroups(new Set(groupKeys));
         setExpanded(new Set(rows.map((r) => r.id)));
       }
@@ -219,7 +243,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
         return new Set(rows.map((r) => r.id));
       });
     }
-  }, [rows, sourceGroups, walletGroups, groupMode, isGrouped, allGroupsExpanded, expanded]);
+  }, [rows, sourceGroups, walletGroups, subcategoryGroups, groupMode, isGrouped, allGroupsExpanded, expanded]);
 
   const toggleGroupExpand = useCallback((groupKey: string) => {
     setExpandedGroups((prev) => {
@@ -229,13 +253,19 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
       else next.add(groupKey);
 
       // Also expand/collapse all asset rows within the toggled group
-      const entries =
-        groupMode === "source"
-          ? sourceGroups.find((g) => g.acquisitionMethod === groupKey)?.entries
-          : walletGroups.find((g) => g.walletName === groupKey)?.entries;
+      let assetIds: string[] = [];
+      if (groupMode === "subcategory") {
+        const group = subcategoryGroups.find((g) => g.subcategory === groupKey);
+        assetIds = group?.rows.map((r) => r.id) ?? [];
+      } else {
+        const entries =
+          groupMode === "source"
+            ? sourceGroups.find((g) => g.acquisitionMethod === groupKey)?.entries
+            : walletGroups.find((g) => g.walletName === groupKey)?.entries;
+        assetIds = entries?.map((e) => e.row.id) ?? [];
+      }
 
-      if (entries) {
-        const assetIds = entries.map((e) => e.row.id);
+      if (assetIds.length > 0) {
         setExpanded((prevExp) => {
           const nextExp = new Set(prevExp);
           for (const id of assetIds) {
@@ -248,7 +278,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
 
       return next;
     });
-  }, [groupMode, sourceGroups, walletGroups]);
+  }, [groupMode, sourceGroups, walletGroups, subcategoryGroups]);
 
   // Column definitions (stable via useMemo)
   const columns = useMemo(
@@ -320,7 +350,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                   )}
                   {isGrouped && (
                     <span className="text-[10px] font-medium">
-                      {groupMode === "source" ? "Source" : "Wallet"}
+                      {groupMode === "source" ? "Source" : groupMode === "wallet" ? "Wallet" : "Cat."}
                     </span>
                   )}
                 </button>
@@ -515,17 +545,61 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                       </div>
                     );
                   })
-                : rows.map((row) => (
-                    <MobileCryptoCard
-                      key={row.id}
-                      row={row}
-                      expanded={expanded.has(row.asset.id)}
-                      toggleExpand={toggleExpand}
-                      handleEdit={handleEdit}
-                      handleDelete={handleDelete}
-                      primaryCurrency={primaryCurrency}
-                    />
-                  ))}
+                : groupMode === "subcategory"
+                  ? subcategoryGroups.map((group, gi) => {
+                      const isGroupOpen = expandedGroups.has(group.subcategory);
+                      const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                      return (
+                        <div key={`mscgroup:${group.subcategory}`}>
+                          <button
+                            onClick={() => toggleGroupExpand(group.subcategory)}
+                            className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-blue-500/40"
+                          >
+                            {isGroupOpen ? (
+                              <ChevronDown className="w-3 h-3 text-zinc-500" />
+                            ) : (
+                              <ChevronRight className="w-3 h-3 text-zinc-500" />
+                            )}
+                            <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
+                              {group.label}
+                            </span>
+                            <span className="text-[11px] text-zinc-600">
+                              ({group.entryCount})
+                            </span>
+                            <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
+                              {formatCurrency(group.totalValue, primaryCurrency)}
+                            </span>
+                          </button>
+
+                          {isGroupOpen && (
+                            <div className="space-y-2 ml-6">
+                              {group.rows.map((row) => (
+                                <MobileCryptoCard
+                                  key={`${group.subcategory}:${row.id}`}
+                                  row={row}
+                                  expanded={expanded.has(row.asset.id)}
+                                  toggleExpand={toggleExpand}
+                                  handleEdit={handleEdit}
+                                  handleDelete={handleDelete}
+                                  primaryCurrency={primaryCurrency}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  : rows.map((row) => (
+                      <MobileCryptoCard
+                        key={row.id}
+                        row={row}
+                        expanded={expanded.has(row.asset.id)}
+                        toggleExpand={toggleExpand}
+                        handleEdit={handleEdit}
+                        handleDelete={handleDelete}
+                        primaryCurrency={primaryCurrency}
+                      />
+                    ))}
           </div>
 
           {/* ── Desktop table layout ── */}
@@ -663,50 +737,131 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                           </Fragment>
                         );
                       })
-                    : rows.map((row) => {
-                        const rowExpanded = expanded.has(row.asset.id);
-                        return (
-                          <Fragment key={row.id}>
-                            <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
-                              {orderedColumns.map((col) => {
-                                const align = col.align === "right" ? "text-right" : "text-left";
-                                const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
-                                return (
-                                  <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
-                                    {col.renderCell(row, ctx)}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-
-                            {rowExpanded && row.asset.positions.length > 0 &&
-                              row.asset.positions.map((pos) => {
-                                const posValue = pos.quantity * row.priceInBase;
-                                return (
-                                  <ExpandedCryptoRow
-                                    key={pos.id}
-                                    walletName={pos.wallet_name}
-                                    walletType={pos.wallet_type}
-                                    quantity={formatQuantity(pos.quantity, 8)}
-                                    value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
-                                    acquisitionMethod={pos.acquisition_method ?? "bought"}
-                                    orderedColumns={orderedColumns}
-                                  />
-                                );
-                              })}
-
-                            {rowExpanded && row.asset.positions.length === 0 && (
-                              <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
-                                <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
-                                  <p className="text-xs text-zinc-600">
-                                    No positions — click the layers icon to add quantities
-                                  </p>
+                    : groupMode === "subcategory"
+                      ? subcategoryGroups.map((group, gi) => {
+                          const isGroupOpen = expandedGroups.has(group.subcategory);
+                          const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                          return (
+                            <Fragment key={`scgroup:${group.subcategory}`}>
+                              <tr
+                                className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
+                                onClick={() => toggleGroupExpand(group.subcategory)}
+                              >
+                                <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    {isGroupOpen ? (
+                                      <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                                    ) : (
+                                      <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                                    )}
+                                    <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
+                                      {group.label}
+                                    </span>
+                                    <span className="text-[11px] text-zinc-600">
+                                      {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
+                                    </span>
+                                    <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
+                                      {formatCurrency(group.totalValue, primaryCurrency)}
+                                    </span>
+                                  </div>
                                 </td>
+                                <td />
                               </tr>
-                            )}
-                          </Fragment>
-                        );
-                      })}
+
+                              {isGroupOpen &&
+                                group.rows.map((row) => {
+                                  const rowExpanded = expanded.has(row.asset.id);
+                                  return (
+                                    <Fragment key={`${group.subcategory}:${row.id}`}>
+                                      <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                                        {orderedColumns.map((col, ci) => {
+                                          const align = col.align === "right" ? "text-right" : "text-left";
+                                          const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                                          const pl = ci === 0 ? "pl-12 pr-4" : "px-4";
+                                          return (
+                                            <td key={col.key} className={`${pl} py-3 ${align} ${hidden}`}>
+                                              {col.renderCell(row, ctx)}
+                                            </td>
+                                          );
+                                        })}
+                                      </tr>
+
+                                      {rowExpanded && row.asset.positions.length > 0 &&
+                                        row.asset.positions.map((pos) => {
+                                          const posValue = pos.quantity * row.priceInBase;
+                                          return (
+                                            <ExpandedCryptoRow
+                                              key={pos.id}
+                                              walletName={pos.wallet_name}
+                                              walletType={pos.wallet_type}
+                                              quantity={formatQuantity(pos.quantity, 8)}
+                                              value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                                              acquisitionMethod={pos.acquisition_method ?? "bought"}
+                                              orderedColumns={orderedColumns}
+                                              grouped
+                                            />
+                                          );
+                                        })}
+
+                                      {rowExpanded && row.asset.positions.length === 0 && (
+                                        <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                                          <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
+                                            <p className="text-xs text-zinc-600">
+                                              No positions — click edit to add quantities
+                                            </p>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </Fragment>
+                                  );
+                                })}
+                            </Fragment>
+                          );
+                        })
+                      : rows.map((row) => {
+                          const rowExpanded = expanded.has(row.asset.id);
+                          return (
+                            <Fragment key={row.id}>
+                              <tr className="border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors">
+                                {orderedColumns.map((col) => {
+                                  const align = col.align === "right" ? "text-right" : "text-left";
+                                  const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                                  return (
+                                    <td key={col.key} className={`px-4 py-3 ${align} ${hidden}`}>
+                                      {col.renderCell(row, ctx)}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+
+                              {rowExpanded && row.asset.positions.length > 0 &&
+                                row.asset.positions.map((pos) => {
+                                  const posValue = pos.quantity * row.priceInBase;
+                                  return (
+                                    <ExpandedCryptoRow
+                                      key={pos.id}
+                                      walletName={pos.wallet_name}
+                                      walletType={pos.wallet_type}
+                                      quantity={formatQuantity(pos.quantity, 8)}
+                                      value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                                      acquisitionMethod={pos.acquisition_method ?? "bought"}
+                                      orderedColumns={orderedColumns}
+                                    />
+                                  );
+                                })}
+
+                              {rowExpanded && row.asset.positions.length === 0 && (
+                                <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+                                  <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
+                                    <p className="text-xs text-zinc-600">
+                                      No positions — click the layers icon to add quantities
+                                    </p>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
               </tbody>
             </table>
           </div>
@@ -714,13 +869,14 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
       )}
 
       {/* Modals */}
-      <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} />
+      <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} />
       {editingAsset && (
         <PositionEditor
           open={!!editingAsset}
           onClose={() => setEditingAsset(null)}
           asset={editingAsset}
           wallets={wallets}
+          existingSubcategories={existingSubcategories}
         />
       )}
     </div>

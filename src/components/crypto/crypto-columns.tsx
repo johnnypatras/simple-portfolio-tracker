@@ -191,6 +191,47 @@ export function buildCryptoWalletGroups(rows: CryptoRow[]): CryptoWalletGroup[] 
   return groups;
 }
 
+// ── Position-level group types for group-by-subcategory mode ─
+
+/** A group of crypto assets sharing the same subcategory */
+export interface CryptoSubcategoryGroup {
+  subcategory: string;
+  label: string;
+  rows: CryptoRow[];
+  totalValue: number;
+  entryCount: number;
+}
+
+/**
+ * Build asset-level groups by subcategory. Each asset belongs to exactly one group.
+ * Assets without a subcategory go into "Uncategorized".
+ */
+export function buildCryptoSubcategoryGroups(rows: CryptoRow[]): CryptoSubcategoryGroup[] {
+  const groupMap = new Map<string, CryptoRow[]>();
+
+  for (const row of rows) {
+    const key = row.asset.subcategory?.trim() || "__uncategorized__";
+    const arr = groupMap.get(key) ?? [];
+    arr.push(row);
+    groupMap.set(key, arr);
+  }
+
+  const groups: CryptoSubcategoryGroup[] = [];
+  for (const [key, groupRows] of groupMap) {
+    const totalValue = groupRows.reduce((sum, r) => sum + r.valueInBase, 0);
+    groups.push({
+      subcategory: key,
+      label: key === "__uncategorized__" ? "Uncategorized" : key,
+      rows: groupRows.sort((a, b) => b.valueInBase - a.valueInBase),
+      totalValue,
+      entryCount: groupRows.length,
+    });
+  }
+
+  groups.sort((a, b) => b.totalValue - a.totalValue);
+  return groups;
+}
+
 // ── Formatters ───────────────────────────────────────────────
 
 export function formatNumber(n: number, decimals = 2): string {

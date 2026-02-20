@@ -131,6 +131,7 @@ export interface CryptoAsset {
   name: string;
   coingecko_id: string;
   chain: string | null;
+  subcategory: string | null;
   created_at: string;
 }
 
@@ -153,6 +154,7 @@ export interface CryptoAssetInput {
   name: string;
   coingecko_id: string;
   chain?: string | null;
+  subcategory?: string | null;
 }
 
 export interface CryptoPositionInput {

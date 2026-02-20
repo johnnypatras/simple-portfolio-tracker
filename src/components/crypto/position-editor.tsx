@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { upsertPosition, deletePosition } from "@/lib/actions/crypto";
+import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
 import type { CryptoAssetWithPositions, Wallet } from "@/lib/types";
 import { ACQUISITION_TYPES } from "@/lib/types";
 
@@ -12,6 +12,7 @@ interface PositionEditorProps {
   onClose: () => void;
   asset: CryptoAssetWithPositions;
   wallets: Wallet[];
+  existingSubcategories: string[];
 }
 
 interface PositionEdit {
@@ -24,9 +25,34 @@ export function PositionEditor({
   onClose,
   asset,
   wallets,
+  existingSubcategories,
 }: PositionEditorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ─── Asset metadata editing (chain + subcategory) ────────
+  const [chain, setChain] = useState(asset.chain ?? "");
+  const [subcategory, setSubcategory] = useState(asset.subcategory ?? "");
+  const [subcategoryOpen, setSubcategoryOpen] = useState(false);
+  const [metaSaving, setMetaSaving] = useState(false);
+  const chainChanged = (chain.trim() || null) !== (asset.chain ?? null);
+  const subcategoryChanged = (subcategory.trim() || null) !== (asset.subcategory ?? null);
+  const metaChanged = chainChanged || subcategoryChanged;
+
+  async function handleMetaSave() {
+    setMetaSaving(true);
+    setError(null);
+    try {
+      await updateCryptoAsset(asset.id, {
+        ...(chainChanged ? { chain: chain.trim() || null } : {}),
+        ...(subcategoryChanged ? { subcategory: subcategory.trim() || null } : {}),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setMetaSaving(false);
+    }
+  }
 
   // Track edits: walletId → { quantity, acquisition }
   const [edits, setEdits] = useState<Record<string, PositionEdit>>(() => {
@@ -126,6 +152,86 @@ export function PositionEditor({
       title={`${asset.name} (${asset.ticker}) Positions`}
     >
       <div className="space-y-4">
+        {/* Chain + Subcategory */}
+        <div className="space-y-3">
+          <div className="flex items-end gap-2">
+            {/* Chain */}
+            <div className="flex-1">
+              <label className="block text-xs text-zinc-500 mb-1">Chain</label>
+              <input
+                type="text"
+                value={chain}
+                onChange={(e) => setChain(e.target.value)}
+                placeholder="e.g. Ethereum, Solana..."
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              />
+            </div>
+
+            {/* Subcategory combobox */}
+            <div className="relative flex-1">
+              <label className="block text-xs text-zinc-500 mb-1">
+                Subcategory
+              </label>
+              <input
+                type="text"
+                value={subcategory}
+                onChange={(e) => {
+                  setSubcategory(e.target.value);
+                  setSubcategoryOpen(true);
+                }}
+                onFocus={() => setSubcategoryOpen(true)}
+                onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
+                placeholder="e.g. L1, DeFi, Stablecoin..."
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              />
+              {subcategoryOpen && existingSubcategories.length > 0 && (() => {
+                const filtered = existingSubcategories.filter(
+                  (s) =>
+                    s.toLowerCase().includes(subcategory.toLowerCase()) &&
+                    s.toLowerCase() !== subcategory.toLowerCase()
+                );
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                    {filtered.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setSubcategory(s);
+                          setSubcategoryOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Save button for metadata */}
+            {metaChanged && (
+              <button
+                onClick={handleMetaSave}
+                disabled={metaSaving}
+                className="p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0 mb-px"
+                title="Save changes"
+              >
+                {metaSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-zinc-800/50" />
+
         <p className="text-xs text-zinc-500">Positions by wallet</p>
 
         {allWalletIds.length === 0 && (
