@@ -506,9 +506,8 @@ export function getStockColumns(handlers: {
       header: "Shares",
       align: "right",
       width: "w-24",
-      defaultVisible: false,
       renderCell: (row) => (
-        <span className="text-sm text-zinc-300 tabular-nums">
+        <span className="text-xs text-zinc-500 tabular-nums">
           {row.totalQty > 0 ? formatNumber(row.totalQty, 4) : "—"}
         </span>
       ),
@@ -522,7 +521,7 @@ export function getStockColumns(handlers: {
       renderHeader: (ctx) =>
         `Value (${ctx.primaryCurrency})`,
       renderCell: (row, ctx) => (
-        <span className="text-sm font-medium text-zinc-200 tabular-nums">
+        <span className="text-sm font-semibold text-zinc-100 tabular-nums">
           {row.valueBase > 0
             ? formatCurrency(row.valueBase, ctx.primaryCurrency)
             : "—"}
