@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Search, Loader2, ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
@@ -30,7 +30,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
 
   // ─── Chain + subcategory state ────────────────────────────
   const [chain, setChain] = useState("");
-  const [chainDropdownOpen, setChainDropdownOpen] = useState(false);
+  const [availableChains, setAvailableChains] = useState<string[]>([]);
   const [subcategory, setSubcategory] = useState("");
   const [subcategoryDropdownOpen, setSubcategoryDropdownOpen] = useState(false);
 
@@ -39,6 +39,24 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
   const [positionWalletId, setPositionWalletId] = useState("");
   const [positionQuantity, setPositionQuantity] = useState("");
   const [acquisitionType, setAcquisitionType] = useState("bought");
+
+  // Filter wallets by chain compatibility
+  const compatibleWallets = useMemo(() => {
+    if (!chain) return wallets;
+    return wallets.filter((w) => {
+      // Wallets with no chain set (multi-chain / exchange) are always compatible
+      if (!w.chain) return true;
+      // Otherwise, must match the selected chain
+      return w.chain === chain;
+    });
+  }, [wallets, chain]);
+
+  // Reset wallet selection when chain changes and selected wallet is incompatible
+  useEffect(() => {
+    if (positionWalletId && !compatibleWallets.find((w) => w.id === positionWalletId)) {
+      setPositionWalletId("");
+    }
+  }, [compatibleWallets, positionWalletId]);
 
   // Debounced search
   useEffect(() => {
@@ -79,7 +97,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       setAdding(false);
       setDetecting(false);
       setChain("");
-      setChainDropdownOpen(false);
+      setAvailableChains([]);
       setSubcategory("");
       setSubcategoryDropdownOpen(false);
       setPositionOpen(false);
@@ -94,9 +112,10 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
     setSelectedCoin(coin);
     setError(null);
     setChain("");
+    setAvailableChains([]);
     setSubcategory("");
 
-    // Fetch chain + subcategory from CoinGecko detail API
+    // Fetch chain + subcategory + available chains from CoinGecko detail API
     setDetecting(true);
     try {
       const res = await fetch(`/api/crypto/detail?id=${encodeURIComponent(coin.id)}`);
@@ -104,6 +123,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         const data = await res.json();
         if (data.chain) setChain(data.chain);
         if (data.subcategory) setSubcategory(data.subcategory);
+        if (Array.isArray(data.availableChains)) setAvailableChains(data.availableChains);
       }
     } catch {
       // Detection failed silently — user can fill manually
@@ -153,6 +173,14 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       setAdding(false);
     }
   }
+
+  // Build combined chain options: availableChains from API + existingChains from portfolio
+  const chainOptions = useMemo(() => {
+    const set = new Set(availableChains);
+    // Also include existing chains from the portfolio for consistency
+    for (const c of existingChains) set.add(c);
+    return [...set].sort();
+  }, [availableChains, existingChains]);
 
   return (
     <Modal open={open} onClose={onClose} title="Add Crypto Asset">
@@ -295,49 +323,33 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Chain + Subcategory row */}
             <div className="grid grid-cols-2 gap-3">
-              {/* Chain */}
-              <div className="relative">
+              {/* Chain — dropdown from available platforms */}
+              <div>
                 <label className="block text-xs text-zinc-500 mb-1">
                   Chain <span className="text-zinc-600">(optional)</span>
                 </label>
-                <input
-                  type="text"
-                  value={chain}
-                  onChange={(e) => {
-                    setChain(e.target.value);
-                    setChainDropdownOpen(true);
-                  }}
-                  onFocus={() => setChainDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setChainDropdownOpen(false), 150)}
-                  placeholder="e.g. Ethereum, Solana..."
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
-                {chainDropdownOpen && existingChains.length > 0 && (() => {
-                  const filtered = existingChains.filter(
-                    (s) =>
-                      s.toLowerCase().includes(chain.toLowerCase()) &&
-                      s.toLowerCase() !== chain.toLowerCase()
-                  );
-                  if (filtered.length === 0) return null;
-                  return (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
-                      {filtered.map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setChain(s);
-                            setChainDropdownOpen(false);
-                          }}
-                          className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
+                {chainOptions.length > 0 ? (
+                  <select
+                    value={chain}
+                    onChange={(e) => setChain(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  >
+                    <option value="">Select chain...</option>
+                    {chainOptions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}{availableChains.includes(c) && !existingChains.includes(c) ? "" : availableChains.includes(c) ? "" : " (other)"}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={chain}
+                    onChange={(e) => setChain(e.target.value)}
+                    placeholder="e.g. Ethereum, Solana..."
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  />
+                )}
               </div>
 
               {/* Subcategory */}
@@ -416,12 +428,22 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                           className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                         >
                           <option value="">Select wallet...</option>
-                          {wallets.map((w) => (
+                          {compatibleWallets.map((w) => (
                             <option key={w.id} value={w.id}>
-                              {w.name}
+                              {w.name}{w.chain ? ` (${w.chain})` : ""}
                             </option>
                           ))}
                         </select>
+                        {chain && compatibleWallets.length === 0 && (
+                          <p className="text-xs text-amber-400/80 mt-1">
+                            No wallets compatible with {chain}
+                          </p>
+                        )}
+                        {chain && compatibleWallets.length > 0 && compatibleWallets.length < wallets.length && (
+                          <p className="text-xs text-zinc-600 mt-1">
+                            Filtered to {chain}-compatible wallets
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="block text-xs text-zinc-500 mb-1">

@@ -69,9 +69,14 @@ export function PositionEditor({
   // Which wallet to add a new position for
   const [addingWallet, setAddingWallet] = useState("");
 
-  // Wallets that don't already have a position
+  // Wallets that don't already have a position, filtered by chain compatibility
   const usedWalletIds = new Set(asset.positions.map((p) => p.wallet_id));
-  const availableWallets = wallets.filter((w) => !usedWalletIds.has(w.id));
+  const availableWallets = wallets.filter((w) => {
+    if (usedWalletIds.has(w.id)) return false;
+    // If asset has a chain and wallet has a chain, they must match
+    if (asset.chain && w.chain && w.chain !== asset.chain) return false;
+    return true;
+  });
 
   function handleQuantityChange(walletId: string, value: string) {
     setEdits((prev) => ({

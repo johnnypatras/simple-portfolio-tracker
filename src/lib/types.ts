@@ -10,6 +10,7 @@ export interface Wallet {
   name: string;
   wallet_type: WalletType;
   privacy_label: PrivacyLabel | null;
+  chain: string | null;
   created_at: string;
 }
 
@@ -39,6 +40,7 @@ export interface WalletInput {
   name: string;
   wallet_type: WalletType;
   privacy_label?: PrivacyLabel | null;
+  chain?: string | null;
 }
 
 export interface BrokerInput {

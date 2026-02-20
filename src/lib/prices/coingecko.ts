@@ -67,6 +67,8 @@ export async function getPrices(
 export interface CoinGeckoDetail {
   asset_platform_id: string | null;
   categories: string[];
+  /** Map of platform ID → contract address (for multi-chain tokens) */
+  platforms: Record<string, string>;
 }
 
 /**
@@ -83,16 +85,24 @@ export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | n
   }
 
   const data = await res.json();
+  // Extract platforms, filtering out empty-string keys (CoinGecko quirk)
+  const rawPlatforms = (data.platforms ?? {}) as Record<string, string>;
+  const platforms: Record<string, string> = {};
+  for (const [key, val] of Object.entries(rawPlatforms)) {
+    if (key.trim()) platforms[key] = val;
+  }
+
   return {
     asset_platform_id: data.asset_platform_id ?? null,
     categories: Array.isArray(data.categories) ? data.categories : [],
+    platforms,
   };
 }
 
 // ── Mapping helpers ───────────────────────────────────────
 
 /** Map CoinGecko asset_platform_id to a friendly chain name */
-const PLATFORM_TO_CHAIN: Record<string, string> = {
+export const PLATFORM_TO_CHAIN: Record<string, string> = {
   ethereum: "Ethereum",
   "binance-smart-chain": "BNB Chain",
   "polygon-pos": "Polygon",
@@ -165,6 +175,24 @@ export function inferChain(coinId: string, detail: CoinGeckoDetail): string {
   }
   // Native coin — use the coin's own chain
   return NATIVE_CHAIN_MAP[coinId] ?? "";
+}
+
+/** Get available chain names from a coin's platforms map.
+ *  For native L1s (no platforms), returns the coin's own chain. */
+export function getAvailableChains(coinId: string, detail: CoinGeckoDetail): string[] {
+  const platformKeys = Object.keys(detail.platforms);
+  if (platformKeys.length === 0) {
+    // Native L1 coin — only chain is itself
+    const native = NATIVE_CHAIN_MAP[coinId];
+    return native ? [native] : [];
+  }
+  // Multi-chain token — map each platform to a friendly name
+  const chains: string[] = [];
+  for (const key of platformKeys) {
+    const name = PLATFORM_TO_CHAIN[key] ?? key;
+    if (!chains.includes(name)) chains.push(name);
+  }
+  return chains.sort();
 }
 
 /** Derive a subcategory from CoinGecko categories list */

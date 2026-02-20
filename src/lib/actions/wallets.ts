@@ -28,6 +28,7 @@ export async function createWallet(input: WalletInput) {
     name: input.name.trim(),
     wallet_type: input.wallet_type,
     privacy_label: input.privacy_label ?? null,
+    chain: input.chain?.trim() || null,
   });
 
   if (error) throw new Error(error.message);
@@ -49,6 +50,7 @@ export async function updateWallet(id: string, input: WalletInput) {
       name: input.name.trim(),
       wallet_type: input.wallet_type,
       privacy_label: input.privacy_label ?? null,
+      chain: input.chain?.trim() || null,
     })
     .eq("id", id);
 

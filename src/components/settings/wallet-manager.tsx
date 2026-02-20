@@ -16,6 +16,12 @@ const privacyLabels: Record<PrivacyLabel, string> = {
   doxxed: "KYC / Doxxed",
 };
 
+const WELL_KNOWN_CHAINS = [
+  "Bitcoin", "Ethereum", "Solana", "Cardano", "Polkadot", "Avalanche",
+  "BNB Chain", "Polygon", "Arbitrum", "Optimism", "Base", "NEAR",
+  "Cosmos", "Fantom", "Sui", "Aptos", "Tron", "Stellar",
+];
+
 export function WalletManager({ wallets }: { wallets: Wallet[] }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Wallet | null>(null);
@@ -26,12 +32,14 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
   const [name, setName] = useState("");
   const [walletType, setWalletType] = useState<WalletType>("custodial");
   const [privacyLabel, setPrivacyLabel] = useState<PrivacyLabel | "">("");
+  const [chain, setChain] = useState("");
 
   function openCreate() {
     setEditing(null);
     setName("");
     setWalletType("custodial");
     setPrivacyLabel("");
+    setChain("");
     setError(null);
     setModalOpen(true);
   }
@@ -41,6 +49,7 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
     setName(wallet.name);
     setWalletType(wallet.wallet_type);
     setPrivacyLabel(wallet.privacy_label ?? "");
+    setChain(wallet.chain ?? "");
     setError(null);
     setModalOpen(true);
   }
@@ -54,6 +63,7 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
       name,
       wallet_type: walletType,
       privacy_label: privacyLabel || null,
+      chain: chain || null,
     };
 
     try {
@@ -117,6 +127,11 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
                   <span className="text-xs text-zinc-500">
                     {walletTypeLabels[w.wallet_type]}
                   </span>
+                  {w.chain && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                      {w.chain}
+                    </span>
+                  )}
                   {w.privacy_label && (
                     <span
                       className={`text-xs px-1.5 py-0.5 rounded ${
@@ -176,6 +191,28 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
             >
               <option value="custodial">Exchange / Custodial</option>
               <option value="non_custodial">Self-custody</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1.5">
+              Chain <span className="text-zinc-600">(optional{walletType === "non_custodial" ? " — recommended for self-custody" : ""})</span>
+            </label>
+            <select
+              value={WELL_KNOWN_CHAINS.includes(chain) ? chain : chain ? "__custom__" : ""}
+              onChange={(e) => {
+                if (e.target.value === "__custom__") return;
+                setChain(e.target.value);
+              }}
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            >
+              <option value="">Any / Multi-chain</option>
+              {WELL_KNOWN_CHAINS.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+              {chain && !WELL_KNOWN_CHAINS.includes(chain) && (
+                <option value="__custom__">{chain} (custom)</option>
+              )}
             </select>
           </div>
 
