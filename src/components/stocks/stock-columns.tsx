@@ -60,6 +60,14 @@ export function formatNumber(n: number, decimals = 2): string {
   }).format(n);
 }
 
+/** Format quantities (shares) — strips trailing zeros while keeping up to maxDecimals precision */
+export function formatQuantity(n: number, maxDecimals: number): string {
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDecimals,
+  }).format(n);
+}
+
 export function formatCurrency(n: number, cur: string): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -508,7 +516,7 @@ export function getStockColumns(handlers: {
       width: "w-24",
       renderCell: (row) => (
         <span className="text-xs text-zinc-500 tabular-nums">
-          {row.totalQty > 0 ? formatNumber(row.totalQty, 4) : "—"}
+          {row.totalQty > 0 ? formatQuantity(row.totalQty, 4) : "—"}
         </span>
       ),
     },

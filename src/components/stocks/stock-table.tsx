@@ -25,6 +25,7 @@ import {
   sortFlatItems,
   sortRows,
   formatNumber,
+  formatQuantity,
   formatCurrency,
   getCurrencyColor,
   CATEGORY_LABELS,
@@ -762,7 +763,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                         return (
                                           <td key={col.key} className={`${pl} py-3 text-right ${hidden}`}>
                                             <span className="text-sm text-zinc-300 tabular-nums">
-                                              {entry.groupQty > 0 ? formatNumber(entry.groupQty, 4) : "—"}
+                                              {entry.groupQty > 0 ? formatQuantity(entry.groupQty, 4) : "—"}
                                             </span>
                                           </td>
                                         );
@@ -792,7 +793,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                         <ExpandedStockRow
                                           key={pos.id}
                                           brokerName={pos.broker_name}
-                                          quantity={formatNumber(pos.quantity, 4)}
+                                          quantity={formatQuantity(pos.quantity, 4)}
                                           value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
                                           orderedColumns={orderedColumns}
                                           grouped
@@ -872,7 +873,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                         <ExpandedStockRow
                                           key={pos.id}
                                           brokerName={pos.broker_name}
-                                          quantity={formatNumber(pos.quantity, 4)}
+                                          quantity={formatQuantity(pos.quantity, 4)}
                                           value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
                                           orderedColumns={orderedColumns}
                                           grouped
@@ -1026,7 +1027,7 @@ function MobileStockCard({
             <div>
               <span className="text-zinc-500">Shares</span>
               <p className="text-zinc-500 tabular-nums">
-                {displayQty > 0 ? formatNumber(displayQty, 4) : "—"}
+                {displayQty > 0 ? formatQuantity(displayQty, 4) : "—"}
               </p>
             </div>
             <div>
@@ -1053,7 +1054,7 @@ function MobileStockCard({
                   <div key={pos.id} className="flex justify-between text-xs">
                     <span className="text-zinc-500">{pos.broker_name}</span>
                     <span className="text-zinc-400 tabular-nums">
-                      {formatNumber(pos.quantity, 4)} · {posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
+                      {formatQuantity(pos.quantity, 4)} · {posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
                     </span>
                   </div>
                 );
@@ -1174,7 +1175,7 @@ function FlatSingleRow({
             <ExpandedStockRow
               key={pos.id}
               brokerName={pos.broker_name}
-              quantity={formatNumber(pos.quantity, 4)}
+              quantity={formatQuantity(pos.quantity, 4)}
               value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
               orderedColumns={orderedColumns}
             />
@@ -1309,7 +1310,7 @@ function TickerGroupRows({
                     <ExpandedStockRow
                       key={pos.id}
                       brokerName={pos.broker_name}
-                      quantity={formatNumber(pos.quantity, 4)}
+                      quantity={formatQuantity(pos.quantity, 4)}
                       value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
                       orderedColumns={orderedColumns}
                       grouped
@@ -1391,7 +1392,7 @@ function TypeGroupInnerRows({
                     <ExpandedStockRow
                       key={pos.id}
                       brokerName={pos.broker_name}
-                      quantity={formatNumber(pos.quantity, 4)}
+                      quantity={formatQuantity(pos.quantity, 4)}
                       value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
                       orderedColumns={orderedColumns}
                       grouped
@@ -1449,7 +1450,7 @@ function TypeGroupInnerRows({
                     <ExpandedStockRow
                       key={pos.id}
                       brokerName={pos.broker_name}
-                      quantity={formatNumber(pos.quantity, 4)}
+                      quantity={formatQuantity(pos.quantity, 4)}
                       value={posValueBase > 0 ? formatCurrency(posValueBase, primaryCurrency) : "—"}
                       orderedColumns={orderedColumns}
                       grouped

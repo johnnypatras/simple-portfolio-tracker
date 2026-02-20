@@ -21,6 +21,7 @@ import {
   buildCryptoWalletGroups,
   sortCryptoRows,
   formatNumber,
+  formatQuantity,
   formatCurrency,
   ACQUISITION_COLORS,
   ACQUISITION_LABELS,
@@ -686,7 +687,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                     key={pos.id}
                                     walletName={pos.wallet_name}
                                     walletType={pos.wallet_type}
-                                    quantity={formatNumber(pos.quantity, 8)}
+                                    quantity={formatQuantity(pos.quantity, 8)}
                                     value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
                                     acquisitionMethod={pos.acquisition_method ?? "bought"}
                                     orderedColumns={orderedColumns}
@@ -756,8 +757,8 @@ function GroupedCryptoEntryRows({
           if (col.key === "holdings") {
             return (
               <td key={col.key} className={`${pl} py-3 text-right ${hidden}`}>
-                <span className="text-sm text-zinc-300 tabular-nums">
-                  {entry.groupQty > 0 ? formatNumber(entry.groupQty, 8) : "—"}
+                <span className="text-xs text-zinc-500 tabular-nums">
+                  {entry.groupQty > 0 ? formatQuantity(entry.groupQty, 8) : "—"}
                 </span>
               </td>
             );
@@ -794,7 +795,7 @@ function GroupedCryptoEntryRows({
               key={pos.id}
               walletName={pos.wallet_name}
               walletType={pos.wallet_type}
-              quantity={formatNumber(pos.quantity, 8)}
+              quantity={formatQuantity(pos.quantity, 8)}
               value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
               acquisitionMethod={pos.acquisition_method ?? "bought"}
               orderedColumns={orderedColumns}
@@ -960,7 +961,7 @@ function MobileCryptoCard({
             <div>
               <span className="text-zinc-500">Holdings</span>
               <p className="text-zinc-300 tabular-nums">
-                {displayQty > 0 ? formatNumber(displayQty, 8) : "—"}
+                {displayQty > 0 ? formatQuantity(displayQty, 8) : "—"}
               </p>
             </div>
           </div>
@@ -982,7 +983,7 @@ function MobileCryptoCard({
                       )}
                     </span>
                     <span className="text-zinc-400 tabular-nums">
-                      {formatNumber(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                      {formatQuantity(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
                       {" · "}
                       <span className={ACQUISITION_COLORS[method] ?? "text-zinc-400"}>
                         {ACQUISITION_LABELS[method] ?? method}
