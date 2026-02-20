@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
+  AssetCategory,
   StockAssetInput,
   StockAssetWithPositions,
   StockPositionInput,
@@ -103,10 +104,10 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
   return data.id;
 }
 
-/** Update a stock asset's editable fields (subcategory, etc.) */
+/** Update a stock asset's editable fields (category, subcategory, etc.) */
 export async function updateStockAsset(
   id: string,
-  fields: { subcategory?: string | null }
+  fields: { category?: AssetCategory; subcategory?: string | null }
 ) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -114,9 +115,15 @@ export async function updateStockAsset(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  const updatePayload: Record<string, unknown> = {};
+  if (fields.category !== undefined) updatePayload.category = fields.category;
+  if (fields.subcategory !== undefined) updatePayload.subcategory = fields.subcategory?.trim() || null;
+
+  if (Object.keys(updatePayload).length === 0) return;
+
   const { error } = await supabase
     .from("stock_assets")
-    .update({ subcategory: fields.subcategory?.trim() || null })
+    .update(updatePayload)
     .eq("id", id)
     .eq("user_id", user.id);
 

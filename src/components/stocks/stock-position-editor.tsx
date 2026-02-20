@@ -4,7 +4,15 @@ import { useState } from "react";
 import { Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { upsertStockPosition, deleteStockPosition, updateStockAsset } from "@/lib/actions/stocks";
-import type { StockAssetWithPositions, Broker } from "@/lib/types";
+import type { StockAssetWithPositions, Broker, AssetCategory } from "@/lib/types";
+
+const CATEGORIES: { value: AssetCategory; label: string }[] = [
+  { value: "stock", label: "Individual Stock" },
+  { value: "etf_ucits", label: "ETF — UCITS" },
+  { value: "etf_non_ucits", label: "ETF — Non-UCITS" },
+  { value: "bond", label: "Bond / Fixed Income" },
+  { value: "other", label: "Other" },
+];
 
 interface StockPositionEditorProps {
   open: boolean;
@@ -24,21 +32,27 @@ export function StockPositionEditor({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Subcategory editing
+  // Category + subcategory editing
+  const [category, setCategory] = useState<AssetCategory>(asset.category);
   const [subcategory, setSubcategory] = useState(asset.subcategory ?? "");
   const [subcategoryOpen, setSubcategoryOpen] = useState(false);
-  const [subcategorySaving, setSubcategorySaving] = useState(false);
+  const [metaSaving, setMetaSaving] = useState(false);
+  const categoryChanged = category !== asset.category;
   const subcategoryChanged = (subcategory.trim() || null) !== (asset.subcategory ?? null);
+  const metaChanged = categoryChanged || subcategoryChanged;
 
-  async function handleSubcategorySave() {
-    setSubcategorySaving(true);
+  async function handleMetaSave() {
+    setMetaSaving(true);
     setError(null);
     try {
-      await updateStockAsset(asset.id, { subcategory: subcategory.trim() || null });
+      await updateStockAsset(asset.id, {
+        ...(categoryChanged ? { category } : {}),
+        ...(subcategoryChanged ? { subcategory: subcategory.trim() || null } : {}),
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update subcategory");
+      setError(err instanceof Error ? err.message : "Failed to update");
     } finally {
-      setSubcategorySaving(false);
+      setMetaSaving(false);
     }
   }
 
@@ -121,14 +135,28 @@ export function StockPositionEditor({
       title={`${asset.name} (${asset.ticker}) Positions`}
     >
       <div className="space-y-4">
-        {/* Subcategory */}
-        <div className="relative">
-          <label className="block text-xs text-zinc-500 mb-1">
-            Subcategory{" "}
-            <span className="text-zinc-600">(e.g. &quot;S&amp;P 500&quot;, &quot;World&quot;, &quot;US Bonds&quot;)</span>
-          </label>
-          <div className="flex items-center gap-1.5">
+        {/* Category + Subcategory */}
+        <div className="space-y-3">
+          <div className="flex items-end gap-2">
+            {/* Category dropdown */}
+            <div className="flex-1">
+              <label className="block text-xs text-zinc-500 mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as AssetCategory)}
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Subcategory combobox */}
             <div className="relative flex-1">
+              <label className="block text-xs text-zinc-500 mb-1">
+                Subcategory
+              </label>
               <input
                 type="text"
                 value={subcategory}
@@ -138,7 +166,7 @@ export function StockPositionEditor({
                 }}
                 onFocus={() => setSubcategoryOpen(true)}
                 onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
-                placeholder="Type or pick..."
+                placeholder="e.g. S&P 500, World..."
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               />
               {subcategoryOpen && existingSubcategories.length > 0 && (() => {
@@ -168,14 +196,16 @@ export function StockPositionEditor({
                 );
               })()}
             </div>
-            {subcategoryChanged && (
+
+            {/* Single save button for both fields */}
+            {metaChanged && (
               <button
-                onClick={handleSubcategorySave}
-                disabled={subcategorySaving}
-                className="p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
-                title="Save subcategory"
+                onClick={handleMetaSave}
+                disabled={metaSaving}
+                className="p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0 mb-px"
+                title="Save changes"
               >
-                {subcategorySaving ? (
+                {metaSaving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Save className="w-4 h-4" />
