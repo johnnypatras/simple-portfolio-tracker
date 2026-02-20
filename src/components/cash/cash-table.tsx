@@ -249,18 +249,19 @@ export function CashTable({
   return (
     <div>
       {/* ── Summary header ─────────────────────────────────── */}
-      <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-              Total Banks &amp; Deposits
-            </p>
-            <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
-              {formatCurrency(totalCash, primaryCurrency)}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right text-xs text-zinc-500 space-y-0.5">
+      <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-4 md:p-5">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-0 md:gap-4">
+          {/* Info: total + stats */}
+          <div className="flex items-center justify-between md:justify-start md:gap-6 flex-1 min-w-0">
+            <div>
+              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                Total Banks &amp; Deposits
+              </p>
+              <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
+                {formatCurrency(totalCash, primaryCurrency)}
+              </p>
+            </div>
+            <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
               <p>
                 {bankAccounts.length} bank account
                 {bankAccounts.length !== 1 ? "s" : ""}
@@ -278,6 +279,9 @@ export function CashTable({
                 </p>
               )}
             </div>
+          </div>
+          {/* Toolbar: action buttons */}
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-zinc-800/30 md:mt-0 md:pt-0 md:border-t-0">
             {allGroupIds.length > 0 && (
               <button
                 onClick={toggleExpandAll}
@@ -297,12 +301,20 @@ export function CashTable({
               onMove={moveColumn}
               onReset={resetToDefaults}
             />
+            {/* Mobile: + Add Asset in toolbar */}
+            <button
+              onClick={() => setAddChooserOpen(true)}
+              className="ml-auto md:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              Add
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ── Action bar ───────────────────────────────────── */}
-      <div className="flex items-center justify-end mt-2 mb-3">
+      {/* ── Action bar (desktop) ─────────────────────────── */}
+      <div className="hidden md:flex items-center justify-end mt-2 mb-3">
         <button
           onClick={() => setAddChooserOpen(true)}
           className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
