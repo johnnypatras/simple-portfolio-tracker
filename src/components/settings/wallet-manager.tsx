@@ -7,11 +7,6 @@ import { createWallet, updateWallet, deleteWallet } from "@/lib/actions/wallets"
 import type { Wallet, WalletInput, WalletType, PrivacyLabel } from "@/lib/types";
 import { parseWalletChains, serializeChains, getWalletChainTokens, EVM_CHAINS, NON_EVM_CHAINS, isEvmChain } from "@/lib/types";
 
-const walletTypeLabels: Record<WalletType, string> = {
-  custodial: "Exchange / Custodial",
-  non_custodial: "Self-custody",
-};
-
 const privacyLabels: Record<PrivacyLabel, string> = {
   anon: "Anonymous",
   doxxed: "KYC / Doxxed",
@@ -84,6 +79,56 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
     }
   }
 
+  const exchanges = wallets.filter((w) => w.wallet_type === "custodial");
+  const selfCustody = wallets.filter((w) => w.wallet_type === "non_custodial");
+
+  function renderWalletRow(w: Wallet) {
+    return (
+      <div
+        key={w.id}
+        className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border border-zinc-800/50 rounded-lg group"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-zinc-200 truncate">
+            {w.name}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {getWalletChainTokens(w.chain).map((token) => (
+              <span key={token} className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                {token.toLowerCase() === "evm" ? "EVM Compatible" : token}
+              </span>
+            ))}
+            {w.privacy_label && (
+              <span
+                className={`text-xs px-1.5 py-0.5 rounded ${
+                  w.privacy_label === "anon"
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : "bg-amber-500/10 text-amber-400"
+                }`}
+              >
+                {privacyLabels[w.privacy_label]}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => openEdit(w)}
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => handleDelete(w.id)}
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -95,67 +140,43 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
           className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
-          Add Wallet
+          Add
         </button>
       </div>
 
       {wallets.length === 0 ? (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-8 text-center">
           <WalletIcon className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-          <p className="text-sm text-zinc-500">No wallets yet</p>
+          <p className="text-sm text-zinc-500">No exchanges or wallets yet</p>
           <p className="text-xs text-zinc-600 mt-1">
             Add your first exchange or wallet to start tracking crypto
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {wallets.map((w) => (
-            <div
-              key={w.id}
-              className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border border-zinc-800/50 rounded-lg group"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-zinc-200 truncate">
-                  {w.name}
-                </p>
-                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="text-xs text-zinc-500">
-                    {walletTypeLabels[w.wallet_type]}
-                  </span>
-                  {getWalletChainTokens(w.chain).map((token) => (
-                    <span key={token} className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
-                      {token.toLowerCase() === "evm" ? "EVM Compatible" : token}
-                    </span>
-                  ))}
-                  {w.privacy_label && (
-                    <span
-                      className={`text-xs px-1.5 py-0.5 rounded ${
-                        w.privacy_label === "anon"
-                          ? "bg-emerald-500/10 text-emerald-400"
-                          : "bg-amber-500/10 text-amber-400"
-                      }`}
-                    >
-                      {privacyLabels[w.privacy_label]}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => openEdit(w)}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => handleDelete(w.id)}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+        <div className="space-y-6">
+          {/* Exchanges */}
+          {exchanges.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">
+                Exchanges
+              </p>
+              <div className="space-y-2">
+                {exchanges.map(renderWalletRow)}
               </div>
             </div>
-          ))}
+          )}
+
+          {/* Self-custody wallets */}
+          {selfCustody.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">
+                Self-custody Wallets
+              </p>
+              <div className="space-y-2">
+                {selfCustody.map(renderWalletRow)}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -164,9 +185,10 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
         onClose={() => setModalOpen(false)}
         title={editing ? "Edit Wallet" : "Add Wallet"}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Name */}
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">Name</label>
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">Name</label>
             <input
               type="text"
               value={name}
@@ -177,36 +199,54 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
             />
           </div>
 
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">Type</label>
-            <select
-              value={walletType}
-              onChange={(e) => setWalletType(e.target.value as WalletType)}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-            >
-              <option value="custodial">Exchange / Custodial</option>
-              <option value="non_custodial">Self-custody</option>
-            </select>
+          {/* Type + Privacy — side by side */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-1.5">Type</label>
+              <select
+                value={walletType}
+                onChange={(e) => setWalletType(e.target.value as WalletType)}
+                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="custodial">Exchange / Custodial</option>
+                <option value="non_custodial">Self-custody</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-1.5">Privacy</label>
+              <select
+                value={privacyLabel}
+                onChange={(e) => setPrivacyLabel(e.target.value as PrivacyLabel | "")}
+                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="">Not set</option>
+                <option value="anon">Anonymous</option>
+                <option value="doxxed">KYC / Doxxed</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
-              Chains <span className="text-zinc-600">(optional{walletType === "non_custodial" ? " — recommended for self-custody" : ""})</span>
-            </label>
-            <p className="text-xs text-zinc-600 mb-2">
-              {selectedChains.length === 0 ? "No chains selected — wallet works with any chain" : (() => {
-                const evmAll = EVM_CHAINS.every((c) => selectedChains.includes(c));
-                const nonEvmSelected = selectedChains.filter((c) => !isEvmChain(c));
-                const parts: string[] = [];
-                if (evmAll) parts.push("EVM");
-                else {
-                  const evmCount = selectedChains.filter((c) => isEvmChain(c)).length;
-                  if (evmCount > 0) parts.push(`${evmCount} EVM chain${evmCount > 1 ? "s" : ""}`);
-                }
-                parts.push(...nonEvmSelected);
-                return parts.join(", ");
-              })()}
-            </p>
+          {/* Chains — contained section */}
+          <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/10 p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-zinc-300">Chains</label>
+              <span className="text-xs text-zinc-600">
+                {selectedChains.length === 0
+                  ? "Any chain"
+                  : (() => {
+                      const evmAll = EVM_CHAINS.every((c) => selectedChains.includes(c));
+                      const nonEvmSelected = selectedChains.filter((c) => !isEvmChain(c));
+                      const parts: string[] = [];
+                      if (evmAll) parts.push("EVM");
+                      else {
+                        const evmCount = selectedChains.filter((c) => isEvmChain(c)).length;
+                        if (evmCount > 0) parts.push(`${evmCount} EVM`);
+                      }
+                      parts.push(...nonEvmSelected);
+                      return parts.join(", ");
+                    })()}
+              </span>
+            </div>
 
             {/* EVM group toggle */}
             <button
@@ -214,10 +254,8 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
               onClick={() => {
                 const hasAllEvm = EVM_CHAINS.every((c) => selectedChains.includes(c));
                 if (hasAllEvm) {
-                  // Remove all EVM chains
                   setSelectedChains((prev) => prev.filter((c) => !isEvmChain(c)));
                 } else {
-                  // Add all EVM chains
                   setSelectedChains((prev) => {
                     const set = new Set(prev);
                     for (const c of EVM_CHAINS) set.add(c);
@@ -225,21 +263,21 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
                   });
                 }
               }}
-              className={`w-full px-3 py-2 text-sm rounded-lg border transition-colors mb-2 ${
+              className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg border transition-colors ${
                 EVM_CHAINS.every((c) => selectedChains.includes(c))
-                  ? "bg-blue-600/20 border-blue-500/40 text-blue-300"
+                  ? "bg-blue-600/15 border-blue-500/30 text-blue-300"
                   : selectedChains.some((c) => isEvmChain(c))
                     ? "bg-blue-600/10 border-blue-500/20 text-blue-400"
-                    : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+                    : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-300 hover:border-zinc-700"
               }`}
             >
-              EVM Compatible
-              <span className="text-xs ml-1.5 opacity-60">
-                (Ethereum, Polygon, Arbitrum, Base, etc.)
+              <span>EVM Compatible</span>
+              <span className="text-[10px] tracking-wide opacity-50 uppercase">
+                ETH, Polygon, Arb, Base...
               </span>
             </button>
 
-            {/* Non-EVM individual chains */}
+            {/* Non-EVM chains */}
             <div className="flex flex-wrap gap-1.5">
               {NON_EVM_CHAINS.map((c) => {
                 const active = selectedChains.includes(c);
@@ -252,10 +290,10 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
                         active ? prev.filter((x) => x !== c) : [...prev, c]
                       )
                     }
-                    className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                    className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
                       active
-                        ? "bg-blue-600/20 border-blue-500/40 text-blue-300"
-                        : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+                        ? "bg-blue-600/15 border-blue-500/30 text-blue-300"
+                        : "bg-zinc-950/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
                     }`}
                   >
                     {c}
@@ -265,28 +303,13 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
-              Privacy <span className="text-zinc-600">(optional)</span>
-            </label>
-            <select
-              value={privacyLabel}
-              onChange={(e) => setPrivacyLabel(e.target.value as PrivacyLabel | "")}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-            >
-              <option value="">Not set</option>
-              <option value="anon">Anonymous</option>
-              <option value="doxxed">KYC / Doxxed</option>
-            </select>
-          </div>
-
           {error && (
             <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
               {error}
             </p>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
               onClick={() => setModalOpen(false)}

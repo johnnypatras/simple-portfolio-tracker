@@ -176,10 +176,11 @@ export interface PortfolioSnapshot {
 
 // ─── Crypto acquisition types ───────────────────────────
 
-export type AcquisitionType = "bought" | "mined" | "staked" | "airdrop" | "other";
+export type AcquisitionType = "bought" | "swapped" | "mined" | "staked" | "airdrop" | "other";
 
 export const ACQUISITION_TYPES: { value: AcquisitionType; label: string }[] = [
   { value: "bought", label: "Bought" },
+  { value: "swapped", label: "Swapped" },
   { value: "mined", label: "Mined" },
   { value: "staked", label: "Staked" },
   { value: "airdrop", label: "Airdrop" },
@@ -205,6 +206,7 @@ export interface CryptoPosition {
   wallet_id: string;
   quantity: number;
   acquisition_method: string;
+  apy: number;
   updated_at: string;
 }
 
@@ -226,6 +228,7 @@ export interface CryptoPositionInput {
   wallet_id: string;
   quantity: number;
   acquisition_method?: string;
+  apy?: number;
 }
 
 // ─── Stock/ETF entities ─────────────────────────────────

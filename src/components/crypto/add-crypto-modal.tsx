@@ -39,6 +39,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
   const [positionWalletId, setPositionWalletId] = useState("");
   const [positionQuantity, setPositionQuantity] = useState("");
   const [acquisitionType, setAcquisitionType] = useState("bought");
+  const [positionApy, setPositionApy] = useState("");
 
   // Filter wallets by chain compatibility
   const compatibleWallets = useMemo(() => {
@@ -104,6 +105,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       setPositionWalletId("");
       setPositionQuantity("");
       setAcquisitionType("bought");
+      setPositionApy("");
     }
   }, [open]);
 
@@ -158,11 +160,13 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       // If user filled in an initial position, create it with its acquisition method
       const qty = parseFloat(positionQuantity);
       if (positionWalletId && qty > 0) {
+        const apyVal = parseFloat(positionApy);
         await upsertPosition({
           crypto_asset_id: assetId,
           wallet_id: positionWalletId,
           quantity: qty,
           acquisition_method: acquisitionType,
+          apy: apyVal > 0 ? apyVal : undefined,
         });
       }
 
@@ -321,9 +325,14 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Chain + Subcategory row */}
-            <div className="grid grid-cols-2 gap-3">
-              {/* Chain — dropdown from available platforms */}
+            {/* Chain + Type row — hide chain when selected wallet is an exchange */}
+            {(() => {
+              const selectedWallet = wallets.find((w) => w.id === positionWalletId);
+              const isExchange = selectedWallet?.wallet_type === "custodial";
+              return (
+            <div className={`grid gap-3 ${isExchange ? "grid-cols-1" : "grid-cols-2"}`}>
+              {/* Chain — dropdown from available platforms (hidden for exchanges) */}
+              {!isExchange && (
               <div>
                 <label className="block text-xs text-zinc-500 mb-1">
                   Chain <span className="text-zinc-600">(optional)</span>
@@ -351,11 +360,12 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                   />
                 )}
               </div>
+              )}
 
-              {/* Subcategory */}
+              {/* Type */}
               <div className="relative">
                 <label className="block text-xs text-zinc-500 mb-1">
-                  Subcategory <span className="text-zinc-600">(optional)</span>
+                  Type <span className="text-zinc-600">(optional)</span>
                 </label>
                 <input
                   type="text"
@@ -397,6 +407,8 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 })()}
               </div>
             </div>
+              );
+            })()}
 
             {/* Optional: Initial position (with acquisition type) */}
             {wallets.length > 0 && (
@@ -420,14 +432,14 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs text-zinc-500 mb-1">
-                          Wallet
+                          Wallet / Exchange
                         </label>
                         <select
                           value={positionWalletId}
                           onChange={(e) => setPositionWalletId(e.target.value)}
                           className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                         >
-                          <option value="">Select wallet...</option>
+                          <option value="">Select...</option>
                           {compatibleWallets.map((w) => {
                             const tokens = getWalletChainTokens(w.chain);
                             const label = tokens.map((t) => t.toLowerCase() === "evm" ? "EVM" : t).join(", ");
@@ -440,12 +452,12 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                         </select>
                         {chain && compatibleWallets.length === 0 && (
                           <p className="text-xs text-amber-400/80 mt-1">
-                            No wallets compatible with {chain}
+                            No wallets/exchanges compatible with {chain}
                           </p>
                         )}
                         {chain && compatibleWallets.length > 0 && compatibleWallets.length < wallets.length && (
                           <p className="text-xs text-zinc-600 mt-1">
-                            Filtered to {chain}-compatible wallets
+                            Showing {chain}-compatible only
                           </p>
                         )}
                       </div>
@@ -464,21 +476,38 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                         />
                       </div>
                     </div>
-                    <div className="mt-3">
-                      <label className="block text-xs text-zinc-500 mb-1">
-                        How was this acquired?
-                      </label>
-                      <select
-                        value={acquisitionType}
-                        onChange={(e) => setAcquisitionType(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                      >
-                        {ACQUISITION_TYPES.map((t) => (
-                          <option key={t.value} value={t.value}>
-                            {t.label}
-                          </option>
-                        ))}
-                      </select>
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div>
+                        <label className="block text-xs text-zinc-500 mb-1">
+                          How was this acquired?
+                        </label>
+                        <select
+                          value={acquisitionType}
+                          onChange={(e) => setAcquisitionType(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                        >
+                          {ACQUISITION_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-zinc-500 mb-1">
+                          APY % <span className="text-zinc-600">(optional)</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={positionApy}
+                          onChange={(e) => setPositionApy(e.target.value)}
+                          placeholder="0"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}

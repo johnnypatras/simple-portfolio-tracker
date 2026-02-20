@@ -530,6 +530,20 @@ export function getStockColumns(handlers: {
       ),
     },
     {
+      key: "subcategory",
+      label: "Subtype",
+      header: "Subtype",
+      align: "left",
+      width: "w-28",
+      hiddenBelow: "lg",
+      renderCell: (row) =>
+        row.asset.subcategory ? (
+          <span className="text-xs text-zinc-400">{row.asset.subcategory}</span>
+        ) : (
+          <span className="text-xs text-zinc-600">—</span>
+        ),
+    },
+    {
       key: "price",
       label: "Price",
       header: "Price",

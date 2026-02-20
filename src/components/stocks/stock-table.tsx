@@ -60,7 +60,7 @@ const GROUP_MODE_LABELS: Record<StockGroupMode, string> = {
   type: "Group by type",
   broker: "Group by broker",
   currency: "Group by currency",
-  subcategory: "Group by subcategory",
+  subcategory: "Group by subtype",
 };
 
 // ── Component ────────────────────────────────────────────────
@@ -344,7 +344,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:stocks", columns, 3);
+  } = useColumnConfig("colConfig:stocks", columns, 5);
 
   const ctx: RenderContext = { primaryCurrency, fxRates };
 
@@ -402,7 +402,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                   )}
                   {isGrouped && (
                     <span className="text-[10px] font-medium">
-                      {groupMode === "type" ? "Type" : groupMode === "broker" ? "Broker" : groupMode === "currency" ? "Currency" : "Subcat"}
+                      {groupMode === "type" ? "Type" : groupMode === "broker" ? "Broker" : groupMode === "currency" ? "Currency" : "Subtype"}
                     </span>
                   )}
                 </button>
@@ -1639,7 +1639,7 @@ function TypeGroupInnerRows({
             ctx={ctx}
             primaryCurrency={primaryCurrency}
             fxRates={fxRates}
-            headerPl="pl-12"
+            headerPl="pl-12 pr-4"
             variantPl="pl-16 pr-4"
           />
         );

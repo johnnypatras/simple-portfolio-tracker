@@ -80,6 +80,15 @@ export function useColumnConfig<T>(
     return saved ? reconcile(saved, allColumns, version) : defaults;
   });
 
+  // Track version changes (including HMR) — reset to defaults when code version changes
+  const prevVersionRef = useRef(version);
+  useEffect(() => {
+    if (prevVersionRef.current !== version) {
+      prevVersionRef.current = version;
+      setVisibleKeys(defaults);
+    }
+  }, [version, defaults]);
+
   // Skip persisting on the very first effect run to avoid writing defaults
   // back to storage before the lazy initializer has resolved
   const mountedRef = useRef(false);

@@ -12,12 +12,14 @@ export interface CryptoRow {
   change24h: number;
   totalQty: number;
   valueInBase: number;
+  weightedApy: number;
 }
 
 // ── Acquisition type display maps ───────────────────────────
 
 export const ACQUISITION_LABELS: Record<string, string> = {
   bought: "Bought",
+  swapped: "Swapped",
   mined: "Mined",
   staked: "Staked",
   airdrop: "Airdrop",
@@ -26,6 +28,7 @@ export const ACQUISITION_LABELS: Record<string, string> = {
 
 export const ACQUISITION_COLORS: Record<string, string> = {
   bought: "text-blue-400",
+  swapped: "text-cyan-400",
   mined: "text-amber-400",
   staked: "text-purple-400",
   airdrop: "text-emerald-400",
@@ -314,7 +317,11 @@ export function buildCryptoRows(
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const valueInBase = totalQty * priceInBase;
 
-    return { id: asset.id, asset, priceUsd, priceInBase, change24h, totalQty, valueInBase };
+    // Weighted average APY: Σ(qty × apy) / Σ(qty)
+    const apySum = asset.positions.reduce((sum, p) => sum + p.quantity * (p.apy ?? 0), 0);
+    const weightedApy = totalQty > 0 ? apySum / totalQty : 0;
+
+    return { id: asset.id, asset, priceUsd, priceInBase, change24h, totalQty, valueInBase, weightedApy };
   });
 
   // Sort by value descending
@@ -324,7 +331,7 @@ export function buildCryptoRows(
 
 // ── Sorting ───────────────────────────────────────────────────
 
-export type CryptoSortKey = "value" | "name" | "change" | "source";
+export type CryptoSortKey = "value" | "name" | "change" | "source" | "chain" | "subcategory" | "apy";
 export type SortDirection = "asc" | "desc";
 
 export const DEFAULT_SORT_KEY: CryptoSortKey = "value";
@@ -335,6 +342,9 @@ export const CRYPTO_SORT_OPTIONS: { key: CryptoSortKey; label: string; defaultDi
   { key: "name", label: "Name", defaultDir: "asc" },
   { key: "change", label: "24h %", defaultDir: "desc" },
   { key: "source", label: "Source", defaultDir: "asc" },
+  { key: "chain", label: "Chain", defaultDir: "asc" },
+  { key: "subcategory", label: "Type", defaultDir: "asc" },
+  { key: "apy", label: "APY", defaultDir: "desc" },
 ];
 
 /** Maps column keys to sort keys (for clickable desktop headers) */
@@ -343,6 +353,9 @@ export const COLUMN_TO_SORT: Record<string, CryptoSortKey | undefined> = {
   change24h: "change",
   value: "value",
   source: "source",
+  chain: "chain",
+  subcategory: "subcategory",
+  apy: "apy",
 };
 
 /** Sort crypto rows by key and direction */
@@ -360,6 +373,21 @@ export function sortCryptoRows(
       case "source": {
         av = getDominantMethod(a.asset.positions);
         bv = getDominantMethod(b.asset.positions);
+        break;
+      }
+      case "chain": {
+        av = (a.asset.chain ?? "").toLowerCase();
+        bv = (b.asset.chain ?? "").toLowerCase();
+        break;
+      }
+      case "subcategory": {
+        av = (a.asset.subcategory ?? "").toLowerCase();
+        bv = (b.asset.subcategory ?? "").toLowerCase();
+        break;
+      }
+      case "apy": {
+        av = a.weightedApy;
+        bv = b.weightedApy;
         break;
       }
     }
@@ -469,22 +497,6 @@ export function getCryptoColumns(handlers: {
       ),
     },
     {
-      key: "value",
-      label: "Value",
-      header: "Value",
-      align: "right",
-      width: "w-28",
-      renderHeader: (ctx) =>
-        `Value (${ctx.primaryCurrency})`,
-      renderCell: (row, ctx) => (
-        <span className="text-sm font-medium text-zinc-200 tabular-nums">
-          {row.valueInBase > 0
-            ? formatCurrency(row.valueInBase, ctx.primaryCurrency)
-            : "—"}
-        </span>
-      ),
-    },
-    {
       key: "source",
       label: "Source",
       header: "Source",
@@ -523,10 +535,10 @@ export function getCryptoColumns(handlers: {
     },
     {
       key: "subcategory",
-      label: "Subcategory",
-      header: "Subcat.",
+      label: "Type",
+      header: "Type",
       align: "left",
-      width: "w-24",
+      width: "w-28",
       hiddenBelow: "md",
       renderCell: (row) => {
         const sub = row.asset.subcategory?.trim();
@@ -536,6 +548,38 @@ export function getCryptoColumns(handlers: {
           <span className="text-xs text-zinc-600">—</span>
         );
       },
+    },
+    {
+      key: "apy",
+      label: "APY",
+      header: "APY",
+      align: "right",
+      width: "w-20",
+      hiddenBelow: "md",
+      renderCell: (row) =>
+        row.weightedApy > 0 ? (
+          <span className="text-xs text-emerald-400 font-medium tabular-nums">
+            {row.weightedApy.toFixed(row.weightedApy % 1 === 0 ? 0 : 2)}%
+          </span>
+        ) : (
+          <span className="text-xs text-zinc-600">—</span>
+        ),
+    },
+    {
+      key: "value",
+      label: "Value",
+      header: "Value",
+      align: "right",
+      width: "w-28",
+      renderHeader: (ctx) =>
+        `Value (${ctx.primaryCurrency})`,
+      renderCell: (row, ctx) => (
+        <span className="text-sm font-medium text-zinc-200 tabular-nums">
+          {row.valueInBase > 0
+            ? formatCurrency(row.valueInBase, ctx.primaryCurrency)
+            : "—"}
+        </span>
+      ),
     },
     {
       key: "actions",

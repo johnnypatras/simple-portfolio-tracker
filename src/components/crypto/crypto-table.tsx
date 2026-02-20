@@ -46,7 +46,7 @@ const GROUP_MODE_LABELS: Record<CryptoGroupMode, string> = {
   source: "Group by source",
   wallet: "Group by wallet",
   chain: "Group by chain",
-  subcategory: "Group by subcategory",
+  subcategory: "Group by type",
 };
 
 // ── Breakpoint → Tailwind class mapping ──────────────────────
@@ -195,6 +195,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
           case "name": av = a.row.asset.name.toLowerCase(); bv = b.row.asset.name.toLowerCase(); break;
           case "change": av = a.row.change24h; bv = b.row.change24h; break;
           case "source": av = ""; bv = ""; break; // irrelevant inside a source group
+          case "chain": av = (a.row.asset.chain ?? "").toLowerCase(); bv = (b.row.asset.chain ?? "").toLowerCase(); break;
+          case "subcategory": av = (a.row.asset.subcategory ?? "").toLowerCase(); bv = (b.row.asset.subcategory ?? "").toLowerCase(); break;
+          case "apy": av = a.row.weightedApy; bv = b.row.weightedApy; break;
         }
         if (av < bv) return sortDir === "asc" ? -1 : 1;
         if (av > bv) return sortDir === "asc" ? 1 : -1;
@@ -318,7 +321,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:crypto", columns, 1);
+  } = useColumnConfig("colConfig:crypto", columns, 3);
 
   const ctx: RenderContext = { primaryCurrency, fxRates: {} };
 
@@ -376,7 +379,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                   )}
                   {isGrouped && (
                     <span className="text-[10px] font-medium">
-                      {groupMode === "source" ? "Source" : groupMode === "wallet" ? "Wallet" : groupMode === "chain" ? "Chain" : "Cat."}
+                      {groupMode === "source" ? "Source" : groupMode === "wallet" ? "Wallet" : groupMode === "chain" ? "Chain" : "Type"}
                     </span>
                   )}
                 </button>
@@ -1028,6 +1031,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
           asset={editingAsset}
           wallets={wallets}
           existingSubcategories={existingSubcategories}
+          existingChains={existingChains}
         />
       )}
     </div>
@@ -1271,6 +1275,30 @@ function MobileCryptoCard({
                 {displayQty > 0 ? formatQuantity(displayQty, 8) : "—"}
               </p>
             </div>
+            {(row.asset.chain?.trim() || row.asset.subcategory?.trim() || row.weightedApy > 0) && (
+              <>
+                {row.asset.chain?.trim() && (
+                  <div>
+                    <span className="text-zinc-500">Chain</span>
+                    <p className="text-zinc-400">{row.asset.chain}</p>
+                  </div>
+                )}
+                {row.asset.subcategory?.trim() && (
+                  <div>
+                    <span className="text-zinc-500">Type</span>
+                    <p className="text-zinc-400">{row.asset.subcategory}</p>
+                  </div>
+                )}
+                {row.weightedApy > 0 && (
+                  <div>
+                    <span className="text-zinc-500">APY</span>
+                    <p className="text-emerald-400 font-medium">
+                      {row.weightedApy.toFixed(row.weightedApy % 1 === 0 ? 0 : 2)}%
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {displayPositions.length > 0 && (

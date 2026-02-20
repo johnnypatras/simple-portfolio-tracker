@@ -17,7 +17,7 @@ import type { Profile } from "@/types/database";
 
 const tabs = [
   { id: "general", label: "General", icon: Settings2 },
-  { id: "wallets", label: "Wallets", icon: Wallet },
+  { id: "wallets", label: "Exchanges & Wallets", icon: Wallet },
   { id: "brokers", label: "Brokers", icon: TrendingUp },
   { id: "banks", label: "Banks", icon: Landmark },
   { id: "import-export", label: "Import / Export", icon: ArrowLeftRight },

@@ -60,6 +60,7 @@ export async function getCryptoAssetsWithPositions(): Promise<
         return {
           ...p,
           quantity: Number(p.quantity),
+          apy: Number(p.apy ?? 0),
           wallet_name: walletInfo?.name ?? "Unknown",
           wallet_type: walletInfo?.wallet_type ?? "custodial" as const,
         };
@@ -200,6 +201,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
         wallet_id: input.wallet_id,
         quantity: input.quantity,
         acquisition_method: input.acquisition_method ?? "bought",
+        apy: input.apy ?? 0,
       },
       { onConflict: "crypto_asset_id,wallet_id" }
     );

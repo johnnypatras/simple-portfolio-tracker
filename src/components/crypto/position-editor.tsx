@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
@@ -13,11 +13,13 @@ interface PositionEditorProps {
   asset: CryptoAssetWithPositions;
   wallets: Wallet[];
   existingSubcategories: string[];
+  existingChains: string[];
 }
 
 interface PositionEdit {
   quantity: string;
   acquisition: string;
+  apy: string;
 }
 
 export function PositionEditor({
@@ -26,11 +28,18 @@ export function PositionEditor({
   asset,
   wallets,
   existingSubcategories,
+  existingChains,
 }: PositionEditorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ─── Asset metadata editing (chain + subcategory) ────────
+  const chainOptions = useMemo(() => {
+    const set = new Set(existingChains);
+    if (asset.chain?.trim()) set.add(asset.chain.trim());
+    return [...set].sort();
+  }, [existingChains, asset.chain]);
+
   const [chain, setChain] = useState(asset.chain ?? "");
   const [subcategory, setSubcategory] = useState(asset.subcategory ?? "");
   const [subcategoryOpen, setSubcategoryOpen] = useState(false);
@@ -61,6 +70,7 @@ export function PositionEditor({
       map[p.wallet_id] = {
         quantity: p.quantity.toString(),
         acquisition: p.acquisition_method ?? "bought",
+        apy: (p.apy ?? 0).toString(),
       };
     });
     return map;
@@ -94,6 +104,13 @@ export function PositionEditor({
     }));
   }
 
+  function handleApyChange(walletId: string, value: string) {
+    setEdits((prev) => ({
+      ...prev,
+      [walletId]: { ...prev[walletId], apy: value },
+    }));
+  }
+
   async function handleSave(walletId: string) {
     setError(null);
     setLoading(true);
@@ -101,12 +118,14 @@ export function PositionEditor({
     const edit = edits[walletId];
     const qty = parseFloat(edit?.quantity ?? "0");
     const method = edit?.acquisition ?? "bought";
+    const apy = parseFloat(edit?.apy ?? "0");
     try {
       await upsertPosition({
         crypto_asset_id: asset.id,
         wallet_id: walletId,
         quantity: qty,
         acquisition_method: method,
+        apy: apy || undefined,
       });
       // If zero, remove from local state
       if (qty <= 0) {
@@ -144,7 +163,7 @@ export function PositionEditor({
     if (!addingWallet) return;
     setEdits((prev) => ({
       ...prev,
-      [addingWallet]: { quantity: "0", acquisition: "bought" },
+      [addingWallet]: { quantity: "0", acquisition: "bought", apy: "0" },
     }));
     setAddingWallet("");
   }
@@ -159,25 +178,38 @@ export function PositionEditor({
       title={`${asset.name} (${asset.ticker}) Positions`}
     >
       <div className="space-y-4">
-        {/* Chain + Subcategory */}
+        {/* Chain + Type */}
         <div className="space-y-3">
           <div className="flex items-end gap-2">
             {/* Chain */}
             <div className="flex-1">
               <label className="block text-xs text-zinc-500 mb-1">Chain</label>
-              <input
-                type="text"
-                value={chain}
-                onChange={(e) => setChain(e.target.value)}
-                placeholder="e.g. Ethereum, Solana..."
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-              />
+              {chainOptions.length > 0 ? (
+                <select
+                  value={chain}
+                  onChange={(e) => setChain(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                >
+                  <option value="">Select chain...</option>
+                  {chainOptions.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={chain}
+                  onChange={(e) => setChain(e.target.value)}
+                  placeholder="e.g. Ethereum, Solana..."
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+              )}
             </div>
 
-            {/* Subcategory combobox */}
+            {/* Type combobox */}
             <div className="relative flex-1">
               <label className="block text-xs text-zinc-500 mb-1">
-                Subcategory
+                Type
               </label>
               <input
                 type="text"
@@ -239,11 +271,11 @@ export function PositionEditor({
 
         <div className="border-t border-zinc-800/50" />
 
-        <p className="text-xs text-zinc-500">Positions by wallet</p>
+        <p className="text-xs text-zinc-500">Positions by wallet / exchange</p>
 
         {allWalletIds.length === 0 && (
           <p className="text-sm text-zinc-500 text-center py-4">
-            No positions yet — add a wallet below
+            No positions yet — add one below
           </p>
         )}
 
@@ -262,7 +294,7 @@ export function PositionEditor({
                   {wallet?.name ?? "Unknown"}
                 </span>
               </div>
-              {/* Quantity + Acquisition + Actions */}
+              {/* Quantity + Acquisition + APY + Actions */}
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <input
                   type="number"
@@ -289,6 +321,21 @@ export function PositionEditor({
                     </option>
                   ))}
                 </select>
+                <div className="relative shrink-0 w-16 sm:w-20">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={edit?.apy ?? "0"}
+                    onChange={(e) => handleApyChange(walletId, e.target.value)}
+                    className="w-full px-2 py-2 pr-6 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    disabled={loading}
+                    placeholder="APY"
+                    title="APY %"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-600 pointer-events-none">%</span>
+                </div>
                 <button
                   onClick={() => handleSave(walletId)}
                   disabled={loading}
@@ -326,7 +373,7 @@ export function PositionEditor({
               onChange={(e) => setAddingWallet(e.target.value)}
               className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             >
-              <option value="">Add to wallet...</option>
+              <option value="">Add to wallet / exchange...</option>
               {availableWallets
                 .filter((w) => !allWalletIds.includes(w.id))
                 .map((w) => (
@@ -347,7 +394,7 @@ export function PositionEditor({
 
         {wallets.length === 0 && (
           <p className="text-xs text-amber-400/80 bg-amber-400/10 px-3 py-2 rounded-lg">
-            Add wallets in Settings first to assign positions
+            Add wallets or exchanges in Settings first to assign positions
           </p>
         )}
 
