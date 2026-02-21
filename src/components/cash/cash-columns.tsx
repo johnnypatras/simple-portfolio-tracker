@@ -3,6 +3,7 @@ import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef } from "@/lib/column-config";
 import type { BankAccount, BrokerDeposit, ExchangeDeposit } from "@/lib/types";
+import { countryName } from "@/lib/types";
 
 // ── Bank group (computed, not a DB type) ────────────────────
 
@@ -79,7 +80,7 @@ export function buildBankGroupRows(
           )
         : accts.reduce((sum, a) => sum + a.apy, 0) / accts.length;
 
-    // Region: shared if all the same, "—" if mixed
+    // Country: shared if all the same, "—" if mixed
     const regions = [...new Set(accts.map((a) => a.region))];
     const region = regions.length === 1 ? regions[0] : "—";
 
@@ -426,22 +427,22 @@ export function getCashColumns(handlers: {
       },
     },
 
-    // ── Region (bank-only) ─────────────────────────────────
+    // ── Country (bank-only) ────────────────────────────────
     {
       key: "region",
-      label: "Region",
-      header: "Region",
+      label: "Country",
+      header: "Country",
       align: "right",
-      width: "w-16",
+      width: "w-20",
       hiddenBelow: "md",
       appliesTo: "bank",
       renderCell: (row) => {
         if (row.type === "bank-group") {
           return (
-            <span className="text-xs text-zinc-500">{row.data.region}</span>
+            <span className="text-xs text-zinc-500">{countryName(row.data.region)}</span>
           );
         }
-        // exchange-group: no region concept
+        // exchange-group: no country concept
         return null;
       },
     },

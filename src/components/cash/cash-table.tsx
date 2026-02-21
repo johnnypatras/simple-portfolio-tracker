@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, Landmark, Wallet, Briefcase, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { Plus, Landmark, Wallet, Briefcase, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -40,8 +40,11 @@ import type {
   ExchangeDeposit,
   ExchangeDepositInput,
   CurrencyType,
+  CryptoAssetWithPositions,
+  CoinGeckoPriceData,
   Wallet as WalletType,
 } from "@/lib/types";
+import { countryName, COUNTRIES } from "@/lib/types";
 
 // ── Breakpoint → Tailwind class mapping ──────────────────────
 
@@ -63,6 +66,8 @@ interface CashTableProps {
   brokers: Broker[];
   primaryCurrency: string;
   fxRates: FXRates;
+  stablecoins?: CryptoAssetWithPositions[];
+  stablecoinPrices?: CoinGeckoPriceData;
 }
 
 export function CashTable({
@@ -73,6 +78,8 @@ export function CashTable({
   brokers,
   primaryCurrency,
   fxRates,
+  stablecoins,
+  stablecoinPrices,
 }: CashTableProps) {
   // ── Compute totals ──────────────────────────────────────
   const bankTotal = bankAccounts.reduce(
@@ -91,7 +98,36 @@ export function CashTable({
     0
   );
   const depositTotal = exchangeDepositTotal + brokerDepositTotal;
-  const totalCash = bankTotal + depositTotal;
+
+  const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
+  const stablecoinTotal = useMemo(() => {
+    if (!stablecoins || !stablecoinPrices) return 0;
+    return stablecoins.reduce((sum, asset) => {
+      const price = stablecoinPrices[asset.coingecko_id];
+      if (!price) return sum;
+      const qty = asset.positions.reduce((s, p) => s + p.quantity, 0);
+      return sum + qty * (price[currencyKey] ?? 0);
+    }, 0);
+  }, [stablecoins, stablecoinPrices, currencyKey]);
+
+  const totalCash = bankTotal + depositTotal + stablecoinTotal;
+
+  const weightedApy = useMemo(() => {
+    if (totalCash === 0) return 0;
+    const bankWeighted = bankAccounts.reduce((sum, b) => {
+      const val = convertToBase(b.balance, b.currency, primaryCurrency, fxRates);
+      return sum + val * b.apy;
+    }, 0);
+    const exchWeighted = exchangeDeposits.reduce((sum, d) => {
+      const val = convertToBase(d.amount, d.currency, primaryCurrency, fxRates);
+      return sum + val * d.apy;
+    }, 0);
+    const brokerWeighted = brokerDeposits.reduce((sum, d) => {
+      const val = convertToBase(d.amount, d.currency, primaryCurrency, fxRates);
+      return sum + val * d.apy;
+    }, 0);
+    return (bankWeighted + exchWeighted + brokerWeighted) / totalCash;
+  }, [bankAccounts, exchangeDeposits, brokerDeposits, totalCash, primaryCurrency, fxRates]);
 
   // ── Bank handlers ─────────────────────────────────────────
   const [bankModalOpen, setBankModalOpen] = useState(false);
@@ -259,6 +295,15 @@ export function CashTable({
               </p>
               <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(totalCash, primaryCurrency)}
+              </p>
+              <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
+                {stablecoinTotal > 0 && (
+                  <span>incl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins</span>
+                )}
+                {stablecoinTotal > 0 && weightedApy > 0 && " · "}
+                {weightedApy > 0 && (
+                  <span className="text-emerald-400">~{weightedApy.toFixed(1)}% APY</span>
+                )}
               </p>
             </div>
             <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
@@ -500,6 +545,43 @@ export function CashTable({
                 </div>
               )}
             </div>
+
+            {/* Stablecoins (read-only, reclassified from crypto) */}
+            {stablecoins && stablecoins.length > 0 && stablecoinPrices && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Coins className="w-3.5 h-3.5 text-zinc-500" />
+                  <span className="text-xs font-medium text-zinc-400">Stablecoins</span>
+                  <span className="text-xs text-zinc-600">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
+                </div>
+                <div className="space-y-2">
+                  {stablecoins.map((asset) => {
+                    const price = stablecoinPrices[asset.coingecko_id];
+                    if (!price) return null;
+                    const qty = asset.positions.reduce((s, p) => s + p.quantity, 0);
+                    const value = qty * (price[currencyKey] ?? 0);
+                    const walletNames = asset.positions
+                      .map((p) => p.wallet_name || "Unknown")
+                      .filter((v, i, a) => a.indexOf(v) === i)
+                      .join(", ");
+                    return (
+                      <div key={asset.id} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl px-4 py-3">
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-zinc-200 truncate">{asset.name}</p>
+                            <p className="text-xs text-zinc-500">{walletNames}</p>
+                          </div>
+                          <div className="text-right shrink-0 ml-3">
+                            <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(value, primaryCurrency)}</p>
+                            <p className="text-xs text-zinc-500">{qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} {asset.ticker}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Desktop table layout ── */}
@@ -642,6 +724,45 @@ export function CashTable({
                     );
                   })
                 )}
+
+                {/* Stablecoins (read-only, reclassified from crypto) */}
+                {stablecoins && stablecoins.length > 0 && stablecoinPrices && (
+                  <>
+                    <tr className="bg-zinc-900/80">
+                      <td colSpan={orderedColumns.length} className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <Coins className="w-3.5 h-3.5 text-zinc-500" />
+                          <span className="text-xs font-medium text-zinc-400">Stablecoins</span>
+                          <span className="text-xs text-zinc-600">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
+                        </div>
+                      </td>
+                    </tr>
+                    {stablecoins.map((asset) => {
+                      const price = stablecoinPrices[asset.coingecko_id];
+                      if (!price) return null;
+                      const qty = asset.positions.reduce((s, p) => s + p.quantity, 0);
+                      const value = qty * (price[currencyKey] ?? 0);
+                      const walletNames = asset.positions
+                        .map((p) => p.wallet_name || "Unknown")
+                        .filter((v, i, a) => a.indexOf(v) === i)
+                        .join(", ");
+                      return (
+                        <tr key={asset.id} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/20 transition-colors">
+                          <td className="px-4 py-2.5">
+                            <div>
+                              <p className="text-sm font-medium text-zinc-200">{asset.name}</p>
+                              <p className="text-xs text-zinc-500">{walletNames}</p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-right" colSpan={orderedColumns.length - 1}>
+                            <span className="text-sm text-zinc-200 tabular-nums">{formatCurrency(value, primaryCurrency)}</span>
+                            <span className="text-xs text-zinc-500 ml-2">{qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} {asset.ticker}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </>
+                )}
               </tbody>
             </table>
           </div>
@@ -746,28 +867,28 @@ function BankAccountModal({
   // Form state
   const [name, setName] = useState("");
   const [bankName, setBankName] = useState("");
-  const [region, setRegion] = useState("EU");
   const [currency, setCurrency] = useState<CurrencyType>("EUR");
   const [balance, setBalance] = useState("");
   const [apy, setApy] = useState("");
+  const [country, setCountry] = useState("GR");
 
   // Sync form when editing changes
   useMemo(() => {
     if (open && editing) {
       setName(editing.name);
       setBankName(editing.bank_name);
-      setRegion(editing.region);
       setCurrency(editing.currency);
       setBalance(editing.balance.toString());
       setApy(editing.apy.toString());
+      setCountry(editing.region || "GR");
       setError(null);
     } else if (open && !editing) {
       setName("");
       setBankName("");
-      setRegion("EU");
       setCurrency("EUR");
       setBalance("");
       setApy("");
+      setCountry("GR");
       setError(null);
     }
   }, [open, editing]);
@@ -780,10 +901,10 @@ function BankAccountModal({
     const input: BankAccountInput = {
       name,
       bank_name: bankName,
-      region,
       currency,
       balance: parseFloat(balance) || 0,
       apy: parseFloat(apy) || 0,
+      country,
     };
 
     try {
@@ -861,15 +982,17 @@ function BankAccountModal({
           </div>
           <div>
             <label className="block text-sm text-zinc-400 mb-1.5">
-              Region
+              Country
             </label>
-            <input
-              type="text"
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              placeholder="EU"
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-            />
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.name}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -1351,7 +1474,7 @@ function ExpandedBankRow({
         if (col.key === "region") {
           return (
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
-              <span className="text-xs text-zinc-500">{account.region}</span>
+              <span className="text-xs text-zinc-500">{countryName(account.region)}</span>
             </td>
           );
         }

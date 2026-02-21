@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2, Wallet as WalletIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { createWallet, updateWallet, deleteWallet } from "@/lib/actions/wallets";
-import type { Wallet, WalletInput, WalletType, PrivacyLabel } from "@/lib/types";
+import type { Wallet, WalletInput, WalletType, PrivacyLabel, InstitutionRole } from "@/lib/types";
 import { parseWalletChains, serializeChains, getWalletChainTokens, EVM_CHAINS, NON_EVM_CHAINS, isEvmChain } from "@/lib/types";
 
 const privacyLabels: Record<PrivacyLabel, string> = {
@@ -12,7 +12,12 @@ const privacyLabels: Record<PrivacyLabel, string> = {
   doxxed: "KYC / Doxxed",
 };
 
-export function WalletManager({ wallets }: { wallets: Wallet[] }) {
+interface WalletManagerProps {
+  wallets: Wallet[];
+  institutionRoles: Map<string, InstitutionRole[]>;
+}
+
+export function WalletManager({ wallets, institutionRoles }: WalletManagerProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,6 +28,8 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
   const [walletType, setWalletType] = useState<WalletType>("custodial");
   const [privacyLabel, setPrivacyLabel] = useState<PrivacyLabel | "">("");
   const [selectedChains, setSelectedChains] = useState<string[]>([]);
+  const [alsoBroker, setAlsoBroker] = useState(false);
+  const [alsoBank, setAlsoBank] = useState(false);
 
   function openCreate() {
     setEditing(null);
@@ -30,6 +37,8 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
     setWalletType("custodial");
     setPrivacyLabel("");
     setSelectedChains([]);
+    setAlsoBroker(false);
+    setAlsoBank(false);
     setError(null);
     setModalOpen(true);
   }
@@ -40,6 +49,8 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
     setWalletType(wallet.wallet_type);
     setPrivacyLabel(wallet.privacy_label ?? "");
     setSelectedChains(parseWalletChains(wallet.chain));
+    setAlsoBroker(false);
+    setAlsoBank(false);
     setError(null);
     setModalOpen(true);
   }
@@ -58,9 +69,12 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
 
     try {
       if (editing) {
-        await updateWallet(editing.id, input);
+        await updateWallet(editing.id, input, { also_broker: alsoBroker, also_bank: alsoBank });
       } else {
-        await createWallet(input);
+        await createWallet(input, {
+          also_broker: alsoBroker,
+          also_bank: alsoBank,
+        });
       }
       setModalOpen(false);
     } catch (err) {
@@ -79,10 +93,17 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
     }
   }
 
+  function getSiblingRoles(w: Wallet): string[] {
+    if (!w.institution_id) return [];
+    const roles = institutionRoles.get(w.institution_id) ?? [];
+    return roles.filter((r) => r !== "wallet");
+  }
+
   const exchanges = wallets.filter((w) => w.wallet_type === "custodial");
   const selfCustody = wallets.filter((w) => w.wallet_type === "non_custodial");
 
   function renderWalletRow(w: Wallet) {
+    const siblings = getSiblingRoles(w);
     return (
       <div
         key={w.id}
@@ -109,6 +130,9 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
                 {privacyLabels[w.privacy_label]}
               </span>
             )}
+            {siblings.length > 0 && (
+              <span className="text-xs text-zinc-600">Also: {siblings.join(" · ")}</span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -128,6 +152,11 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
       </div>
     );
   }
+
+  // When editing, show existing sibling roles as disabled badges
+  const editingSiblings = editing ? getSiblingRoles(editing) : [];
+  const canAddBroker = walletType === "custodial" && !editingSiblings.includes("broker");
+  const canAddBank = walletType === "custodial" && !editingSiblings.includes("bank");
 
   return (
     <div>
@@ -302,6 +331,54 @@ export function WalletManager({ wallets }: { wallets: Wallet[] }) {
               })}
             </div>
           </div>
+
+          {/* Role extension — unified for create + edit */}
+          {(canAddBroker || canAddBank || editingSiblings.length > 0) && (
+            <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/10 p-3 space-y-2">
+              <label className="text-sm font-medium text-zinc-300">Also register as</label>
+
+              {/* Existing sibling roles (read-only) */}
+              {editingSiblings.length > 0 && (
+                <div className="flex items-center gap-3">
+                  {editingSiblings.map((role) => (
+                    <label key={role} className="flex items-center gap-2 text-sm text-zinc-500">
+                      <input type="checkbox" checked disabled className="rounded border-zinc-700 bg-zinc-950 text-blue-500 opacity-50" />
+                      {role === "wallet" ? "Exchange / Wallet" : role === "bank" ? "Bank" : role === "broker" ? "Broker" : role}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Addable roles */}
+              {(canAddBroker || canAddBank) && (
+                <div className="flex items-center gap-4">
+                  {canAddBroker && (
+                    <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={alsoBroker}
+                        onChange={(e) => setAlsoBroker(e.target.checked)}
+                        className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                      />
+                      Broker
+                    </label>
+                  )}
+                  {canAddBank && (
+                    <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={alsoBank}
+                        onChange={(e) => setAlsoBank(e.target.checked)}
+                        className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                      />
+                      Bank
+                    </label>
+                  )}
+                </div>
+              )}
+
+            </div>
+          )}
 
           {error && (
             <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">

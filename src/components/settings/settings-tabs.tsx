@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Settings2, Wallet, TrendingUp, Landmark, ArrowLeftRight, UserCog } from "lucide-react";
 import { GeneralSettings } from "./general-settings";
 import { WalletManager } from "./wallet-manager";
@@ -12,6 +12,8 @@ import type {
   Wallet as WalletType,
   Broker,
   BankAccount,
+  InstitutionWithRoles,
+  InstitutionRole,
 } from "@/lib/types";
 import type { Profile } from "@/types/database";
 
@@ -31,10 +33,20 @@ interface SettingsTabsProps {
   wallets: WalletType[];
   brokers: Broker[];
   banks: BankAccount[];
+  institutions: InstitutionWithRoles[];
 }
 
-export function SettingsTabs({ profile, wallets, brokers, banks }: SettingsTabsProps) {
+export function SettingsTabs({ profile, wallets, brokers, banks, institutions }: SettingsTabsProps) {
   const [active, setActive] = useState<TabId>("general");
+
+  // Institution-based cross-reference: institution_id → roles[]
+  const institutionRoles = useMemo(() => {
+    const map = new Map<string, InstitutionRole[]>();
+    for (const inst of institutions) {
+      map.set(inst.id, inst.roles);
+    }
+    return map;
+  }, [institutions]);
 
   function getCount(tabId: TabId): number | null {
     if (tabId === "wallets") return wallets.length;
@@ -81,9 +93,9 @@ export function SettingsTabs({ profile, wallets, brokers, banks }: SettingsTabsP
 
       {/* Tab content */}
       {active === "general" && <GeneralSettings profile={profile} />}
-      {active === "wallets" && <WalletManager wallets={wallets} />}
-      {active === "brokers" && <BrokerManager brokers={brokers} />}
-      {active === "banks" && <BankManager banks={banks} />}
+      {active === "wallets" && <WalletManager wallets={wallets} institutionRoles={institutionRoles} />}
+      {active === "brokers" && <BrokerManager brokers={brokers} institutionRoles={institutionRoles} />}
+      {active === "banks" && <BankManager banks={banks} institutionRoles={institutionRoles} />}
       {active === "import-export" && <ImportExportSettings />}
       {active === "account" && <AccountSettings profile={profile} />}
     </div>

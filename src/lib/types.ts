@@ -11,6 +11,7 @@ export interface Wallet {
   wallet_type: WalletType;
   privacy_label: PrivacyLabel | null;
   chain: string | null;
+  institution_id: string | null;
   created_at: string;
 }
 
@@ -18,6 +19,7 @@ export interface Broker {
   id: string;
   user_id: string;
   name: string;
+  institution_id: string | null;
   created_at: string;
 }
 
@@ -30,8 +32,25 @@ export interface BankAccount {
   currency: CurrencyType;
   balance: number;
   apy: number;
+  institution_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ─── Institutions ───────────────────────────────────────
+
+export interface Institution {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InstitutionRole = "wallet" | "broker" | "bank";
+
+export interface InstitutionWithRoles extends Institution {
+  roles: InstitutionRole[];
 }
 
 // ─── Form input types (for create/update) ───────────────
@@ -112,10 +131,59 @@ export interface BrokerInput {
 export interface BankAccountInput {
   name: string;
   bank_name: string;
-  region?: string;
+  country?: string;
   currency?: CurrencyType;
   balance?: number;
   apy?: number;
+}
+
+// ─── Countries (for bank/institution country dropdown) ──────
+
+export const COUNTRIES = [
+  { code: "GR", name: "Greece" },
+  { code: "DE", name: "Germany" },
+  { code: "FR", name: "France" },
+  { code: "IT", name: "Italy" },
+  { code: "ES", name: "Spain" },
+  { code: "NL", name: "Netherlands" },
+  { code: "BE", name: "Belgium" },
+  { code: "AT", name: "Austria" },
+  { code: "PT", name: "Portugal" },
+  { code: "IE", name: "Ireland" },
+  { code: "FI", name: "Finland" },
+  { code: "LU", name: "Luxembourg" },
+  { code: "CY", name: "Cyprus" },
+  { code: "MT", name: "Malta" },
+  { code: "EE", name: "Estonia" },
+  { code: "LV", name: "Latvia" },
+  { code: "LT", name: "Lithuania" },
+  { code: "SK", name: "Slovakia" },
+  { code: "SI", name: "Slovenia" },
+  { code: "HR", name: "Croatia" },
+  { code: "GB", name: "United Kingdom" },
+  { code: "CH", name: "Switzerland" },
+  { code: "SE", name: "Sweden" },
+  { code: "NO", name: "Norway" },
+  { code: "DK", name: "Denmark" },
+  { code: "PL", name: "Poland" },
+  { code: "CZ", name: "Czech Republic" },
+  { code: "RO", name: "Romania" },
+  { code: "BG", name: "Bulgaria" },
+  { code: "HU", name: "Hungary" },
+  { code: "US", name: "United States" },
+  { code: "CA", name: "Canada" },
+  { code: "AU", name: "Australia" },
+  { code: "JP", name: "Japan" },
+  { code: "SG", name: "Singapore" },
+  { code: "HK", name: "Hong Kong" },
+  { code: "AE", name: "UAE" },
+] as const;
+
+const COUNTRY_MAP: Map<string, string> = new Map(COUNTRIES.map((c) => [c.code, c.name]));
+
+/** Look up a country name from its code. Falls back to the code itself. */
+export function countryName(code: string): string {
+  return COUNTRY_MAP.get(code) ?? code;
 }
 
 export interface ExchangeDepositInput {
@@ -368,7 +436,8 @@ export type EntityType =
   | "broker_deposit"
   | "diary_entry"
   | "goal_price"
-  | "trade_entry";
+  | "trade_entry"
+  | "institution";
 
 export interface ActivityLog {
   id: string;

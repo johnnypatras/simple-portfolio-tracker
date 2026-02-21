@@ -144,6 +144,11 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     [rows]
   );
 
+  const weighted24hChange = useMemo(() => {
+    if (totalPortfolioValue === 0) return 0;
+    return rows.reduce((sum, r) => sum + r.valueBase * r.change24h, 0) / totalPortfolioValue;
+  }, [rows, totalPortfolioValue]);
+
   // Grouped rows for group-by-type mode
   const typeGroups = useMemo(
     () => (groupMode === "type" ? buildStockGroupRows(rows) : []),
@@ -367,6 +372,11 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
               <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(totalPortfolioValue, primaryCurrency)}
               </p>
+              {weighted24hChange !== 0 && (
+                <p className={`text-xs tabular-nums mt-0.5 ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(2)}% 24h
+                </p>
+              )}
             </div>
             <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
               <p>

@@ -143,6 +143,27 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     [baseRows]
   );
 
+  // Stablecoin split: exclude from summary total + 24h change weighting
+  const { nonStableValue, stablecoinTotal } = useMemo(() => {
+    let stable = 0;
+    let nonStable = 0;
+    for (const r of baseRows) {
+      if (r.asset.subcategory === "Stablecoin") {
+        stable += r.valueInBase;
+      } else {
+        nonStable += r.valueInBase;
+      }
+    }
+    return { nonStableValue: nonStable, stablecoinTotal: stable };
+  }, [baseRows]);
+
+  const weighted24hChange = useMemo(() => {
+    if (nonStableValue === 0) return 0;
+    return baseRows
+      .filter((r) => r.asset.subcategory !== "Stablecoin")
+      .reduce((sum, r) => sum + r.valueInBase * r.change24h, 0) / nonStableValue;
+  }, [baseRows, nonStableValue]);
+
   // Position-level groups for source mode
   const sourceGroups = useMemo(
     () => (groupMode === "source" ? buildCryptoPositionGroups(rows) : []),
@@ -342,7 +363,18 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                 Total Crypto
               </p>
               <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
-                {formatCurrency(totalPortfolioValue, primaryCurrency)}
+                {formatCurrency(nonStableValue, primaryCurrency)}
+              </p>
+              <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
+                {stablecoinTotal > 0 && (
+                  <span>excl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins</span>
+                )}
+                {stablecoinTotal > 0 && weighted24hChange !== 0 && " · "}
+                {weighted24hChange !== 0 && (
+                  <span className={weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}>
+                    {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(2)}% 24h
+                  </span>
+                )}
               </p>
             </div>
             <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">

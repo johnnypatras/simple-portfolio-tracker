@@ -39,6 +39,7 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
     cryptoValue,
     stocksValue,
     cashValue,
+    stablecoinValue,
     change24hPercent,
     allocation,
     primaryCurrency,
@@ -97,7 +98,9 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
       <StatCard
         label="Crypto"
         value={formatCurrency(cryptoValue, primaryCurrency)}
-        sub="across all wallets"
+        sub={stablecoinValue > 0
+          ? `excl. ${formatCurrency(stablecoinValue, primaryCurrency)} stablecoins`
+          : "across all wallets"}
         icon={<Bitcoin className="w-4 h-4" />}
         href="/dashboard/crypto"
       />
@@ -115,7 +118,9 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
       <StatCard
         label="Banks & Deposits"
         value={formatCurrency(cashValue, primaryCurrency)}
-        sub="banks + exchanges"
+        sub={stablecoinValue > 0
+          ? `incl. ${formatCurrency(stablecoinValue, primaryCurrency)} stablecoins`
+          : "banks + exchanges"}
         icon={<Banknote className="w-4 h-4" />}
         href="/dashboard/cash"
       />

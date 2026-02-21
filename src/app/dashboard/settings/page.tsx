@@ -2,15 +2,17 @@ import { getProfile } from "@/lib/actions/profile";
 import { getWallets } from "@/lib/actions/wallets";
 import { getBrokers } from "@/lib/actions/brokers";
 import { getBankAccounts } from "@/lib/actions/bank-accounts";
+import { getInstitutionsWithRoles } from "@/lib/actions/institutions";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function SettingsPage() {
-  const [profile, wallets, brokers, banks] = await Promise.all([
+  const [profile, wallets, brokers, banks, institutions] = await Promise.all([
     getProfile(),
     getWallets(),
     getBrokers(),
     getBankAccounts(),
+    getInstitutionsWithRoles(),
   ]);
 
   return (
@@ -29,6 +31,7 @@ export default async function SettingsPage() {
         wallets={wallets}
         brokers={brokers}
         banks={banks}
+        institutions={institutions}
       />
     </div>
   );

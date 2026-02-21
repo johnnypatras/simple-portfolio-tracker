@@ -8,7 +8,9 @@ import {
   updateBankAccount,
   deleteBankAccount,
 } from "@/lib/actions/bank-accounts";
-import type { BankAccount, BankAccountInput, CurrencyType } from "@/lib/types";
+import { updateInstitutionRoles } from "@/lib/actions/institutions";
+import type { BankAccount, BankAccountInput, CurrencyType, WalletType, PrivacyLabel, InstitutionRole } from "@/lib/types";
+import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains, COUNTRIES, countryName } from "@/lib/types";
 
 // ── Group accounts by bank_name ──────────────────────────────
 
@@ -45,31 +47,40 @@ function formatCurrency(amount: number, cur: CurrencyType) {
 // BankManager component
 // ═══════════════════════════════════════════════════════════════
 
-export function BankManager({ banks }: { banks: BankAccount[] }) {
+interface BankManagerProps {
+  banks: BankAccount[];
+  institutionRoles: Map<string, InstitutionRole[]>;
+}
+
+export function BankManager({ banks, institutionRoles }: BankManagerProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Start all multi-account groups expanded so edit buttons are visible
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
-    const map = new Map<string, number>();
-    for (const b of banks) {
-      map.set(b.bank_name, (map.get(b.bank_name) ?? 0) + 1);
-    }
-    const expanded = new Set<string>();
-    for (const [name, count] of map) {
-      if (count > 1) expanded.add(name);
-    }
-    return expanded;
-  });
+  // Start all groups expanded so edit buttons are visible
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(groupByBankName(banks).map((g) => g.bankName))
+  );
 
   // Form state
   const [name, setName] = useState("");
   const [bankName, setBankName] = useState("");
-  const [region, setRegion] = useState("EU");
   const [currency, setCurrency] = useState<CurrencyType>("EUR");
   const [balance, setBalance] = useState("");
   const [apy, setApy] = useState("");
+
+  // Role checkbox state (shared: create dialog + institution dialog)
+  const [alsoWallet, setAlsoWallet] = useState(false);
+  const [walletType, setWalletType] = useState<WalletType>("custodial");
+  const [walletPrivacy, setWalletPrivacy] = useState<PrivacyLabel | "">("");
+  const [selectedChains, setSelectedChains] = useState<string[]>([]);
+  const [alsoBroker, setAlsoBroker] = useState(false);
+
+  // Institution-level edit dialog state
+  const [instModalOpen, setInstModalOpen] = useState(false);
+  const [editingInstitutionId, setEditingInstitutionId] = useState<string | null>(null);
+  const [instName, setInstName] = useState("");
+  const [instCountry, setInstCountry] = useState("GR");
 
   const groups = useMemo(() => groupByBankName(banks), [banks]);
   const existingBankNames = useMemo(
@@ -86,14 +97,27 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
     });
   }
 
+  // For group-level sibling display, use first account's institution_id
+  function getGroupSiblingRoles(group: BankSettingsGroup): string[] {
+    const first = group.accounts[0];
+    if (!first?.institution_id) return [];
+    const roles = institutionRoles.get(first.institution_id) ?? [];
+    return roles.filter((r) => r !== "bank");
+  }
+
   function openCreate() {
     setEditing(null);
     setName("");
     setBankName("");
-    setRegion("EU");
     setCurrency("EUR");
     setBalance("");
     setApy("");
+    setInstCountry("GR");
+    setAlsoWallet(false);
+    setWalletType("custodial");
+    setWalletPrivacy("");
+    setSelectedChains([]);
+    setAlsoBroker(false);
     setError(null);
     setModalOpen(true);
   }
@@ -102,10 +126,43 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
     setEditing(bank);
     setName(bank.name);
     setBankName(bank.bank_name);
-    setRegion(bank.region);
     setCurrency(bank.currency);
     setBalance(bank.balance.toString());
     setApy(bank.apy.toString());
+    setInstCountry(bank.region || "GR");
+    setError(null);
+    setModalOpen(true);
+  }
+
+  function openInstitutionEdit(group: BankSettingsGroup) {
+    const first = group.accounts[0];
+    if (!first?.institution_id) return;
+    setEditingInstitutionId(first.institution_id);
+    setInstName(group.bankName);
+    setInstCountry(first.region || "GR");
+    setAlsoWallet(false);
+    setWalletType("custodial");
+    setWalletPrivacy("");
+    setSelectedChains([]);
+    setAlsoBroker(false);
+    setError(null);
+    setInstModalOpen(true);
+  }
+
+  function openAddAccountForGroup(groupBankName: string) {
+    // Close institution dialog, open create dialog pre-filled with bank name
+    setInstModalOpen(false);
+    setEditing(null);
+    setName("");
+    setBankName(groupBankName);
+    setCurrency("EUR");
+    setBalance("");
+    setApy("");
+    setAlsoWallet(false);
+    setWalletType("custodial");
+    setWalletPrivacy("");
+    setSelectedChains([]);
+    setAlsoBroker(false);
     setError(null);
     setModalOpen(true);
   }
@@ -117,8 +174,8 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
 
     const input: BankAccountInput = {
       name,
-      bank_name: bankName,
-      region,
+      bank_name: editing ? editing.bank_name : bankName,
+      country: instCountry,
       currency,
       balance: parseFloat(balance) || 0,
       apy: parseFloat(apy) || 0,
@@ -126,9 +183,16 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
 
     try {
       if (editing) {
+        // Account-level edit only — no role opts (managed at institution level)
         await updateBankAccount(editing.id, input);
       } else {
-        await createBankAccount(input);
+        await createBankAccount(input, {
+          also_wallet: alsoWallet,
+          wallet_type: walletType,
+          wallet_privacy: walletPrivacy || null,
+          wallet_chain: serializeChains(selectedChains),
+          also_broker: alsoBroker,
+        });
       }
       setModalOpen(false);
     } catch (err) {
@@ -144,6 +208,37 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
       await deleteBankAccount(id);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete");
+    }
+  }
+
+  // Institution-level sibling roles for the institution dialog
+  const instSiblingRoles = editingInstitutionId
+    ? (institutionRoles.get(editingInstitutionId) ?? []).filter((r) => r !== "bank")
+    : [];
+  const instCanAddWallet = !instSiblingRoles.includes("wallet");
+  const instCanAddBroker = !instSiblingRoles.includes("broker");
+
+  async function handleInstitutionSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingInstitutionId) return;
+    setError(null);
+    setLoading(true);
+
+    try {
+      await updateInstitutionRoles(editingInstitutionId, {
+        newName: instName,
+        country: instCountry,
+        also_wallet: alsoWallet,
+        wallet_type: walletType,
+        wallet_privacy: walletPrivacy || null,
+        wallet_chain: serializeChains(selectedChains),
+        also_broker: alsoBroker,
+      });
+      setInstModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -174,67 +269,20 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
         <div className="space-y-2">
           {groups.map((group) => {
             const isExpanded = expandedGroups.has(group.bankName);
-            // Single-account groups show inline (no expand/collapse)
-            const isSingle = group.accounts.length === 1;
             const currencies = [...new Set(group.accounts.map((a) => a.currency))];
             const currencyLabel = currencies.length === 1 ? currencies[0] : currencies.join(", ");
+            const groupSiblings = getGroupSiblingRoles(group);
 
-            if (isSingle) {
-              const b = group.accounts[0];
-              return (
-                <div
-                  key={b.id}
-                  className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border border-zinc-800/50 rounded-lg group"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-zinc-200 truncate">
-                        {b.bank_name}
-                      </p>
-                      <span className="text-xs text-zinc-600">{b.name}</span>
-                      <span className="text-xs text-zinc-600">{b.currency}</span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-xs text-zinc-400">
-                        {formatCurrency(b.balance, b.currency)}
-                      </span>
-                      {b.apy > 0 && (
-                        <span className="text-xs text-emerald-400">
-                          {b.apy}% APY
-                        </span>
-                      )}
-                      <span className="text-xs text-zinc-600">{b.region}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openEdit(b)}
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(b.id)}
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            }
-
-            // Multi-account group: collapsible
             return (
               <div
                 key={group.bankName}
                 className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg overflow-hidden"
               >
-                <button
-                  onClick={() => toggleGroup(group.bankName)}
-                  className="w-full flex items-center justify-between px-4 py-3"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <button
+                    onClick={() => toggleGroup(group.bankName)}
+                    className="flex items-center gap-2 min-w-0 flex-1"
+                  >
                     {isExpanded ? (
                       <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                     ) : (
@@ -244,10 +292,20 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
                       {group.bankName}
                     </span>
                     <span className="text-xs text-zinc-600">
-                      {group.accounts.length} accounts · {currencyLabel}
+                      {group.accounts.length} account{group.accounts.length !== 1 ? "s" : ""} · {currencyLabel} · {countryName(group.accounts[0]?.region ?? "")}
                     </span>
-                  </div>
-                </button>
+                    {groupSiblings.length > 0 && (
+                      <span className="text-xs text-zinc-600">Also: {groupSiblings.join(" · ")}</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => openInstitutionEdit(group)}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors shrink-0"
+                    title="Edit bank settings"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
 
                 {isExpanded && (
                   <div className="border-t border-zinc-800/30 px-4 pb-3 space-y-1 pt-2">
@@ -272,7 +330,6 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
                                 {b.apy}% APY
                               </span>
                             )}
-                            <span className="text-xs text-zinc-600">{b.region}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -299,13 +356,15 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
         </div>
       )}
 
+      {/* ── Account-level modal (create / edit) ── */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing ? "Edit Bank Account" : "Add Bank Account"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          {/* Account label + bank name (bank name only shown for create) */}
+          {editing ? (
             <div>
               <label className="block text-sm text-zinc-400 mb-1.5">
                 Account Label
@@ -318,33 +377,52 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
                 className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1.5">
-                Bank Name
-              </label>
-              <input
-                type="text"
-                value={bankName}
-                onChange={(e) => setBankName(e.target.value)}
-                placeholder="e.g. Revolut, ING"
-                list="settings-bank-name-suggestions"
-                autoComplete="off"
-                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                required
-              />
-              {existingBankNames.length > 0 && (
-                <datalist id="settings-bank-name-suggestions">
-                  {existingBankNames.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
-              )}
               <p className="text-xs text-zinc-600 mt-1">
-                Use the same name to group accounts under one bank
+                Bank: {editing.bank_name}
               </p>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1.5">
+                  Account Label
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Savings EUR"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1.5">
+                  Bank Name
+                </label>
+                <input
+                  type="text"
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  placeholder="e.g. Revolut, ING"
+                  list="settings-bank-name-suggestions"
+                  autoComplete="off"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  required
+                />
+                {existingBankNames.length > 0 && (
+                  <datalist id="settings-bank-name-suggestions">
+                    {existingBankNames.map((n) => (
+                      <option key={n} value={n} />
+                    ))}
+                  </datalist>
+                )}
+                <p className="text-xs text-zinc-600 mt-1">
+                  Use the same name to group accounts under one bank
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -362,15 +440,17 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
             </div>
             <div>
               <label className="block text-sm text-zinc-400 mb-1.5">
-                Region
+                Country
               </label>
-              <input
-                type="text"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                placeholder="EU"
-                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-              />
+              <select
+                value={instCountry}
+                onChange={(e) => setInstCountry(e.target.value)}
+                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -403,6 +483,114 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
             </div>
           </div>
 
+          {/* Role extension — only for CREATE (not edit, which uses institution dialog) */}
+          {!editing && (
+            <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/10 p-3 space-y-3">
+              <label className="text-sm font-medium text-zinc-300">Also register as</label>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={alsoWallet}
+                    onChange={(e) => setAlsoWallet(e.target.checked)}
+                    className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                  />
+                  Exchange / Wallet
+                </label>
+                <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={alsoBroker}
+                    onChange={(e) => setAlsoBroker(e.target.checked)}
+                    className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                  />
+                  Broker
+                </label>
+              </div>
+
+              {/* Inline wallet fields when checked */}
+              {alsoWallet && (
+                <div className="space-y-3 pt-1 border-t border-zinc-800/30">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Wallet Type</label>
+                      <select
+                        value={walletType}
+                        onChange={(e) => setWalletType(e.target.value as WalletType)}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      >
+                        <option value="custodial">Exchange / Custodial</option>
+                        <option value="non_custodial">Self-custody</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Privacy</label>
+                      <select
+                        value={walletPrivacy}
+                        onChange={(e) => setWalletPrivacy(e.target.value as PrivacyLabel | "")}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      >
+                        <option value="">Not set</option>
+                        <option value="anon">Anonymous</option>
+                        <option value="doxxed">KYC / Doxxed</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">Chains</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const hasAllEvm = EVM_CHAINS.every((c) => selectedChains.includes(c));
+                          if (hasAllEvm) {
+                            setSelectedChains((prev) => prev.filter((c) => !isEvmChain(c)));
+                          } else {
+                            setSelectedChains((prev) => {
+                              const set = new Set(prev);
+                              for (const c of EVM_CHAINS) set.add(c);
+                              return [...set];
+                            });
+                          }
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                          EVM_CHAINS.every((c) => selectedChains.includes(c))
+                            ? "bg-blue-600/15 border-blue-500/30 text-blue-300"
+                            : "bg-zinc-950/50 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+                        }`}
+                      >
+                        EVM
+                      </button>
+                      {NON_EVM_CHAINS.map((c) => {
+                        const active = selectedChains.includes(c);
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() =>
+                              setSelectedChains((prev) =>
+                                active ? prev.filter((x) => x !== c) : [...prev, c]
+                              )
+                            }
+                            className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                              active
+                                ? "bg-blue-600/15 border-blue-500/30 text-blue-300"
+                                : "bg-zinc-950/50 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+                            }`}
+                          >
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {error && (
             <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
               {error}
@@ -428,6 +616,207 @@ export function BankManager({ banks }: { banks: BankAccount[] }) {
                   ? "Save Changes"
                   : "Add Account"}
             </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── Institution-level modal (name, roles, add account) ── */}
+      <Modal
+        open={instModalOpen}
+        onClose={() => setInstModalOpen(false)}
+        title={`Edit Bank — ${instName}`}
+      >
+        <form onSubmit={handleInstitutionSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1.5">
+              Bank Name
+            </label>
+            <input
+              type="text"
+              value={instName}
+              onChange={(e) => setInstName(e.target.value)}
+              placeholder="e.g. Revolut"
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              required
+            />
+            <p className="text-xs text-zinc-600 mt-1">
+              Renaming updates all linked accounts, wallets, and brokers
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1.5">
+              Country
+            </label>
+            <select
+              value={instCountry}
+              onChange={(e) => setInstCountry(e.target.value)}
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Role management */}
+          {(instCanAddWallet || instCanAddBroker || instSiblingRoles.length > 0) && (
+            <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/10 p-3 space-y-3">
+              <label className="text-sm font-medium text-zinc-300">Also register as</label>
+
+              {/* Existing sibling roles (read-only) */}
+              {instSiblingRoles.length > 0 && (
+                <div className="flex items-center gap-3">
+                  {instSiblingRoles.map((role) => (
+                    <label key={role} className="flex items-center gap-2 text-sm text-zinc-500">
+                      <input type="checkbox" checked disabled className="rounded border-zinc-700 bg-zinc-950 text-blue-500 opacity-50" />
+                      {role === "wallet" ? "Exchange / Wallet" : role === "broker" ? "Broker" : role}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Addable roles */}
+              {(instCanAddWallet || instCanAddBroker) && (
+                <div className="flex items-center gap-4">
+                  {instCanAddWallet && (
+                    <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={alsoWallet}
+                        onChange={(e) => setAlsoWallet(e.target.checked)}
+                        className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                      />
+                      Exchange / Wallet
+                    </label>
+                  )}
+                  {instCanAddBroker && (
+                    <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={alsoBroker}
+                        onChange={(e) => setAlsoBroker(e.target.checked)}
+                        className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                      />
+                      Broker
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {/* Inline wallet fields when checked */}
+              {alsoWallet && instCanAddWallet && (
+                <div className="space-y-3 pt-1 border-t border-zinc-800/30">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Wallet Type</label>
+                      <select
+                        value={walletType}
+                        onChange={(e) => setWalletType(e.target.value as WalletType)}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      >
+                        <option value="custodial">Exchange / Custodial</option>
+                        <option value="non_custodial">Self-custody</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Privacy</label>
+                      <select
+                        value={walletPrivacy}
+                        onChange={(e) => setWalletPrivacy(e.target.value as PrivacyLabel | "")}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      >
+                        <option value="">Not set</option>
+                        <option value="anon">Anonymous</option>
+                        <option value="doxxed">KYC / Doxxed</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">Chains</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const hasAllEvm = EVM_CHAINS.every((c) => selectedChains.includes(c));
+                          if (hasAllEvm) {
+                            setSelectedChains((prev) => prev.filter((c) => !isEvmChain(c)));
+                          } else {
+                            setSelectedChains((prev) => {
+                              const set = new Set(prev);
+                              for (const c of EVM_CHAINS) set.add(c);
+                              return [...set];
+                            });
+                          }
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                          EVM_CHAINS.every((c) => selectedChains.includes(c))
+                            ? "bg-blue-600/15 border-blue-500/30 text-blue-300"
+                            : "bg-zinc-950/50 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+                        }`}
+                      >
+                        EVM
+                      </button>
+                      {NON_EVM_CHAINS.map((c) => {
+                        const active = selectedChains.includes(c);
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() =>
+                              setSelectedChains((prev) =>
+                                active ? prev.filter((x) => x !== c) : [...prev, c]
+                              )
+                            }
+                            className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                              active
+                                ? "bg-blue-600/15 border-blue-500/30 text-blue-300"
+                                : "bg-zinc-950/50 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+                            }`}
+                          >
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+              {error}
+            </p>
+          )}
+
+          <div className="flex items-center justify-between pt-2">
+            <button
+              type="button"
+              onClick={() => openAddAccountForGroup(instName)}
+              className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Account
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setInstModalOpen(false)}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+              >
+                {loading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>

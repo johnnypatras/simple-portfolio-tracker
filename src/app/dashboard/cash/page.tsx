@@ -4,12 +4,14 @@ import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getWallets } from "@/lib/actions/wallets";
 import { getBrokers } from "@/lib/actions/brokers";
 import { getProfile } from "@/lib/actions/profile";
+import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
+import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRates } from "@/lib/prices/fx";
 import { CashTable } from "@/components/cash/cash-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function CashPage() {
-  const [bankAccounts, exchangeDeposits, brokerDeposits, wallets, brokers, profile] =
+  const [bankAccounts, exchangeDeposits, brokerDeposits, wallets, brokers, profile, cryptoAssets] =
     await Promise.all([
       getBankAccounts(),
       getExchangeDeposits(),
@@ -17,7 +19,15 @@ export default async function CashPage() {
       getWallets(),
       getBrokers(),
       getProfile(),
+      getCryptoAssetsWithPositions(),
     ]);
+
+  // Stablecoins are reclassified as cash — fetch their CoinGecko prices
+  const stablecoins = cryptoAssets.filter((a) => a.subcategory === "Stablecoin");
+  const stablecoinPrices =
+    stablecoins.length > 0
+      ? await getPrices(stablecoins.map((a) => a.coingecko_id))
+      : {};
 
   // Collect all currencies that need FX conversion
   const allCurrencies = [
@@ -49,6 +59,8 @@ export default async function CashPage() {
         brokers={brokers}
         primaryCurrency={profile.primary_currency}
         fxRates={fxRates}
+        stablecoins={stablecoins}
+        stablecoinPrices={stablecoinPrices}
       />
     </div>
   );

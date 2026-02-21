@@ -18,9 +18,10 @@ import type {
 
 export interface PortfolioSummary {
   totalValue: number;
-  cryptoValue: number;
+  cryptoValue: number;       // excludes stablecoins
   stocksValue: number;
-  cashValue: number;
+  cashValue: number;          // includes stablecoins
+  stablecoinValue: number;    // stablecoins only (subset of cashValue)
   change24hPercent: number;
   allocation: {
     crypto: number;
@@ -71,22 +72,27 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
 
-  // ── Crypto ──────────────────────────────────────────────
+  // ── Crypto (stablecoins separated → reclassified as cash) ──
   // CoinGecko gives us prices in both USD and EUR directly
   let cryptoValue = 0;
   let cryptoWeightedChange = 0; // sum of (value × change%)
+  let stablecoinValue = 0;
 
   for (const asset of cryptoAssets) {
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
 
     const priceInBase = price[currencyKey] ?? 0;
-    const change = price[changeKey] ?? 0;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const value = totalQty * priceInBase;
 
-    cryptoValue += value;
-    cryptoWeightedChange += value * change;
+    if (asset.subcategory === "Stablecoin") {
+      stablecoinValue += value;
+    } else {
+      const change = price[changeKey] ?? 0;
+      cryptoValue += value;
+      cryptoWeightedChange += value * change;
+    }
   }
 
   // ── Stocks & ETFs ───────────────────────────────────────
@@ -119,6 +125,9 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     cashValue += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
   }
 
+  // Add stablecoins to cash
+  cashValue += stablecoinValue;
+
   // ── Totals ──────────────────────────────────────────────
   const totalValue = cryptoValue + stocksValue + cashValue;
 
@@ -144,13 +153,20 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   // CoinGecko gives us both directly; for stocks/cash we use FX.
   let cryptoValueUsd = 0;
   let cryptoValueEur = 0;
+  let stablecoinValueUsd = 0;
+  let stablecoinValueEur = 0;
 
   for (const asset of cryptoAssets) {
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
-    cryptoValueUsd += totalQty * (price.usd ?? 0);
-    cryptoValueEur += totalQty * (price.eur ?? 0);
+    if (asset.subcategory === "Stablecoin") {
+      stablecoinValueUsd += totalQty * (price.usd ?? 0);
+      stablecoinValueEur += totalQty * (price.eur ?? 0);
+    } else {
+      cryptoValueUsd += totalQty * (price.usd ?? 0);
+      cryptoValueEur += totalQty * (price.eur ?? 0);
+    }
   }
 
   // For stocks and cash, convert base-currency values to the other currency
@@ -164,15 +180,16 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   if (primaryCurrency === "USD") {
     stocksValueUsd = stocksValue;
     stocksValueEur = stocksValue * eurPerUsd;
-    cashValueUsd = cashValue;
-    cashValueEur = cashValue * eurPerUsd;
+    // Cash (excluding stablecoins which have their own CoinGecko rates)
+    cashValueUsd = (cashValue - stablecoinValue) + stablecoinValueUsd;
+    cashValueEur = (cashValue - stablecoinValue) * eurPerUsd + stablecoinValueEur;
   } else {
     // primaryCurrency is EUR; fxRates["USD"] = USD per 1 EUR
     const usdPerEur = fxRates["USD"] ?? 1;
     stocksValueEur = stocksValue;
     stocksValueUsd = stocksValue * usdPerEur;
-    cashValueEur = cashValue;
-    cashValueUsd = cashValue * usdPerEur;
+    cashValueEur = (cashValue - stablecoinValue) + stablecoinValueEur;
+    cashValueUsd = (cashValue - stablecoinValue) * usdPerEur + stablecoinValueUsd;
   }
 
   return {
@@ -180,6 +197,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     cryptoValue,
     stocksValue,
     cashValue,
+    stablecoinValue,
     change24hPercent,
     allocation,
     primaryCurrency,
