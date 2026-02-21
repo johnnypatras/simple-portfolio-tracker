@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import { AddStockModal } from "./add-stock-modal";
 import { StockPositionEditor } from "./stock-position-editor";
@@ -177,31 +177,6 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
   const isGrouped = groupMode !== "flat";
 
-  // Auto-expand everything when entering any mode (flat or grouped)
-  useEffect(() => {
-    // Auto-expand all ticker groups (used in flat + type modes)
-    const allTickers = new Set<string>();
-    for (const r of rows) allTickers.add(r.asset.ticker);
-
-    if (groupMode === "flat") {
-      setExpanded(new Set(rows.map((r) => r.id)));
-      setExpandedTickerGroups(allTickers);
-      return;
-    }
-    const groupKeys = groupMode === "type"
-      ? typeGroups.map((g) => g.category)
-      : groupMode === "broker"
-      ? brokerGroups.map((g) => g.brokerName)
-      : groupMode === "currency"
-      ? currencyGroups.map((g) => g.currency)
-      : subcategoryGroups.map((g) => g.subcategory);
-    if (groupKeys.length > 0) {
-      setExpandedGroups(new Set(groupKeys));
-      setExpanded(new Set(rows.map((r) => r.id)));
-      if (groupMode === "type") setExpandedTickerGroups(allTickers);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupMode]);
 
   // Check if all ticker groups are expanded (relevant for flat + type modes)
   const allTickerGroupsExpanded = useMemo(() => {
@@ -262,43 +237,11 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
   const toggleGroupExpand = useCallback((groupKey: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      const wasOpen = next.has(groupKey);
-      if (wasOpen) next.delete(groupKey);
+      if (next.has(groupKey)) next.delete(groupKey);
       else next.add(groupKey);
-
-      // Also expand/collapse all asset rows within the toggled group
-      const getEntryIds = (): string[] => {
-        if (groupMode === "type") {
-          const group = typeGroups.find((g) => g.category === groupKey);
-          return group?.rows.map((r) => r.id) ?? [];
-        }
-        if (groupMode === "currency") {
-          const group = currencyGroups.find((g) => g.currency === groupKey);
-          return group?.rows.map((r) => r.id) ?? [];
-        }
-        if (groupMode === "subcategory") {
-          const group = subcategoryGroups.find((g) => g.subcategory === groupKey);
-          return group?.rows.map((r) => r.id) ?? [];
-        }
-        const group = brokerGroups.find((g) => g.brokerName === groupKey);
-        return group?.entries.map((e) => e.row.id) ?? [];
-      };
-
-      const assetIds = getEntryIds();
-      if (assetIds.length > 0) {
-        setExpanded((prevExp) => {
-          const nextExp = new Set(prevExp);
-          for (const id of assetIds) {
-            if (wasOpen) nextExp.delete(id);
-            else nextExp.add(id);
-          }
-          return nextExp;
-        });
-      }
-
       return next;
     });
-  }, [groupMode, typeGroups, brokerGroups, currencyGroups, subcategoryGroups]);
+  }, []);
 
   const toggleTickerGroupExpand = useCallback((ticker: string) => {
     setExpandedTickerGroups((prev) => {
@@ -308,6 +251,35 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
       return next;
     });
   }, []);
+
+  /** Expand / collapse all direct-child assets inside a single group.
+   *  When `tickers` is provided, also toggle those ticker-groups so the
+   *  user can expand/collapse everything in one click. */
+  const toggleGroupItems = useCallback((assetIds: string[], tickers?: string[]) => {
+    const allAssetsOpen = assetIds.every((id) => expanded.has(id));
+    const allTickersOpen = !tickers?.length || tickers.every((t) => expandedTickerGroups.has(t));
+    const shouldCollapse = allAssetsOpen && allTickersOpen;
+
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const id of assetIds) {
+        if (shouldCollapse) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+
+    if (tickers?.length) {
+      setExpandedTickerGroups((prev) => {
+        const next = new Set(prev);
+        for (const t of tickers) {
+          if (shouldCollapse) next.delete(t);
+          else next.add(t);
+        }
+        return next;
+      });
+    }
+  }, [expanded, expandedTickerGroups]);
 
   // Ticker groups for flat mode: merge multi-variant groups + singles into sorted list
   // When sorting by currency, dissolve ticker groups so each exchange listing
@@ -389,7 +361,18 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                     const idx = GROUP_MODE_CYCLE.indexOf(groupMode);
                     const next = GROUP_MODE_CYCLE[(idx + 1) % GROUP_MODE_CYCLE.length];
                     setGroupMode(next);
-                    setExpandedGroups(new Set());
+                    setExpanded(new Set());
+                    setExpandedTickerGroups(new Set());
+                    if (next === "flat") {
+                      setExpandedGroups(new Set());
+                    } else {
+                      const groupKeys =
+                        next === "type" ? buildStockGroupRows(rows).map(g => g.category)
+                        : next === "broker" ? buildStockBrokerGroups(rows).map(g => g.brokerName)
+                        : next === "currency" ? buildStockCurrencyGroups(rows).map(g => g.currency)
+                        : buildStockSubcategoryGroups(rows).map(g => g.subcategory);
+                      setExpandedGroups(new Set(groupKeys));
+                    }
                   }}
                   className={`p-1.5 rounded-lg transition-colors min-w-[4.5rem] flex items-center justify-center gap-1 ${
                     isGrouped
@@ -500,6 +483,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
             {groupMode === "type"
               ? typeGroups.map((group) => {
                   const isGroupOpen = expandedGroups.has(group.category);
+                  const groupAssetIds = group.rows.map((r) => r.asset.id);
+                  const groupTickers = [...new Set(group.rows.map((r) => r.asset.ticker))];
+                  const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id)) && groupTickers.every((t) => expandedTickerGroups.has(t));
                   return (
                     <div key={`mgroup:${group.category}`}>
                       <button
@@ -523,6 +509,16 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                       </button>
 
                       {isGroupOpen && (
+                        <>
+                        <div className="flex justify-end ml-6">
+                          <button
+                            onClick={() => toggleGroupItems(groupAssetIds, groupTickers)}
+                            className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                          >
+                            {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                            <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                          </button>
+                        </div>
                         <MobileTypeGroupInner
                           groupRows={group.rows}
                           expanded={expanded}
@@ -536,6 +532,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                           sortKey={sortKey}
                           sortDir={sortDir}
                         />
+                        </>
                       )}
                     </div>
                   );
@@ -544,6 +541,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
               ? brokerGroups.map((group, gi) => {
                   const isGroupOpen = expandedGroups.has(group.brokerName);
                   const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                  const groupAssetIds = group.entries.map((e) => e.row.asset.id);
+                  const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                   return (
                     <div key={`mgroup:broker:${group.brokerName}`}>
                       <button
@@ -568,6 +567,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
                       {isGroupOpen && (
                         <div className="space-y-2 ml-6">
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => toggleGroupItems(groupAssetIds)}
+                              className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                            >
+                              {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                              <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                            </button>
+                          </div>
                           {group.entries.map((entry) => (
                             <MobileStockCard
                               key={`${group.brokerName}:${entry.row.id}`}
@@ -592,6 +600,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
               ? currencyGroups.map((group) => {
                   const isGroupOpen = expandedGroups.has(group.currency);
                   const groupColor = getCurrencyColor(group.currency);
+                  const groupAssetIds = group.rows.map((r) => r.asset.id);
+                  const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                   return (
                     <div key={`mgroup:cur:${group.currency}`}>
                       <button
@@ -616,6 +626,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
                       {isGroupOpen && (
                         <div className="space-y-2 ml-6">
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => toggleGroupItems(groupAssetIds)}
+                              className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                            >
+                              {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                              <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                            </button>
+                          </div>
                           {sortRows(group.rows, sortKey, sortDir).map((row) => (
                             <MobileStockCard
                               key={row.id}
@@ -639,6 +658,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                   const groupColor = group.isUncategorized
                     ? "text-zinc-500"
                     : GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                  const groupAssetIds = group.rows.map((r) => r.asset.id);
+                  const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                   return (
                     <div key={`mgroup:sub:${group.subcategory}`}>
                       <button
@@ -663,6 +684,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
                       {isGroupOpen && (
                         <div className="space-y-2 ml-6">
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => toggleGroupItems(groupAssetIds)}
+                              className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                            >
+                              {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                              <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                            </button>
+                          </div>
                           {sortRows(group.rows, sortKey, sortDir).map((row) => (
                             <MobileStockCard
                               key={row.id}
@@ -748,6 +778,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                 {groupMode === "type"
                   ? typeGroups.map((group) => {
                       const isGroupOpen = expandedGroups.has(group.category);
+                      const groupAssetIds = group.rows.map((r) => r.asset.id);
+                      const groupTickers = [...new Set(group.rows.map((r) => r.asset.ticker))];
+                      const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id)) && groupTickers.every((t) => expandedTickerGroups.has(t));
                       return (
                         <Fragment key={`group:${group.category}`}>
                           <tr
@@ -767,6 +800,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                 <span className="text-[11px] text-zinc-600">
                                   {group.assetCount} asset{group.assetCount !== 1 ? "s" : ""}
                                 </span>
+                                {isGroupOpen && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds, groupTickers); }}
+                                    className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                    title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                  >
+                                    {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                  </button>
+                                )}
                                 <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                   {formatCurrency(group.totalValue, primaryCurrency)}
                                 </span>
@@ -795,6 +837,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                   ? brokerGroups.map((group, gi) => {
                       const isGroupOpen = expandedGroups.has(group.brokerName);
                       const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                      const groupAssetIds = group.entries.map((e) => e.row.asset.id);
+                      const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                       return (
                         <Fragment key={`group:broker:${group.brokerName}`}>
                           <tr
@@ -814,6 +858,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                 <span className="text-[11px] text-zinc-600">
                                   {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                 </span>
+                                {isGroupOpen && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds); }}
+                                    className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                    title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                  >
+                                    {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                  </button>
+                                )}
                                 <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                   {formatCurrency(group.totalValue, primaryCurrency)}
                                 </span>
@@ -896,6 +949,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                   ? currencyGroups.map((group) => {
                       const isGroupOpen = expandedGroups.has(group.currency);
                       const groupColor = getCurrencyColor(group.currency);
+                      const groupAssetIds = group.rows.map((r) => r.asset.id);
+                      const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                       return (
                         <Fragment key={`group:cur:${group.currency}`}>
                           <tr
@@ -915,6 +970,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                 <span className="text-[11px] text-zinc-600">
                                   {group.assetCount} asset{group.assetCount !== 1 ? "s" : ""}
                                 </span>
+                                {isGroupOpen && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds); }}
+                                    className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                    title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                  >
+                                    {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                  </button>
+                                )}
                                 <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                   {formatCurrency(group.totalValue, primaryCurrency)}
                                 </span>
@@ -978,6 +1042,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                       const groupColor = group.isUncategorized
                         ? "text-zinc-500"
                         : GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                      const groupAssetIds = group.rows.map((r) => r.asset.id);
+                      const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                       return (
                         <Fragment key={`group:sub:${group.subcategory}`}>
                           <tr
@@ -997,6 +1063,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                                 <span className="text-[11px] text-zinc-600">
                                   {group.assetCount} asset{group.assetCount !== 1 ? "s" : ""}
                                 </span>
+                                {isGroupOpen && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds); }}
+                                    className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                    title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                  >
+                                    {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                  </button>
+                                )}
                                 <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                   {formatCurrency(group.totalValue, primaryCurrency)}
                                 </span>

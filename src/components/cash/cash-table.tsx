@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
-import { Plus, Landmark, Wallet as WalletIcon, Briefcase, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { Plus, Landmark, Wallet as WalletIcon, Briefcase, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -46,6 +46,28 @@ import type {
 } from "@/lib/types";
 import { countryName, COUNTRIES } from "@/lib/types";
 import { HIDDEN_BELOW, DEFAULT_COUNTRY } from "@/lib/constants";
+
+// ═══════════════════════════════════════════════════════════════
+// Stablecoin wallet grouping types
+// ═══════════════════════════════════════════════════════════════
+
+interface StablecoinPositionInGroup {
+  positionId: string;
+  assetName: string;
+  ticker: string;
+  quantity: number;
+  apy: number;
+  valueInPrimary: number;
+  pegCurrency: string;
+}
+
+interface StablecoinWalletGroup {
+  walletName: string;
+  positions: StablecoinPositionInGroup[];
+  totalValue: number;
+  weightedApy: number;
+  pegCurrency: string;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // Main CashTable
@@ -93,15 +115,67 @@ export function CashTable({
   const depositTotal = exchangeDepositTotal + brokerDepositTotal;
 
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
-  const stablecoinTotal = useMemo(() => {
-    if (!stablecoins || !stablecoinPrices) return 0;
-    return stablecoins.reduce((sum, asset) => {
+
+  // Group stablecoins by wallet for expandable rows
+  const stablecoinWalletGroups: StablecoinWalletGroup[] = useMemo(() => {
+    if (!stablecoins || !stablecoinPrices) return [];
+
+    // Flatten all positions with their asset info
+    const allPositions: (StablecoinPositionInGroup & { walletName: string })[] = [];
+    for (const asset of stablecoins) {
       const price = stablecoinPrices[asset.coingecko_id];
-      if (!price) return sum;
-      const qty = asset.positions.reduce((s, p) => s + p.quantity, 0);
-      return sum + qty * (price[currencyKey] ?? 0);
-    }, 0);
+      if (!price) continue;
+      const unitPrice = price[currencyKey] ?? 0;
+      const pegCurrency = /eur/i.test(asset.ticker)
+        ? "EUR"
+        : /gbp/i.test(asset.ticker)
+          ? "GBP"
+          : "USD";
+      for (const pos of asset.positions) {
+        allPositions.push({
+          positionId: pos.id,
+          assetName: asset.name,
+          ticker: asset.ticker,
+          quantity: pos.quantity,
+          apy: pos.apy,
+          valueInPrimary: pos.quantity * unitPrice,
+          pegCurrency,
+          walletName: pos.wallet_name || "Unknown",
+        });
+      }
+    }
+
+    // Group by wallet
+    const byWallet = new Map<string, (StablecoinPositionInGroup & { walletName: string })[]>();
+    for (const pos of allPositions) {
+      const list = byWallet.get(pos.walletName) ?? [];
+      list.push(pos);
+      byWallet.set(pos.walletName, list);
+    }
+
+    // Build groups
+    const groups: StablecoinWalletGroup[] = [];
+    for (const [walletName, positions] of byWallet) {
+      const totalValue = positions.reduce((s, p) => s + p.valueInPrimary, 0);
+      const weightedApy = totalValue > 0
+        ? positions.reduce((s, p) => s + p.apy * (p.valueInPrimary / totalValue), 0)
+        : 0;
+      // If all positions share the same peg, use it; otherwise default to USD
+      const pegs = new Set(positions.map((p) => p.pegCurrency));
+      const pegCurrency = pegs.size === 1 ? [...pegs][0] : "USD";
+
+      groups.push({ walletName, positions, totalValue, weightedApy, pegCurrency });
+    }
+
+    // Sort by total value descending
+    groups.sort((a, b) => b.totalValue - a.totalValue);
+    return groups;
   }, [stablecoins, stablecoinPrices, currencyKey]);
+
+  const stablecoinTotal = useMemo(
+    () => stablecoinWalletGroups.reduce((s, g) => s + g.totalValue, 0),
+    [stablecoinWalletGroups]
+  );
 
   const totalCash = bankTotal + depositTotal + stablecoinTotal;
 
@@ -244,13 +318,16 @@ export function CashTable({
 
   const hasAnyRows = bankAccounts.length > 0 || exchangeDeposits.length > 0 || brokerDeposits.length > 0;
 
-  const allGroupIds = useMemo(() => {
-    const ids: string[] = [];
-    for (const r of bankRows) if (r.type === "bank-group") ids.push(r.id);
-    for (const r of exchRows) if (r.type === "exchange-group") ids.push(r.id);
-    for (const r of brokerDepRows) if (r.type === "broker-group") ids.push(r.id);
-    return ids;
-  }, [bankRows, exchRows, brokerDepRows]);
+  // Per-section group IDs (used for per-section toggle)
+  const bankGroupIds = useMemo(() => bankRows.filter((r) => r.type === "bank-group").map((r) => r.id), [bankRows]);
+  const exchGroupIds = useMemo(() => exchRows.filter((r) => r.type === "exchange-group").map((r) => r.id), [exchRows]);
+  const brokerGroupIds = useMemo(() => brokerDepRows.filter((r) => r.type === "broker-group").map((r) => r.id), [brokerDepRows]);
+  const stablecoinGroupIds = useMemo(() => stablecoinWalletGroups.map((g) => `stablecoin-wallet:${g.walletName}`), [stablecoinWalletGroups]);
+
+  const allGroupIds = useMemo(
+    () => [...bankGroupIds, ...exchGroupIds, ...brokerGroupIds, ...stablecoinGroupIds],
+    [bankGroupIds, exchGroupIds, brokerGroupIds, stablecoinGroupIds]
+  );
 
   const allExpanded = allGroupIds.length > 0 && allGroupIds.every((id) => expandedBanks.has(id));
 
@@ -260,6 +337,19 @@ export function CashTable({
       return new Set(allGroupIds);
     });
   }, [allGroupIds]);
+
+  /** Toggle all groups within a single section */
+  const toggleSectionGroups = useCallback((sectionIds: string[]) => {
+    setExpandedBanks((prev) => {
+      const next = new Set(prev);
+      const allOpen = sectionIds.every((id) => next.has(id));
+      for (const id of sectionIds) {
+        if (allOpen) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
   // ── Add chooser ─────────────────────────────────────────
   const [addChooserOpen, setAddChooserOpen] = useState(false);
@@ -397,6 +487,15 @@ export function CashTable({
                 <Landmark className="w-3.5 h-3.5 text-zinc-500" />
                 <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
                 <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
+                {bankGroupIds.length > 1 && (
+                  <button
+                    onClick={() => toggleSectionGroups(bankGroupIds)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors ml-auto"
+                  >
+                    {bankGroupIds.every((id) => expandedBanks.has(id)) ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                    <span>{bankGroupIds.every((id) => expandedBanks.has(id)) ? "Collapse all" : "Expand all"}</span>
+                  </button>
+                )}
               </div>
               {bankRows.length === 0 ? (
                 <p className="text-xs text-zinc-600 px-4 py-3">No bank accounts yet</p>
@@ -450,6 +549,15 @@ export function CashTable({
                 <WalletIcon className="w-3.5 h-3.5 text-zinc-500" />
                 <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
                 <span className="text-xs text-zinc-600">{formatCurrency(exchangeDepositTotal, primaryCurrency)}</span>
+                {exchGroupIds.length > 1 && (
+                  <button
+                    onClick={() => toggleSectionGroups(exchGroupIds)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors ml-auto"
+                  >
+                    {exchGroupIds.every((id) => expandedBanks.has(id)) ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                    <span>{exchGroupIds.every((id) => expandedBanks.has(id)) ? "Collapse all" : "Expand all"}</span>
+                  </button>
+                )}
               </div>
               {exchRows.length === 0 ? (
                 <p className="text-xs text-zinc-600 px-4 py-3">{wallets.length === 0 ? "Add a wallet in Settings first" : "No exchange deposits yet"}</p>
@@ -502,6 +610,15 @@ export function CashTable({
                 <Briefcase className="w-3.5 h-3.5 text-zinc-500" />
                 <span className="text-xs font-medium text-zinc-400">Broker Deposits</span>
                 <span className="text-xs text-zinc-600">{formatCurrency(brokerDepositTotal, primaryCurrency)}</span>
+                {brokerGroupIds.length > 1 && (
+                  <button
+                    onClick={() => toggleSectionGroups(brokerGroupIds)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors ml-auto"
+                  >
+                    {brokerGroupIds.every((id) => expandedBanks.has(id)) ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                    <span>{brokerGroupIds.every((id) => expandedBanks.has(id)) ? "Collapse all" : "Expand all"}</span>
+                  </button>
+                )}
               </div>
               {brokerDepRows.length === 0 ? (
                 <p className="text-xs text-zinc-600 px-4 py-3">{brokers.length === 0 ? "Add a broker in Settings first" : "No broker deposits yet"}</p>
@@ -548,36 +665,54 @@ export function CashTable({
               )}
             </div>
 
-            {/* Stablecoins (read-only, reclassified from crypto) */}
-            {stablecoins && stablecoins.length > 0 && stablecoinPrices && (
+            {/* Stablecoins (read-only, grouped by wallet) */}
+            {stablecoinWalletGroups.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <Coins className="w-3.5 h-3.5 text-zinc-500" />
                   <span className="text-xs font-medium text-zinc-400">Stablecoins</span>
                   <span className="text-xs text-zinc-600">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
+                  {stablecoinGroupIds.length > 1 && (
+                    <button
+                      onClick={() => toggleSectionGroups(stablecoinGroupIds)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors ml-auto"
+                    >
+                      {stablecoinGroupIds.every((id) => expandedBanks.has(id)) ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                      <span>{stablecoinGroupIds.every((id) => expandedBanks.has(id)) ? "Collapse all" : "Expand all"}</span>
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  {stablecoins.map((asset) => {
-                    const price = stablecoinPrices[asset.coingecko_id];
-                    if (!price) return null;
-                    const qty = asset.positions.reduce((s, p) => s + p.quantity, 0);
-                    const value = qty * (price[currencyKey] ?? 0);
-                    const walletNames = asset.positions
-                      .map((p) => p.wallet_name || "Unknown")
-                      .filter((v, i, a) => a.indexOf(v) === i)
-                      .join(", ");
+                  {stablecoinWalletGroups.map((group) => {
+                    const groupId = `stablecoin-wallet:${group.walletName}`;
+                    const groupExpanded = expandedBanks.has(groupId);
                     return (
-                      <div key={asset.id} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl px-4 py-3">
-                        <div className="flex items-center justify-between">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-zinc-200 truncate">{asset.name}</p>
-                            <p className="text-xs text-zinc-500">{walletNames}</p>
+                      <div key={groupId} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
+                        <button onClick={() => toggleExpand(groupId)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
+                          <div className="text-left min-w-0">
+                            <p className="text-sm font-medium text-zinc-200 truncate">{group.walletName}</p>
+                            <p className="text-xs text-zinc-500">{group.positions.length} stablecoin{group.positions.length !== 1 ? "s" : ""}</p>
                           </div>
                           <div className="text-right shrink-0 ml-3">
-                            <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(value, primaryCurrency)}</p>
-                            <p className="text-xs text-zinc-500">{qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} {asset.ticker}</p>
+                            <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(group.totalValue, primaryCurrency)}</p>
+                            {group.weightedApy > 0 && <p className="text-xs text-emerald-400">~{group.weightedApy.toFixed(1)}% APY</p>}
                           </div>
-                        </div>
+                        </button>
+                        {groupExpanded && (
+                          <div className="px-4 pb-3 border-t border-zinc-800/30 space-y-2 pt-3">
+                            {group.positions.map((pos) => (
+                              <div key={pos.positionId} className="flex items-center justify-between text-xs">
+                                <div>
+                                  <span className="text-zinc-400">{pos.assetName}</span>
+                                  <span className="text-zinc-600 ml-1.5">{pos.pegCurrency}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-zinc-300 tabular-nums">{formatCurrency(pos.valueInPrimary, primaryCurrency)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -605,13 +740,36 @@ export function CashTable({
               </thead>
               <tbody>
                 <tr className="bg-zinc-900/80">
-                  <td colSpan={orderedColumns.length} className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <Landmark className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
-                      <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
-                    </div>
-                  </td>
+                  {orderedColumns.map((col) => {
+                    const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                    if (col.key === "name") {
+                      return (
+                        <td key={col.key} className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <Landmark className="w-3.5 h-3.5 text-zinc-500" />
+                            <span className="text-xs font-medium text-zinc-400">Bank Accounts</span>
+                            {bankGroupIds.length > 1 && (
+                              <button
+                                onClick={() => toggleSectionGroups(bankGroupIds)}
+                                className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                title={bankGroupIds.every((id) => expandedBanks.has(id)) ? "Collapse all groups" : "Expand all groups"}
+                              >
+                                {bankGroupIds.every((id) => expandedBanks.has(id)) ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    }
+                    if (col.key === "value") {
+                      return (
+                        <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+                          <span className="text-xs text-zinc-600">{formatCurrency(bankTotal, primaryCurrency)}</span>
+                        </td>
+                      );
+                    }
+                    return <td key={col.key} className={hidden} />;
+                  })}
                 </tr>
 
                 {bankRows.length === 0 ? (
@@ -646,13 +804,36 @@ export function CashTable({
                 )}
 
                 <tr className="bg-zinc-900/80">
-                  <td colSpan={orderedColumns.length} className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <WalletIcon className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
-                      <span className="text-xs text-zinc-600">{formatCurrency(exchangeDepositTotal, primaryCurrency)}</span>
-                    </div>
-                  </td>
+                  {orderedColumns.map((col) => {
+                    const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                    if (col.key === "name") {
+                      return (
+                        <td key={col.key} className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <WalletIcon className="w-3.5 h-3.5 text-zinc-500" />
+                            <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
+                            {exchGroupIds.length > 1 && (
+                              <button
+                                onClick={() => toggleSectionGroups(exchGroupIds)}
+                                className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                title={exchGroupIds.every((id) => expandedBanks.has(id)) ? "Collapse all groups" : "Expand all groups"}
+                              >
+                                {exchGroupIds.every((id) => expandedBanks.has(id)) ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    }
+                    if (col.key === "value") {
+                      return (
+                        <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+                          <span className="text-xs text-zinc-600">{formatCurrency(exchangeDepositTotal, primaryCurrency)}</span>
+                        </td>
+                      );
+                    }
+                    return <td key={col.key} className={hidden} />;
+                  })}
                 </tr>
 
                 {exchRows.length === 0 ? (
@@ -687,13 +868,36 @@ export function CashTable({
                 )}
 
                 <tr className="bg-zinc-900/80">
-                  <td colSpan={orderedColumns.length} className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="text-xs font-medium text-zinc-400">Broker Deposits</span>
-                      <span className="text-xs text-zinc-600">{formatCurrency(brokerDepositTotal, primaryCurrency)}</span>
-                    </div>
-                  </td>
+                  {orderedColumns.map((col) => {
+                    const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                    if (col.key === "name") {
+                      return (
+                        <td key={col.key} className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <Briefcase className="w-3.5 h-3.5 text-zinc-500" />
+                            <span className="text-xs font-medium text-zinc-400">Broker Deposits</span>
+                            {brokerGroupIds.length > 1 && (
+                              <button
+                                onClick={() => toggleSectionGroups(brokerGroupIds)}
+                                className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                title={brokerGroupIds.every((id) => expandedBanks.has(id)) ? "Collapse all groups" : "Expand all groups"}
+                              >
+                                {brokerGroupIds.every((id) => expandedBanks.has(id)) ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    }
+                    if (col.key === "value") {
+                      return (
+                        <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+                          <span className="text-xs text-zinc-600">{formatCurrency(brokerDepositTotal, primaryCurrency)}</span>
+                        </td>
+                      );
+                    }
+                    return <td key={col.key} className={hidden} />;
+                  })}
                 </tr>
 
                 {brokerDepRows.length === 0 ? (
@@ -727,40 +931,63 @@ export function CashTable({
                   })
                 )}
 
-                {/* Stablecoins (read-only, reclassified from crypto) */}
-                {stablecoins && stablecoins.length > 0 && stablecoinPrices && (
+                {/* Stablecoins (read-only, grouped by wallet) */}
+                {stablecoinWalletGroups.length > 0 && (
                   <>
                     <tr className="bg-zinc-900/80">
-                      <td colSpan={orderedColumns.length} className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <Coins className="w-3.5 h-3.5 text-zinc-500" />
-                          <span className="text-xs font-medium text-zinc-400">Stablecoins</span>
-                          <span className="text-xs text-zinc-600">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
-                        </div>
-                      </td>
+                      {orderedColumns.map((col) => {
+                        const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+                        if (col.key === "name") {
+                          return (
+                            <td key={col.key} className="px-4 py-2">
+                              <div className="flex items-center gap-2">
+                                <Coins className="w-3.5 h-3.5 text-zinc-500" />
+                                <span className="text-xs font-medium text-zinc-400">Stablecoins</span>
+                                {stablecoinGroupIds.length > 1 && (
+                                  <button
+                                    onClick={() => toggleSectionGroups(stablecoinGroupIds)}
+                                    className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                    title={stablecoinGroupIds.every((id) => expandedBanks.has(id)) ? "Collapse all groups" : "Expand all groups"}
+                                  >
+                                    {stablecoinGroupIds.every((id) => expandedBanks.has(id)) ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        }
+                        if (col.key === "value") {
+                          return (
+                            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+                              <span className="text-xs text-zinc-600">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
+                            </td>
+                          );
+                        }
+                        return <td key={col.key} className={hidden} />;
+                      })}
                     </tr>
-                    {stablecoins.map((asset) => {
-                      const price = stablecoinPrices[asset.coingecko_id];
-                      if (!price) return null;
-                      const qty = asset.positions.reduce((s, p) => s + p.quantity, 0);
-                      const value = qty * (price[currencyKey] ?? 0);
-                      const walletNames = asset.positions
-                        .map((p) => p.wallet_name || "Unknown")
-                        .filter((v, i, a) => a.indexOf(v) === i)
-                        .join(", ");
+                    {stablecoinWalletGroups.map((group) => {
+                      const groupId = `stablecoin-wallet:${group.walletName}`;
+                      const groupExpanded = isExpanded(groupId);
                       return (
-                        <tr key={asset.id} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/20 transition-colors">
-                          <td className="px-4 py-2.5">
-                            <div>
-                              <p className="text-sm font-medium text-zinc-200">{asset.name}</p>
-                              <p className="text-xs text-zinc-500">{walletNames}</p>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2.5 text-right" colSpan={orderedColumns.length - 1}>
-                            <span className="text-sm text-zinc-200 tabular-nums">{formatCurrency(value, primaryCurrency)}</span>
-                            <span className="text-xs text-zinc-500 ml-2">{qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} {asset.ticker}</span>
-                          </td>
-                        </tr>
+                        <Fragment key={groupId}>
+                          <StablecoinWalletGroupRow
+                            group={group}
+                            expanded={groupExpanded}
+                            onToggle={() => toggleExpand(groupId)}
+                            orderedColumns={orderedColumns}
+                            ctx={ctx}
+                          />
+                          {groupExpanded &&
+                            group.positions.map((pos) => (
+                              <ExpandedStablecoinPositionRow
+                                key={pos.positionId}
+                                position={pos}
+                                orderedColumns={orderedColumns}
+                                ctx={ctx}
+                              />
+                            ))}
+                        </Fragment>
                       );
                     })}
                   </>
@@ -1604,6 +1831,167 @@ function ExpandedExchangeRow({
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
+            </td>
+          );
+        }
+        return <td key={col.key} className={hidden} />;
+      })}
+    </tr>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Stablecoin Wallet Group Row (expandable)
+// ═══════════════════════════════════════════════════════════════
+
+function StablecoinWalletGroupRow({
+  group,
+  expanded,
+  onToggle,
+  orderedColumns,
+  ctx,
+}: {
+  group: StablecoinWalletGroup;
+  expanded: boolean;
+  onToggle: () => void;
+  orderedColumns: ColumnDef<CashRow>[];
+  ctx: RenderContext;
+}) {
+  const Chevron = expanded ? ChevronDown : ChevronRight;
+
+  // Balance display: single ticker → "TICKER qty", mixed → formatted total
+  const tickers = new Set(group.positions.map((p) => p.ticker));
+  const totalQty = group.positions.reduce((s, p) => s + p.quantity, 0);
+  const balanceLabel =
+    tickers.size === 1
+      ? `${[...tickers][0]} ${totalQty.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+      : formatCurrency(group.totalValue, ctx.primaryCurrency);
+
+  return (
+    <tr
+      className="border-b border-zinc-800/30 hover:bg-zinc-800/20 transition-colors cursor-pointer"
+      onClick={onToggle}
+    >
+      {orderedColumns.map((col) => {
+        const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+
+        if (col.key === "name") {
+          return (
+            <td key={col.key} className="px-4 py-2.5">
+              <div className="flex items-center gap-2">
+                <Chevron className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <span className="text-sm font-medium text-zinc-200">{group.walletName}</span>
+                <span className="text-xs text-zinc-600">
+                  {group.positions.length} stablecoin{group.positions.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+            </td>
+          );
+        }
+        if (col.key === "currency") {
+          return (
+            <td key={col.key} className={`px-4 py-2.5 text-left ${hidden}`}>
+              <span className="text-xs text-zinc-500">{group.pegCurrency}</span>
+            </td>
+          );
+        }
+        if (col.key === "balance") {
+          return (
+            <td key={col.key} className={`px-4 py-2.5 text-right ${hidden}`}>
+              <span className="text-sm text-zinc-200 tabular-nums whitespace-nowrap">
+                {balanceLabel}
+              </span>
+            </td>
+          );
+        }
+        if (col.key === "apy") {
+          return (
+            <td key={col.key} className={`px-4 py-2.5 text-right ${hidden}`}>
+              {group.weightedApy > 0 ? (
+                <span className="text-sm text-emerald-400">
+                  ~{group.weightedApy.toFixed(1)}%
+                </span>
+              ) : (
+                <span className="text-sm text-zinc-600">—</span>
+              )}
+            </td>
+          );
+        }
+        if (col.key === "value") {
+          return (
+            <td key={col.key} className={`px-4 py-2.5 text-right ${hidden}`}>
+              <span className="text-sm font-medium text-zinc-200 tabular-nums">
+                {formatCurrency(group.totalValue, ctx.primaryCurrency)}
+              </span>
+            </td>
+          );
+        }
+        return <td key={col.key} className={hidden} />;
+      })}
+    </tr>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Expanded Stablecoin Position Row (sub-row)
+// ═══════════════════════════════════════════════════════════════
+
+function ExpandedStablecoinPositionRow({
+  position,
+  orderedColumns,
+  ctx,
+}: {
+  position: StablecoinPositionInGroup;
+  orderedColumns: ColumnDef<CashRow>[];
+  ctx: RenderContext;
+}) {
+  return (
+    <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
+      {orderedColumns.map((col) => {
+        const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+
+        if (col.key === "name") {
+          return (
+            <td key={col.key} className="pl-10 pr-4 py-2">
+              <span className="text-xs text-zinc-400">{position.assetName}</span>
+            </td>
+          );
+        }
+        if (col.key === "currency") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-left ${hidden}`}>
+              <span className="text-xs text-zinc-500">{position.pegCurrency}</span>
+            </td>
+          );
+        }
+        if (col.key === "balance") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+              <span className="text-xs text-zinc-400 tabular-nums whitespace-nowrap">
+                {position.ticker} {position.quantity.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+            </td>
+          );
+        }
+        if (col.key === "value") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+              <span className="text-xs text-zinc-500 tabular-nums">
+                {formatCurrency(position.valueInPrimary, ctx.primaryCurrency)}
+              </span>
+            </td>
+          );
+        }
+        if (col.key === "apy") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+              {position.apy > 0 ? (
+                <span className="text-xs text-emerald-400/70">
+                  {position.apy.toFixed(1)}%
+                </span>
+              ) : (
+                <span className="text-xs text-zinc-600">—</span>
+              )}
             </td>
           );
         }

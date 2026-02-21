@@ -91,6 +91,17 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
 
   if (error) {
     if (error.code === "23505") {
+      // Asset already exists — return the existing id so a position can still be added
+      const { data: existing } = await supabase
+        .from("crypto_assets")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("coingecko_id", input.coingecko_id)
+        .single();
+      if (existing) {
+        revalidatePath("/dashboard/crypto");
+        return existing.id;
+      }
       throw new Error("This crypto asset is already in your portfolio");
     }
     throw new Error(error.message);

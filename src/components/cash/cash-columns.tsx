@@ -384,27 +384,6 @@ export function getCashColumns(handlers: {
       },
     },
 
-    // ── Value in base currency (shared) ────────────────────
-    {
-      key: "value",
-      label: "Value",
-      header: "Value",
-      align: "right",
-      width: "w-28",
-      hiddenBelow: "sm",
-      renderHeader: (ctx) => `Value (${ctx.primaryCurrency})`,
-      renderCell: (row, ctx) => {
-        if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") {
-          return (
-            <span className="text-sm font-medium text-zinc-200 tabular-nums">
-              {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
-            </span>
-          );
-        }
-        return null;
-      },
-    },
-
     // ── APY (shared) ───────────────────────────────────────
     {
       key: "apy",
@@ -443,6 +422,27 @@ export function getCashColumns(handlers: {
           );
         }
         // exchange-group: no country concept
+        return null;
+      },
+    },
+
+    // ── Value in base currency (shared) ────────────────────
+    {
+      key: "value",
+      label: "Value",
+      header: "Value",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "sm",
+      renderHeader: (ctx) => `Value (${ctx.primaryCurrency})`,
+      renderCell: (row, ctx) => {
+        if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") {
+          return (
+            <span className="text-sm font-medium text-zinc-200 tabular-nums">
+              {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
+            </span>
+          );
+        }
         return null;
       },
     },

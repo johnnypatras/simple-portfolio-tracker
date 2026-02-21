@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { Plus, Bitcoin, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import { AddCryptoModal } from "./add-crypto-modal";
 import { PositionEditor } from "./position-editor";
@@ -218,26 +218,6 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
 
   const isGrouped = groupMode !== "flat";
 
-  // Auto-expand everything when entering any mode (flat or grouped)
-  useEffect(() => {
-    if (groupMode === "flat") {
-      setExpanded(new Set(rows.map((r) => r.id)));
-      return;
-    }
-    const groupKeys =
-      groupMode === "source"
-        ? sourceGroups.map((g) => g.acquisitionMethod)
-        : groupMode === "wallet"
-          ? walletGroups.map((g) => g.walletName)
-          : groupMode === "chain"
-            ? chainGroups.map((g) => g.chain)
-            : subcategoryGroups.map((g) => g.subcategory);
-    if (groupKeys.length > 0) {
-      setExpandedGroups(new Set(groupKeys));
-      setExpanded(new Set(rows.map((r) => r.id)));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupMode]);
 
   const allExpanded = rows.length > 0 && rows.every((r) => expanded.has(r.id));
 
@@ -283,40 +263,25 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
   const toggleGroupExpand = useCallback((groupKey: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      const wasOpen = next.has(groupKey);
-      if (wasOpen) next.delete(groupKey);
+      if (next.has(groupKey)) next.delete(groupKey);
       else next.add(groupKey);
-
-      // Also expand/collapse all asset rows within the toggled group
-      let assetIds: string[] = [];
-      if (groupMode === "chain") {
-        const group = chainGroups.find((g) => g.chain === groupKey);
-        assetIds = group?.rows.map((r) => r.id) ?? [];
-      } else if (groupMode === "subcategory") {
-        const group = subcategoryGroups.find((g) => g.subcategory === groupKey);
-        assetIds = group?.rows.map((r) => r.id) ?? [];
-      } else {
-        const entries =
-          groupMode === "source"
-            ? sourceGroups.find((g) => g.acquisitionMethod === groupKey)?.entries
-            : walletGroups.find((g) => g.walletName === groupKey)?.entries;
-        assetIds = entries?.map((e) => e.row.id) ?? [];
-      }
-
-      if (assetIds.length > 0) {
-        setExpanded((prevExp) => {
-          const nextExp = new Set(prevExp);
-          for (const id of assetIds) {
-            if (wasOpen) nextExp.delete(id);
-            else nextExp.add(id);
-          }
-          return nextExp;
-        });
-      }
-
       return next;
     });
-  }, [groupMode, sourceGroups, walletGroups, chainGroups, subcategoryGroups]);
+  }, []);
+
+  /** Expand / collapse all direct-child assets inside a single group (without touching position-level detail). */
+  const toggleGroupItems = useCallback((assetIds: string[]) => {
+    setExpanded((prev) => {
+      const allExpanded = assetIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allExpanded) {
+        assetIds.forEach((id) => next.delete(id));
+      } else {
+        assetIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, []);
 
   // Column definitions (stable via useMemo)
   const columns = useMemo(
@@ -382,7 +347,17 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                     const idx = GROUP_MODE_CYCLE.indexOf(groupMode);
                     const next = GROUP_MODE_CYCLE[(idx + 1) % GROUP_MODE_CYCLE.length];
                     setGroupMode(next);
-                    setExpandedGroups(new Set());
+                    setExpanded(new Set());
+                    if (next === "flat") {
+                      setExpandedGroups(new Set());
+                    } else {
+                      const groupKeys =
+                        next === "source" ? buildCryptoPositionGroups(rows).map(g => g.acquisitionMethod)
+                        : next === "wallet" ? buildCryptoWalletGroups(rows).map(g => g.walletName)
+                        : next === "chain" ? buildCryptoChainGroups(rows).map(g => g.chain)
+                        : buildCryptoSubcategoryGroups(rows).map(g => g.subcategory);
+                      setExpandedGroups(new Set(groupKeys));
+                    }
                   }}
                   className={`p-1.5 rounded-lg transition-colors min-w-[4.5rem] flex items-center justify-center gap-1 ${
                     isGrouped
@@ -493,6 +468,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
             {groupMode === "source"
               ? sourceGroups.map((group) => {
                   const isGroupOpen = expandedGroups.has(group.acquisitionMethod);
+                  const groupAssetIds = group.entries.map((e) => e.row.asset.id);
+                  const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                   return (
                     <div key={`mgroup:${group.acquisitionMethod}`}>
                       <button
@@ -521,6 +498,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
 
                       {isGroupOpen && (
                         <div className="space-y-2 ml-6">
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => toggleGroupItems(groupAssetIds)}
+                              className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                            >
+                              {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                              <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                            </button>
+                          </div>
                           {sortEntries(group.entries).map((entry) => (
                             <MobileCryptoCard
                               key={`${group.acquisitionMethod}:${entry.row.id}`}
@@ -545,6 +531,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                     const isGroupOpen = expandedGroups.has(group.walletName);
                     const wtInfo = WALLET_TYPE_LABELS[group.walletType];
                     const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                    const groupAssetIds = group.entries.map((e) => e.row.asset.id);
+                    const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                     return (
                       <div key={`mwgroup:${group.walletName}`}>
                         <button
@@ -574,6 +562,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
 
                         {isGroupOpen && (
                           <div className="space-y-2 ml-6">
+                            <div className="flex justify-end">
+                              <button
+                                onClick={() => toggleGroupItems(groupAssetIds)}
+                                className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                              >
+                                {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                                <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                              </button>
+                            </div>
                             {sortEntries(group.entries).map((entry) => (
                               <MobileCryptoCard
                                 key={`${group.walletName}:${entry.row.id}`}
@@ -597,6 +594,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                   ? chainGroups.map((group, gi) => {
                       const isGroupOpen = expandedGroups.has(group.chain);
                       const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                      const groupAssetIds = group.rows.map((r) => r.asset.id);
+                      const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                       return (
                         <div key={`mchgroup:${group.chain}`}>
                           <button
@@ -621,6 +620,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
 
                           {isGroupOpen && (
                             <div className="space-y-2 ml-6">
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={() => toggleGroupItems(groupAssetIds)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                                >
+                                  {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                                  <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                                </button>
+                              </div>
                               {group.rows.map((row) => (
                                 <MobileCryptoCard
                                   key={`${group.chain}:${row.id}`}
@@ -641,6 +649,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                     ? subcategoryGroups.map((group, gi) => {
                         const isGroupOpen = expandedGroups.has(group.subcategory);
                         const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                        const groupAssetIds = group.rows.map((r) => r.asset.id);
+                        const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                         return (
                           <div key={`mscgroup:${group.subcategory}`}>
                             <button
@@ -665,6 +675,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
 
                             {isGroupOpen && (
                               <div className="space-y-2 ml-6">
+                                <div className="flex justify-end">
+                                  <button
+                                    onClick={() => toggleGroupItems(groupAssetIds)}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                                  >
+                                    {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                                    <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                                  </button>
+                                </div>
                                 {group.rows.map((row) => (
                                   <MobileCryptoCard
                                     key={`${group.subcategory}:${row.id}`}
@@ -733,6 +752,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                 {groupMode === "source"
                   ? sourceGroups.map((group) => {
                       const isGroupOpen = expandedGroups.has(group.acquisitionMethod);
+                      const groupAssetIds = group.entries.map((e) => e.row.asset.id);
+                      const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                       return (
                         <Fragment key={`group:${group.acquisitionMethod}`}>
                           <tr
@@ -756,6 +777,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                 <span className="text-[11px] text-zinc-600">
                                   {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                 </span>
+                                {isGroupOpen && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds); }}
+                                    className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                    title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                  >
+                                    {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                  </button>
+                                )}
                                 <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                   {formatCurrency(group.totalValue, primaryCurrency)}
                                 </span>
@@ -783,6 +813,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                         const isGroupOpen = expandedGroups.has(group.walletName);
                         const wtInfo = WALLET_TYPE_LABELS[group.walletType];
                         const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                        const groupAssetIds = group.entries.map((e) => e.row.asset.id);
+                        const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                         return (
                           <Fragment key={`wgroup:${group.walletName}`}>
                             <tr
@@ -807,6 +839,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                   <span className="text-[11px] text-zinc-600">
                                     {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                   </span>
+                                  {isGroupOpen && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds); }}
+                                      className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                      title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                    >
+                                      {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                    </button>
+                                  )}
                                   <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                     {formatCurrency(group.totalValue, primaryCurrency)}
                                   </span>
@@ -833,6 +874,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                       ? chainGroups.map((group, gi) => {
                           const isGroupOpen = expandedGroups.has(group.chain);
                           const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                          const groupAssetIds = group.rows.map((r) => r.asset.id);
+                          const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                           return (
                             <Fragment key={`chgroup:${group.chain}`}>
                               <tr
@@ -852,6 +895,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                     <span className="text-[11px] text-zinc-600">
                                       {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                     </span>
+                                    {isGroupOpen && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds); }}
+                                        className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                        title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                      >
+                                        {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                      </button>
+                                    )}
                                     <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                       {formatCurrency(group.totalValue, primaryCurrency)}
                                     </span>
@@ -888,6 +940,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                               walletType={pos.wallet_type}
                                               quantity={formatQuantity(pos.quantity, 8)}
                                               value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                                              apy={pos.apy}
                                               acquisitionMethod={pos.acquisition_method ?? "bought"}
                                               orderedColumns={orderedColumns}
                                               grouped
@@ -914,6 +967,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                         ? subcategoryGroups.map((group, gi) => {
                             const isGroupOpen = expandedGroups.has(group.subcategory);
                             const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
+                            const groupAssetIds = group.rows.map((r) => r.asset.id);
+                            const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
                             return (
                               <Fragment key={`scgroup:${group.subcategory}`}>
                                 <tr
@@ -933,6 +988,15 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                     <span className="text-[11px] text-zinc-600">
                                       {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                     </span>
+                                    {isGroupOpen && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds); }}
+                                        className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                        title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                      >
+                                        {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                      </button>
+                                    )}
                                     <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
                                       {formatCurrency(group.totalValue, primaryCurrency)}
                                     </span>
@@ -969,6 +1033,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                               walletType={pos.wallet_type}
                                               quantity={formatQuantity(pos.quantity, 8)}
                                               value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                                              apy={pos.apy}
                                               acquisitionMethod={pos.acquisition_method ?? "bought"}
                                               orderedColumns={orderedColumns}
                                               grouped
@@ -1017,6 +1082,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                                       walletType={pos.wallet_type}
                                       quantity={formatQuantity(pos.quantity, 8)}
                                       value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                                      apy={pos.apy}
                                       acquisitionMethod={pos.acquisition_method ?? "bought"}
                                       orderedColumns={orderedColumns}
                                     />
@@ -1127,6 +1193,7 @@ function GroupedCryptoEntryRows({
               walletType={pos.wallet_type}
               quantity={formatQuantity(pos.quantity, 8)}
               value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+              apy={pos.apy}
               acquisitionMethod={pos.acquisition_method ?? "bought"}
               orderedColumns={orderedColumns}
               grouped
@@ -1161,6 +1228,7 @@ function ExpandedCryptoRow({
   walletType,
   quantity,
   value,
+  apy,
   acquisitionMethod,
   orderedColumns,
   grouped,
@@ -1169,6 +1237,7 @@ function ExpandedCryptoRow({
   walletType?: WalletType;
   quantity: string;
   value: string;
+  apy?: number;
   acquisitionMethod: string;
   orderedColumns: ColumnDef<CryptoRow>[];
   grouped?: boolean;
@@ -1213,6 +1282,19 @@ function ExpandedCryptoRow({
               <span className={`text-xs font-medium ${ACQUISITION_COLORS[acquisitionMethod] ?? "text-zinc-400"}`}>
                 {ACQUISITION_LABELS[acquisitionMethod] ?? acquisitionMethod}
               </span>
+            </td>
+          );
+        }
+        if (col.key === "apy") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
+              {apy != null && apy > 0 ? (
+                <span className="text-xs text-emerald-400 font-medium tabular-nums">
+                  {apy.toFixed(apy % 1 === 0 ? 0 : 2)}%
+                </span>
+              ) : (
+                <span className="text-xs text-zinc-600">—</span>
+              )}
             </td>
           );
         }
@@ -1338,6 +1420,14 @@ function MobileCryptoCard({
                     </span>
                     <span className="text-zinc-400 tabular-nums">
                       {formatQuantity(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                      {pos.apy != null && pos.apy > 0 && (
+                        <>
+                          {" · "}
+                          <span className="text-emerald-400 font-medium">
+                            {pos.apy.toFixed(pos.apy % 1 === 0 ? 0 : 2)}%
+                          </span>
+                        </>
+                      )}
                       {" · "}
                       <span className={ACQUISITION_COLORS[method] ?? "text-zinc-400"}>
                         {ACQUISITION_LABELS[method] ?? method}
