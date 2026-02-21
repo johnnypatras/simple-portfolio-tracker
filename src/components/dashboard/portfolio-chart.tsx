@@ -135,14 +135,14 @@ export function PortfolioChart({
           <AreaChart data={data}>
             <defs>
               <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--chart-stroke)" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="var(--chart-stroke)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
               dataKey="date"
               tickFormatter={formatDate}
-              tick={{ fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
               axisLine={false}
               tickLine={false}
               minTickGap={40}
@@ -152,7 +152,7 @@ export function PortfolioChart({
               tickFormatter={(v: number) =>
                 formatCurrencyShort(v, primaryCurrency)
               }
-              tick={{ fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
               axisLine={false}
               tickLine={false}
               width={70}
@@ -176,7 +176,7 @@ export function PortfolioChart({
             <Area
               type="monotone"
               dataKey="value"
-              stroke="#3b82f6"
+              stroke="var(--chart-stroke)"
               strokeWidth={2}
               fill="url(#areaGradient)"
             />

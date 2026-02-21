@@ -13,6 +13,7 @@ export interface Profile {
   email: string;
   display_name: string | null;
   primary_currency: CurrencyType;
+  theme: string | null;
   created_at: string;
   updated_at: string;
 }

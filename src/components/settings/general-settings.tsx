@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { updateProfile } from "@/lib/actions/profile";
+import { ThemeSelector } from "@/components/settings/theme-selector";
 import type { Profile, Currency } from "@/lib/types";
 
 const currencies: { value: Currency; label: string }[] = [
@@ -121,6 +122,11 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
           </button>
         </div>
       </form>
+
+      {/* Theme — instant apply, no save button needed */}
+      <div className="border-t border-zinc-800 pt-6">
+        <ThemeSelector />
+      </div>
     </div>
   );
 }

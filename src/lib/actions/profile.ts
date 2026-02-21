@@ -22,10 +22,11 @@ export async function getProfile(): Promise<Profile> {
   return data as Profile;
 }
 
-/** Update the current user's profile (display name, currency). */
+/** Update the current user's profile (display name, currency, theme). */
 export async function updateProfile(input: {
   display_name?: string | null;
   primary_currency?: Currency;
+  theme?: string | null;
 }): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const {

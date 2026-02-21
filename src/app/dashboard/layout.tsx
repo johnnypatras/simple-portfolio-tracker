@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/sidebar";
 import { SidebarProvider } from "@/components/sidebar-context";
+import { ThemeSync } from "@/components/theme-sync";
 
 export default async function DashboardLayout({
   children,
@@ -17,8 +18,16 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  // Fetch theme preference — non-blocking, falls back to default on error
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("theme")
+    .eq("id", user.id)
+    .single();
+
   return (
     <SidebarProvider>
+      <ThemeSync profileTheme={profile?.theme ?? null} />
       <div className="flex min-h-screen">
         <Sidebar email={user.email ?? ""} />
         <main className="flex-1 min-w-0 lg:ml-0">

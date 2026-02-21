@@ -240,46 +240,48 @@ export function ActivityTimeline({
   return (
     <div className={isPending ? "opacity-60 transition-opacity" : ""}>
       {/* Filter bar */}
-      <div className="flex items-center gap-2 mb-6">
-        <select
-          value={currentEntityType ?? ""}
-          onChange={(e) => updateFilter("type", e.target.value)}
-          className="px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-        >
-          {ENTITY_FILTER_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+      <div className="mb-6 space-y-2">
+        <div className="flex items-center gap-2">
+          <select
+            value={currentEntityType ?? ""}
+            onChange={(e) => updateFilter("type", e.target.value)}
+            className="px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+          >
+            {ENTITY_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
 
-        <select
-          value={currentAction ?? ""}
-          onChange={(e) => updateFilter("action", e.target.value)}
-          className="px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-        >
-          {ACTION_FILTER_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          <select
+            value={currentAction ?? ""}
+            onChange={(e) => updateFilter("action", e.target.value)}
+            className="px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+          >
+            {ACTION_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
 
-        <div className="flex-1" />
+          <div className="flex-1" />
 
-        <span className="text-xs text-zinc-500 shrink-0">
+          {total > 0 && (
+            <button
+              onClick={handleExportCsv}
+              className="shrink-0 p-2 text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800/80 transition-colors"
+              title="Export CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <span className="text-xs text-zinc-500">
           {total} {total === 1 ? "entry" : "entries"}
         </span>
-
-        {total > 0 && (
-          <button
-            onClick={handleExportCsv}
-            className="shrink-0 p-2 text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800/80 transition-colors"
-            title="Export CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-          </button>
-        )}
       </div>
 
       {/* Empty state */}
