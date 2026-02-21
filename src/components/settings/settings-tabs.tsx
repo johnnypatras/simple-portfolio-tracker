@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Settings2, Wallet, TrendingUp, Landmark, ArrowLeftRight, UserCog } from "lucide-react";
+import { Settings2, Wallet as WalletIcon, TrendingUp, Landmark, ArrowLeftRight, UserCog } from "lucide-react";
 import { GeneralSettings } from "./general-settings";
 import { WalletManager } from "./wallet-manager";
 import { BrokerManager } from "./broker-manager";
@@ -9,17 +9,17 @@ import { BankManager } from "./bank-manager";
 import { ImportExportSettings } from "./import-export-settings";
 import { AccountSettings } from "./account-settings";
 import type {
-  Wallet as WalletType,
+  Wallet,
   Broker,
   BankAccount,
   InstitutionWithRoles,
   InstitutionRole,
+  Profile,
 } from "@/lib/types";
-import type { Profile } from "@/types/database";
 
 const tabs = [
   { id: "general", label: "General", icon: Settings2 },
-  { id: "wallets", label: "Exchanges & Wallets", icon: Wallet },
+  { id: "wallets", label: "Exchanges & Wallets", icon: WalletIcon },
   { id: "brokers", label: "Brokers", icon: TrendingUp },
   { id: "banks", label: "Banks", icon: Landmark },
   { id: "import-export", label: "Import / Export", icon: ArrowLeftRight },
@@ -30,7 +30,7 @@ type TabId = (typeof tabs)[number]["id"];
 
 interface SettingsTabsProps {
   profile: Profile;
-  wallets: WalletType[];
+  wallets: Wallet[];
   brokers: Broker[];
   banks: BankAccount[];
   institutions: InstitutionWithRoles[];

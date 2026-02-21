@@ -24,10 +24,6 @@ export default async function CashPage() {
 
   // Stablecoins are reclassified as cash — fetch their CoinGecko prices
   const stablecoins = cryptoAssets.filter((a) => a.subcategory === "Stablecoin");
-  const stablecoinPrices =
-    stablecoins.length > 0
-      ? await getPrices(stablecoins.map((a) => a.coingecko_id))
-      : {};
 
   // Collect all currencies that need FX conversion
   const allCurrencies = [
@@ -38,7 +34,13 @@ export default async function CashPage() {
     ]),
   ];
 
-  const fxRates = await getFXRates(profile.primary_currency, allCurrencies);
+  // Fetch stablecoin prices + FX rates in parallel (both depend on round 1 only)
+  const [stablecoinPrices, fxRates] = await Promise.all([
+    stablecoins.length > 0
+      ? getPrices(stablecoins.map((a) => a.coingecko_id))
+      : Promise.resolve({}),
+    getFXRates(profile.primary_currency, allCurrencies),
+  ]);
 
   return (
     <div>

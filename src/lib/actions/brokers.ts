@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { BrokerInput, WalletType, PrivacyLabel } from "@/lib/types";
+import { DEFAULT_COUNTRY } from "@/lib/constants";
 import { logActivity } from "@/lib/actions/activity-log";
 import {
   findOrCreateInstitution,
@@ -96,7 +97,7 @@ export async function createBroker(
         user_id: user.id,
         name: trimmedName,
         bank_name: trimmedName,
-        region: "GR",
+        region: DEFAULT_COUNTRY,
         currency: "EUR",
         balance: 0,
         apy: 0,
@@ -198,7 +199,7 @@ export async function updateBroker(
           user_id: user.id,
           name: trimmedName,
           bank_name: trimmedName,
-          region: "GR",
+          region: DEFAULT_COUNTRY,
           currency: "EUR",
           balance: 0,
           apy: 0,

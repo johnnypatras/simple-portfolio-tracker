@@ -10,6 +10,7 @@ import {
   Banknote,
   PieChart,
 } from "lucide-react";
+import { PERIOD_LABELS } from "@/lib/constants";
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { PortfolioSnapshot } from "@/lib/types";
 
@@ -76,13 +77,6 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
   const changeValue = change.available
     ? `${changeSign}${change.percent.toFixed(2)}%`
     : "—";
-
-  const periodLabels: Record<ChangePeriod, string> = {
-    "24h": "vs yesterday",
-    "7d": "vs 7 days ago",
-    "30d": "vs 30 days ago",
-    "1y": "vs 1 year ago",
-  };
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -164,7 +158,7 @@ export function PortfolioCards({ summary, pastSnapshots }: PortfolioCardsProps) 
           {changeValue}
         </p>
         <p className="text-xs text-zinc-600 mt-1">
-          {periodLabels[changePeriod]}
+          {PERIOD_LABELS[changePeriod]}
         </p>
       </div>
 

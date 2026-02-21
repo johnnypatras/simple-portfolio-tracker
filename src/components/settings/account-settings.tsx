@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearAllData, deleteAccount } from "@/lib/actions/profile";
 import { AlertTriangle, Trash2, DatabaseZap } from "lucide-react";
-import type { Profile } from "@/types/database";
+import type { Profile } from "@/lib/types";
 
 export function AccountSettings({ profile }: { profile: Profile }) {
   const router = useRouter();

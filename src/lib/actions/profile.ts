@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { Profile, Currency } from "@/types/database";
+import type { Profile, Currency } from "@/lib/types";
 
 /** Fetch the current user's profile. */
 export async function getProfile(): Promise<Profile> {

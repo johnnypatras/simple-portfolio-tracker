@@ -8,6 +8,7 @@ import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
 import type { RenderContext, ColumnDef } from "@/lib/column-config";
+import { HIDDEN_BELOW } from "@/lib/constants";
 import type {
   CryptoAssetWithPositions,
   CoinGeckoPriceData,
@@ -47,14 +48,6 @@ const GROUP_MODE_LABELS: Record<CryptoGroupMode, string> = {
   wallet: "Group by wallet",
   chain: "Group by chain",
   subcategory: "Group by type",
-};
-
-// ── Breakpoint → Tailwind class mapping ──────────────────────
-
-const HIDDEN_BELOW: Record<string, string> = {
-  sm: "hidden sm:table-cell",
-  md: "hidden md:table-cell",
-  lg: "hidden lg:table-cell",
 };
 
 // ── Component ────────────────────────────────────────────────
@@ -136,11 +129,6 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
   const rows = useMemo(
     () => sortCryptoRows(baseRows, sortKey, sortDir),
     [baseRows, sortKey, sortDir]
-  );
-
-  const totalPortfolioValue = useMemo(
-    () => baseRows.reduce((sum, r) => sum + r.valueInBase, 0),
-    [baseRows]
   );
 
   // Stablecoin split: exclude from summary total + 24h change weighting

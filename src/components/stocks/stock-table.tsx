@@ -10,6 +10,7 @@ import { convertToBase } from "@/lib/prices/fx";
 import { deleteStockAsset } from "@/lib/actions/stocks";
 import type { FXRates } from "@/lib/prices/fx";
 import type { RenderContext, ColumnDef } from "@/lib/column-config";
+import { HIDDEN_BELOW } from "@/lib/constants";
 import type {
   StockAssetWithPositions,
   Broker,
@@ -41,14 +42,6 @@ import {
   type SortKey,
   type SortDirection,
 } from "./stock-columns";
-
-// ── Breakpoint → Tailwind class mapping ──────────────────────
-
-const HIDDEN_BELOW: Record<string, string> = {
-  sm: "hidden sm:table-cell",
-  md: "hidden md:table-cell",
-  lg: "hidden lg:table-cell",
-};
 
 // ── Group mode ──────────────────────────────────────────────
 

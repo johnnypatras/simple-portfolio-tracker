@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { updateProfile } from "@/lib/actions/profile";
-import type { Profile, Currency } from "@/types/database";
+import type { Profile, Currency } from "@/lib/types";
 
 const currencies: { value: Currency; label: string }[] = [
   { value: "EUR", label: "EUR (€) — Euro" },

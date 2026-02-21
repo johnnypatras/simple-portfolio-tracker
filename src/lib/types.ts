@@ -3,6 +3,19 @@
 export type WalletType = "custodial" | "non_custodial";
 export type PrivacyLabel = "anon" | "doxxed";
 export type CurrencyType = "USD" | "EUR";
+/** @deprecated Use CurrencyType instead */
+export type Currency = CurrencyType;
+
+// ─── User Profile ───────────────────────────────────────
+
+export interface Profile {
+  id: string;
+  email: string;
+  display_name: string | null;
+  primary_currency: CurrencyType;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Wallet {
   id: string;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, Landmark, Wallet, Briefcase, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
+import { Plus, Landmark, Wallet as WalletIcon, Briefcase, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -42,17 +42,10 @@ import type {
   CurrencyType,
   CryptoAssetWithPositions,
   CoinGeckoPriceData,
-  Wallet as WalletType,
+  Wallet,
 } from "@/lib/types";
 import { countryName, COUNTRIES } from "@/lib/types";
-
-// ── Breakpoint → Tailwind class mapping ──────────────────────
-
-const HIDDEN_BELOW: Record<string, string> = {
-  sm: "hidden sm:table-cell",
-  md: "hidden md:table-cell",
-  lg: "hidden lg:table-cell",
-};
+import { HIDDEN_BELOW, DEFAULT_COUNTRY } from "@/lib/constants";
 
 // ═══════════════════════════════════════════════════════════════
 // Main CashTable
@@ -62,7 +55,7 @@ interface CashTableProps {
   bankAccounts: BankAccount[];
   exchangeDeposits: ExchangeDeposit[];
   brokerDeposits: BrokerDeposit[];
-  wallets: WalletType[];
+  wallets: Wallet[];
   brokers: Broker[];
   primaryCurrency: string;
   fxRates: FXRates;
@@ -454,7 +447,7 @@ export function CashTable({
             {/* Exchange Deposits */}
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <Wallet className="w-3.5 h-3.5 text-zinc-500" />
+                <WalletIcon className="w-3.5 h-3.5 text-zinc-500" />
                 <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
                 <span className="text-xs text-zinc-600">{formatCurrency(exchangeDepositTotal, primaryCurrency)}</span>
               </div>
@@ -655,7 +648,7 @@ export function CashTable({
                 <tr className="bg-zinc-900/80">
                   <td colSpan={orderedColumns.length} className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <Wallet className="w-3.5 h-3.5 text-zinc-500" />
+                      <WalletIcon className="w-3.5 h-3.5 text-zinc-500" />
                       <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
                       <span className="text-xs text-zinc-600">{formatCurrency(exchangeDepositTotal, primaryCurrency)}</span>
                     </div>
@@ -800,7 +793,7 @@ export function CashTable({
             disabled={wallets.length === 0}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 disabled:opacity-40 disabled:hover:border-zinc-800 disabled:hover:bg-transparent transition-colors text-left"
           >
-            <Wallet className="w-5 h-5 text-zinc-400 shrink-0" />
+            <WalletIcon className="w-5 h-5 text-zinc-400 shrink-0" />
             <div>
               <p className="text-sm font-medium text-zinc-200">Exchange Deposit</p>
               <p className="text-xs text-zinc-500">
@@ -879,17 +872,17 @@ function BankAccountModal({
   const [currency, setCurrency] = useState<CurrencyType>("EUR");
   const [balance, setBalance] = useState("");
   const [apy, setApy] = useState("");
-  const [country, setCountry] = useState("GR");
+  const [country, setCountry] = useState(DEFAULT_COUNTRY);
 
   // Sync form when editing changes
-  useMemo(() => {
+  useEffect(() => {
     if (open && editing) {
       setName(editing.name);
       setBankName(editing.bank_name);
       setCurrency(editing.currency);
       setBalance(editing.balance.toString());
       setApy(editing.apy.toString());
-      setCountry(editing.region || "GR");
+      setCountry(editing.region || DEFAULT_COUNTRY);
       setError(null);
     } else if (open && !editing) {
       setName("");
@@ -897,7 +890,7 @@ function BankAccountModal({
       setCurrency("EUR");
       setBalance("");
       setApy("");
-      setCountry("GR");
+      setCountry(DEFAULT_COUNTRY);
       setError(null);
     }
   }, [open, editing]);
@@ -1078,7 +1071,7 @@ function ExchangeDepositModal({
   open: boolean;
   onClose: () => void;
   editing: ExchangeDeposit | null;
-  wallets: WalletType[];
+  wallets: Wallet[];
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1090,7 +1083,7 @@ function ExchangeDepositModal({
   const [apy, setApy] = useState("");
 
   // Sync form when editing changes
-  useMemo(() => {
+  useEffect(() => {
     if (open && editing) {
       setWalletId(editing.wallet_id);
       setCurrency(editing.currency);
@@ -1256,7 +1249,7 @@ function BrokerDepositModal({
   const [apy, setApy] = useState("");
 
   // Sync form when editing changes
-  useMemo(() => {
+  useEffect(() => {
     if (open && editing) {
       setBrokerId(editing.broker_id);
       setCurrency(editing.currency);

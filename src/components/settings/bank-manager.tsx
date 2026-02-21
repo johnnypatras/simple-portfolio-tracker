@@ -11,6 +11,7 @@ import {
 import { updateInstitutionRoles } from "@/lib/actions/institutions";
 import type { BankAccount, BankAccountInput, CurrencyType, WalletType, PrivacyLabel, InstitutionRole } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains, COUNTRIES, countryName } from "@/lib/types";
+import { DEFAULT_COUNTRY } from "@/lib/constants";
 
 // ── Group accounts by bank_name ──────────────────────────────
 
@@ -80,7 +81,7 @@ export function BankManager({ banks, institutionRoles }: BankManagerProps) {
   const [instModalOpen, setInstModalOpen] = useState(false);
   const [editingInstitutionId, setEditingInstitutionId] = useState<string | null>(null);
   const [instName, setInstName] = useState("");
-  const [instCountry, setInstCountry] = useState("GR");
+  const [instCountry, setInstCountry] = useState(DEFAULT_COUNTRY);
 
   const groups = useMemo(() => groupByBankName(banks), [banks]);
   const existingBankNames = useMemo(
@@ -112,7 +113,7 @@ export function BankManager({ banks, institutionRoles }: BankManagerProps) {
     setCurrency("EUR");
     setBalance("");
     setApy("");
-    setInstCountry("GR");
+    setInstCountry(DEFAULT_COUNTRY);
     setAlsoWallet(false);
     setWalletType("custodial");
     setWalletPrivacy("");
@@ -129,7 +130,7 @@ export function BankManager({ banks, institutionRoles }: BankManagerProps) {
     setCurrency(bank.currency);
     setBalance(bank.balance.toString());
     setApy(bank.apy.toString());
-    setInstCountry(bank.region || "GR");
+    setInstCountry(bank.region || DEFAULT_COUNTRY);
     setError(null);
     setModalOpen(true);
   }
@@ -139,7 +140,7 @@ export function BankManager({ banks, institutionRoles }: BankManagerProps) {
     if (!first?.institution_id) return;
     setEditingInstitutionId(first.institution_id);
     setInstName(group.bankName);
-    setInstCountry(first.region || "GR");
+    setInstCountry(first.region || DEFAULT_COUNTRY);
     setAlsoWallet(false);
     setWalletType("custodial");
     setWalletPrivacy("");

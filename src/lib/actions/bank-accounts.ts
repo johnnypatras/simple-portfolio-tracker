@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { BankAccountInput, WalletType, PrivacyLabel } from "@/lib/types";
+import { DEFAULT_COUNTRY } from "@/lib/constants";
 import { logActivity } from "@/lib/actions/activity-log";
 import {
   findOrCreateInstitution,
@@ -44,7 +45,7 @@ export async function createBankAccount(
     user_id: user.id,
     name: input.name.trim(),
     bank_name: trimmedBankName,
-    region: input.country ?? "GR",
+    region: input.country ?? DEFAULT_COUNTRY,
     currency: input.currency ?? "EUR",
     balance: input.balance ?? 0,
     apy: input.apy ?? 0,
