@@ -364,18 +364,17 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
               </p>
               <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(nonStableValue, primaryCurrency)}
-              </p>
-              <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
-                {stablecoinTotal > 0 && (
-                  <span>excl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins</span>
-                )}
-                {stablecoinTotal > 0 && weighted24hChange !== 0 && " · "}
                 {weighted24hChange !== 0 && (
-                  <span className={weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}>
-                    {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(2)}% 24h
+                  <span className={`text-sm font-medium ml-2 ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(2)}%
                   </span>
                 )}
               </p>
+              {stablecoinTotal > 0 && (
+                <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
+                  excl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins
+                </p>
+              )}
             </div>
             <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
               <p>

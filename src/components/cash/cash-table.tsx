@@ -126,8 +126,16 @@ export function CashTable({
       const val = convertToBase(d.amount, d.currency, primaryCurrency, fxRates);
       return sum + val * d.apy;
     }, 0);
-    return (bankWeighted + exchWeighted + brokerWeighted) / totalCash;
-  }, [bankAccounts, exchangeDeposits, brokerDeposits, totalCash, primaryCurrency, fxRates]);
+    const stablecoinWeighted = (stablecoins ?? []).reduce((sum, asset) => {
+      const price = stablecoinPrices?.[asset.coingecko_id];
+      if (!price) return sum;
+      return asset.positions.reduce((s, p) => {
+        const val = p.quantity * (price[currencyKey] ?? 0);
+        return s + val * p.apy;
+      }, sum);
+    }, 0);
+    return (bankWeighted + exchWeighted + brokerWeighted + stablecoinWeighted) / totalCash;
+  }, [bankAccounts, exchangeDeposits, brokerDeposits, stablecoins, stablecoinPrices, currencyKey, totalCash, primaryCurrency, fxRates]);
 
   // ── Bank handlers ─────────────────────────────────────────
   const [bankModalOpen, setBankModalOpen] = useState(false);
@@ -295,16 +303,17 @@ export function CashTable({
               </p>
               <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(totalCash, primaryCurrency)}
-              </p>
-              <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
-                {stablecoinTotal > 0 && (
-                  <span>incl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins</span>
-                )}
-                {stablecoinTotal > 0 && weightedApy > 0 && " · "}
                 {weightedApy > 0 && (
-                  <span className="text-emerald-400">~{weightedApy.toFixed(1)}% APY</span>
+                  <span className="text-sm font-medium ml-2 text-emerald-400">
+                    ~{weightedApy.toFixed(1)}% APY
+                  </span>
                 )}
               </p>
+              {stablecoinTotal > 0 && (
+                <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
+                  incl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins
+                </p>
+              )}
             </div>
             <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
               <p>
