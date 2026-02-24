@@ -13,6 +13,7 @@ import { updateInstitutionRoles } from "@/lib/actions/institutions";
 import type { BankAccount, BankAccountInput, CurrencyType, WalletType, PrivacyLabel, InstitutionRole } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains, COUNTRIES, countryName } from "@/lib/types";
 import { DEFAULT_COUNTRY } from "@/lib/constants";
+import { formatCurrency } from "@/lib/format";
 
 // ── Group accounts by bank_name ──────────────────────────────
 
@@ -33,16 +34,6 @@ function groupByBankName(banks: BankAccount[]): BankSettingsGroup[] {
     groups.push({ bankName, accounts });
   }
   return groups;
-}
-
-// ── Formatter ────────────────────────────────────────────────
-
-function formatCurrency(amount: number, cur: CurrencyType) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: cur,
-    minimumFractionDigits: 2,
-  }).format(amount);
 }
 
 // ═══════════════════════════════════════════════════════════════

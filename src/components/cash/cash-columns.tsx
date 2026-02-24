@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef } from "@/lib/column-config";
+import { formatCurrency } from "@/lib/format";
 import type { BankAccount, BrokerDeposit, ExchangeDeposit } from "@/lib/types";
 import { countryName } from "@/lib/types";
 
@@ -217,16 +218,6 @@ export function buildBrokerGroupRows(
   return rows;
 }
 
-// ── Shared formatter ─────────────────────────────────────────
-
-export function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
 // ═══════════════════════════════════════════════════════════════
 // Unified Cash Columns

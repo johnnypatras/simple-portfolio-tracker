@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useCallback, Fragment } from "react";
 import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
-import { AddStockModal } from "./add-stock-modal";
+import dynamic from "next/dynamic";
+const AddStockModal = dynamic(() => import("./add-stock-modal").then(m => m.AddStockModal), { ssr: false });
 import { StockPositionEditor } from "./stock-position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -29,7 +30,6 @@ import {
   sortFlatItems,
   sortRows,
   formatQuantity,
-  formatCurrency,
   getCurrencyColor,
   TYPE_LABELS,
   TYPE_COLORS,
@@ -44,6 +44,7 @@ import {
   type SortKey,
   type SortDirection,
 } from "./stock-columns";
+import { formatCurrency } from "@/lib/format";
 
 // ── Group mode ──────────────────────────────────────────────
 

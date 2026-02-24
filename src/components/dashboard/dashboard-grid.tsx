@@ -17,6 +17,7 @@ import {
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
+import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -36,43 +37,7 @@ const PERIOD_LABELS: Record<ChangePeriod, string> = { "24h": "24h", "7d": "7d", 
 const APY_PERIODS = ["daily", "monthly", "yearly"] as const;
 type ApyPeriod = (typeof APY_PERIODS)[number];
 
-// ─── Formatters ─────────────────────────────────────────
-
-function fmtCurrency(value: number, currency: string, decimals = 0): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
-}
-
-function fmtCurrencyCompact(value: number, currency: string, decimals = 0): string {
-  if (Math.abs(value) >= 1_000_000) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      notation: "compact",
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }).format(value);
-  }
-  return fmtCurrency(value, currency, decimals);
-}
-
-function fmtPct(value: number, decimals = 1): string {
-  return `${value >= 0 ? "+" : ""}${value.toFixed(decimals)}%`;
-}
-
-function fmtPctPlain(value: number, decimals = 0): string {
-  return `${value.toFixed(decimals)}%`;
-}
-
-function changeColor(value: number): string {
-  if (value > 0) return "text-emerald-400";
-  if (value < 0) return "text-red-400";
-  return "text-zinc-400";
-}
+// Formatters imported from @/lib/format
 
 // ─── Component ──────────────────────────────────────────
 
@@ -248,10 +213,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               <>
                 <div className="flex items-baseline gap-3 mt-1">
                   <p className="text-5xl font-bold text-zinc-100 tabular-nums">
-                    {fmtCurrency(totalValue, cur)}
+                    {fmtCurrency(totalValue, cur, 0)}
                   </p>
                   {c.available && (
-                    <span className={`text-sm font-medium tabular-nums ${changeColor(c.percent)}`}>
+                    <span className={`text-sm font-medium tabular-nums ${changeColorClass(c.percent)}`}>
                       {fmtPct(c.percent)}
                       {c.valueChange !== 0 && (
                         <span className="ml-1 font-normal">
@@ -335,7 +300,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
                 {fmtCurrencyCompact(insights.btcPriceUsd, "USD")}
               </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${changeColor(insights.btcChange24h)}`}>
+              <span className={`text-xs tabular-nums w-14 text-right ${changeColorClass(insights.btcChange24h)}`}>
                 {fmtPct(insights.btcChange24h)}
               </span>
             </div>
@@ -350,7 +315,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
                 {fmtCurrencyCompact(insights.ethPriceUsd, "USD")}
               </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${changeColor(insights.ethChange24h)}`}>
+              <span className={`text-xs tabular-nums w-14 text-right ${changeColorClass(insights.ethChange24h)}`}>
                 {fmtPct(insights.ethChange24h)}
               </span>
             </div>
@@ -363,7 +328,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
                 {insights.goldPriceUsd > 0 ? fmtCurrencyCompact(insights.goldPriceUsd, "USD") : "—"}
               </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${insights.goldPriceUsd > 0 ? changeColor(insights.goldChange24h) : ""}`}>
+              <span className={`text-xs tabular-nums w-14 text-right ${insights.goldPriceUsd > 0 ? changeColorClass(insights.goldChange24h) : ""}`}>
                 {insights.goldPriceUsd > 0 ? fmtPct(insights.goldChange24h) : ""}
               </span>
             </div>
@@ -378,7 +343,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                   ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(insights.sp500Price)
                   : "—"}
               </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${insights.sp500Price > 0 ? changeColor(insights.sp500Change24h) : ""}`}>
+              <span className={`text-xs tabular-nums w-14 text-right ${insights.sp500Price > 0 ? changeColorClass(insights.sp500Change24h) : ""}`}>
                 {insights.sp500Price > 0 ? fmtPct(insights.sp500Change24h) : ""}
               </span>
             </div>
@@ -393,7 +358,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                   ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(insights.nasdaqPrice)
                   : "—"}
               </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${insights.nasdaqPrice > 0 ? changeColor(insights.nasdaqChange24h) : ""}`}>
+              <span className={`text-xs tabular-nums w-14 text-right ${insights.nasdaqPrice > 0 ? changeColorClass(insights.nasdaqChange24h) : ""}`}>
                 {insights.nasdaqPrice > 0 ? fmtPct(insights.nasdaqChange24h) : ""}
               </span>
             </div>
@@ -408,7 +373,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                   ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(insights.dowPrice)
                   : "—"}
               </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${insights.dowPrice > 0 ? changeColor(insights.dowChange24h) : ""}`}>
+              <span className={`text-xs tabular-nums w-14 text-right ${insights.dowPrice > 0 ? changeColorClass(insights.dowChange24h) : ""}`}>
                 {insights.dowPrice > 0 ? fmtPct(insights.dowChange24h) : ""}
               </span>
             </div>
@@ -430,7 +395,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                     : insights.eurUsdRate.toFixed(4)}
                 </span>
                 {insights.eurUsdChange24h !== 0 ? (
-                  <span className={`text-xs tabular-nums w-14 text-right ${changeColor(fxFlipped ? -insights.eurUsdChange24h : insights.eurUsdChange24h)}`}>
+                  <span className={`text-xs tabular-nums w-14 text-right ${changeColorClass(fxFlipped ? -insights.eurUsdChange24h : insights.eurUsdChange24h)}`}>
                     {fmtPct(fxFlipped ? -insights.eurUsdChange24h : insights.eurUsdChange24h)}
                   </span>
                 ) : (
@@ -480,10 +445,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               <>
                 <div className="flex items-baseline gap-3 mt-2">
                   <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                    {fmtCurrency(cryptoValue, cur)}
+                    {fmtCurrency(cryptoValue, cur, 0)}
                   </p>
                   {c.available ? (
-                    <span className={`text-xs tabular-nums ${changeColor(c.percent)}`}>
+                    <span className={`text-xs tabular-nums ${changeColorClass(c.percent)}`}>
                       {fmtPct(c.percent)}
                       {c.valueChange !== 0 && (
                         <span className="ml-1">
@@ -629,10 +594,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               <>
                 <div className="flex items-baseline gap-3 mt-2">
                   <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                    {fmtCurrency(stocksValue, cur)}
+                    {fmtCurrency(stocksValue, cur, 0)}
                   </p>
                   {c.available ? (
-                    <span className={`text-xs tabular-nums ${changeColor(c.percent)}`}>
+                    <span className={`text-xs tabular-nums ${changeColorClass(c.percent)}`}>
                       {fmtPct(c.percent)}
                       {c.valueChange !== 0 && (
                         <span className="ml-1">
@@ -798,10 +763,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               <>
                 <div className="flex items-baseline gap-3 mt-2">
                   <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                    {fmtCurrency(cashValue, cur)}
+                    {fmtCurrency(cashValue, cur, 0)}
                   </p>
                   {c.available ? (
-                    <span className={`text-xs tabular-nums ${changeColor(c.percent)}`}>
+                    <span className={`text-xs tabular-nums ${changeColorClass(c.percent)}`}>
                       {fmtPct(c.percent)}
                       {c.valueChange !== 0 && (
                         <span className="ml-1">

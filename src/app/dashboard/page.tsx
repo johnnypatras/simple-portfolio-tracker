@@ -25,16 +25,30 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // ── Round 1: Fetch all portfolio data in parallel ─────
-  const [profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits] =
-    await Promise.all([
-      getProfile(),
-      getCryptoAssetsWithPositions(),
-      getStockAssetsWithPositions(),
-      getBankAccounts(),
-      getExchangeDeposits(),
-      getBrokerDeposits(),
-    ]);
+  // ── Round 1: Portfolio data + independent fetches in parallel ──
+  // Market indices and snapshots don't depend on asset data,
+  // so they run alongside DB queries instead of waiting for Round 2.
+  const [
+    profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits,
+    chartSnapshots, snap7d, snap30d, snap1y,
+    sp500Data, goldData, nasdaqData, dowData, eurUsdData,
+  ] = await Promise.all([
+    getProfile(),
+    getCryptoAssetsWithPositions(),
+    getStockAssetsWithPositions(),
+    getBankAccounts(),
+    getExchangeDeposits(),
+    getBrokerDeposits(),
+    getSnapshots(365),           // up to 1 year of history for the chart
+    getSnapshotAt(7),            // for 7d change
+    getSnapshotAt(30),           // for 30d change
+    getSnapshotAt(365),          // for 1y change
+    fetchSinglePrice("^GSPC"),   // S&P 500 index
+    fetchSinglePrice("GC=F"),    // Gold futures
+    fetchSinglePrice("^IXIC"),   // Nasdaq Composite
+    fetchSinglePrice("^DJI"),    // Dow Jones Industrial
+    fetchSinglePrice("EURUSD=X"),// EUR/USD cross rate (for 24h change)
+  ]);
 
   const primaryCurrency = profile.primary_currency;
 
@@ -58,21 +72,12 @@ export default async function DashboardPage() {
     ]),
   ];
 
-  // ── Round 2: Fetch prices + FX rates + snapshots + S&P 500 in parallel
-  const [cryptoPrices, stockPrices, fxRates, chartSnapshots, snap7d, snap30d, snap1y, sp500Data, goldData, nasdaqData, dowData, eurUsdData, dividends] =
+  // ── Round 2: Only fetches that depend on Round 1 data ───
+  const [cryptoPrices, stockPrices, fxRates, dividends] =
     await Promise.all([
       getPrices(coinIds),
       getStockPrices(yahooTickers),
       getFXRates(primaryCurrency, allCurrencies),
-      getSnapshots(365),          // up to 1 year of history for the chart
-      getSnapshotAt(7),           // for 7d change
-      getSnapshotAt(30),          // for 30d change
-      getSnapshotAt(365),         // for 1y change
-      fetchSinglePrice("^GSPC"), // S&P 500 index
-      fetchSinglePrice("GC=F"),  // Gold futures
-      fetchSinglePrice("^IXIC"), // Nasdaq Composite
-      fetchSinglePrice("^DJI"),  // Dow Jones Industrial
-      fetchSinglePrice("EURUSD=X"), // EUR/USD cross rate (for 24h change)
       getDividendYields(yahooTickers), // trailing 12-month yields (6h cache)
     ]);
 

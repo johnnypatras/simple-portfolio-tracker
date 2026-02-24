@@ -1,6 +1,7 @@
 import { Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ColumnDef } from "@/lib/column-config";
 import type { CryptoAssetWithPositions, CoinGeckoPriceData } from "@/lib/types";
+import { formatCurrency } from "@/lib/format";
 
 // ── Computed row type (asset + price data) ───────────────────
 
@@ -371,14 +372,6 @@ export function formatQuantity(n: number, maxDecimals: number): string {
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: maxDecimals,
-  }).format(n);
-}
-
-export function formatCurrency(n: number, cur: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: cur,
-    minimumFractionDigits: 2,
   }).format(n);
 }
 

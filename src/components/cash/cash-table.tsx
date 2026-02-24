@@ -28,9 +28,9 @@ import {
   buildBankGroupRows,
   buildExchangeGroupRows,
   buildBrokerGroupRows,
-  formatCurrency,
   type CashRow,
 } from "@/components/cash/cash-columns";
+import { formatCurrency } from "@/lib/format";
 import type { ColumnDef, RenderContext } from "@/lib/column-config";
 import type {
   BankAccount,

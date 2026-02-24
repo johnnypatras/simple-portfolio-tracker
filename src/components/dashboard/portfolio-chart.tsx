@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { Layers } from "lucide-react";
 import type { PortfolioSnapshot } from "@/lib/types";
+import { fmtCurrencyCompact } from "@/lib/format";
 
 interface PortfolioChartProps {
   snapshots: PortfolioSnapshot[];
@@ -31,23 +32,6 @@ const PERIODS = [
   { label: "All", days: Infinity },
 ] as const;
 
-function formatCurrencyShort(value: number, currency: string): string {
-  if (value >= 1_000_000) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 1,
-      notation: "compact",
-    }).format(value);
-  }
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -182,7 +166,7 @@ export function PortfolioChart({
               yAxisId="value"
               domain={yDomain}
               tickFormatter={(v: number) =>
-                formatCurrencyShort(v, primaryCurrency)
+                fmtCurrencyCompact(v, primaryCurrency)
               }
               tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
               axisLine={false}
@@ -217,7 +201,7 @@ export function PortfolioChart({
                       {formatDate(point.date)}
                     </p>
                     <p className="text-sm font-medium text-zinc-100">
-                      {formatCurrencyShort(point.value, primaryCurrency)}
+                      {fmtCurrencyCompact(point.value, primaryCurrency)}
                     </p>
                     {showAllocation && (
                       <div className="flex gap-3 mt-1 text-[10px]">

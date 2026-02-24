@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useCallback, Fragment } from "react";
 import { Plus, Bitcoin, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
-import { AddCryptoModal } from "./add-crypto-modal";
+import dynamic from "next/dynamic";
+const AddCryptoModal = dynamic(() => import("./add-crypto-modal").then(m => m.AddCryptoModal), { ssr: false });
 import { PositionEditor } from "./position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -26,7 +27,6 @@ import {
   buildCryptoCustodyPositionGroups,
   sortCryptoRows,
   formatQuantity,
-  formatCurrency,
   ACQUISITION_COLORS,
   ACQUISITION_LABELS,
   GROUP_PALETTE,
@@ -38,6 +38,7 @@ import {
   type CryptoSortKey,
   type SortDirection,
 } from "./crypto-columns";
+import { formatCurrency } from "@/lib/format";
 
 // ── Group mode ──────────────────────────────────────────────
 
