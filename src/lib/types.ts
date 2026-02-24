@@ -27,6 +27,7 @@ export interface Wallet {
   chain: string | null;
   institution_id: string | null;
   created_at: string;
+  deleted_at?: string | null;
 }
 
 export interface Broker {
@@ -35,6 +36,7 @@ export interface Broker {
   name: string;
   institution_id: string | null;
   created_at: string;
+  deleted_at?: string | null;
 }
 
 export interface BankAccount {
@@ -49,6 +51,7 @@ export interface BankAccount {
   institution_id: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 // ─── Institutions ───────────────────────────────────────
@@ -59,6 +62,7 @@ export interface Institution {
   name: string;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 export type InstitutionRole = "wallet" | "broker" | "bank";
@@ -219,6 +223,7 @@ export interface ExchangeDeposit {
   apy: number;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 // ─── Broker Deposits (fiat on brokers) ───────────────────
@@ -240,6 +245,7 @@ export interface BrokerDeposit {
   apy: number;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 // ─── Portfolio Snapshots ────────────────────────────────
@@ -280,6 +286,7 @@ export interface CryptoAsset {
   chain: string | null;
   subcategory: string | null;
   created_at: string;
+  deleted_at?: string | null;
 }
 
 export interface CryptoPosition {
@@ -290,6 +297,7 @@ export interface CryptoPosition {
   acquisition_method: string;
   apy: number;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 /** Crypto asset with nested positions and wallet names */
@@ -329,6 +337,7 @@ export interface StockAsset {
   currency: string;  // free-form ISO currency code (USD, EUR, GBP, CHF, etc.)
   subcategory: string | null;  // instrument subtype (e.g. "ETF UCITS", "ETF UCITS Bonds")
   created_at: string;
+  deleted_at?: string | null;
 }
 
 export interface StockPosition {
@@ -337,6 +346,7 @@ export interface StockPosition {
   broker_id: string;
   quantity: number;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 /** Stock asset with nested positions and broker names */
@@ -433,6 +443,7 @@ export interface TradeEntry {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 export interface TradeEntryInput {
@@ -472,5 +483,10 @@ export interface ActivityLog {
   entity_name: string;
   description: string;
   details: Record<string, unknown> | null;
+  entity_id: string | null;
+  entity_table: string | null;
+  before_snapshot: Record<string, unknown> | null;
+  after_snapshot: Record<string, unknown> | null;
+  undone_at: string | null;
   created_at: string;
 }

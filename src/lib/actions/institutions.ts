@@ -13,12 +13,12 @@ import { logActivity } from "@/lib/actions/activity-log";
 export async function getInstitutionsWithRoles(): Promise<InstitutionWithRoles[]> {
   const supabase = await createServerSupabaseClient();
 
-  // Fetch institutions and all child records in parallel
+  // Fetch institutions and all child records in parallel (exclude soft-deleted)
   const [instRes, walletsRes, brokersRes, banksRes] = await Promise.all([
-    supabase.from("institutions").select("*").order("name"),
-    supabase.from("wallets").select("institution_id"),
-    supabase.from("brokers").select("institution_id"),
-    supabase.from("bank_accounts").select("institution_id"),
+    supabase.from("institutions").select("*").is("deleted_at", null).order("name"),
+    supabase.from("wallets").select("institution_id").is("deleted_at", null),
+    supabase.from("brokers").select("institution_id").is("deleted_at", null),
+    supabase.from("bank_accounts").select("institution_id").is("deleted_at", null),
   ]);
 
   if (instRes.error) throw new Error(instRes.error.message);
@@ -56,12 +56,13 @@ export async function findOrCreateInstitution(name: string): Promise<string> {
 
   const trimmed = name.trim();
 
-  // Try to find existing
+  // Try to find existing (active only)
   const { data: existing } = await supabase
     .from("institutions")
     .select("id")
     .eq("user_id", user.id)
     .eq("name", trimmed)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (existing) return existing.id;
@@ -78,16 +79,17 @@ export async function findOrCreateInstitution(name: string): Promise<string> {
 }
 
 /**
- * Check if an institution has any remaining linked records.
- * If orphaned, delete it.
+ * Check if an institution has any remaining active linked records.
+ * If orphaned, soft-delete it.
  */
 export async function cleanupOrphanedInstitution(institutionId: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
 
+  // Only count active (non-soft-deleted) children
   const [w, b, ba] = await Promise.all([
-    supabase.from("wallets").select("id").eq("institution_id", institutionId).limit(1),
-    supabase.from("brokers").select("id").eq("institution_id", institutionId).limit(1),
-    supabase.from("bank_accounts").select("id").eq("institution_id", institutionId).limit(1),
+    supabase.from("wallets").select("id").eq("institution_id", institutionId).is("deleted_at", null).limit(1),
+    supabase.from("brokers").select("id").eq("institution_id", institutionId).is("deleted_at", null).limit(1),
+    supabase.from("bank_accounts").select("id").eq("institution_id", institutionId).is("deleted_at", null).limit(1),
   ]);
 
   const hasChildren =
@@ -96,7 +98,10 @@ export async function cleanupOrphanedInstitution(institutionId: string): Promise
     (ba.data?.length ?? 0) > 0;
 
   if (!hasChildren) {
-    await supabase.from("institutions").delete().eq("id", institutionId);
+    await supabase
+      .from("institutions")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", institutionId);
   }
 }
 
@@ -153,6 +158,8 @@ export async function updateInstitutionRoles(
       entity_type: "institution",
       entity_name: opts.newName.trim(),
       description: `Renamed institution "${inst.name}" → "${opts.newName.trim()}"`,
+      entity_id: institutionId,
+      entity_table: "institutions",
     });
   }
 
@@ -161,7 +168,8 @@ export async function updateInstitutionRoles(
     await supabase
       .from("bank_accounts")
       .update({ region: opts.country })
-      .eq("institution_id", institutionId);
+      .eq("institution_id", institutionId)
+      .is("deleted_at", null);
   }
 
   // Create sibling wallet if requested
@@ -170,6 +178,7 @@ export async function updateInstitutionRoles(
       .from("wallets")
       .select("id")
       .eq("institution_id", institutionId)
+      .is("deleted_at", null)
       .limit(1);
 
     if (!existing?.length) {
@@ -198,6 +207,7 @@ export async function updateInstitutionRoles(
       .from("brokers")
       .select("id")
       .eq("institution_id", institutionId)
+      .is("deleted_at", null)
       .limit(1);
 
     if (!existing?.length) {

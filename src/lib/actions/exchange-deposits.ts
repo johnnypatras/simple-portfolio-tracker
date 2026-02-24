@@ -10,6 +10,7 @@ export async function getExchangeDeposits(): Promise<ExchangeDeposit[]> {
   const { data, error } = await supabase
     .from("exchange_deposits")
     .select("*, wallets(name)")
+    .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
@@ -44,13 +45,13 @@ export async function createExchangeDeposit(
     .eq("id", input.wallet_id)
     .single();
 
-  const { error } = await supabase.from("exchange_deposits").insert({
+  const { data: created, error } = await supabase.from("exchange_deposits").insert({
     user_id: user.id,
     wallet_id: input.wallet_id,
     currency: input.currency,
     amount: input.amount,
     apy: input.apy ?? 0,
-  });
+  }).select("*").single();
 
   if (error) {
     // Handle UNIQUE(user_id, wallet_id, currency) violation
@@ -68,7 +69,10 @@ export async function createExchangeDeposit(
     entity_type: "exchange_deposit",
     entity_name: label,
     description: `Added exchange deposit: ${label}`,
-    details: { ...input, wallet_name: wallet?.name },
+    entity_id: created?.id,
+    entity_table: "exchange_deposits",
+    before_snapshot: null,
+    after_snapshot: created,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
@@ -85,6 +89,13 @@ export async function updateExchangeDeposit(
     .from("wallets")
     .select("name")
     .eq("id", input.wallet_id)
+    .single();
+
+  // Capture before snapshot
+  const { data: before } = await supabase
+    .from("exchange_deposits")
+    .select("*")
+    .eq("id", id)
     .single();
 
   const { error } = await supabase
@@ -106,13 +117,23 @@ export async function updateExchangeDeposit(
     throw new Error(error.message);
   }
 
+  // Capture after snapshot
+  const { data: after } = await supabase
+    .from("exchange_deposits")
+    .select("*")
+    .eq("id", id)
+    .single();
+
   const label = `${input.amount} ${input.currency} on ${wallet?.name ?? "Unknown"}`;
   await logActivity({
     action: "updated",
     entity_type: "exchange_deposit",
     entity_name: label,
     description: `Updated exchange deposit: ${label}`,
-    details: { ...input, wallet_name: wallet?.name },
+    entity_id: id,
+    entity_table: "exchange_deposits",
+    before_snapshot: before,
+    after_snapshot: after,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
@@ -120,29 +141,34 @@ export async function updateExchangeDeposit(
 
 export async function deleteExchangeDeposit(id: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
-  // Fetch details before deleting
-  const { data: existing } = await supabase
+
+  // Capture full snapshot before soft-delete
+  const { data: snapshot } = await supabase
     .from("exchange_deposits")
-    .select("amount, currency, wallets(name)")
+    .select("*, wallets(name)")
     .eq("id", id)
     .single();
 
   const { error } = await supabase
     .from("exchange_deposits")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
 
   if (error) throw new Error(error.message);
   const walletName =
-    (existing?.wallets as unknown as { name: string } | null)?.name ?? "Unknown";
-  const label = existing
-    ? `${existing.amount} ${existing.currency} on ${walletName}`
+    (snapshot?.wallets as unknown as { name: string } | null)?.name ?? "Unknown";
+  const label = snapshot
+    ? `${snapshot.amount} ${snapshot.currency} on ${walletName}`
     : "Unknown";
   await logActivity({
     action: "removed",
     entity_type: "exchange_deposit",
     entity_name: label,
     description: `Removed exchange deposit: ${label}`,
+    entity_id: id,
+    entity_table: "exchange_deposits",
+    before_snapshot: snapshot,
+    after_snapshot: null,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");

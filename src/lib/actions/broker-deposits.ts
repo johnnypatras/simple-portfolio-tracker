@@ -10,6 +10,7 @@ export async function getBrokerDeposits(): Promise<BrokerDeposit[]> {
   const { data, error } = await supabase
     .from("broker_deposits")
     .select("*, brokers(name)")
+    .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
@@ -42,13 +43,13 @@ export async function createBrokerDeposit(
     .eq("id", input.broker_id)
     .single();
 
-  const { error } = await supabase.from("broker_deposits").insert({
+  const { data: created, error } = await supabase.from("broker_deposits").insert({
     user_id: user.id,
     broker_id: input.broker_id,
     currency: input.currency,
     amount: input.amount,
     apy: input.apy ?? 0,
-  });
+  }).select("*").single();
 
   if (error) {
     if (error.code === "23505") {
@@ -65,7 +66,10 @@ export async function createBrokerDeposit(
     entity_type: "broker_deposit",
     entity_name: label,
     description: `Added broker deposit: ${label}`,
-    details: { ...input, broker_name: broker?.name },
+    entity_id: created?.id,
+    entity_table: "broker_deposits",
+    before_snapshot: null,
+    after_snapshot: created,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
@@ -81,6 +85,13 @@ export async function updateBrokerDeposit(
     .from("brokers")
     .select("name")
     .eq("id", input.broker_id)
+    .single();
+
+  // Capture before snapshot
+  const { data: before } = await supabase
+    .from("broker_deposits")
+    .select("*")
+    .eq("id", id)
     .single();
 
   const { error } = await supabase
@@ -102,13 +113,23 @@ export async function updateBrokerDeposit(
     throw new Error(error.message);
   }
 
+  // Capture after snapshot
+  const { data: after } = await supabase
+    .from("broker_deposits")
+    .select("*")
+    .eq("id", id)
+    .single();
+
   const label = `${input.amount} ${input.currency} on ${broker?.name ?? "Unknown"}`;
   await logActivity({
     action: "updated",
     entity_type: "broker_deposit",
     entity_name: label,
     description: `Updated broker deposit: ${label}`,
-    details: { ...input, broker_name: broker?.name },
+    entity_id: id,
+    entity_table: "broker_deposits",
+    before_snapshot: before,
+    after_snapshot: after,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
@@ -117,29 +138,34 @@ export async function updateBrokerDeposit(
 export async function deleteBrokerDeposit(id: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
 
-  const { data: existing } = await supabase
+  // Capture full snapshot before soft-delete
+  const { data: snapshot } = await supabase
     .from("broker_deposits")
-    .select("amount, currency, brokers(name)")
+    .select("*, brokers(name)")
     .eq("id", id)
     .single();
 
   const { error } = await supabase
     .from("broker_deposits")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
 
   if (error) throw new Error(error.message);
 
   const brokerName =
-    (existing?.brokers as unknown as { name: string } | null)?.name ?? "Unknown";
-  const label = existing
-    ? `${existing.amount} ${existing.currency} on ${brokerName}`
+    (snapshot?.brokers as unknown as { name: string } | null)?.name ?? "Unknown";
+  const label = snapshot
+    ? `${snapshot.amount} ${snapshot.currency} on ${brokerName}`
     : "Unknown";
   await logActivity({
     action: "removed",
     entity_type: "broker_deposit",
     entity_name: label,
     description: `Removed broker deposit: ${label}`,
+    entity_id: id,
+    entity_table: "broker_deposits",
+    before_snapshot: snapshot,
+    after_snapshot: null,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");

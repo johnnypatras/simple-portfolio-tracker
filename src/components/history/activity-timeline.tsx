@@ -18,9 +18,11 @@ import {
   Building2,
   ArrowLeftRight,
   BookOpen,
+  Undo2,
 } from "lucide-react";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 import { exportActivityLogsCsv } from "@/lib/actions/activity-log";
+import { undoActivity } from "@/lib/actions/undo";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -42,11 +44,13 @@ const ENTITY_LABELS: Record<string, string> = {
   broker: "Broker",
   bank_account: "Bank",
   exchange_deposit: "Exchange",
+  broker_deposit: "Broker Dep.",
   crypto_position: "Crypto Pos.",
   stock_position: "Stock Pos.",
   diary_entry: "Diary",
   goal_price: "Goal",
   trade_entry: "Trade",
+  institution: "Institution",
 };
 
 const ENTITY_FILTER_OPTIONS: { value: string; label: string }[] = [
@@ -82,6 +86,7 @@ function getEntityIcon(type: EntityType) {
     case "wallet":
       return Wallet;
     case "broker":
+    case "broker_deposit":
       return Building2;
     case "bank_account":
       return Landmark;
@@ -89,6 +94,8 @@ function getEntityIcon(type: EntityType) {
       return ArrowLeftRight;
     case "trade_entry":
       return BookOpen;
+    case "institution":
+      return Landmark;
     default:
       return Clock;
   }
@@ -127,6 +134,7 @@ function getEntityBadgeColor(type: EntityType) {
     case "wallet":
       return "bg-purple-500/15 text-purple-400";
     case "broker":
+    case "broker_deposit":
       return "bg-cyan-500/15 text-cyan-400";
     case "bank_account":
       return "bg-green-500/15 text-green-400";
@@ -134,6 +142,8 @@ function getEntityBadgeColor(type: EntityType) {
       return "bg-amber-500/15 text-amber-400";
     case "trade_entry":
       return "bg-pink-500/15 text-pink-400";
+    case "institution":
+      return "bg-green-500/15 text-green-400";
     default:
       return "bg-zinc-500/15 text-zinc-400";
   }
@@ -220,6 +230,22 @@ export function ActivityTimeline({
     },
     [router, searchParams]
   );
+
+  async function handleUndo(logId: string) {
+    try {
+      const result = await undoActivity(logId);
+      if (result.success) {
+        toast.success(result.message);
+        startTransition(() => {
+          router.refresh();
+        });
+      } else {
+        toast.error(result.message);
+      }
+    } catch {
+      toast.error("Failed to undo action");
+    }
+  }
 
   async function handleExportCsv() {
     try {
@@ -319,7 +345,7 @@ export function ActivityTimeline({
                     return (
                       <div
                         key={log.id}
-                        className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-900/50 transition-colors group"
+                        className={`flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-900/50 transition-colors group ${log.undone_at ? "opacity-50" : ""}`}
                       >
                         {/* Action icon */}
                         <div
@@ -347,10 +373,25 @@ export function ActivityTimeline({
                           </p>
                         </div>
 
-                        {/* Time */}
-                        <span className="shrink-0 text-xs text-zinc-600 mt-0.5">
-                          {getTimeLabel(log.created_at)}
-                        </span>
+                        {/* Undo / Undone badge / Time */}
+                        <div className="shrink-0 flex items-center gap-2 mt-0.5">
+                          {log.undone_at ? (
+                            <span className="text-[10px] font-medium text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded">
+                              Undone
+                            </span>
+                          ) : log.entity_id ? (
+                            <button
+                              onClick={() => handleUndo(log.id)}
+                              className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
+                              title="Undo this action"
+                            >
+                              <Undo2 className="w-3.5 h-3.5" />
+                            </button>
+                          ) : null}
+                          <span className="text-xs text-zinc-600">
+                            {getTimeLabel(log.created_at)}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}

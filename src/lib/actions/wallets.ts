@@ -16,6 +16,7 @@ export async function getWallets() {
   const { data, error } = await supabase
     .from("wallets")
     .select("*")
+    .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
@@ -37,14 +38,14 @@ export async function createWallet(
   // Find or create institution
   const institutionId = await findOrCreateInstitution(trimmedName);
 
-  const { error } = await supabase.from("wallets").insert({
+  const { data: created, error } = await supabase.from("wallets").insert({
     user_id: user.id,
     name: trimmedName,
     wallet_type: input.wallet_type,
     privacy_label: input.privacy_label ?? null,
     chain: input.chain?.trim() || null,
     institution_id: institutionId,
-  });
+  }).select("*").single();
 
   if (error) throw new Error(error.message);
 
@@ -53,7 +54,10 @@ export async function createWallet(
     entity_type: "wallet",
     entity_name: trimmedName,
     description: `Added wallet "${trimmedName}"`,
-    details: { ...input },
+    entity_id: created?.id,
+    entity_table: "wallets",
+    before_snapshot: null,
+    after_snapshot: created,
   });
 
   // Create sibling broker if requested
@@ -63,6 +67,7 @@ export async function createWallet(
       .from("brokers")
       .select("id")
       .eq("institution_id", institutionId)
+      .is("deleted_at", null)
       .limit(1);
 
     if (!existingBroker?.length) {
@@ -88,6 +93,7 @@ export async function createWallet(
       .from("bank_accounts")
       .select("id")
       .eq("institution_id", institutionId)
+      .is("deleted_at", null)
       .limit(1);
 
     if (!existingBank?.length) {
@@ -113,6 +119,7 @@ export async function createWallet(
   }
 
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/accounts");
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
 }
 
@@ -124,10 +131,10 @@ export async function updateWallet(
   const supabase = await createServerSupabaseClient();
   const trimmedName = input.name.trim();
 
-  // Get current wallet to check for name change
-  const { data: current } = await supabase
+  // Capture before snapshot
+  const { data: before } = await supabase
     .from("wallets")
-    .select("name, institution_id")
+    .select("*")
     .eq("id", id)
     .single();
 
@@ -145,12 +152,12 @@ export async function updateWallet(
 
   // If name changed and institution is linked, rename the institution
   // (DB trigger will propagate to all siblings)
-  if (current?.institution_id && current.name !== trimmedName) {
-    await renameInstitution(current.institution_id, trimmedName);
+  if (before?.institution_id && before.name !== trimmedName) {
+    await renameInstitution(before.institution_id, trimmedName);
   }
 
   // Role extension: create sibling broker if requested
-  if (opts?.also_broker && current?.institution_id) {
+  if (opts?.also_broker && before?.institution_id) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -158,14 +165,15 @@ export async function updateWallet(
       const { data: existingBroker } = await supabase
         .from("brokers")
         .select("id")
-        .eq("institution_id", current.institution_id)
+        .eq("institution_id", before.institution_id)
+        .is("deleted_at", null)
         .limit(1);
 
       if (!existingBroker?.length) {
         const { error: brokerErr } = await supabase.from("brokers").insert({
           user_id: user.id,
           name: trimmedName,
-          institution_id: current.institution_id,
+          institution_id: before.institution_id,
         });
         if (!brokerErr) {
           await logActivity({
@@ -180,7 +188,7 @@ export async function updateWallet(
   }
 
   // Role extension: create sibling bank account if requested
-  if (opts?.also_bank && current?.institution_id) {
+  if (opts?.also_bank && before?.institution_id) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -188,7 +196,8 @@ export async function updateWallet(
       const { data: existingBank } = await supabase
         .from("bank_accounts")
         .select("id")
-        .eq("institution_id", current.institution_id)
+        .eq("institution_id", before.institution_id)
+        .is("deleted_at", null)
         .limit(1);
 
       if (!existingBank?.length) {
@@ -200,7 +209,7 @@ export async function updateWallet(
           currency: "EUR",
           balance: 0,
           apy: 0,
-          institution_id: current.institution_id,
+          institution_id: before.institution_id,
         });
         if (!bankErr) {
           await logActivity({
@@ -214,39 +223,60 @@ export async function updateWallet(
     }
   }
 
+  // Capture after snapshot
+  const { data: after } = await supabase
+    .from("wallets")
+    .select("*")
+    .eq("id", id)
+    .single();
+
   await logActivity({
     action: "updated",
     entity_type: "wallet",
     entity_name: trimmedName,
     description: `Updated wallet "${trimmedName}"`,
-    details: { ...input },
+    entity_id: id,
+    entity_table: "wallets",
+    before_snapshot: before,
+    after_snapshot: after,
   });
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/accounts");
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
 }
 
 export async function deleteWallet(id: string) {
   const supabase = await createServerSupabaseClient();
-  const { data: existing } = await supabase
+
+  // Capture full snapshot before soft-delete
+  const { data: snapshot } = await supabase
     .from("wallets")
-    .select("name, institution_id")
+    .select("*")
     .eq("id", id)
     .single();
 
-  const { error } = await supabase.from("wallets").delete().eq("id", id);
+  const { error } = await supabase
+    .from("wallets")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
 
   if (error) throw new Error(error.message);
   await logActivity({
     action: "removed",
     entity_type: "wallet",
-    entity_name: existing?.name ?? "Unknown",
-    description: `Removed wallet "${existing?.name ?? id}"`,
+    entity_name: snapshot?.name ?? "Unknown",
+    description: `Removed wallet "${snapshot?.name ?? id}"`,
+    entity_id: id,
+    entity_table: "wallets",
+    before_snapshot: snapshot,
+    after_snapshot: null,
   });
 
-  // Cleanup orphaned institution
-  if (existing?.institution_id) {
-    await cleanupOrphanedInstitution(existing.institution_id);
+  // Cleanup orphaned institution (checks active children only)
+  if (snapshot?.institution_id) {
+    await cleanupOrphanedInstitution(snapshot.institution_id);
   }
 
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/accounts");
 }

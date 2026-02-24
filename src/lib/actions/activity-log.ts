@@ -12,6 +12,10 @@ export async function logActivity(params: {
   entity_name: string;
   description: string;
   details?: Record<string, unknown>;
+  entity_id?: string;
+  entity_table?: string;
+  before_snapshot?: unknown;
+  after_snapshot?: unknown;
 }): Promise<void> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -27,6 +31,10 @@ export async function logActivity(params: {
       entity_name: params.entity_name,
       description: params.description,
       details: params.details ?? null,
+      entity_id: params.entity_id ?? null,
+      entity_table: params.entity_table ?? null,
+      before_snapshot: params.before_snapshot ?? null,
+      after_snapshot: params.after_snapshot ?? null,
     });
   } catch {
     // Swallow — audit logging is best-effort

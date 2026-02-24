@@ -17,14 +17,17 @@ export async function getAssetOptions(): Promise<{
     supabase
       .from("crypto_assets")
       .select("ticker, name")
+      .is("deleted_at", null)
       .order("ticker"),
     supabase
       .from("stock_assets")
       .select("ticker, name, currency")
+      .is("deleted_at", null)
       .order("ticker"),
     supabase
       .from("bank_accounts")
-      .select("currency"),
+      .select("currency")
+      .is("deleted_at", null),
   ]);
 
   // Deduplicate bank currencies into a sorted list
@@ -44,6 +47,7 @@ export async function getTradeEntries(): Promise<TradeEntry[]> {
   const { data, error } = await supabase
     .from("trade_entries")
     .select("*")
+    .is("deleted_at", null)
     .order("trade_date", { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -59,7 +63,7 @@ export async function createTradeEntry(input: TradeEntryInput) {
 
   const totalValue = input.quantity * input.price;
 
-  const { error } = await supabase.from("trade_entries").insert({
+  const { data: created, error } = await supabase.from("trade_entries").insert({
     user_id: user.id,
     trade_date: input.trade_date,
     asset_type: input.asset_type,
@@ -70,7 +74,7 @@ export async function createTradeEntry(input: TradeEntryInput) {
     currency: input.currency ?? "USD",
     total_value: Math.round(totalValue * 100) / 100,
     notes: input.notes?.trim() || null,
-  });
+  }).select("*").single();
 
   if (error) throw new Error(error.message);
   await logActivity({
@@ -78,7 +82,10 @@ export async function createTradeEntry(input: TradeEntryInput) {
     entity_type: "trade_entry",
     entity_name: `${input.action.toUpperCase()} ${input.asset_name.trim()}`,
     description: `Logged ${input.action} of ${input.quantity} ${input.asset_name.trim()} at ${input.price} ${input.currency ?? "USD"}`,
-    details: { ...input, total_value: Math.round(totalValue * 100) / 100 },
+    entity_id: created?.id,
+    entity_table: "trade_entries",
+    before_snapshot: null,
+    after_snapshot: created,
   });
   revalidatePath("/dashboard/diary");
 }
@@ -86,6 +93,13 @@ export async function createTradeEntry(input: TradeEntryInput) {
 export async function updateTradeEntry(id: string, input: TradeEntryInput) {
   const supabase = await createServerSupabaseClient();
   const totalValue = input.quantity * input.price;
+
+  // Capture before snapshot
+  const { data: before } = await supabase
+    .from("trade_entries")
+    .select("*")
+    .eq("id", id)
+    .single();
 
   const { error } = await supabase
     .from("trade_entries")
@@ -103,39 +117,55 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
     .eq("id", id);
 
   if (error) throw new Error(error.message);
+
+  // Capture after snapshot
+  const { data: after } = await supabase
+    .from("trade_entries")
+    .select("*")
+    .eq("id", id)
+    .single();
+
   await logActivity({
     action: "updated",
     entity_type: "trade_entry",
     entity_name: `${input.action.toUpperCase()} ${input.asset_name.trim()}`,
     description: `Updated trade: ${input.action} ${input.quantity} ${input.asset_name.trim()} at ${input.price} ${input.currency ?? "USD"}`,
-    details: { ...input, total_value: Math.round(totalValue * 100) / 100 },
+    entity_id: id,
+    entity_table: "trade_entries",
+    before_snapshot: before,
+    after_snapshot: after,
   });
   revalidatePath("/dashboard/diary");
 }
 
 export async function deleteTradeEntry(id: string) {
   const supabase = await createServerSupabaseClient();
-  // Fetch details before deleting
-  const { data: existing } = await supabase
+
+  // Capture full snapshot before soft-delete
+  const { data: snapshot } = await supabase
     .from("trade_entries")
-    .select("action, asset_name, quantity, price, currency")
+    .select("*")
     .eq("id", id)
     .single();
 
   const { error } = await supabase
     .from("trade_entries")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
 
   if (error) throw new Error(error.message);
-  const label = existing
-    ? `${existing.action.toUpperCase()} ${existing.asset_name}`
+  const label = snapshot
+    ? `${snapshot.action.toUpperCase()} ${snapshot.asset_name}`
     : "Unknown trade";
   await logActivity({
     action: "removed",
     entity_type: "trade_entry",
     entity_name: label,
     description: `Removed trade: ${label}`,
+    entity_id: id,
+    entity_table: "trade_entries",
+    before_snapshot: snapshot,
+    after_snapshot: null,
   });
   revalidatePath("/dashboard/diary");
 }
