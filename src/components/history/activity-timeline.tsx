@@ -396,7 +396,7 @@ export function ActivityTimeline({
                               onConfirm={() => handleUndo(log.id)}
                               confirmLabel="Undo?"
                               confirmLabelClassName="text-amber-400"
-                              className="md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
+                              className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
                               title="Undo this action"
                             >
                               <Undo2 className="w-3.5 h-3.5" />

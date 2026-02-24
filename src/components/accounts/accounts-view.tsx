@@ -584,7 +584,7 @@ export function AccountsView({
                         setEditingInstitution(institution);
                       }}
                       className={`p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors ${
-                        isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                        isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
                       }`}
                     >
                       <Pencil className="w-3.5 h-3.5" />
