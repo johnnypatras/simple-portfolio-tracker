@@ -71,6 +71,7 @@ const ACTION_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "created", label: "Created" },
   { value: "updated", label: "Updated" },
   { value: "removed", label: "Removed" },
+  { value: "undone", label: "Undone" },
 ];
 
 // ─── Icon / color helpers ───────────────────────────────
@@ -109,6 +110,8 @@ function getActionIcon(action: ActionType) {
       return Pencil;
     case "removed":
       return Trash2;
+    case "undone":
+      return Undo2;
   }
 }
 
@@ -120,6 +123,8 @@ function getActionColor(action: ActionType) {
       return "bg-blue-500/15 text-blue-400";
     case "removed":
       return "bg-red-500/15 text-red-400";
+    case "undone":
+      return "bg-amber-500/15 text-amber-400";
   }
 }
 
@@ -345,7 +350,7 @@ export function ActivityTimeline({
                     return (
                       <div
                         key={log.id}
-                        className={`flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-900/50 transition-colors group ${log.undone_at ? "opacity-50" : ""}`}
+                        className={`flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-900/50 transition-colors group ${log.undone_at ? "opacity-50" : ""} ${log.action === "undone" ? "border-l-2 border-amber-500/40" : ""}`}
                       >
                         {/* Action icon */}
                         <div
@@ -367,6 +372,12 @@ export function ActivityTimeline({
                               {ENTITY_LABELS[log.entity_type] ??
                                 log.entity_type}
                             </span>
+                            {log.action === "undone" && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400">
+                                <Undo2 className="w-2.5 h-2.5" />
+                                Undo
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-zinc-500 mt-0.5 truncate">
                             {log.description}

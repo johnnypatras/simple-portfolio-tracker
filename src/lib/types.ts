@@ -459,7 +459,7 @@ export interface TradeEntryInput {
 
 // ─── Activity Log / Audit Trail ────────────────────────
 
-export type ActionType = "created" | "updated" | "removed";
+export type ActionType = "created" | "updated" | "removed" | "undone";
 export type EntityType =
   | "crypto_asset"
   | "stock_asset"

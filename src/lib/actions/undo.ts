@@ -155,7 +155,7 @@ export async function undoActivity(
 
   // ── Log the undo itself (no entity_id so this entry is non-undoable) ──
   await logActivity({
-    action: "updated",
+    action: "undone",
     entity_type: log.entity_type,
     entity_name: log.entity_name,
     description: `Undid "${log.action}" on ${log.entity_name}`,
