@@ -60,6 +60,7 @@ interface CryptoRow {
   priceBase: number;
   valueBase: number;
   walletName: string;
+  apy: number;
 }
 
 /** A stock position enriched with asset-level info for display */
@@ -297,6 +298,7 @@ export function AccountsView({
           priceBase,
           valueBase,
           walletName: pos.wallet_name,
+          apy: pos.apy,
         });
         group.totalValue += valueBase;
       }
@@ -538,6 +540,11 @@ export function AccountsView({
                             <span className="text-zinc-200 font-medium">{row.ticker}</span>
                             <span className="text-zinc-500 truncate">{row.name}</span>
                             <span className="text-zinc-600 text-xs">on {row.walletName}</span>
+                            {row.apy > 0 && (
+                              <span className="text-emerald-500/70 text-xs">
+                                {row.apy}% APY
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 shrink-0 pl-4">
                             <RowActions
