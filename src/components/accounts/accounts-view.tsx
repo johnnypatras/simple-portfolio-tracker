@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Bitcoin,
   TrendingUp,
   Landmark,
@@ -11,12 +12,27 @@ import {
   Shield,
   Pencil,
   Plus,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { formatCurrency } from "@/lib/format";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import { EditInstitutionModal } from "@/components/accounts/edit-institution-modal";
 import { AddInstitutionModal } from "@/components/accounts/add-institution-modal";
+import { PositionEditor } from "@/components/crypto/position-editor";
+import { AddCryptoModal } from "@/components/crypto/add-crypto-modal";
+import { StockPositionEditor } from "@/components/stocks/stock-position-editor";
+import { AddStockModal } from "@/components/stocks/add-stock-modal";
+import { BankAccountModal } from "@/components/cash/bank-account-modal";
+import { ExchangeDepositModal } from "@/components/cash/exchange-deposit-modal";
+import { BrokerDepositModal } from "@/components/cash/broker-deposit-modal";
+import { Modal } from "@/components/ui/modal";
+import { deleteCryptoAsset } from "@/lib/actions/crypto";
+import { deleteStockAsset } from "@/lib/actions/stocks";
+import { deleteBankAccount } from "@/lib/actions/bank-accounts";
+import { deleteExchangeDeposit } from "@/lib/actions/exchange-deposits";
+import { deleteBrokerDeposit } from "@/lib/actions/broker-deposits";
 import type {
   InstitutionWithRoles,
   CryptoAssetWithPositions,
@@ -118,7 +134,93 @@ export function AccountsView({
   const [editingInstitution, setEditingInstitution] = useState<InstitutionWithRoles | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
+  // ── CRUD state ─────────────────────────────────────────
+  // Crypto
+  const [editingCryptoAsset, setEditingCryptoAsset] = useState<CryptoAssetWithPositions | null>(null);
+  const [showAddCrypto, setShowAddCrypto] = useState<string | null>(null); // institution ID
+
+  // Stocks
+  const [editingStockAsset, setEditingStockAsset] = useState<StockAssetWithPositions | null>(null);
+  const [showAddStock, setShowAddStock] = useState<string | null>(null);
+
+  // Cash
+  const [editingBankAccount, setEditingBankAccount] = useState<BankAccount | null>(null);
+  const [showAddBankAccount, setShowAddBankAccount] = useState<string | null>(null);
+  const [editingExchangeDeposit, setEditingExchangeDeposit] = useState<ExchangeDeposit | null>(null);
+  const [showAddExchangeDeposit, setShowAddExchangeDeposit] = useState<string | null>(null);
+  const [editingBrokerDeposit, setEditingBrokerDeposit] = useState<BrokerDeposit | null>(null);
+  const [showAddBrokerDeposit, setShowAddBrokerDeposit] = useState<string | null>(null);
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: "crypto" | "stock" | "bank" | "exchange_deposit" | "broker_deposit";
+    id: string;
+    label: string;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
+
+  // ── Derived data for modals ────────────────────────────
+  const existingSubcategories = useMemo(
+    () => [
+      ...new Set([
+        ...cryptoAssets.map((a) => a.subcategory).filter(Boolean),
+        ...stockAssets.map((a) => a.subcategory).filter(Boolean),
+      ]),
+    ] as string[],
+    [cryptoAssets, stockAssets]
+  );
+
+  const existingChains = useMemo(
+    () => [...new Set(cryptoAssets.map((a) => a.chain).filter(Boolean))] as string[],
+    [cryptoAssets]
+  );
+
+  const existingTags = useMemo(
+    () => [...new Set(stockAssets.flatMap((a) => a.tags ?? []))] as string[],
+    [stockAssets]
+  );
+
+  const existingBankNames = useMemo(
+    () => [...new Set(bankAccounts.map((b) => b.bank_name).filter(Boolean))] as string[],
+    [bankAccounts]
+  );
+
+  // ── Institution-scoped lookups ─────────────────────────
+  function walletsForInstitution(instId: string): Wallet[] {
+    if (instId.startsWith("__wallet__")) {
+      const walletId = instId.replace("__wallet__", "");
+      return wallets.filter((w) => w.id === walletId);
+    }
+    return wallets.filter((w) => w.institution_id === instId);
+  }
+
+  function brokersForInstitution(instId: string): Broker[] {
+    return brokers.filter((b) => b.institution_id === instId);
+  }
+
+  // ── Delete handler ─────────────────────────────────────
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const deleteFns: Record<string, (id: string) => Promise<unknown>> = {
+        crypto: deleteCryptoAsset,
+        stock: deleteStockAsset,
+        bank: deleteBankAccount,
+        exchange_deposit: deleteExchangeDeposit,
+        broker_deposit: deleteBrokerDeposit,
+      };
+      await deleteFns[deleteTarget.type](deleteTarget.id);
+      toast.success(`Deleted ${deleteTarget.label}`);
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   // ── Build lookup maps ──────────────────────────────────
   const groups = useMemo(() => {
@@ -430,14 +532,23 @@ export function AccountsView({
                       .map((row) => (
                         <div
                           key={row.positionId}
-                          className="flex items-center justify-between py-1.5 text-sm"
+                          className="group/row flex items-center justify-between py-1.5 text-sm"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-zinc-200 font-medium">{row.ticker}</span>
                             <span className="text-zinc-500 truncate">{row.name}</span>
                             <span className="text-zinc-600 text-xs">on {row.walletName}</span>
                           </div>
-                          <div className="text-right shrink-0 pl-4 flex items-baseline gap-3">
+                          <div className="flex items-center gap-2 shrink-0 pl-4">
+                            <RowActions
+                              onEdit={() => {
+                                const asset = cryptoAssets.find((a) => a.id === row.assetId);
+                                if (asset) setEditingCryptoAsset(asset);
+                              }}
+                              onDelete={() =>
+                                setDeleteTarget({ type: "crypto", id: row.assetId, label: `${row.ticker} (${row.name})` })
+                              }
+                            />
                             <span className="text-zinc-500 text-xs tabular-nums">
                               {formatQuantity(row.quantity)}
                             </span>
@@ -464,14 +575,23 @@ export function AccountsView({
                       .map((row) => (
                         <div
                           key={row.positionId}
-                          className="flex items-center justify-between py-1.5 text-sm"
+                          className="group/row flex items-center justify-between py-1.5 text-sm"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-zinc-200 font-medium">{row.ticker}</span>
                             <span className="text-zinc-500 truncate">{row.name}</span>
                             <span className="text-zinc-600 text-xs">via {row.brokerName}</span>
                           </div>
-                          <div className="text-right shrink-0 pl-4 flex items-baseline gap-3">
+                          <div className="flex items-center gap-2 shrink-0 pl-4">
+                            <RowActions
+                              onEdit={() => {
+                                const asset = stockAssets.find((a) => a.id === row.assetId);
+                                if (asset) setEditingStockAsset(asset);
+                              }}
+                              onDelete={() =>
+                                setDeleteTarget({ type: "stock", id: row.assetId, label: `${row.ticker} (${row.name})` })
+                              }
+                            />
                             <span className="text-zinc-500 text-xs tabular-nums">
                               {row.quantity} shares
                             </span>
@@ -498,25 +618,45 @@ export function AccountsView({
                       .map((row) => (
                         <div
                           key={row.id}
-                          className="flex items-center justify-between py-1.5 text-sm"
+                          className="group/row flex items-center justify-between py-1.5 text-sm"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-zinc-200">{row.label}</span>
+                            <span className="text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">
+                              {row.currency}
+                            </span>
                             {row.apy > 0 && (
                               <span className="text-emerald-500/70 text-xs">
                                 {row.apy}% APY
                               </span>
                             )}
                           </div>
-                          <div className="text-right shrink-0 pl-4 flex items-baseline gap-3">
-                            <span className="text-zinc-500 text-xs tabular-nums">
-                              {formatCurrency(row.amount, row.currency)}
-                            </span>
+                          <div className="flex items-center gap-2 shrink-0 pl-4">
+                            <RowActions
+                              onEdit={() => {
+                                if (row.type === "bank") {
+                                  const acct = bankAccounts.find((b) => b.id === row.id);
+                                  if (acct) setEditingBankAccount(acct);
+                                } else if (row.type === "exchange_deposit") {
+                                  const dep = exchangeDeposits.find((d) => d.id === row.id);
+                                  if (dep) setEditingExchangeDeposit(dep);
+                                } else {
+                                  const dep = brokerDeposits.find((d) => d.id === row.id);
+                                  if (dep) setEditingBrokerDeposit(dep);
+                                }
+                              }}
+                              onDelete={() =>
+                                setDeleteTarget({ type: row.type, id: row.id, label: row.label })
+                              }
+                            />
                             {row.currency !== primaryCurrency && (
-                              <span className="text-zinc-300 tabular-nums">
-                                {formatCurrency(row.valueBase, primaryCurrency)}
+                              <span className="text-zinc-500 text-xs tabular-nums">
+                                {formatCurrency(row.amount, row.currency)}
                               </span>
                             )}
+                            <span className="text-zinc-300 tabular-nums">
+                              {formatCurrency(row.valueBase, primaryCurrency)}
+                            </span>
                           </div>
                         </div>
                       ))}
@@ -529,6 +669,17 @@ export function AccountsView({
                     No assets linked to this institution yet
                   </div>
                 )}
+
+                {/* Add asset dropdown */}
+                <AddAssetDropdown
+                  institution={institution}
+                  isSelfCustody={isSelfCustody}
+                  onAddCrypto={() => setShowAddCrypto(institution.id)}
+                  onAddStock={() => setShowAddStock(institution.id)}
+                  onAddBankAccount={() => setShowAddBankAccount(institution.id)}
+                  onAddExchangeDeposit={() => setShowAddExchangeDeposit(institution.id)}
+                  onAddBrokerDeposit={() => setShowAddBrokerDeposit(institution.id)}
+                />
               </div>
             )}
           </div>
@@ -545,7 +696,9 @@ export function AccountsView({
         </div>
       )}
 
-      {/* Modals */}
+      {/* ── Modals ──────────────────────────────────────── */}
+
+      {/* Institution modals */}
       {editingInstitution && (
         <EditInstitutionModal
           open={!!editingInstitution}
@@ -557,6 +710,105 @@ export function AccountsView({
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
       />
+
+      {/* Crypto modals */}
+      {editingCryptoAsset && (
+        <PositionEditor
+          open
+          onClose={() => setEditingCryptoAsset(null)}
+          asset={editingCryptoAsset}
+          wallets={wallets}
+          existingSubcategories={existingSubcategories}
+          existingChains={existingChains}
+        />
+      )}
+      {showAddCrypto && (
+        <AddCryptoModal
+          open
+          onClose={() => setShowAddCrypto(null)}
+          wallets={walletsForInstitution(showAddCrypto)}
+          existingSubcategories={existingSubcategories}
+          existingChains={existingChains}
+        />
+      )}
+
+      {/* Stock modals */}
+      {editingStockAsset && (
+        <StockPositionEditor
+          open
+          onClose={() => setEditingStockAsset(null)}
+          asset={editingStockAsset}
+          brokers={brokers}
+          existingSubcategories={existingSubcategories}
+          existingTags={existingTags}
+        />
+      )}
+      {showAddStock && (
+        <AddStockModal
+          open
+          onClose={() => setShowAddStock(null)}
+          brokers={brokersForInstitution(showAddStock)}
+          existingSubcategories={existingSubcategories}
+          existingTags={existingTags}
+        />
+      )}
+
+      {/* Cash modals */}
+      {(editingBankAccount !== null || showAddBankAccount !== null) && (
+        <BankAccountModal
+          open
+          onClose={() => { setEditingBankAccount(null); setShowAddBankAccount(null); }}
+          editing={editingBankAccount}
+          existingBankNames={existingBankNames}
+        />
+      )}
+      {(editingExchangeDeposit !== null || showAddExchangeDeposit !== null) && (
+        <ExchangeDepositModal
+          open
+          onClose={() => { setEditingExchangeDeposit(null); setShowAddExchangeDeposit(null); }}
+          editing={editingExchangeDeposit}
+          wallets={showAddExchangeDeposit ? walletsForInstitution(showAddExchangeDeposit) : wallets}
+        />
+      )}
+      {(editingBrokerDeposit !== null || showAddBrokerDeposit !== null) && (
+        <BrokerDepositModal
+          open
+          onClose={() => { setEditingBrokerDeposit(null); setShowAddBrokerDeposit(null); }}
+          editing={editingBrokerDeposit}
+          brokers={showAddBrokerDeposit ? brokersForInstitution(showAddBrokerDeposit) : brokers}
+        />
+      )}
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <Modal
+          open
+          onClose={() => setDeleteTarget(null)}
+          title="Confirm Delete"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-300">
+              Are you sure you want to delete <span className="font-medium text-zinc-100">{deleteTarget.label}</span>?
+              This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -592,6 +844,113 @@ function AssetSection({
         </span>
       </div>
       <div className="pl-5 border-l border-zinc-800/50">{children}</div>
+    </div>
+  );
+}
+
+/** Inline edit/delete controls that appear on row hover */
+function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <span className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+      <button
+        onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        className="p-1 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+        title="Edit"
+      >
+        <Pencil className="w-3 h-3" />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className="p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+        title="Delete"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
+    </span>
+  );
+}
+
+/** "Add" dropdown in each expanded institution card */
+function AddAssetDropdown({
+  institution,
+  isSelfCustody,
+  onAddCrypto,
+  onAddStock,
+  onAddBankAccount,
+  onAddExchangeDeposit,
+  onAddBrokerDeposit,
+}: {
+  institution: InstitutionWithRoles;
+  isSelfCustody: boolean;
+  onAddCrypto: () => void;
+  onAddStock: () => void;
+  onAddBankAccount: () => void;
+  onAddExchangeDeposit: () => void;
+  onAddBrokerDeposit: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const roles = institution.roles;
+
+  // Close on outside click or Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  // Build available options based on roles
+  const options: { label: string; onClick: () => void }[] = [];
+
+  if (isSelfCustody || roles.includes("wallet")) {
+    options.push({ label: "Add Crypto Asset", onClick: onAddCrypto });
+    options.push({ label: "Add Exchange Deposit", onClick: onAddExchangeDeposit });
+  }
+  if (roles.includes("broker")) {
+    options.push({ label: "Add Stock Asset", onClick: onAddStock });
+    options.push({ label: "Add Broker Deposit", onClick: onAddBrokerDeposit });
+  }
+  if (roles.includes("bank")) {
+    options.push({ label: "Add Bank Account", onClick: onAddBankAccount });
+  }
+
+  if (options.length === 0) return null;
+
+  return (
+    <div ref={containerRef} className="pt-2 border-t border-zinc-800/30 relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800/50"
+      >
+        <Plus className="w-3 h-3" />
+        Add
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+      {open && (
+        <div className="absolute left-0 bottom-full mb-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-20 py-1 min-w-[180px]">
+          {options.map((opt) => (
+            <button
+              key={opt.label}
+              onClick={() => { setOpen(false); opt.onClick(); }}
+              className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
