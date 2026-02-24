@@ -460,9 +460,12 @@ export function AccountsView({
             }`}
           >
             {/* Clickable header */}
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => toggleExpand(institution.id)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/30 transition-colors"
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpand(institution.id); } }}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-3 min-w-0">
                 {isExpanded ? (
@@ -515,7 +518,7 @@ export function AccountsView({
                   )}
                 </div>
               </div>
-            </button>
+            </div>
 
             {/* Expanded content */}
             {isExpanded && (
