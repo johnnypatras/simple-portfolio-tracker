@@ -100,6 +100,7 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
         .single();
       if (existing) {
         revalidatePath("/dashboard/crypto");
+  revalidatePath("/dashboard");
         return existing.id;
       }
       throw new Error("This crypto asset is already in your portfolio");
@@ -114,6 +115,7 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
     details: { ...input },
   });
   revalidatePath("/dashboard/crypto");
+  revalidatePath("/dashboard");
   return data.id;
 }
 
@@ -153,6 +155,7 @@ export async function updateCryptoAsset(
     details: { ...fields },
   });
   revalidatePath("/dashboard/crypto");
+  revalidatePath("/dashboard");
 }
 
 /** Remove a crypto asset and all its positions (CASCADE) */
@@ -176,6 +179,7 @@ export async function deleteCryptoAsset(id: string) {
     description: `Removed crypto asset ${existing?.ticker ?? id}`,
   });
   revalidatePath("/dashboard/crypto");
+  revalidatePath("/dashboard");
 }
 
 /** Upsert a position (set quantity for a crypto asset in a specific wallet) */
@@ -227,6 +231,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
   }
 
   revalidatePath("/dashboard/crypto");
+  revalidatePath("/dashboard");
 }
 
 /** Delete a specific position */
@@ -254,4 +259,5 @@ export async function deletePosition(positionId: string) {
     description: `Removed ${ticker} position`,
   });
   revalidatePath("/dashboard/crypto");
+  revalidatePath("/dashboard");
 }

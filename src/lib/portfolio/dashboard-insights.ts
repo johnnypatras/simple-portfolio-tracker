@@ -152,7 +152,9 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   const ethChange24h = ethData?.usd_24h_change ?? 0;
 
   // ── Crypto insights ───────────────────────────────────
-  const nonStablecoinAssets = cryptoAssets.filter((a) => a.subcategory !== "Stablecoin");
+  const nonStablecoinAssets = cryptoAssets.filter(
+    (a) => a.subcategory?.toLowerCase() !== "stablecoin"
+  );
   const cryptoAssetCount = nonStablecoinAssets.length;
 
   // Crypto 24h change (value-weighted, excluding stablecoins)
@@ -389,7 +391,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
 
   // Stablecoin positions with APY
   for (const asset of cryptoAssets) {
-    if (asset.subcategory !== "Stablecoin") continue;
+    if (asset.subcategory?.toLowerCase() !== "stablecoin") continue;
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const priceInBase = price[currencyKey] ?? 0;
@@ -405,9 +407,10 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
 
   const weightedAvgApy = apyTotalValue > 0 ? apyWeightedSum / apyTotalValue : 0;
 
-  // APY income projections (based on total cash value including all sources)
-  const totalCashForApy = summary.cashValue;
-  const apyIncomeYearly = totalCashForApy * (weightedAvgApy / 100);
+  // APY income projections — use only APY-bearing balance, not total cash.
+  // weightedAvgApy is the weighted average across APY-bearing accounts only,
+  // so income = apyTotalValue × weightedAvgApy (NOT totalCash × weightedAvgApy).
+  const apyIncomeYearly = apyTotalValue * (weightedAvgApy / 100);
   const apyIncomeMonthly = apyIncomeYearly / 12;
   const apyIncomeDaily = apyIncomeYearly / 365;
 
@@ -434,7 +437,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   }
   // Stablecoins → grouped by inferred peg currency
   for (const asset of cryptoAssets) {
-    if (asset.subcategory !== "Stablecoin") continue;
+    if (asset.subcategory?.toLowerCase() !== "stablecoin") continue;
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const priceInBase = price[currencyKey] ?? 0;

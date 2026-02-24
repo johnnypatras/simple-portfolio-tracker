@@ -136,7 +136,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     let stable = 0;
     let nonStable = 0;
     for (const r of baseRows) {
-      if (r.asset.subcategory === "Stablecoin") {
+      if (r.asset.subcategory?.toLowerCase() === "stablecoin") {
         stable += r.valueInBase;
       } else {
         nonStable += r.valueInBase;
@@ -148,7 +148,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
   const weighted24hChange = useMemo(() => {
     if (nonStableValue === 0) return 0;
     return baseRows
-      .filter((r) => r.asset.subcategory !== "Stablecoin")
+      .filter((r) => r.asset.subcategory?.toLowerCase() !== "stablecoin")
       .reduce((sum, r) => sum + r.valueInBase * r.change24h, 0) / nonStableValue;
   }, [baseRows, nonStableValue]);
 

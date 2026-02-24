@@ -89,7 +89,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const value = totalQty * priceInBase;
 
-    if (asset.subcategory === "Stablecoin") {
+    if (asset.subcategory?.toLowerCase() === "stablecoin") {
       stablecoinValue += value;
     } else {
       const change = price[changeKey] ?? 0;
@@ -167,7 +167,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
-    if (asset.subcategory === "Stablecoin") {
+    if (asset.subcategory?.toLowerCase() === "stablecoin") {
       stablecoinValueUsd += totalQty * (price.usd ?? 0);
       stablecoinValueEur += totalQty * (price.eur ?? 0);
     } else {

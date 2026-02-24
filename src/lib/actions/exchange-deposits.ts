@@ -71,6 +71,7 @@ export async function createExchangeDeposit(
     details: { ...input, wallet_name: wallet?.name },
   });
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }
 
 export async function updateExchangeDeposit(
@@ -114,6 +115,7 @@ export async function updateExchangeDeposit(
     details: { ...input, wallet_name: wallet?.name },
   });
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }
 
 export async function deleteExchangeDeposit(id: string): Promise<void> {
@@ -143,4 +145,5 @@ export async function deleteExchangeDeposit(id: string): Promise<void> {
     description: `Removed exchange deposit: ${label}`,
   });
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }

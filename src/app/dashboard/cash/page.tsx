@@ -23,7 +23,7 @@ export default async function CashPage() {
     ]);
 
   // Stablecoins are reclassified as cash — fetch their CoinGecko prices
-  const stablecoins = cryptoAssets.filter((a) => a.subcategory === "Stablecoin");
+  const stablecoins = cryptoAssets.filter((a) => a.subcategory?.toLowerCase() === "stablecoin");
 
   // Collect all currencies that need FX conversion
   const allCurrencies = [

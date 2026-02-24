@@ -68,6 +68,7 @@ export async function createBrokerDeposit(
     details: { ...input, broker_name: broker?.name },
   });
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }
 
 export async function updateBrokerDeposit(
@@ -110,6 +111,7 @@ export async function updateBrokerDeposit(
     details: { ...input, broker_name: broker?.name },
   });
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }
 
 export async function deleteBrokerDeposit(id: string): Promise<void> {
@@ -140,4 +142,5 @@ export async function deleteBrokerDeposit(id: string): Promise<void> {
     description: `Removed broker deposit: ${label}`,
   });
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }

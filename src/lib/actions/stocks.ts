@@ -138,6 +138,7 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
     details: { ...input },
   });
   revalidatePath("/dashboard/stocks");
+  revalidatePath("/dashboard");
   return data.id;
 }
 
@@ -167,6 +168,7 @@ export async function updateStockAsset(
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/stocks");
+  revalidatePath("/dashboard");
 }
 
 /** Remove a stock asset and all its positions (CASCADE) */
@@ -189,6 +191,7 @@ export async function deleteStockAsset(id: string) {
     description: `Removed stock asset ${existing?.ticker ?? id}`,
   });
   revalidatePath("/dashboard/stocks");
+  revalidatePath("/dashboard");
 }
 
 /** Upsert a position (set quantity for a stock asset at a specific broker) */
@@ -238,6 +241,7 @@ export async function upsertStockPosition(input: StockPositionInput) {
   }
 
   revalidatePath("/dashboard/stocks");
+  revalidatePath("/dashboard");
 }
 
 /** Delete a specific position */
@@ -264,4 +268,5 @@ export async function deleteStockPosition(positionId: string) {
     description: `Removed ${ticker} position`,
   });
   revalidatePath("/dashboard/stocks");
+  revalidatePath("/dashboard");
 }

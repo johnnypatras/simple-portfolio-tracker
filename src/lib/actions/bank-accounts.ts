@@ -116,6 +116,7 @@ export async function createBankAccount(
 
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }
 
 export async function updateBankAccount(
@@ -231,6 +232,7 @@ export async function updateBankAccount(
   });
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }
 
 export async function deleteBankAccount(id: string) {
@@ -260,4 +262,5 @@ export async function deleteBankAccount(id: string) {
 
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard");
 }
