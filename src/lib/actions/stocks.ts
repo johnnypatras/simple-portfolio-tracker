@@ -11,6 +11,18 @@ import type {
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 
+/** Normalize old DB category values (pre-migration-022) to current enum */
+const OLD_CAT_MAP: Record<string, AssetCategory> = {
+  stock: "individual_stock",
+  etf_ucits: "etf",
+  etf_non_ucits: "etf",
+  bond: "bond_fixed_income",
+};
+function normalizeCategory(raw: string | null | undefined): AssetCategory {
+  if (!raw) return "individual_stock";
+  return OLD_CAT_MAP[raw] ?? (raw as AssetCategory);
+}
+
 /** Get all stock assets with their positions and broker names */
 export async function getStockAssetsWithPositions(): Promise<
   StockAssetWithPositions[]
@@ -48,9 +60,10 @@ export async function getStockAssetsWithPositions(): Promise<
     );
   }
 
-  // Merge
+  // Merge (normalize old category values so all consumers see current enum)
   return assets.map((asset) => ({
     ...asset,
+    category: normalizeCategory(asset.category),
     positions: (positions ?? [])
       .filter((p) => p.stock_asset_id === asset.id)
       .map((p) => ({
@@ -69,6 +82,9 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  const category = input.category ?? "individual_stock";
+  const tags = input.tags ?? [];
+
   const { data, error } = await supabase
     .from("stock_assets")
     .insert({
@@ -77,7 +93,8 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
       name: input.name,
       isin: input.isin ?? null,
       yahoo_ticker: input.yahoo_ticker ?? null,
-      category: input.category ?? "stock",
+      category,
+      tags,
       currency: input.currency ?? "USD",
       subcategory: input.subcategory?.trim() || null,
     })
@@ -86,8 +103,28 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
 
   if (error) {
     if (error.code === "23505") {
-      if (error.message?.includes("stock_assets_user_yahoo_ticker_unique")) {
-        throw new Error("You already have this exact exchange listing in your portfolio");
+      // Asset already exists — return existing ID so position creation can proceed
+      if (
+        error.message?.includes("stock_assets_user_yahoo_ticker_unique") &&
+        input.yahoo_ticker
+      ) {
+        const { data: existing } = await supabase
+          .from("stock_assets")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("yahoo_ticker", input.yahoo_ticker)
+          .single();
+        if (existing) return existing.id;
+      }
+      if (error.message?.includes("stock_assets_user_ticker_no_yahoo_unique")) {
+        const { data: existing } = await supabase
+          .from("stock_assets")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("ticker", input.ticker.toUpperCase())
+          .is("yahoo_ticker", null)
+          .single();
+        if (existing) return existing.id;
       }
       throw new Error("This stock/ETF is already in your portfolio");
     }
@@ -104,10 +141,10 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
   return data.id;
 }
 
-/** Update a stock asset's editable fields (category, subcategory, etc.) */
+/** Update a stock asset's editable fields (category, subcategory, tags) */
 export async function updateStockAsset(
   id: string,
-  fields: { category?: AssetCategory; subcategory?: string | null }
+  fields: { category?: AssetCategory; subcategory?: string | null; tags?: string[] }
 ) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -117,6 +154,7 @@ export async function updateStockAsset(
 
   const updatePayload: Record<string, unknown> = {};
   if (fields.category !== undefined) updatePayload.category = fields.category;
+  if (fields.tags !== undefined) updatePayload.tags = fields.tags;
   if (fields.subcategory !== undefined) updatePayload.subcategory = fields.subcategory?.trim() || null;
 
   if (Object.keys(updatePayload).length === 0) return;

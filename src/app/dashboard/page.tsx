@@ -4,16 +4,18 @@ import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
+import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices } from "@/lib/prices/yahoo";
+import { getStockPrices, fetchSinglePrice } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import {
   saveSnapshot,
   getSnapshots,
   getSnapshotAt,
 } from "@/lib/actions/snapshots";
-import { PortfolioCards } from "@/components/dashboard/portfolio-cards";
+import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { PortfolioChart } from "@/components/dashboard/portfolio-chart";
 import { MobileMenuButton } from "@/components/sidebar";
 
@@ -24,19 +26,23 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
 
   // ── Round 1: Fetch all portfolio data in parallel ─────
-  const [profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits] =
+  const [profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits] =
     await Promise.all([
       getProfile(),
       getCryptoAssetsWithPositions(),
       getStockAssetsWithPositions(),
       getBankAccounts(),
       getExchangeDeposits(),
+      getBrokerDeposits(),
     ]);
 
   const primaryCurrency = profile.primary_currency;
 
   // Build ticker/coin ID lists for price fetching
-  const coinIds = cryptoAssets.map((a) => a.coingecko_id);
+  // Always include "bitcoin" for BTC market price on dashboard
+  const coinIds = [
+    ...new Set(["bitcoin", "ethereum", ...cryptoAssets.map((a) => a.coingecko_id)]),
+  ];
   const yahooTickers = stockAssets
     .map((a) => a.yahoo_ticker || a.ticker)
     .filter(Boolean);
@@ -44,14 +50,16 @@ export default async function DashboardPage() {
   // Collect all unique currencies that need FX conversion
   const allCurrencies = [
     ...new Set([
+      "EUR", "USD", // always include for EUR/USD cross rate in market panel
       ...stockAssets.map((a) => a.currency),
       ...bankAccounts.map((a) => a.currency),
       ...exchangeDeposits.map((a) => a.currency),
+      ...brokerDeposits.map((a) => a.currency),
     ]),
   ];
 
-  // ── Round 2: Fetch prices + FX rates + snapshots in parallel
-  const [cryptoPrices, stockPrices, fxRates, chartSnapshots, snap7d, snap30d, snap1y] =
+  // ── Round 2: Fetch prices + FX rates + snapshots + S&P 500 in parallel
+  const [cryptoPrices, stockPrices, fxRates, chartSnapshots, snap7d, snap30d, snap1y, sp500Data, goldData, nasdaqData, dowData, eurUsdData] =
     await Promise.all([
       getPrices(coinIds),
       getStockPrices(yahooTickers),
@@ -60,6 +68,11 @@ export default async function DashboardPage() {
       getSnapshotAt(7),           // for 7d change
       getSnapshotAt(30),          // for 30d change
       getSnapshotAt(365),         // for 1y change
+      fetchSinglePrice("^GSPC"), // S&P 500 index
+      fetchSinglePrice("GC=F"),  // Gold futures
+      fetchSinglePrice("^IXIC"), // Nasdaq Composite
+      fetchSinglePrice("^DJI"),  // Dow Jones Industrial
+      fetchSinglePrice("EURUSD=X"), // EUR/USD cross rate (for 24h change)
     ]);
 
   // ── Aggregate into portfolio summary ──────────────────
@@ -70,8 +83,32 @@ export default async function DashboardPage() {
     stockPrices,
     bankAccounts,
     exchangeDeposits,
+    brokerDeposits,
     primaryCurrency,
     fxRates,
+  });
+
+  // ── Compute dashboard insights ────────────────────────
+  const insights = computeDashboardInsights({
+    cryptoAssets,
+    cryptoPrices,
+    stockAssets,
+    stockPrices,
+    bankAccounts,
+    exchangeDeposits,
+    brokerDeposits,
+    primaryCurrency,
+    fxRates,
+    summary,
+    sp500Price: sp500Data?.price ?? 0,
+    sp500Change24h: sp500Data?.change24h ?? 0,
+    goldPrice: goldData?.price ?? 0,
+    goldChange24h: goldData?.change24h ?? 0,
+    nasdaqPrice: nasdaqData?.price ?? 0,
+    nasdaqChange24h: nasdaqData?.change24h ?? 0,
+    dowPrice: dowData?.price ?? 0,
+    dowChange24h: dowData?.change24h ?? 0,
+    eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 
   // ── Save today's snapshot (fire-and-forget) ───────────
@@ -104,7 +141,11 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <PortfolioCards summary={summary} pastSnapshots={pastSnapshots} />
+      <DashboardGrid
+        summary={summary}
+        insights={insights}
+        pastSnapshots={pastSnapshots}
+      />
 
       <div className="mt-6">
         <PortfolioChart

@@ -1,18 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Save, Trash2, Loader2 } from "lucide-react";
+import { Plus, Save, Trash2, Loader2, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { upsertStockPosition, deleteStockPosition, updateStockAsset } from "@/lib/actions/stocks";
 import type { StockAssetWithPositions, Broker, AssetCategory } from "@/lib/types";
 
-const CATEGORIES: { value: AssetCategory; label: string }[] = [
-  { value: "stock", label: "Individual Stock" },
-  { value: "etf_ucits", label: "ETF — UCITS" },
-  { value: "etf_non_ucits", label: "ETF — Non-UCITS" },
-  { value: "bond", label: "Bond / Fixed Income" },
+const TYPES: { value: AssetCategory; label: string }[] = [
+  { value: "individual_stock", label: "Individual Stock" },
+  { value: "etf", label: "ETF" },
+  { value: "bond_fixed_income", label: "Bond / Fixed Income" },
   { value: "other", label: "Other" },
 ];
+
+/** Seeded subtype suggestions per asset type */
+const SEEDED_SUBTYPES: Record<AssetCategory, string[]> = {
+  etf: ["UCITS", "Non-UCITS"],
+  bond_fixed_income: ["Government", "Corporate"],
+  individual_stock: [],
+  other: [],
+};
 
 interface StockPositionEditorProps {
   open: boolean;
@@ -20,6 +27,7 @@ interface StockPositionEditorProps {
   asset: StockAssetWithPositions;
   brokers: Broker[];
   existingSubcategories: string[];
+  existingTags: string[];
 }
 
 export function StockPositionEditor({
@@ -28,18 +36,23 @@ export function StockPositionEditor({
   asset,
   brokers,
   existingSubcategories,
+  existingTags,
 }: StockPositionEditorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Category + subcategory editing
+  // Category + subcategory + tags editing
   const [category, setCategory] = useState<AssetCategory>(asset.category);
   const [subcategory, setSubcategory] = useState(asset.subcategory ?? "");
   const [subcategoryOpen, setSubcategoryOpen] = useState(false);
+  const [tags, setTags] = useState<string[]>(asset.tags ?? []);
+  const [tagInput, setTagInput] = useState("");
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [metaSaving, setMetaSaving] = useState(false);
   const categoryChanged = category !== asset.category;
   const subcategoryChanged = (subcategory.trim() || null) !== (asset.subcategory ?? null);
-  const metaChanged = categoryChanged || subcategoryChanged;
+  const tagsChanged = JSON.stringify(tags) !== JSON.stringify(asset.tags ?? []);
+  const metaChanged = categoryChanged || subcategoryChanged || tagsChanged;
 
   async function handleMetaSave() {
     setMetaSaving(true);
@@ -48,6 +61,7 @@ export function StockPositionEditor({
       await updateStockAsset(asset.id, {
         ...(categoryChanged ? { category } : {}),
         ...(subcategoryChanged ? { subcategory: subcategory.trim() || null } : {}),
+        ...(tagsChanged ? { tags } : {}),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
@@ -135,27 +149,27 @@ export function StockPositionEditor({
       title={`${asset.name} (${asset.ticker}) Positions`}
     >
       <div className="space-y-4">
-        {/* Category + Subcategory */}
+        {/* Type + Subtype */}
         <div className="space-y-3">
-          <div className="flex items-end gap-2">
-            {/* Category dropdown */}
-            <div className="flex-1">
-              <label className="block text-xs text-zinc-500 mb-1">Category</label>
+          <div className="grid grid-cols-2 gap-3">
+            {/* Type dropdown */}
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">Type</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as AssetCategory)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               >
-                {CATEGORIES.map((c) => (
+                {TYPES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
               </select>
             </div>
 
-            {/* Subcategory combobox */}
-            <div className="relative flex-1">
+            {/* Subtype combobox */}
+            <div className="relative">
               <label className="block text-xs text-zinc-500 mb-1">
-                Subcategory
+                Subtype
               </label>
               <input
                 type="text"
@@ -166,11 +180,13 @@ export function StockPositionEditor({
                 }}
                 onFocus={() => setSubcategoryOpen(true)}
                 onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
-                placeholder="e.g. S&P 500, World..."
+                placeholder="e.g. UCITS, Non-UCITS..."
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               />
-              {subcategoryOpen && existingSubcategories.length > 0 && (() => {
-                const filtered = existingSubcategories.filter(
+              {subcategoryOpen && (() => {
+                const seeded = SEEDED_SUBTYPES[category] ?? [];
+                const all = [...new Set([...seeded, ...existingSubcategories])];
+                const filtered = all.filter(
                   (s) =>
                     s.toLowerCase().includes(subcategory.toLowerCase()) &&
                     s.toLowerCase() !== subcategory.toLowerCase()
@@ -197,22 +213,99 @@ export function StockPositionEditor({
               })()}
             </div>
 
-            {/* Single save button for both fields */}
-            {metaChanged && (
+          </div>
+
+          {/* Tags (chip input with autocomplete) */}
+          <div className="relative">
+            <label className="block text-xs text-zinc-500 mb-1">Tags</label>
+            <div className="w-full min-h-[38px] px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-wrap items-center gap-1 focus-within:ring-2 focus-within:ring-blue-500/40">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 flex items-center gap-1"
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => setTags(tags.filter((t) => t !== tag))}
+                    className="text-zinc-500 hover:text-zinc-300"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => {
+                  setTagInput(e.target.value);
+                  setTagsOpen(true);
+                }}
+                onFocus={() => setTagsOpen(true)}
+                onBlur={() => setTimeout(() => setTagsOpen(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && tagInput.trim()) {
+                    e.preventDefault();
+                    const v = tagInput.trim();
+                    if (!tags.includes(v)) setTags([...tags, v]);
+                    setTagInput("");
+                    setTagsOpen(false);
+                  }
+                  if (e.key === "Backspace" && !tagInput && tags.length > 0) {
+                    setTags(tags.slice(0, -1));
+                  }
+                }}
+                placeholder={tags.length === 0 ? "e.g. S&P 500..." : ""}
+                className="flex-1 min-w-[60px] bg-transparent text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none"
+              />
+            </div>
+            {tagsOpen && (() => {
+              const filtered = existingTags.filter(
+                (t) =>
+                  !tags.includes(t) &&
+                  t.toLowerCase().includes(tagInput.toLowerCase())
+              );
+              if (filtered.length === 0) return null;
+              return (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                  {filtered.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setTags([...tags, t]);
+                        setTagInput("");
+                        setTagsOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Save button for type/subtype/tags changes */}
+          {metaChanged && (
+            <div className="flex justify-end">
               <button
                 onClick={handleMetaSave}
                 disabled={metaSaving}
-                className="p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0 mb-px"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50"
                 title="Save changes"
               >
                 {metaSaving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5" />
                 )}
+                Save
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="border-t border-zinc-800/50" />

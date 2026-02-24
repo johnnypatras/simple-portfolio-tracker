@@ -106,7 +106,7 @@ export async function getStockPrices(
   return data;
 }
 
-async function fetchSinglePrice(ticker: string): Promise<{
+export async function fetchSinglePrice(ticker: string): Promise<{
   price: number;
   previousClose: number;
   change24h: number;

@@ -386,12 +386,14 @@ export function CashTable({
               </p>
               <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(totalCash, primaryCurrency)}
-                {weightedApy > 0 && (
-                  <span className="text-sm font-medium ml-2 text-emerald-400">
+              </p>
+              {weightedApy > 0 && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs tabular-nums text-emerald-400">
                     ~{weightedApy.toFixed(1)}% APY
                   </span>
-                )}
-              </p>
+                </div>
+              )}
               {stablecoinTotal > 0 && (
                 <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
                   incl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins

@@ -19,10 +19,11 @@ export default async function StocksPage() {
     .filter(Boolean);
 
   // Fetch prices + FX rates in parallel
+  const cur = profile.primary_currency;
   const uniqueCurrencies = [...new Set(assets.map((a) => a.currency))];
   const [prices, fxRates] = await Promise.all([
     getStockPrices(yahooTickers),
-    getFXRates(profile.primary_currency, uniqueCurrencies),
+    getFXRates(cur, uniqueCurrencies),
   ]);
 
   return (
@@ -32,15 +33,12 @@ export default async function StocksPage() {
           <MobileMenuButton />
           <h1 className="text-2xl font-semibold text-zinc-100">Equities</h1>
         </div>
-        <p className="text-sm text-zinc-500 mt-1">
-          Manage your stock and ETF positions across brokers
-        </p>
       </div>
       <StockTable
         assets={assets}
         brokers={brokers}
         prices={prices}
-        primaryCurrency={profile.primary_currency}
+        primaryCurrency={cur}
         fxRates={fxRates}
       />
     </div>

@@ -315,7 +315,7 @@ export interface CryptoPositionInput {
 
 // ─── Stock/ETF entities ─────────────────────────────────
 
-export type AssetCategory = "stock" | "etf_ucits" | "etf_non_ucits" | "bond" | "other";
+export type AssetCategory = "individual_stock" | "etf" | "bond_fixed_income" | "other";
 
 export interface StockAsset {
   id: string;
@@ -325,8 +325,9 @@ export interface StockAsset {
   isin: string | null;
   yahoo_ticker: string | null;
   category: AssetCategory;
+  tags: string[];  // theme/strategy tags (e.g. ["S&P 500", "World"])
   currency: string;  // free-form ISO currency code (USD, EUR, GBP, CHF, etc.)
-  subcategory: string | null;  // user-defined grouping (e.g. "S&P 500", "World", "US Bonds")
+  subcategory: string | null;  // instrument subtype (e.g. "ETF UCITS", "ETF UCITS Bonds")
   created_at: string;
 }
 
@@ -349,6 +350,7 @@ export interface StockAssetInput {
   isin?: string | null;
   yahoo_ticker?: string | null;
   category?: AssetCategory;
+  tags?: string[];
   currency?: string;  // ISO currency code, defaults to "USD"
   subcategory?: string | null;
 }

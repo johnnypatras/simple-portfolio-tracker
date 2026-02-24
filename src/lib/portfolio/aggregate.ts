@@ -14,6 +14,7 @@ import type {
   YahooStockPriceData,
   BankAccount,
   ExchangeDeposit,
+  BrokerDeposit,
 } from "@/lib/types";
 
 export interface PortfolioSummary {
@@ -45,6 +46,7 @@ interface AggregateParams {
   stockPrices: YahooStockPriceData;
   bankAccounts: BankAccount[];
   exchangeDeposits: ExchangeDeposit[];
+  brokerDeposits: BrokerDeposit[];
   primaryCurrency: string;
   fxRates: FXRates;
 }
@@ -65,6 +67,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     stockPrices,
     bankAccounts,
     exchangeDeposits,
+    brokerDeposits,
     primaryCurrency,
     fxRates,
   } = params;
@@ -114,7 +117,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     stocksWeightedChange += valueBase * change;
   }
 
-  // ── Cash (bank accounts + exchange deposits) ────────────
+  // ── Cash (bank accounts + exchange deposits + broker deposits) ──
   let cashValue = 0;
 
   for (const bank of bankAccounts) {
@@ -122,6 +125,10 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   }
 
   for (const deposit of exchangeDeposits) {
+    cashValue += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
+  }
+
+  for (const deposit of brokerDeposits) {
     cashValue += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
   }
 

@@ -20,21 +20,19 @@ export interface StockRow {
   valueBase: number;
 }
 
-// ── Category display maps ────────────────────────────────────
+// ── Type display maps ────────────────────────────────────────
 
-export const CATEGORY_LABELS: Record<AssetCategory, string> = {
-  stock: "Stock",
-  etf_ucits: "ETF UCITS",
-  etf_non_ucits: "ETF",
-  bond: "Bond",
+export const TYPE_LABELS: Record<AssetCategory, string> = {
+  individual_stock: "Stock",
+  etf: "ETF",
+  bond_fixed_income: "Bond",
   other: "Other",
 };
 
-export const CATEGORY_COLORS: Record<AssetCategory, string> = {
-  stock: "text-blue-400",
-  etf_ucits: "text-purple-400",
-  etf_non_ucits: "text-emerald-400",
-  bond: "text-amber-400",
+export const TYPE_COLORS: Record<AssetCategory, string> = {
+  individual_stock: "text-blue-400",
+  etf: "text-purple-400",
+  bond_fixed_income: "text-amber-400",
   other: "text-zinc-400",
 };
 
@@ -127,8 +125,8 @@ export function buildStockGroupRows(rows: StockRow[]): StockGroup[] {
     const totalValue = groupRows.reduce((sum, r) => sum + r.valueBase, 0);
     groups.push({
       category: cat,
-      label: CATEGORY_LABELS[cat],
-      color: CATEGORY_COLORS[cat],
+      label: TYPE_LABELS[cat],
+      color: TYPE_COLORS[cat],
       rows: groupRows.sort((a, b) => b.valueBase - a.valueBase),
       totalValue,
       assetCount: groupRows.length,
@@ -307,7 +305,7 @@ function flatItemSortVal(item: FlatItem, key: SortKey): string | number {
     switch (key) {
       case "value": return row.valueBase;
       case "name": return row.asset.name.toLowerCase();
-      case "type": return CATEGORY_LABELS[row.asset.category];
+      case "type": return TYPE_LABELS[row.asset.category];
       case "change": return row.change24h;
       case "currency": return row.asset.currency;
     }
@@ -316,7 +314,7 @@ function flatItemSortVal(item: FlatItem, key: SortKey): string | number {
     switch (key) {
       case "value": return group.totalValueBase;
       case "name": return group.name.toLowerCase();
-      case "type": return CATEGORY_LABELS[group.category];
+      case "type": return TYPE_LABELS[group.category];
       case "change": return group.weightedChange24h;
       case "currency": return group.rows[0]?.asset.currency ?? "";
     }
@@ -349,7 +347,7 @@ export function sortRows(
     switch (key) {
       case "value": av = a.valueBase; bv = b.valueBase; break;
       case "name": av = a.asset.name.toLowerCase(); bv = b.asset.name.toLowerCase(); break;
-      case "type": av = CATEGORY_LABELS[a.asset.category]; bv = CATEGORY_LABELS[b.asset.category]; break;
+      case "type": av = TYPE_LABELS[a.asset.category]; bv = TYPE_LABELS[b.asset.category]; break;
       case "change": av = a.change24h; bv = b.change24h; break;
       case "currency": av = a.asset.currency; bv = b.asset.currency; break;
     }
@@ -521,11 +519,11 @@ export function getStockColumns(handlers: {
       label: "Type",
       header: "Type",
       align: "left",
-      width: "w-24",
+      width: "w-20",
       hiddenBelow: "md",
       renderCell: (row) => (
-        <span className={`text-xs font-medium ${CATEGORY_COLORS[row.asset.category]}`}>
-          {CATEGORY_LABELS[row.asset.category]}
+        <span className={`text-xs font-medium ${TYPE_COLORS[row.asset.category]}`}>
+          {TYPE_LABELS[row.asset.category]}
         </span>
       ),
     },
@@ -542,6 +540,39 @@ export function getStockColumns(handlers: {
         ) : (
           <span className="text-xs text-zinc-600">—</span>
         ),
+    },
+    {
+      key: "tags",
+      label: "Tags",
+      header: "Tags",
+      align: "left",
+      width: "w-32",
+      hiddenBelow: "lg",
+      renderCell: (row) => {
+        const tags = row.asset.tags;
+        if (!tags || tags.length === 0) {
+          return <span className="text-xs text-zinc-600">—</span>;
+        }
+        const visible = tags.slice(0, 2);
+        const remaining = tags.length - 2;
+        return (
+          <div className="flex flex-col gap-0.5">
+            {visible.map((tag) => (
+              <span
+                key={tag}
+                className="text-[11px] text-zinc-400 leading-tight truncate"
+              >
+                {tag}
+              </span>
+            ))}
+            {remaining > 0 && (
+              <span className="text-[10px] text-zinc-600">
+                +{remaining} more
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "price",

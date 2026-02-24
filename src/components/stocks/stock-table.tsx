@@ -29,8 +29,8 @@ import {
   formatQuantity,
   formatCurrency,
   getCurrencyColor,
-  CATEGORY_LABELS,
-  CATEGORY_COLORS,
+  TYPE_LABELS,
+  TYPE_COLORS,
   GROUP_PALETTE,
   SORT_OPTIONS,
   COLUMN_TO_SORT,
@@ -166,13 +166,22 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     [groupMode, rows]
   );
 
-  // Existing subcategories for autocomplete in add modal
+  // Existing subcategories for autocomplete in add/edit modals
   const existingSubcategories = useMemo(() => {
     const subs = new Set<string>();
     for (const a of assets) {
       if (a.subcategory) subs.add(a.subcategory);
     }
     return [...subs].sort();
+  }, [assets]);
+
+  // Existing tags for autocomplete in add/edit modals
+  const existingTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const a of assets) {
+      for (const t of a.tags ?? []) tagSet.add(t);
+    }
+    return [...tagSet].sort();
   }, [assets]);
 
   const isGrouped = groupMode !== "flat";
@@ -314,7 +323,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:stocks", columns, 5);
+  } = useColumnConfig("colConfig:stocks", columns, 7);
 
   const ctx: RenderContext = { primaryCurrency, fxRates };
 
@@ -336,12 +345,21 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
               </p>
               <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(totalPortfolioValue, primaryCurrency)}
-                {weighted24hChange !== 0 && (
-                  <span className={`text-sm font-medium ml-2 ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(2)}%
-                  </span>
-                )}
               </p>
+              {weighted24hChange !== 0 && (() => {
+                const delta = totalPortfolioValue - totalPortfolioValue / (1 + weighted24hChange / 100);
+                return (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(2)}%
+                    </span>
+                    <span className={`text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      ({delta >= 0 ? "+" : ""}{formatCurrency(delta, primaryCurrency)})
+                    </span>
+                    <span className="text-xs text-zinc-600">24h</span>
+                  </div>
+                );
+              })()}
             </div>
             <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
               <p>
@@ -1164,7 +1182,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
       )}
 
       {/* Modals */}
-      <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} />
+      <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
       {editingAsset && (
         <StockPositionEditor
           open={!!editingAsset}
@@ -1172,6 +1190,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
           asset={editingAsset}
           brokers={brokers}
           existingSubcategories={existingSubcategories}
+          existingTags={existingTags}
         />
       )}
     </div>
@@ -1266,8 +1285,8 @@ function MobileStockCard({
             </div>
             <div>
               <span className="text-zinc-500">Type</span>
-              <p className={CATEGORY_COLORS[row.asset.category]}>
-                {CATEGORY_LABELS[row.asset.category]}
+              <p className={TYPE_COLORS[row.asset.category]}>
+                {TYPE_LABELS[row.asset.category]}
               </p>
             </div>
             <div>

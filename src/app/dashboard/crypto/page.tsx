@@ -16,6 +16,8 @@ export default async function CryptoPage() {
   const coinIds = assets.map((a) => a.coingecko_id);
   const prices = await getPrices(coinIds);
 
+  const cur = profile.primary_currency;
+
   return (
     <div>
       <div className="mb-8">
@@ -25,15 +27,12 @@ export default async function CryptoPage() {
             Crypto Portfolio
           </h1>
         </div>
-        <p className="text-sm text-zinc-500 mt-1">
-          Manage your cryptocurrency holdings across wallets
-        </p>
       </div>
       <CryptoTable
         assets={assets}
         prices={prices}
         wallets={wallets}
-        primaryCurrency={profile.primary_currency}
+        primaryCurrency={cur}
       />
     </div>
   );
