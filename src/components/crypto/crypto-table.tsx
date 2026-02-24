@@ -23,6 +23,7 @@ import {
   buildCryptoWalletGroups,
   buildCryptoChainGroups,
   buildCryptoSubcategoryGroups,
+  buildCryptoCustodyPositionGroups,
   sortCryptoRows,
   formatQuantity,
   formatCurrency,
@@ -40,13 +41,14 @@ import {
 
 // ── Group mode ──────────────────────────────────────────────
 
-type CryptoGroupMode = "flat" | "source" | "wallet" | "chain" | "subcategory";
+type CryptoGroupMode = "flat" | "source" | "wallet" | "custody" | "chain" | "subcategory";
 
-const GROUP_MODE_CYCLE: CryptoGroupMode[] = ["flat", "source", "wallet", "chain", "subcategory"];
+const GROUP_MODE_CYCLE: CryptoGroupMode[] = ["flat", "source", "wallet", "custody", "chain", "subcategory"];
 const GROUP_MODE_LABELS: Record<CryptoGroupMode, string> = {
   flat: "Flat list",
   source: "Group by source",
   wallet: "Group by wallet",
+  custody: "Group by custody",
   chain: "Group by chain",
   subcategory: "Group by type",
 };
@@ -166,6 +168,12 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     [groupMode, rows]
   );
 
+  // Position-level groups for custody mode
+  const custodyGroups = useMemo(
+    () => (groupMode === "custody" ? buildCryptoCustodyPositionGroups(rows) : []),
+    [groupMode, rows]
+  );
+
   // Asset-level groups for chain mode
   const chainGroups = useMemo(
     () => (groupMode === "chain" ? buildCryptoChainGroups(rows) : []),
@@ -228,9 +236,11 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
       ? sourceGroups.length > 0 && sourceGroups.every((g) => expandedGroups.has(g.acquisitionMethod))
       : groupMode === "wallet"
         ? walletGroups.length > 0 && walletGroups.every((g) => expandedGroups.has(g.walletName))
-        : groupMode === "chain"
-          ? chainGroups.length > 0 && chainGroups.every((g) => expandedGroups.has(g.chain))
-          : subcategoryGroups.length > 0 && subcategoryGroups.every((g) => expandedGroups.has(g.subcategory))
+        : groupMode === "custody"
+          ? custodyGroups.length > 0 && custodyGroups.every((g) => expandedGroups.has(g.custodyType))
+          : groupMode === "chain"
+            ? chainGroups.length > 0 && chainGroups.every((g) => expandedGroups.has(g.chain))
+            : subcategoryGroups.length > 0 && subcategoryGroups.every((g) => expandedGroups.has(g.subcategory))
   );
 
   const allGroupAssetsExpanded =
@@ -248,9 +258,11 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
             ? sourceGroups.map((g) => g.acquisitionMethod)
             : groupMode === "wallet"
               ? walletGroups.map((g) => g.walletName)
-              : groupMode === "chain"
-                ? chainGroups.map((g) => g.chain)
-                : subcategoryGroups.map((g) => g.subcategory);
+              : groupMode === "custody"
+                ? custodyGroups.map((g) => g.custodyType)
+                : groupMode === "chain"
+                  ? chainGroups.map((g) => g.chain)
+                  : subcategoryGroups.map((g) => g.subcategory);
         setExpandedGroups(new Set(groupKeys));
         setExpanded(new Set(rows.map((r) => r.id)));
       }
@@ -260,7 +272,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
         return new Set(rows.map((r) => r.id));
       });
     }
-  }, [rows, sourceGroups, walletGroups, chainGroups, subcategoryGroups, groupMode, isGrouped, allGroupsExpanded, expanded]);
+  }, [rows, sourceGroups, walletGroups, custodyGroups, chainGroups, subcategoryGroups, groupMode, isGrouped, allGroupsExpanded, expanded]);
 
   const toggleGroupExpand = useCallback((groupKey: string) => {
     setExpandedGroups((prev) => {
@@ -297,7 +309,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:crypto", columns, 3);
+  } = useColumnConfig("colConfig:crypto", columns, 5);
 
   const ctx: RenderContext = { primaryCurrency, fxRates: {} };
 
@@ -365,6 +377,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                       const groupKeys =
                         next === "source" ? buildCryptoPositionGroups(rows).map(g => g.acquisitionMethod)
                         : next === "wallet" ? buildCryptoWalletGroups(rows).map(g => g.walletName)
+                        : next === "custody" ? buildCryptoCustodyPositionGroups(rows).map(g => g.custodyType)
                         : next === "chain" ? buildCryptoChainGroups(rows).map(g => g.chain)
                         : buildCryptoSubcategoryGroups(rows).map(g => g.subcategory);
                       setExpandedGroups(new Set(groupKeys));
@@ -384,7 +397,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                   )}
                   {isGrouped && (
                     <span className="text-[10px] font-medium">
-                      {groupMode === "source" ? "Source" : groupMode === "wallet" ? "Wallet" : groupMode === "chain" ? "Chain" : "Type"}
+                      {groupMode === "source" ? "Source" : groupMode === "wallet" ? "Wallet" : groupMode === "custody" ? "Custody" : groupMode === "chain" ? "Chain" : "Type"}
                     </span>
                   )}
                 </button>
@@ -601,7 +614,67 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                       </div>
                     );
                   })
-                : groupMode === "chain"
+                : groupMode === "custody"
+                  ? custodyGroups.map((group) => {
+                      const isGroupOpen = expandedGroups.has(group.custodyType);
+                      const groupAssetIds = group.entries.map((e) => e.row.asset.id);
+                      const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
+                      const borderColor = group.custodyType === "custodial" ? "border-l-sky-500/40" : "border-l-violet-500/40";
+                      return (
+                        <div key={`mcugroup:${group.custodyType}`}>
+                          <button
+                            onClick={() => toggleGroupExpand(group.custodyType)}
+                            className={`w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 ${borderColor}`}
+                          >
+                            {isGroupOpen ? (
+                              <ChevronDown className="w-3 h-3 text-zinc-500" />
+                            ) : (
+                              <ChevronRight className="w-3 h-3 text-zinc-500" />
+                            )}
+                            <span
+                              className={`text-sm font-semibold uppercase tracking-wider ${group.color}`}
+                            >
+                              {group.label}
+                            </span>
+                            <span className="text-[11px] text-zinc-600">
+                              ({group.entryCount})
+                            </span>
+                            <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
+                              {formatCurrency(group.totalValue, primaryCurrency)}
+                            </span>
+                          </button>
+
+                          {isGroupOpen && (
+                            <div className="space-y-2 ml-6">
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={() => toggleGroupItems(groupAssetIds)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors"
+                                >
+                                  {allItemsExpanded ? <ChevronsDownUp className="w-3.5 h-3.5" /> : <ChevronsUpDown className="w-3.5 h-3.5" />}
+                                  <span>{allItemsExpanded ? "Collapse all" : "Expand all"}</span>
+                                </button>
+                              </div>
+                              {sortEntries(group.entries).map((entry) => (
+                                <MobileCryptoCard
+                                  key={`${group.custodyType}:${entry.row.id}`}
+                                  row={entry.row}
+                                  expanded={expanded.has(entry.row.asset.id)}
+                                  toggleExpand={toggleExpand}
+                                  handleEdit={handleEdit}
+                                  handleDelete={handleDelete}
+                                  primaryCurrency={primaryCurrency}
+                                  overrideQty={entry.groupQty}
+                                  overrideValue={entry.groupValue}
+                                  groupPositions={entry.positions}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  : groupMode === "chain"
                   ? chainGroups.map((group, gi) => {
                       const isGroupOpen = expandedGroups.has(group.chain);
                       const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
@@ -881,7 +954,65 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                           </Fragment>
                         );
                       })
-                    : groupMode === "chain"
+                    : groupMode === "custody"
+                      ? custodyGroups.map((group) => {
+                          const isGroupOpen = expandedGroups.has(group.custodyType);
+                          const groupAssetIds = group.entries.map((e) => e.row.asset.id);
+                          const allItemsExpanded = groupAssetIds.length > 0 && groupAssetIds.every((id) => expanded.has(id));
+                          const borderColor = group.custodyType === "custodial" ? "border-l-sky-500/40" : "border-l-violet-500/40";
+                          return (
+                            <Fragment key={`cugroup:${group.custodyType}`}>
+                              <tr
+                                className={`border-b border-zinc-800/30 border-l-2 ${borderColor} bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors`}
+                                onClick={() => toggleGroupExpand(group.custodyType)}
+                              >
+                                <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    {isGroupOpen ? (
+                                      <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                                    ) : (
+                                      <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                                    )}
+                                    <span
+                                      className={`text-sm font-semibold uppercase tracking-wider ${group.color}`}
+                                    >
+                                      {group.label}
+                                    </span>
+                                    <span className="text-[11px] text-zinc-600">
+                                      {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
+                                    </span>
+                                    {isGroupOpen && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleGroupItems(groupAssetIds); }}
+                                        className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-600 hover:text-zinc-400 transition-colors"
+                                        title={allItemsExpanded ? "Collapse items" : "Expand items"}
+                                      >
+                                        {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
+                                      </button>
+                                    )}
+                                    <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
+                                      {formatCurrency(group.totalValue, primaryCurrency)}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td />
+                              </tr>
+
+                              {isGroupOpen &&
+                                group.entries.map((entry) => (
+                                  <GroupedCryptoEntryRows
+                                    key={`${group.custodyType}:${entry.row.id}`}
+                                    entry={entry}
+                                    expanded={expanded}
+                                    orderedColumns={orderedColumns}
+                                    ctx={ctx}
+                                    primaryCurrency={primaryCurrency}
+                                  />
+                                ))}
+                            </Fragment>
+                          );
+                        })
+                      : groupMode === "chain"
                       ? chainGroups.map((group, gi) => {
                           const isGroupOpen = expandedGroups.has(group.chain);
                           const groupColor = GROUP_PALETTE[gi % GROUP_PALETTE.length];
@@ -1084,19 +1215,32 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                               </tr>
 
                               {rowExpanded && row.asset.positions.length > 0 &&
-                                row.asset.positions.map((pos) => {
-                                  const posValue = pos.quantity * row.priceInBase;
+                                groupPositionsByCustody(row.asset.positions, row.priceInBase).map((group) => {
+                                  const groupTotal = group.positions.reduce((s, p) => s + p.quantity * row.priceInBase, 0);
                                   return (
-                                    <ExpandedCryptoRow
-                                      key={pos.id}
-                                      walletName={pos.wallet_name}
-                                      walletType={pos.wallet_type}
-                                      quantity={formatQuantity(pos.quantity, 8)}
-                                      value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
-                                      apy={pos.apy}
-                                      acquisitionMethod={pos.acquisition_method ?? "bought"}
-                                      orderedColumns={orderedColumns}
-                                    />
+                                    <Fragment key={group.key}>
+                                      <CustodyGroupHeader
+                                        group={group}
+                                        subtotal={groupTotal > 0 ? formatCurrency(groupTotal, primaryCurrency) : "—"}
+                                        colSpan={orderedColumns.length}
+                                        indent="pl-10"
+                                      />
+                                      {group.positions.map((pos) => {
+                                        const posValue = pos.quantity * row.priceInBase;
+                                        return (
+                                          <ExpandedCryptoRow
+                                            key={pos.id}
+                                            walletName={pos.wallet_name}
+                                            walletType={pos.wallet_type}
+                                            quantity={formatQuantity(pos.quantity, 8)}
+                                            value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                                            apy={pos.apy}
+                                            acquisitionMethod={pos.acquisition_method ?? "bought"}
+                                            orderedColumns={orderedColumns}
+                                          />
+                                        );
+                                      })}
+                                    </Fragment>
                                   );
                                 })}
 
@@ -1195,20 +1339,33 @@ function GroupedCryptoEntryRows({
       </tr>
 
       {rowExpanded && entry.positions.length > 0 &&
-        entry.positions.map((pos) => {
-          const posValue = pos.quantity * row.priceInBase;
+        groupPositionsByCustody(entry.positions, row.priceInBase).map((group) => {
+          const groupTotal = group.positions.reduce((s, p) => s + p.quantity * row.priceInBase, 0);
           return (
-            <ExpandedCryptoRow
-              key={pos.id}
-              walletName={pos.wallet_name}
-              walletType={pos.wallet_type}
-              quantity={formatQuantity(pos.quantity, 8)}
-              value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
-              apy={pos.apy}
-              acquisitionMethod={pos.acquisition_method ?? "bought"}
-              orderedColumns={orderedColumns}
-              grouped
-            />
+            <Fragment key={group.key}>
+              <CustodyGroupHeader
+                group={group}
+                subtotal={groupTotal > 0 ? formatCurrency(groupTotal, primaryCurrency) : "—"}
+                colSpan={orderedColumns.length}
+                indent="pl-16"
+              />
+              {group.positions.map((pos) => {
+                const posValue = pos.quantity * row.priceInBase;
+                return (
+                  <ExpandedCryptoRow
+                    key={pos.id}
+                    walletName={pos.wallet_name}
+                    walletType={pos.wallet_type}
+                    quantity={formatQuantity(pos.quantity, 8)}
+                    value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                    apy={pos.apy}
+                    acquisitionMethod={pos.acquisition_method ?? "bought"}
+                    orderedColumns={orderedColumns}
+                    grouped
+                  />
+                );
+              })}
+            </Fragment>
           );
         })}
 
@@ -1233,6 +1390,61 @@ const WALLET_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   custodial: { label: "Exchange", color: "text-sky-400" },
   non_custodial: { label: "Self-custody", color: "text-violet-400" },
 };
+
+// ── Group positions by custody type ────────────────────────────
+
+interface CustodyGroup {
+  key: string;
+  label: string;
+  borderColor: string;
+  textColor: string;
+  positions: CryptoAssetWithPositions["positions"];
+}
+
+function groupPositionsByCustody(
+  positions: CryptoAssetWithPositions["positions"],
+  priceInBase: number,
+): CustodyGroup[] {
+  const exchange = positions.filter((p) => p.wallet_type === "custodial");
+  const selfCustody = positions.filter((p) => p.wallet_type !== "custodial");
+
+  const byValue = (a: { quantity: number }, b: { quantity: number }) =>
+    b.quantity * priceInBase - a.quantity * priceInBase;
+  exchange.sort(byValue);
+  selfCustody.sort(byValue);
+
+  return [
+    { key: "custodial", label: "Exchange", borderColor: "border-l-sky-500/60", textColor: "text-sky-400", positions: exchange },
+    { key: "non_custodial", label: "Self-custody", borderColor: "border-l-violet-500/60", textColor: "text-violet-400", positions: selfCustody },
+  ].filter((g) => g.positions.length > 0);
+}
+
+function CustodyGroupHeader({
+  group,
+  subtotal,
+  colSpan,
+  indent,
+}: {
+  group: CustodyGroup;
+  subtotal: string;
+  colSpan: number;
+  indent: string;
+}) {
+  return (
+    <tr className={`bg-zinc-900/40 border-l-2 ${group.borderColor}`}>
+      <td colSpan={colSpan} className={`${indent} pr-4 py-1.5`}>
+        <div className="flex items-center justify-between">
+          <span className={`text-[11px] font-medium ${group.textColor}`}>
+            {group.label} ({group.positions.length})
+          </span>
+          <span className="text-[11px] text-zinc-500 tabular-nums">
+            {subtotal}
+          </span>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 function ExpandedCryptoRow({
   walletName,
@@ -1265,8 +1477,14 @@ function ExpandedCryptoRow({
           return (
             <td key={col.key} className={`${assetPl} pr-4 py-2`}>
               <span className="text-xs text-zinc-500">{walletName}</span>
+            </td>
+          );
+        }
+        if (col.key === "custody") {
+          return (
+            <td key={col.key} className={`px-4 py-2 text-left ${hidden}`}>
               {wtInfo && (
-                <span className={`ml-1.5 text-[10px] font-medium ${wtInfo.color}`}>
+                <span className={`text-xs font-medium ${wtInfo.color}`}>
                   {wtInfo.label}
                 </span>
               )}
@@ -1415,38 +1633,42 @@ function MobileCryptoCard({
 
           {displayPositions.length > 0 && (
             <div className="mt-3 pt-2 border-t border-zinc-800/20 space-y-1">
-              {displayPositions.map((pos) => {
-                const posValue = pos.quantity * row.priceInBase;
-                const method = pos.acquisition_method ?? "bought";
-                const wtInfo = WALLET_TYPE_LABELS[pos.wallet_type];
-                return (
-                  <div key={pos.id} className="flex justify-between text-xs">
-                    <span className="text-zinc-500">
-                      {pos.wallet_name}
-                      {wtInfo && (
-                        <span className={`ml-1 text-[10px] font-medium ${wtInfo.color}`}>
-                          {wtInfo.label}
-                        </span>
-                      )}
+              {groupPositionsByCustody(displayPositions, row.priceInBase).map((group) => (
+                <Fragment key={group.key}>
+                  <div className={`flex items-center gap-2 pt-1 ${group.key !== "custodial" ? "mt-2" : ""}`}>
+                    <span className={`text-[10px] font-medium ${group.textColor}`}>
+                      {group.label} ({group.positions.length})
                     </span>
-                    <span className="text-zinc-400 tabular-nums">
-                      {formatQuantity(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
-                      {pos.apy != null && pos.apy > 0 && (
-                        <>
-                          {" · "}
-                          <span className="text-emerald-400 font-medium">
-                            {pos.apy.toFixed(pos.apy % 1 === 0 ? 0 : 2)}%
-                          </span>
-                        </>
-                      )}
-                      {" · "}
-                      <span className={ACQUISITION_COLORS[method] ?? "text-zinc-400"}>
-                        {ACQUISITION_LABELS[method] ?? method}
-                      </span>
-                    </span>
+                    <div className="flex-1 border-t border-zinc-800/30" />
                   </div>
-                );
-              })}
+                  {group.positions.map((pos) => {
+                    const posValue = pos.quantity * row.priceInBase;
+                    const method = pos.acquisition_method ?? "bought";
+                    return (
+                      <div key={pos.id} className="flex justify-between text-xs">
+                        <span className="text-zinc-500">
+                          {pos.wallet_name}
+                        </span>
+                        <span className="text-zinc-400 tabular-nums">
+                          {formatQuantity(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
+                          {pos.apy != null && pos.apy > 0 && (
+                            <>
+                              {" · "}
+                              <span className="text-emerald-400 font-medium">
+                                {pos.apy.toFixed(pos.apy % 1 === 0 ? 0 : 2)}%
+                              </span>
+                            </>
+                          )}
+                          {" · "}
+                          <span className={ACQUISITION_COLORS[method] ?? "text-zinc-400"}>
+                            {ACQUISITION_LABELS[method] ?? method}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </Fragment>
+              ))}
             </div>
           )}
 

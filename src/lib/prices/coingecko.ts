@@ -65,6 +65,8 @@ export async function getPrices(
 // ── Coin detail (chain + categories) ──────────────────────
 
 export interface CoinGeckoDetail {
+  /** Display name from CoinGecko (e.g. "Bitcoin", "BNB") */
+  name: string;
   asset_platform_id: string | null;
   categories: string[];
   /** Map of platform ID → contract address (for multi-chain tokens) */
@@ -93,6 +95,7 @@ export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | n
   }
 
   return {
+    name: data.name ?? "",
     asset_platform_id: data.asset_platform_id ?? null,
     categories: Array.isArray(data.categories) ? data.categories : [],
     platforms,
@@ -168,13 +171,14 @@ const CATEGORY_TO_SUBCATEGORY: [RegExp, string][] = [
   [/governance/i, "Governance"],
 ];
 
-/** Derive a friendly chain name from CoinGecko detail */
+/** Derive a friendly chain name from CoinGecko detail.
+ *  Priority: hardcoded override → CoinGecko display name → raw platform id */
 export function inferChain(coinId: string, detail: CoinGeckoDetail): string {
   if (detail.asset_platform_id) {
     return PLATFORM_TO_CHAIN[detail.asset_platform_id] ?? detail.asset_platform_id;
   }
-  // Native coin — use the coin's own chain
-  return NATIVE_CHAIN_MAP[coinId] ?? "";
+  // Native L1 coin — prefer our curated name, fall back to CoinGecko's name
+  return NATIVE_CHAIN_MAP[coinId] ?? detail.name ?? "";
 }
 
 /** Get available chain names from a coin's platforms map.
@@ -183,7 +187,7 @@ export function getAvailableChains(coinId: string, detail: CoinGeckoDetail): str
   const platformKeys = Object.keys(detail.platforms);
   if (platformKeys.length === 0) {
     // Native L1 coin — only chain is itself
-    const native = NATIVE_CHAIN_MAP[coinId];
+    const native = NATIVE_CHAIN_MAP[coinId] ?? detail.name;
     return native ? [native] : [];
   }
   // Multi-chain token — map each platform to a friendly name

@@ -276,6 +276,87 @@ export function buildCryptoSubcategoryGroups(rows: CryptoRow[]): CryptoSubcatego
   return groups;
 }
 
+// ── Position-level group types for group-by-custody mode ────
+
+/** A group of entries for one custody type (exchange vs self-custody) */
+export interface CryptoCustodyPositionGroup {
+  custodyType: string;
+  label: string;
+  color: string;
+  entries: PositionGroupEntry[];
+  totalValue: number;
+  entryCount: number;
+}
+
+const CUSTODY_META: Record<string, { label: string; color: string }> = {
+  custodial: { label: "Exchange", color: "text-sky-400" },
+  non_custodial: { label: "Self-custody", color: "text-violet-400" },
+};
+
+/**
+ * Build position-level groups by custody type (wallet_type).
+ * An asset with positions on both exchange and self-custody appears in both groups.
+ */
+export function buildCryptoCustodyPositionGroups(rows: CryptoRow[]): CryptoCustodyPositionGroup[] {
+  const groupMap = new Map<string, PositionGroupEntry[]>();
+
+  for (const row of rows) {
+    // Split this asset's positions by wallet_type
+    const byType = new Map<string, CryptoAssetWithPositions["positions"]>();
+    for (const pos of row.asset.positions) {
+      const wt = pos.wallet_type ?? "custodial";
+      const arr = byType.get(wt) ?? [];
+      arr.push(pos);
+      byType.set(wt, arr);
+    }
+
+    // Create one entry per (asset, custody type) pair
+    for (const [wt, positions] of byType) {
+      const groupQty = positions.reduce((sum, p) => sum + p.quantity, 0);
+      const groupValue = groupQty * row.priceInBase;
+
+      const entry: PositionGroupEntry = { row, positions, groupQty, groupValue };
+      const existing = groupMap.get(wt) ?? [];
+      existing.push(entry);
+      groupMap.set(wt, existing);
+    }
+  }
+
+  // Fixed order: exchange first, self-custody second
+  const order = ["custodial", "non_custodial"];
+  const groups: CryptoCustodyPositionGroup[] = [];
+  for (const wt of order) {
+    const entries = groupMap.get(wt);
+    if (!entries || entries.length === 0) continue;
+    const meta = CUSTODY_META[wt] ?? { label: wt, color: "text-zinc-400" };
+    const totalValue = entries.reduce((sum, e) => sum + e.groupValue, 0);
+    groups.push({
+      custodyType: wt,
+      label: meta.label,
+      color: meta.color,
+      entries: entries.sort((a, b) => b.groupValue - a.groupValue),
+      totalValue,
+      entryCount: entries.length,
+    });
+  }
+
+  // Append any unexpected types not in the fixed order
+  for (const [wt, entries] of groupMap) {
+    if (order.includes(wt)) continue;
+    const totalValue = entries.reduce((sum, e) => sum + e.groupValue, 0);
+    groups.push({
+      custodyType: wt,
+      label: wt,
+      color: "text-zinc-400",
+      entries: entries.sort((a, b) => b.groupValue - a.groupValue),
+      totalValue,
+      entryCount: entries.length,
+    });
+  }
+
+  return groups;
+}
+
 // ── Formatters ───────────────────────────────────────────────
 
 export function formatNumber(n: number, decimals = 2): string {
@@ -350,7 +431,7 @@ export const CRYPTO_SORT_OPTIONS: { key: CryptoSortKey; label: string; defaultDi
 /** Maps column keys to sort keys (for clickable desktop headers) */
 export const COLUMN_TO_SORT: Record<string, CryptoSortKey | undefined> = {
   asset: "name",
-  change24h: "change",
+  price: "change",
   value: "value",
   source: "source",
   chain: "chain",
@@ -434,67 +515,35 @@ export function getCryptoColumns(handlers: {
       ),
     },
     {
-      key: "price",
-      label: "Price",
-      header: "Price",
-      align: "right",
-      width: "w-32",
-      renderCell: (row, ctx) => {
-        const showBase = ctx.primaryCurrency.toUpperCase() !== "USD";
-        return (
-          <div className="tabular-nums">
-            <span className="text-sm text-zinc-300">
-              {row.priceUsd > 0
-                ? row.priceUsd >= 1
-                  ? formatCurrency(row.priceUsd, "USD")
-                  : `$${row.priceUsd.toFixed(6)}`
-                : "—"}
-            </span>
-            {showBase && row.priceInBase > 0 && (
-              <span className="block text-xs text-zinc-500">
-                {row.priceInBase >= 1
-                  ? formatCurrency(row.priceInBase, ctx.primaryCurrency)
-                  : `${row.priceInBase.toFixed(6)}`}
-              </span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: "change24h",
-      label: "24h Change",
-      header: "24h",
-      align: "right",
-      width: "w-20",
+      key: "custody",
+      label: "Custody",
+      header: "Custody",
+      align: "left",
+      width: "w-24",
       hiddenBelow: "md",
       renderCell: (row) => {
-        const color =
-          row.change24h > 0
-            ? "text-emerald-400"
-            : row.change24h < 0
-              ? "text-red-400"
-              : "text-zinc-500";
-        return (
-          <span className={`text-sm tabular-nums ${color}`}>
-            {row.change24h !== 0
-              ? `${row.change24h > 0 ? "+" : ""}${row.change24h.toFixed(1)}%`
-              : "—"}
-          </span>
-        );
+        const positions = row.asset.positions;
+        if (positions.length === 0)
+          return <span className="text-xs text-zinc-600">—</span>;
+
+        const types = new Set(positions.map((p) => p.wallet_type));
+
+        if (types.size === 1) {
+          const wt = [...types][0];
+          const info: Record<string, { label: string; color: string }> = {
+            custodial: { label: "Exchange", color: "text-sky-400" },
+            non_custodial: { label: "Self-custody", color: "text-violet-400" },
+          };
+          const match = info[wt];
+          return match ? (
+            <span className={`text-xs font-medium ${match.color}`}>{match.label}</span>
+          ) : (
+            <span className="text-xs text-zinc-600">—</span>
+          );
+        }
+
+        return <span className="text-xs font-medium text-zinc-400">Mixed</span>;
       },
-    },
-    {
-      key: "holdings",
-      label: "Holdings",
-      header: "Holdings",
-      align: "right",
-      width: "w-32",
-      renderCell: (row) => (
-        <span className="text-xs text-zinc-500 tabular-nums">
-          {row.totalQty > 0 ? formatQuantity(row.totalQty, 8) : "—"}
-        </span>
-      ),
     },
     {
       key: "source",
@@ -564,6 +613,47 @@ export function getCryptoColumns(handlers: {
         ) : (
           <span className="text-xs text-zinc-600">—</span>
         ),
+    },
+    {
+      key: "price",
+      label: "Price",
+      header: "Price",
+      align: "right",
+      width: "w-32",
+      renderCell: (row) =>
+        row.priceUsd > 0 ? (
+          <div className="tabular-nums">
+            <span className="text-sm text-zinc-300">
+              {row.priceUsd >= 1
+                ? formatCurrency(row.priceUsd, "USD")
+                : `$${row.priceUsd.toFixed(6)}`}
+            </span>
+            {row.change24h !== 0 && (
+              <span
+                className={`block text-xs ${
+                  row.change24h >= 0 ? "text-emerald-400" : "text-red-400"
+                }`}
+              >
+                {row.change24h >= 0 ? "+" : ""}
+                {row.change24h.toFixed(2)}%
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-zinc-600">No data</span>
+        ),
+    },
+    {
+      key: "holdings",
+      label: "Holdings",
+      header: "Holdings",
+      align: "right",
+      width: "w-32",
+      renderCell: (row) => (
+        <span className="text-xs text-zinc-500 tabular-nums">
+          {row.totalQty > 0 ? formatQuantity(row.totalQty, 8) : "—"}
+        </span>
+      ),
     },
     {
       key: "value",

@@ -52,6 +52,7 @@ export function PositionEditor({
   }, [existingChains, asset.chain]);
 
   const [chain, setChain] = useState(asset.chain ?? "");
+  const [chainOpen, setChainOpen] = useState(false);
   const [subcategory, setSubcategory] = useState(asset.subcategory ?? "");
   const [subcategoryOpen, setSubcategoryOpen] = useState(false);
   const [metaSaving, setMetaSaving] = useState(false);
@@ -224,29 +225,47 @@ export function PositionEditor({
         {/* Chain + Type */}
         <div className="space-y-3">
           <div className="flex items-end gap-2">
-            {/* Chain */}
-            <div className="flex-1">
+            {/* Chain combobox */}
+            <div className="relative flex-1">
               <label className="block text-xs text-zinc-500 mb-1">Chain</label>
-              {chainOptions.length > 0 ? (
-                <select
-                  value={chain}
-                  onChange={(e) => setChain(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                >
-                  <option value="">Select chain...</option>
-                  {chainOptions.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={chain}
-                  onChange={(e) => setChain(e.target.value)}
-                  placeholder="e.g. Ethereum, Solana..."
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
-              )}
+              <input
+                type="text"
+                value={chain}
+                onChange={(e) => {
+                  setChain(e.target.value);
+                  setChainOpen(true);
+                }}
+                onFocus={() => setChainOpen(true)}
+                onBlur={() => setTimeout(() => setChainOpen(false), 150)}
+                placeholder="e.g. Ethereum, BNB Chain..."
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              />
+              {chainOpen && chainOptions.length > 0 && (() => {
+                const filtered = chainOptions.filter(
+                  (c) =>
+                    c.toLowerCase().includes(chain.toLowerCase()) &&
+                    c.toLowerCase() !== chain.toLowerCase()
+                );
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                    {filtered.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setChain(c);
+                          setChainOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Type combobox */}
