@@ -151,6 +151,7 @@ export function AccountsView({
   const [showAddExchangeDeposit, setShowAddExchangeDeposit] = useState<string | null>(null);
   const [editingBrokerDeposit, setEditingBrokerDeposit] = useState<BrokerDeposit | null>(null);
   const [showAddBrokerDeposit, setShowAddBrokerDeposit] = useState<string | null>(null);
+  const [showAllInstitutions, setShowAllInstitutions] = useState(false);
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -159,6 +160,9 @@ export function AccountsView({
     label: string;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Active row (expand-to-edit: click a row to reveal actions)
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
 
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
 
@@ -364,7 +368,7 @@ export function AccountsView({
       group.cash.push({
         id: dep.id,
         type: "exchange_deposit",
-        label: `Exchange deposit (${dep.wallet_name})`,
+        label: "Exchange deposit",
         currency: dep.currency,
         amount: dep.amount,
         valueBase,
@@ -383,7 +387,7 @@ export function AccountsView({
       group.cash.push({
         id: dep.id,
         type: "broker_deposit",
-        label: `Broker deposit (${dep.broker_name})`,
+        label: "Broker deposit",
         currency: dep.currency,
         amount: dep.amount,
         valueBase,
@@ -423,16 +427,69 @@ export function AccountsView({
   const nonEmptyGroups = groups.filter(
     (g) => g.crypto.length > 0 || g.stocks.length > 0 || g.cash.length > 0
   );
+  const totalCrypto = groups.reduce((sum, g) => sum + g.crypto.reduce((s, c) => s + c.valueBase, 0), 0);
+  const totalStocks = groups.reduce((sum, g) => sum + g.stocks.reduce((s, st) => s + st.valueBase, 0), 0);
+  const totalCash = groups.reduce((sum, g) => sum + g.cash.reduce((s, c) => s + c.valueBase, 0), 0);
+  const totalAssets = groups.reduce((sum, g) => sum + g.crypto.length + g.stocks.length + g.cash.length, 0);
 
   return (
-    <div className="space-y-3">
-      {/* Summary header */}
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-zinc-400">
-          {nonEmptyGroups.length} institution{nonEmptyGroups.length !== 1 ? "s" : ""} with assets
-          <span className="mx-2 text-zinc-600">|</span>
-          Total: <span className="text-zinc-200 font-medium">{formatCurrency(grandTotal, primaryCurrency)}</span>
-        </p>
+    <div>
+      {/* Summary stat card */}
+      <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-4 md:p-5">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          {/* Left: Total + allocation breakdown */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between md:justify-start md:gap-6">
+              <div>
+                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                  Portfolio Total
+                </p>
+                <p className="text-3xl font-semibold text-zinc-100 mt-1 tabular-nums">
+                  {formatCurrency(grandTotal, primaryCurrency)}
+                </p>
+              </div>
+              <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
+                <p>{nonEmptyGroups.length} institution{nonEmptyGroups.length !== 1 ? "s" : ""}</p>
+                <p>{totalAssets} asset{totalAssets !== 1 ? "s" : ""}</p>
+              </div>
+            </div>
+
+            {/* Allocation breakdown — stacked bar + legend */}
+            {grandTotal > 0 && (() => {
+              const slices = ([
+                { label: "Crypto", value: totalCrypto, bar: "bg-orange-500/70", dot: "bg-orange-500" },
+                { label: "Equities", value: totalStocks, bar: "bg-blue-500/70", dot: "bg-blue-500" },
+                { label: "Cash", value: totalCash, bar: "bg-emerald-500/70", dot: "bg-emerald-500" },
+              ] as const).filter(s => s.value > 0).map(s => ({ ...s, pct: (s.value / grandTotal) * 100 }));
+              return (
+                <div className="mt-4 max-w-sm">
+                  {/* Stacked bar */}
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800/50 gap-px">
+                    {slices.map(s => (
+                      <div key={s.label} className={`${s.bar} rounded-sm`} style={{ width: `${s.pct}%` }} />
+                    ))}
+                  </div>
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px]">
+                    {slices.map(s => (
+                      <span key={s.label} className="flex items-center gap-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                        <span className="text-zinc-500">{s.label}</span>
+                        <span className="text-zinc-400 tabular-nums">{s.pct.toFixed(0)}%</span>
+                        <span className="text-zinc-600 tabular-nums">{formatCurrency(s.value, primaryCurrency)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+        </div>
+      </div>
+
+      {/* Action bar — matches crypto/stocks/cash placement */}
+      <div className="flex items-center justify-end mt-2 mb-3">
         <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
@@ -443,12 +500,27 @@ export function AccountsView({
       </div>
 
       {/* Institution cards */}
-      {groups.map((group) => {
+      <div className="space-y-2">
+      {(() => {
+        const VISIBLE_COUNT = 8;
+        const visibleGroups = groups.slice(0, VISIBLE_COUNT);
+        const hiddenGroups = groups.slice(VISIBLE_COUNT);
+        const displayGroups = showAllInstitutions ? groups : visibleGroups;
+        return (<>
+      {displayGroups.map((group) => {
         const { institution, crypto, stocks, cash, totalValue } = group;
         const isEmpty = crypto.length === 0 && stocks.length === 0 && cash.length === 0;
         const isExpanded = expandedIds.has(institution.id);
         const isSelfCustody = institution.id.startsWith("__wallet__");
         const HeaderIcon = isSelfCustody ? Shield : Building2;
+        const cryptoValue = crypto.reduce((s, c) => s + c.valueBase, 0);
+        const stocksValue = stocks.reduce((s, st) => s + st.valueBase, 0);
+        const cashValue = cash.reduce((s, c) => s + c.valueBase, 0);
+        const assetCounts = [
+          crypto.length > 0 ? `${crypto.length} crypto` : "",
+          stocks.length > 0 ? `${stocks.length} equit${stocks.length === 1 ? "y" : "ies"}` : "",
+          cash.length > 0 ? `${cash.length} cash` : "",
+        ].filter(Boolean).join(" · ");
 
         return (
           <div
@@ -465,59 +537,84 @@ export function AccountsView({
               tabIndex={0}
               onClick={() => toggleExpand(institution.id)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpand(institution.id); } }}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+              className="w-full px-4 py-2.5 hover:bg-zinc-800/30 transition-colors cursor-pointer"
             >
-              <div className="flex items-center gap-3 min-w-0">
-                {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
-                )}
-                <HeaderIcon className={`w-4 h-4 shrink-0 ${isSelfCustody ? "text-amber-500/70" : "text-zinc-400"}`} />
-                <span className="font-medium text-zinc-100 truncate">
-                  {institution.name}
-                </span>
-                {/* Role badges */}
-                <div className="flex gap-1.5">
-                  {isSelfCustody ? (
-                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-500/70">
-                      self-custody
-                    </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" />
                   ) : (
-                    institution.roles.map((role) => (
-                      <span
-                        key={role}
-                        className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500"
-                      >
-                        {role}
+                    <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+                  )}
+                  <HeaderIcon className={`w-4 h-4 shrink-0 ${isSelfCustody ? "text-amber-500/70" : "text-zinc-400"}`} />
+                  <span className="font-medium text-zinc-100 truncate">
+                    {institution.name}
+                  </span>
+                  {/* Role badges + asset counts — only when expanded */}
+                  {isExpanded && (
+                    <>
+                      <div className="hidden md:flex gap-1.5">
+                        {isSelfCustody ? (
+                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-500/70">
+                            self-custody
+                          </span>
+                        ) : (
+                          institution.roles.map((role) => (
+                            <span
+                              key={role}
+                              className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500"
+                            >
+                              {role}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      {assetCounts && (
+                        <span className="hidden md:inline text-[11px] text-zinc-600">{assetCounts}</span>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0 pl-4">
+                  {/* Edit button — visible on expand (mobile) or hover (desktop) */}
+                  {!isSelfCustody && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingInstitution(institution);
+                      }}
+                      className={`p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors ${
+                        isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                      }`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <div className="text-right">
+                    {isEmpty ? (
+                      <span className="text-sm text-zinc-600">No assets</span>
+                    ) : (
+                      <span className="text-sm font-medium text-zinc-200">
+                        {formatCurrency(totalValue, primaryCurrency)}
                       </span>
-                    ))
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0 pl-4">
-                {/* Edit button — only for real institutions */}
-                {!isSelfCustody && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingInstitution(institution);
-                    }}
-                    className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors opacity-0 group-hover:opacity-100"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <div className="text-right">
-                  {isEmpty ? (
-                    <span className="text-sm text-zinc-600">No assets</span>
-                  ) : (
-                    <span className="text-sm font-medium text-zinc-200">
-                      {formatCurrency(totalValue, primaryCurrency)}
-                    </span>
+              {/* Allocation bar — only when expanded */}
+              {isExpanded && !isEmpty && totalValue > 0 && (
+                <div className="flex h-1 rounded-full overflow-hidden bg-zinc-800/30 mt-2 ml-7 max-w-[120px]">
+                  {cryptoValue > 0 && (
+                    <div className="h-full bg-orange-500/50" style={{ width: `${(cryptoValue / totalValue) * 100}%` }} />
+                  )}
+                  {stocksValue > 0 && (
+                    <div className="h-full bg-blue-500/50" style={{ width: `${(stocksValue / totalValue) * 100}%` }} />
+                  )}
+                  {cashValue > 0 && (
+                    <div className="h-full bg-emerald-500/50" style={{ width: `${(cashValue / totalValue) * 100}%` }} />
                   )}
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Expanded content */}
@@ -535,37 +632,56 @@ export function AccountsView({
                     {crypto
                       .sort((a, b) => b.valueBase - a.valueBase)
                       .map((row) => (
-                        <div
-                          key={row.positionId}
-                          className="group/row flex items-center justify-between py-1.5 text-sm"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-zinc-200 font-medium">{row.ticker}</span>
-                            <span className="text-zinc-500 truncate">{row.name}</span>
-                            <span className="text-zinc-600 text-xs">on {row.walletName}</span>
-                            {row.apy > 0 && (
-                              <span className="text-emerald-500/70 text-xs">
-                                {row.apy}% APY
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0 pl-4">
-                            <RowActions
-                              onEdit={() => {
-                                const asset = cryptoAssets.find((a) => a.id === row.assetId);
-                                if (asset) setEditingCryptoAsset(asset);
-                              }}
-                              onDelete={() =>
-                                setDeleteTarget({ type: "crypto", id: row.assetId, label: `${row.ticker} (${row.name})` })
-                              }
-                            />
-                            <span className="text-zinc-500 text-xs tabular-nums">
-                              {formatQuantity(row.quantity)}
+                        <div key={row.positionId}>
+                          <div
+                            onClick={() => setActiveRowId(activeRowId === row.positionId ? null : row.positionId)}
+                            className={`flex items-center py-1.5 text-sm cursor-pointer rounded-md px-1 -mx-1 transition-colors ${
+                              activeRowId === row.positionId ? "bg-zinc-800/50" : "hover:bg-zinc-800/30"
+                            }`}
+                          >
+                            <span className="text-zinc-200 font-medium w-16 shrink-0">{row.ticker}</span>
+                            <span className="hidden md:inline text-zinc-500 truncate flex-1 min-w-0">
+                              {row.name}
+                              {row.apy > 0 && (
+                                <span className="text-emerald-500/70 text-xs ml-2">{row.apy}% APY</span>
+                              )}
                             </span>
-                            <span className="text-zinc-300 tabular-nums">
+                            <span className="flex-1 md:hidden" />
+                            <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
+                              ×{formatQuantity(row.quantity)}
+                            </span>
+                            <span className="text-zinc-200 tabular-nums w-28 text-right shrink-0 pl-2">
                               {formatCurrency(row.valueBase, primaryCurrency)}
                             </span>
                           </div>
+                          {activeRowId === row.positionId && (
+                            <div className="flex items-center gap-2 py-1.5 pl-1 mb-1">
+                              <span className="md:hidden text-xs text-zinc-500 truncate min-w-0">
+                                {row.name}
+                                {row.apy > 0 && <span className="text-emerald-500/70 ml-1">{row.apy}% APY</span>}
+                                <span className="text-zinc-600 mx-1">·</span>
+                                ×{formatQuantity(row.quantity)}
+                              </span>
+                              <span className="flex-1" />
+                              <button
+                                onClick={() => {
+                                  const asset = cryptoAssets.find((a) => a.id === row.assetId);
+                                  if (asset) { setActiveRowId(null); setEditingCryptoAsset(asset); }
+                                }}
+                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "crypto", id: row.assetId, label: `${row.ticker} (${row.name})` }); }}
+                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Delete
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                   </AssetSection>
@@ -583,32 +699,57 @@ export function AccountsView({
                     {stocks
                       .sort((a, b) => b.valueBase - a.valueBase)
                       .map((row) => (
-                        <div
-                          key={row.positionId}
-                          className="group/row flex items-center justify-between py-1.5 text-sm"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-zinc-200 font-medium">{row.ticker}</span>
-                            <span className="text-zinc-500 truncate">{row.name}</span>
-                            <span className="text-zinc-600 text-xs">via {row.brokerName}</span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0 pl-4">
-                            <RowActions
-                              onEdit={() => {
-                                const asset = stockAssets.find((a) => a.id === row.assetId);
-                                if (asset) setEditingStockAsset(asset);
-                              }}
-                              onDelete={() =>
-                                setDeleteTarget({ type: "stock", id: row.assetId, label: `${row.ticker} (${row.name})` })
-                              }
-                            />
-                            <span className="text-zinc-500 text-xs tabular-nums">
-                              {row.quantity} shares
+                        <div key={row.positionId}>
+                          <div
+                            onClick={() => setActiveRowId(activeRowId === row.positionId ? null : row.positionId)}
+                            className={`flex items-center py-1.5 text-sm cursor-pointer rounded-md px-1 -mx-1 transition-colors ${
+                              activeRowId === row.positionId ? "bg-zinc-800/50" : "hover:bg-zinc-800/30"
+                            }`}
+                          >
+                            <span className="text-zinc-200 font-medium w-16 shrink-0">{row.ticker}</span>
+                            <span className="w-11 shrink-0">
+                              {row.currency !== primaryCurrency && (
+                                <span className="text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-zinc-800 text-zinc-500 font-normal">
+                                  {row.currency}
+                                </span>
+                              )}
                             </span>
-                            <span className="text-zinc-300 tabular-nums">
+                            <span className="hidden md:inline text-zinc-500 truncate flex-1 min-w-0">{row.name}</span>
+                            <span className="flex-1 md:hidden" />
+                            <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
+                              ×{formatQuantity(row.quantity, 2)}
+                            </span>
+                            <span className="text-zinc-200 tabular-nums w-28 text-right shrink-0 pl-2">
                               {formatCurrency(row.valueBase, primaryCurrency)}
                             </span>
                           </div>
+                          {activeRowId === row.positionId && (
+                            <div className="flex items-center gap-2 py-1.5 pl-1 mb-1">
+                              <span className="md:hidden text-xs text-zinc-500 truncate min-w-0">
+                                {row.name}
+                                <span className="text-zinc-600 mx-1">·</span>
+                                ×{formatQuantity(row.quantity, 2)}
+                              </span>
+                              <span className="flex-1" />
+                              <button
+                                onClick={() => {
+                                  const asset = stockAssets.find((a) => a.id === row.assetId);
+                                  if (asset) { setActiveRowId(null); setEditingStockAsset(asset); }
+                                }}
+                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "stock", id: row.assetId, label: `${row.ticker} (${row.name})` }); }}
+                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Delete
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                   </AssetSection>
@@ -626,48 +767,72 @@ export function AccountsView({
                     {cash
                       .sort((a, b) => b.valueBase - a.valueBase)
                       .map((row) => (
-                        <div
-                          key={row.id}
-                          className="group/row flex items-center justify-between py-1.5 text-sm"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-zinc-200">{row.label}</span>
-                            <span className="text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">
-                              {row.currency}
-                            </span>
-                            {row.apy > 0 && (
-                              <span className="text-emerald-500/70 text-xs">
-                                {row.apy}% APY
+                        <div key={row.id}>
+                          <div
+                            onClick={() => setActiveRowId(activeRowId === row.id ? null : row.id)}
+                            className={`flex items-center py-1.5 text-sm cursor-pointer rounded-md px-1 -mx-1 transition-colors ${
+                              activeRowId === row.id ? "bg-zinc-800/50" : "hover:bg-zinc-800/30"
+                            }`}
+                          >
+                            <span className="text-zinc-200 font-medium truncate min-w-0 md:shrink-0 md:truncate-none">
+                              {row.label}
+                              <span className="text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-zinc-800 text-zinc-500 ml-1.5 font-normal">
+                                {row.currency}
                               </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0 pl-4">
-                            <RowActions
-                              onEdit={() => {
-                                if (row.type === "bank") {
-                                  const acct = bankAccounts.find((b) => b.id === row.id);
-                                  if (acct) setEditingBankAccount(acct);
-                                } else if (row.type === "exchange_deposit") {
-                                  const dep = exchangeDeposits.find((d) => d.id === row.id);
-                                  if (dep) setEditingExchangeDeposit(dep);
-                                } else {
-                                  const dep = brokerDeposits.find((d) => d.id === row.id);
-                                  if (dep) setEditingBrokerDeposit(dep);
-                                }
-                              }}
-                              onDelete={() =>
-                                setDeleteTarget({ type: row.type, id: row.id, label: row.label })
-                              }
-                            />
-                            {row.currency !== primaryCurrency && (
-                              <span className="text-zinc-500 text-xs tabular-nums">
+                            </span>
+                            <span className="hidden md:inline text-zinc-500 truncate flex-1 min-w-0 ml-3">
+                              {row.apy > 0 && (
+                                <span className="text-emerald-500/70 text-xs">{row.apy}% APY</span>
+                              )}
+                            </span>
+                            <span className="flex-1 md:hidden" />
+                            {row.currency !== primaryCurrency ? (
+                              <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
                                 {formatCurrency(row.amount, row.currency)}
                               </span>
+                            ) : (
+                              <span className="hidden md:inline w-20 shrink-0" />
                             )}
-                            <span className="text-zinc-300 tabular-nums">
+                            <span className="text-zinc-200 tabular-nums w-28 text-right shrink-0 pl-2">
                               {formatCurrency(row.valueBase, primaryCurrency)}
                             </span>
                           </div>
+                          {activeRowId === row.id && (
+                            <div className="flex items-center gap-2 py-1.5 pl-1 mb-1">
+                              <span className="md:hidden text-xs text-zinc-500 truncate min-w-0">
+                                {row.apy > 0 && <span className="text-emerald-500/70">{row.apy}% APY</span>}
+                                {row.apy > 0 && row.currency !== primaryCurrency && <span className="text-zinc-600 mx-1">·</span>}
+                                {row.currency !== primaryCurrency && formatCurrency(row.amount, row.currency)}
+                              </span>
+                              <span className="flex-1" />
+                              <button
+                                onClick={() => {
+                                  setActiveRowId(null);
+                                  if (row.type === "bank") {
+                                    const acct = bankAccounts.find((b) => b.id === row.id);
+                                    if (acct) setEditingBankAccount(acct);
+                                  } else if (row.type === "exchange_deposit") {
+                                    const dep = exchangeDeposits.find((d) => d.id === row.id);
+                                    if (dep) setEditingExchangeDeposit(dep);
+                                  } else {
+                                    const dep = brokerDeposits.find((d) => d.id === row.id);
+                                    if (dep) setEditingBrokerDeposit(dep);
+                                  }
+                                }}
+                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => { setActiveRowId(null); setDeleteTarget({ type: row.type, id: row.id, label: row.label }); }}
+                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Delete
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                   </AssetSection>
@@ -695,6 +860,27 @@ export function AccountsView({
           </div>
         );
       })}
+
+      {hiddenGroups.length > 0 && (
+        <button
+          onClick={() => setShowAllInstitutions(!showAllInstitutions)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
+        >
+          {showAllInstitutions ? (
+            <>
+              <ChevronUp className="w-4 h-4" />
+              Show less
+            </>
+          ) : (
+            <>
+              <ChevronDown className="w-4 h-4" />
+              Show {hiddenGroups.length} more
+            </>
+          )}
+        </button>
+      )}
+      </>); })()}
+      </div>
 
       {/* Empty state when no institutions */}
       {groups.length === 0 && (
@@ -858,28 +1044,6 @@ function AssetSection({
   );
 }
 
-/** Inline edit/delete controls that appear on row hover */
-function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
-  return (
-    <span className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
-      <button
-        onClick={(e) => { e.stopPropagation(); onEdit(); }}
-        className="p-1 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-        title="Edit"
-      >
-        <Pencil className="w-3 h-3" />
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-        title="Delete"
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
-    </span>
-  );
-}
-
 /** "Add" dropdown in each expanded institution card */
 function AddAssetDropdown({
   institution,
@@ -967,9 +1131,21 @@ function AddAssetDropdown({
 
 // ── Helpers ──────────────────────────────────────────────
 
-/** Format crypto quantities: full precision, trimming trailing zeros */
-function formatQuantity(qty: number): string {
-  if (qty >= 1) return qty.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  // For small quantities, show up to 8 decimal places
+/** Format asset quantities with consistent decimal places for column alignment.
+ *  @param decimals — max decimals (2 for stocks, 4 for crypto). Default 4 = crypto mode. */
+function formatQuantity(qty: number, decimals: number = 4): string {
+  // Stocks (decimals=2): always exactly 2 decimal places
+  if (decimals <= 2)
+    return qty.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  // Crypto ≥ 1: 2–4 decimals for alignment
+  if (qty >= 1)
+    return qty.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: decimals,
+    });
+  // Sub-unit crypto: up to 8 decimals, no minimum padding
   return qty.toLocaleString("en-US", { maximumFractionDigits: 8 });
 }

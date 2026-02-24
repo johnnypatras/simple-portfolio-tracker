@@ -1197,7 +1197,7 @@ function ExpandedBankRow({
         if (col.key === "actions") {
           return (
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
-              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center justify-end gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={onEdit}
                   className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
@@ -1304,7 +1304,7 @@ function ExpandedExchangeRow({
         if (col.key === "actions") {
           return (
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
-              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center justify-end gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={onEdit}
                   className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
