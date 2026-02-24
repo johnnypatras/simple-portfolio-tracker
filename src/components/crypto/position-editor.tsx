@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
 import type { CryptoAssetWithPositions, Wallet } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
@@ -56,6 +57,7 @@ export function PositionEditor({
         ...(chainChanged ? { chain: chain.trim() || null } : {}),
         ...(subcategoryChanged ? { subcategory: subcategory.trim() || null } : {}),
       });
+      toast.success("Asset updated");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
     } finally {
@@ -135,6 +137,7 @@ export function PositionEditor({
           return next;
         });
       }
+      toast.success("Position saved");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -152,6 +155,7 @@ export function PositionEditor({
         delete next[walletId];
         return next;
       });
+      toast.success("Position removed");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
     } finally {

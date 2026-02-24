@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, Loader2, ArrowLeft, ChevronDown, ChevronRight, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
 import { createStockAsset, upsertStockPosition } from "@/lib/actions/stocks";
 import type {
   AssetCategory,
@@ -201,6 +202,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
       }
 
       onClose();
+      toast.success(`${name.trim()} added to portfolio`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add");
     } finally {

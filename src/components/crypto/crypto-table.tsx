@@ -6,6 +6,7 @@ import { AddCryptoModal } from "./add-crypto-modal";
 import { PositionEditor } from "./position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
+import { toast } from "sonner";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
 import type { RenderContext, ColumnDef } from "@/lib/column-config";
 import { HIDDEN_BELOW } from "@/lib/constants";
@@ -114,8 +115,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
     if (!confirm(`Remove ${name} from your portfolio? All positions will be deleted.`)) return;
     try {
       await deleteCryptoAsset(id);
+      toast.success(`${name} removed`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }, []);
 

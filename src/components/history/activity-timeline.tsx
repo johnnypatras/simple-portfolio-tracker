@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition, useCallback } from "react";
+import { toast } from "sonner";
 import {
   Clock,
   Plus,
@@ -231,7 +232,7 @@ export function ActivityTimeline({
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert("Failed to export CSV");
+      toast.error("Failed to export CSV");
     }
   }
 

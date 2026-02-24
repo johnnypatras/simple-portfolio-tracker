@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, BookOpen, Pencil, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
 import {
   createTradeEntry,
   updateTradeEntry,
@@ -161,8 +162,9 @@ export function TradeTable({
     if (!confirm("Delete this trade entry?")) return;
     try {
       await deleteTradeEntry(id);
+      toast.success("Trade entry deleted");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }
 

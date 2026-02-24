@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { Plus, Pencil, Trash2, Landmark, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
 import {
   createBankAccount,
   updateBankAccount,
@@ -196,6 +197,7 @@ export function BankManager({ banks, institutionRoles }: BankManagerProps) {
         });
       }
       setModalOpen(false);
+      toast.success(editing ? "Bank account updated" : "Bank account added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -207,8 +209,9 @@ export function BankManager({ banks, institutionRoles }: BankManagerProps) {
     if (!confirm("Delete this bank account?")) return;
     try {
       await deleteBankAccount(id);
+      toast.success("Bank account deleted");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }
 
@@ -236,6 +239,7 @@ export function BankManager({ banks, institutionRoles }: BankManagerProps) {
         also_broker: alsoBroker,
       });
       setInstModalOpen(false);
+      toast.success("Institution updated");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {

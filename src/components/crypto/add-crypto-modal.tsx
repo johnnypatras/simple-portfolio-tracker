@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Search, Loader2, ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
 import type { CoinGeckoSearchResult, Wallet } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains, getWalletChainTokens } from "@/lib/types";
@@ -171,6 +172,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       }
 
       onClose();
+      toast.success(`${selectedCoin.name} added to portfolio`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add");
     } finally {

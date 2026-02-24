@@ -5,6 +5,7 @@ import { Plus, Landmark, Wallet as WalletIcon, Briefcase, Coins, Pencil, Trash2,
 import { Modal } from "@/components/ui/modal";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
+import { toast } from "sonner";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import {
@@ -217,8 +218,9 @@ export function CashTable({
     if (!confirm("Delete this bank account?")) return;
     try {
       await deleteBankAccount(id);
+      toast.success("Bank account deleted");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }, []);
 
@@ -235,8 +237,9 @@ export function CashTable({
     if (!confirm("Delete this exchange deposit?")) return;
     try {
       await deleteExchangeDeposit(id);
+      toast.success("Exchange deposit deleted");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }, []);
 
@@ -253,8 +256,9 @@ export function CashTable({
     if (!confirm("Delete this broker deposit?")) return;
     try {
       await deleteBrokerDeposit(id);
+      toast.success("Broker deposit deleted");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }, []);
 
@@ -1145,6 +1149,7 @@ function BankAccountModal({
         await createBankAccount(input);
       }
       onClose();
+      toast.success(editing ? "Bank account updated" : "Bank account added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -1347,6 +1352,7 @@ function ExchangeDepositModal({
         await createExchangeDeposit(input);
       }
       onClose();
+      toast.success(editing ? "Exchange deposit updated" : "Exchange deposit added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -1513,6 +1519,7 @@ function BrokerDepositModal({
         await createBrokerDeposit(input);
       }
       onClose();
+      toast.success(editing ? "Broker deposit updated" : "Broker deposit added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Pencil, Trash2, Wallet as WalletIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
 import { createWallet, updateWallet, deleteWallet } from "@/lib/actions/wallets";
 import type { Wallet, WalletInput, WalletType, PrivacyLabel, InstitutionRole } from "@/lib/types";
 import { parseWalletChains, serializeChains, getWalletChainTokens, EVM_CHAINS, NON_EVM_CHAINS, isEvmChain } from "@/lib/types";
@@ -77,6 +78,7 @@ export function WalletManager({ wallets, institutionRoles }: WalletManagerProps)
         });
       }
       setModalOpen(false);
+      toast.success(editing ? "Wallet updated" : "Wallet added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -88,8 +90,9 @@ export function WalletManager({ wallets, institutionRoles }: WalletManagerProps)
     if (!confirm("Delete this wallet? Any positions linked to it will also be removed.")) return;
     try {
       await deleteWallet(id);
+      toast.success("Wallet deleted");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }
 

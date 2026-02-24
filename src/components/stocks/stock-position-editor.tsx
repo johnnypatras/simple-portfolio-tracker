@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Save, Trash2, Loader2, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
 import { upsertStockPosition, deleteStockPosition, updateStockAsset } from "@/lib/actions/stocks";
 import type { StockAssetWithPositions, Broker, AssetCategory } from "@/lib/types";
 
@@ -63,6 +64,7 @@ export function StockPositionEditor({
         ...(subcategoryChanged ? { subcategory: subcategory.trim() || null } : {}),
         ...(tagsChanged ? { tags } : {}),
       });
+      toast.success("Asset updated");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
     } finally {
@@ -109,6 +111,7 @@ export function StockPositionEditor({
           return next;
         });
       }
+      toast.success("Position saved");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -126,6 +129,7 @@ export function StockPositionEditor({
         delete next[brokerId];
         return next;
       });
+      toast.success("Position removed");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
     } finally {

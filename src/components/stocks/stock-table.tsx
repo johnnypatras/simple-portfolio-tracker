@@ -7,6 +7,7 @@ import { StockPositionEditor } from "./stock-position-editor";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
 import { convertToBase } from "@/lib/prices/fx";
+import { toast } from "sonner";
 import { deleteStockAsset } from "@/lib/actions/stocks";
 import type { FXRates } from "@/lib/prices/fx";
 import type { RenderContext, ColumnDef } from "@/lib/column-config";
@@ -121,8 +122,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     if (!confirm(`Remove ${name} from your portfolio? All positions will be deleted.`)) return;
     try {
       await deleteStockAsset(id);
+      toast.success(`${name} removed`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }, []);
 

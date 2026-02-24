@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Pencil, Trash2, TrendingUp } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
 import { createBroker, updateBroker, deleteBroker } from "@/lib/actions/brokers";
 import type { Broker, WalletType, PrivacyLabel, InstitutionRole } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains } from "@/lib/types";
@@ -69,6 +70,7 @@ export function BrokerManager({ brokers, institutionRoles }: BrokerManagerProps)
         await createBroker({ name }, { ...walletOpts, also_bank: alsoBank });
       }
       setModalOpen(false);
+      toast.success(editing ? "Broker updated" : "Broker added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -80,8 +82,9 @@ export function BrokerManager({ brokers, institutionRoles }: BrokerManagerProps)
     if (!confirm("Delete this broker? Any stock positions linked to it will also be removed.")) return;
     try {
       await deleteBroker(id);
+      toast.success("Broker deleted");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   }
 
