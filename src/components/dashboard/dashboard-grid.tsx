@@ -15,7 +15,7 @@ import {
   BarChart2,
 } from "lucide-react";
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
-import type { DashboardInsights, BreakdownEntry } from "@/lib/portfolio/dashboard-insights";
+import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
 
 // ─── Props ──────────────────────────────────────────────
