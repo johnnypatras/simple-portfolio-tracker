@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus, BookOpen, Pencil, Trash2 } from "lucide-react";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import {
@@ -159,7 +160,6 @@ export function TradeTable({
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this trade entry?")) return;
     try {
       await deleteTradeEntry(id);
       toast.success("Trade entry deleted");
@@ -532,12 +532,12 @@ export function TradeTable({
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button
-                      onClick={() => handleDelete(t.id)}
+                    <ConfirmButton
+                      onConfirm={() => handleDelete(t.id)}
                       className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </ConfirmButton>
                   </div>
                 </td>
               </tr>

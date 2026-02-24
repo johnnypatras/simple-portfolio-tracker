@@ -5,6 +5,7 @@ import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layer
 import dynamic from "next/dynamic";
 const AddStockModal = dynamic(() => import("./add-stock-modal").then(m => m.AddStockModal), { ssr: false });
 import { StockPositionEditor } from "./stock-position-editor";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
 import { convertToBase } from "@/lib/prices/fx";
@@ -127,7 +128,6 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
   }, []);
 
   const handleDelete = useCallback(async (id: string, name: string) => {
-    if (!confirm(`Remove ${name} from your portfolio? All positions will be deleted.`)) return;
     try {
       await deleteStockAsset(id);
       toast.success(`${name} removed`);
@@ -1359,13 +1359,14 @@ function MobileStockCard({
               <Pencil className="w-3 h-3" />
               Edit positions
             </button>
-            <button
-              onClick={() => handleDelete(row.asset.id, row.asset.name)}
+            <ConfirmButton
+              onConfirm={() => handleDelete(row.asset.id, row.asset.name)}
+              confirmLabel="Remove?"
               className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
             >
               <Trash2 className="w-3 h-3" />
               Remove
-            </button>
+            </ConfirmButton>
           </div>
         </div>
       )}

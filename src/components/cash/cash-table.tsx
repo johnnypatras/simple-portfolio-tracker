@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
 import { Plus, Landmark, Wallet as WalletIcon, Briefcase, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
 import { toast } from "sonner";
@@ -217,7 +218,6 @@ export function CashTable({
   }, [setBankModalOpen]);
 
   const handleDeleteBank = useCallback(async (id: string) => {
-    if (!confirm("Delete this bank account?")) return;
     try {
       await deleteBankAccount(id);
       toast.success("Bank account deleted");
@@ -236,7 +236,6 @@ export function CashTable({
   }, [setExchModalOpen]);
 
   const handleDeleteExchange = useCallback(async (id: string) => {
-    if (!confirm("Delete this exchange deposit?")) return;
     try {
       await deleteExchangeDeposit(id);
       toast.success("Exchange deposit deleted");
@@ -255,7 +254,6 @@ export function CashTable({
   }, [setBrokerDepModalOpen]);
 
   const handleDeleteBrokerDeposit = useCallback(async (id: string) => {
-    if (!confirm("Delete this broker deposit?")) return;
     try {
       await deleteBrokerDeposit(id);
       toast.success("Broker deposit deleted");
@@ -556,7 +554,7 @@ export function CashTable({
                                   <div className="flex items-center gap-2">
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(acctValueBase, primaryCurrency)}</span>
                                     <button onClick={() => openEditBank(acct)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                    <button onClick={() => handleDeleteBank(acct.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                                    <ConfirmButton onConfirm={() => handleDeleteBank(acct.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                   </div>
                                 </div>
                               );
@@ -617,7 +615,7 @@ export function CashTable({
                                   <div className="flex items-center gap-2">
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(depValueBase, primaryCurrency)}</span>
                                     <button onClick={() => openEditExchange(dep)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                    <button onClick={() => handleDeleteExchange(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                                    <ConfirmButton onConfirm={() => handleDeleteExchange(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                   </div>
                                 </div>
                               );
@@ -678,7 +676,7 @@ export function CashTable({
                                   <div className="flex items-center gap-2">
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(depValueBase, primaryCurrency)}</span>
                                     <button onClick={() => openEditBrokerDeposit(dep)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                    <button onClick={() => handleDeleteBrokerDeposit(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                                    <ConfirmButton onConfirm={() => handleDeleteBrokerDeposit(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                   </div>
                                 </div>
                               );
@@ -1206,12 +1204,12 @@ function ExpandedBankRow({
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
-                <button
-                  onClick={onDelete}
+                <ConfirmButton
+                  onConfirm={onDelete}
                   className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                </ConfirmButton>
               </div>
             </td>
           );
@@ -1313,12 +1311,12 @@ function ExpandedExchangeRow({
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
-                <button
-                  onClick={onDelete}
+                <ConfirmButton
+                  onConfirm={onDelete}
                   className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                </ConfirmButton>
               </div>
             </td>
           );

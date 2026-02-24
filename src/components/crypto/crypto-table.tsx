@@ -5,6 +5,7 @@ import { Plus, Bitcoin, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, 
 import dynamic from "next/dynamic";
 const AddCryptoModal = dynamic(() => import("./add-crypto-modal").then(m => m.AddCryptoModal), { ssr: false });
 import { PositionEditor } from "./position-editor";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
 import { toast } from "sonner";
@@ -121,7 +122,6 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxChange
   }, []);
 
   const handleDelete = useCallback(async (id: string, name: string) => {
-    if (!confirm(`Remove ${name} from your portfolio? All positions will be deleted.`)) return;
     try {
       await deleteCryptoAsset(id);
       toast.success(`${name} removed`);
@@ -1695,13 +1695,14 @@ function MobileCryptoCard({
               <Pencil className="w-3 h-3" />
               Edit positions
             </button>
-            <button
-              onClick={() => handleDelete(row.asset.id, row.asset.name)}
+            <ConfirmButton
+              onConfirm={() => handleDelete(row.asset.id, row.asset.name)}
+              confirmLabel="Remove?"
               className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
             >
               <Trash2 className="w-3 h-3" />
               Remove
-            </button>
+            </ConfirmButton>
           </div>
         </div>
       )}

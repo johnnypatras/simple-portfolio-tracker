@@ -20,6 +20,7 @@ import {
   BookOpen,
   Undo2,
 } from "lucide-react";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 import { exportActivityLogsCsv } from "@/lib/actions/activity-log";
 import { undoActivity } from "@/lib/actions/undo";
@@ -391,13 +392,15 @@ export function ActivityTimeline({
                               Undone
                             </span>
                           ) : log.entity_id ? (
-                            <button
-                              onClick={() => handleUndo(log.id)}
+                            <ConfirmButton
+                              onConfirm={() => handleUndo(log.id)}
+                              confirmLabel="Undo?"
+                              confirmLabelClassName="text-amber-400"
                               className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
                               title="Undo this action"
                             >
                               <Undo2 className="w-3.5 h-3.5" />
-                            </button>
+                            </ConfirmButton>
                           ) : null}
                           <span className="text-xs text-zinc-600">
                             {getTimeLabel(log.created_at)}
