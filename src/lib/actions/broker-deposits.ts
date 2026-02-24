@@ -41,6 +41,7 @@ export async function createBrokerDeposit(
     .from("brokers")
     .select("name")
     .eq("id", input.broker_id)
+    .is("deleted_at", null)
     .single();
 
   const { data: created, error } = await supabase.from("broker_deposits").insert({
@@ -85,6 +86,7 @@ export async function updateBrokerDeposit(
     .from("brokers")
     .select("name")
     .eq("id", input.broker_id)
+    .is("deleted_at", null)
     .single();
 
   // Capture before snapshot
@@ -92,6 +94,7 @@ export async function updateBrokerDeposit(
     .from("broker_deposits")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
@@ -118,6 +121,7 @@ export async function updateBrokerDeposit(
     .from("broker_deposits")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const label = `${input.amount} ${input.currency} on ${broker?.name ?? "Unknown"}`;
@@ -143,6 +147,7 @@ export async function deleteBrokerDeposit(id: string): Promise<void> {
     .from("broker_deposits")
     .select("*, brokers(name)")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase

@@ -75,20 +75,24 @@ export async function createBankAccount(
       .limit(1);
 
     if (!existingWallet?.length) {
-      const { error: walletErr } = await supabase.from("wallets").insert({
+      const { data: walletCreated, error: walletErr } = await supabase.from("wallets").insert({
         user_id: user.id,
         name: trimmedBankName,
         wallet_type: opts.wallet_type ?? "custodial",
         privacy_label: opts.wallet_privacy ?? null,
         chain: opts.wallet_chain?.trim() || null,
         institution_id: institutionId,
-      });
-      if (!walletErr) {
+      }).select("*").single();
+      if (!walletErr && walletCreated) {
         await logActivity({
           action: "created",
           entity_type: "wallet",
           entity_name: trimmedBankName,
           description: `Added wallet "${trimmedBankName}" (via bank creation)`,
+          entity_id: walletCreated.id,
+          entity_table: "wallets",
+          before_snapshot: null,
+          after_snapshot: walletCreated,
         });
       }
     }
@@ -104,17 +108,21 @@ export async function createBankAccount(
       .limit(1);
 
     if (!existingBroker?.length) {
-      const { error: brokerErr } = await supabase.from("brokers").insert({
+      const { data: brokerCreated, error: brokerErr } = await supabase.from("brokers").insert({
         user_id: user.id,
         name: trimmedBankName,
         institution_id: institutionId,
-      });
-      if (!brokerErr) {
+      }).select("*").single();
+      if (!brokerErr && brokerCreated) {
         await logActivity({
           action: "created",
           entity_type: "broker",
           entity_name: trimmedBankName,
           description: `Added broker "${trimmedBankName}" (via bank creation)`,
+          entity_id: brokerCreated.id,
+          entity_table: "brokers",
+          before_snapshot: null,
+          after_snapshot: brokerCreated,
         });
       }
     }
@@ -145,6 +153,7 @@ export async function updateBankAccount(
     .from("bank_accounts")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const updateFields: Record<string, unknown> = {
@@ -182,20 +191,24 @@ export async function updateBankAccount(
         .limit(1);
 
       if (!existingWallet?.length) {
-        const { error: walletErr } = await supabase.from("wallets").insert({
+        const { data: walletCreated, error: walletErr } = await supabase.from("wallets").insert({
           user_id: user.id,
           name: trimmedBankName,
           wallet_type: opts.wallet_type ?? "custodial",
           privacy_label: opts.wallet_privacy ?? null,
           chain: opts.wallet_chain?.trim() || null,
           institution_id: before.institution_id,
-        });
-        if (!walletErr) {
+        }).select("*").single();
+        if (!walletErr && walletCreated) {
           await logActivity({
             action: "created",
             entity_type: "wallet",
             entity_name: trimmedBankName,
             description: `Added wallet "${trimmedBankName}" (via bank edit)`,
+            entity_id: walletCreated.id,
+            entity_table: "wallets",
+            before_snapshot: null,
+            after_snapshot: walletCreated,
           });
         }
       }
@@ -216,17 +229,21 @@ export async function updateBankAccount(
         .limit(1);
 
       if (!existingBroker?.length) {
-        const { error: brokerErr } = await supabase.from("brokers").insert({
+        const { data: brokerCreated, error: brokerErr } = await supabase.from("brokers").insert({
           user_id: user.id,
           name: trimmedBankName,
           institution_id: before.institution_id,
-        });
-        if (!brokerErr) {
+        }).select("*").single();
+        if (!brokerErr && brokerCreated) {
           await logActivity({
             action: "created",
             entity_type: "broker",
             entity_name: trimmedBankName,
             description: `Added broker "${trimmedBankName}" (via bank edit)`,
+            entity_id: brokerCreated.id,
+            entity_table: "brokers",
+            before_snapshot: null,
+            after_snapshot: brokerCreated,
           });
         }
       }
@@ -238,6 +255,7 @@ export async function updateBankAccount(
     .from("bank_accounts")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   await logActivity({
@@ -264,6 +282,7 @@ export async function deleteBankAccount(id: string) {
     .from("bank_accounts")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase

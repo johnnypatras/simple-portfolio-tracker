@@ -144,6 +144,7 @@ export async function updateCryptoAsset(
     .from("crypto_assets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
@@ -158,6 +159,7 @@ export async function updateCryptoAsset(
     .from("crypto_assets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const label = after ? `${after.ticker} (${after.name})` : "Unknown";
@@ -184,6 +186,7 @@ export async function deleteCryptoAsset(id: string) {
     .from("crypto_assets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
@@ -216,6 +219,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
     .from("crypto_assets")
     .select("ticker")
     .eq("id", input.crypto_asset_id)
+    .is("deleted_at", null)
     .single();
   const ticker = asset?.ticker ?? "Unknown";
 
@@ -302,6 +306,7 @@ export async function deletePosition(positionId: string) {
     .from("crypto_positions")
     .select("*, crypto_assets(ticker)")
     .eq("id", positionId)
+    .is("deleted_at", null)
     .single();
   const ticker =
     (snapshot?.crypto_assets as unknown as { ticker: string } | null)?.ticker ?? "Unknown";

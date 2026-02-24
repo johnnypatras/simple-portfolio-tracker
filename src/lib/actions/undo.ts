@@ -56,10 +56,10 @@ export async function undoActivity(
     };
   }
 
-  // ── Guard: entity still exists in DB? ────────────────────
+  // ── Guard: entity still exists and is in the correct state ─
   const { data: existing } = await supabase
     .from(log.entity_table)
-    .select("id")
+    .select("id, deleted_at")
     .eq("id", log.entity_id)
     .single();
 
@@ -68,6 +68,17 @@ export async function undoActivity(
       success: false,
       message: "The original record no longer exists (may have been permanently deleted)",
     };
+  }
+
+  // Verify the entity is in the expected state for the undo operation
+  if (log.action === "created" && existing.deleted_at !== null) {
+    return { success: false, message: "This entity has already been deleted" };
+  }
+  if (log.action === "removed" && existing.deleted_at === null) {
+    return { success: false, message: "This entity has already been restored" };
+  }
+  if (log.action === "updated" && existing.deleted_at !== null) {
+    return { success: false, message: "Cannot undo update — the entity has been deleted" };
   }
 
   // ── Perform the reversal ─────────────────────────────────
@@ -142,22 +153,23 @@ export async function undoActivity(
     .update({ undone_at: new Date().toISOString() })
     .eq("id", activityLogId);
 
-  // ── Log the undo itself ──────────────────────────────────
+  // ── Log the undo itself (no entity_id so this entry is non-undoable) ──
   await logActivity({
     action: "updated",
     entity_type: log.entity_type,
     entity_name: log.entity_name,
     description: `Undid "${log.action}" on ${log.entity_name}`,
-    entity_id: log.entity_id,
-    entity_table: log.entity_table,
   });
 
   // ── Revalidate all dashboard paths ───────────────────────
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/crypto");
+  revalidatePath("/dashboard/stocks");
   revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard/diary");
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/history");
 
   return { success: true, message: `Successfully undid "${log.action}" on ${log.entity_name}` };
 }

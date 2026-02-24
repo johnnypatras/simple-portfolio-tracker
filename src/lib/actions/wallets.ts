@@ -71,17 +71,21 @@ export async function createWallet(
       .limit(1);
 
     if (!existingBroker?.length) {
-      const { error: brokerErr } = await supabase.from("brokers").insert({
+      const { data: brokerCreated, error: brokerErr } = await supabase.from("brokers").insert({
         user_id: user.id,
         name: trimmedName,
         institution_id: institutionId,
-      });
-      if (!brokerErr) {
+      }).select("*").single();
+      if (!brokerErr && brokerCreated) {
         await logActivity({
           action: "created",
           entity_type: "broker",
           entity_name: trimmedName,
           description: `Added broker "${trimmedName}" (via wallet creation)`,
+          entity_id: brokerCreated.id,
+          entity_table: "brokers",
+          before_snapshot: null,
+          after_snapshot: brokerCreated,
         });
       }
     }
@@ -97,7 +101,7 @@ export async function createWallet(
       .limit(1);
 
     if (!existingBank?.length) {
-      const { error: bankErr } = await supabase.from("bank_accounts").insert({
+      const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
         user_id: user.id,
         name: trimmedName,
         bank_name: trimmedName,
@@ -106,13 +110,17 @@ export async function createWallet(
         balance: 0,
         apy: 0,
         institution_id: institutionId,
-      });
-      if (!bankErr) {
+      }).select("*").single();
+      if (!bankErr && bankCreated) {
         await logActivity({
           action: "created",
           entity_type: "bank_account",
           entity_name: trimmedName,
           description: `Added bank account "${trimmedName}" (via wallet creation)`,
+          entity_id: bankCreated.id,
+          entity_table: "bank_accounts",
+          before_snapshot: null,
+          after_snapshot: bankCreated,
         });
       }
     }
@@ -136,6 +144,7 @@ export async function updateWallet(
     .from("wallets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
@@ -170,17 +179,21 @@ export async function updateWallet(
         .limit(1);
 
       if (!existingBroker?.length) {
-        const { error: brokerErr } = await supabase.from("brokers").insert({
+        const { data: brokerCreated, error: brokerErr } = await supabase.from("brokers").insert({
           user_id: user.id,
           name: trimmedName,
           institution_id: before.institution_id,
-        });
-        if (!brokerErr) {
+        }).select("*").single();
+        if (!brokerErr && brokerCreated) {
           await logActivity({
             action: "created",
             entity_type: "broker",
             entity_name: trimmedName,
             description: `Added broker "${trimmedName}" (via wallet edit)`,
+            entity_id: brokerCreated.id,
+            entity_table: "brokers",
+            before_snapshot: null,
+            after_snapshot: brokerCreated,
           });
         }
       }
@@ -201,7 +214,7 @@ export async function updateWallet(
         .limit(1);
 
       if (!existingBank?.length) {
-        const { error: bankErr } = await supabase.from("bank_accounts").insert({
+        const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
           user_id: user.id,
           name: trimmedName,
           bank_name: trimmedName,
@@ -210,13 +223,17 @@ export async function updateWallet(
           balance: 0,
           apy: 0,
           institution_id: before.institution_id,
-        });
-        if (!bankErr) {
+        }).select("*").single();
+        if (!bankErr && bankCreated) {
           await logActivity({
             action: "created",
             entity_type: "bank_account",
             entity_name: trimmedName,
             description: `Added bank account "${trimmedName}" (via wallet edit)`,
+            entity_id: bankCreated.id,
+            entity_table: "bank_accounts",
+            before_snapshot: null,
+            after_snapshot: bankCreated,
           });
         }
       }
@@ -228,6 +245,7 @@ export async function updateWallet(
     .from("wallets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   await logActivity({
@@ -253,6 +271,7 @@ export async function deleteWallet(id: string) {
     .from("wallets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase

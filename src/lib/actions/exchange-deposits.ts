@@ -43,6 +43,7 @@ export async function createExchangeDeposit(
     .from("wallets")
     .select("name")
     .eq("id", input.wallet_id)
+    .is("deleted_at", null)
     .single();
 
   const { data: created, error } = await supabase.from("exchange_deposits").insert({
@@ -89,6 +90,7 @@ export async function updateExchangeDeposit(
     .from("wallets")
     .select("name")
     .eq("id", input.wallet_id)
+    .is("deleted_at", null)
     .single();
 
   // Capture before snapshot
@@ -96,6 +98,7 @@ export async function updateExchangeDeposit(
     .from("exchange_deposits")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
@@ -122,6 +125,7 @@ export async function updateExchangeDeposit(
     .from("exchange_deposits")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const label = `${input.amount} ${input.currency} on ${wallet?.name ?? "Unknown"}`;
@@ -147,6 +151,7 @@ export async function deleteExchangeDeposit(id: string): Promise<void> {
     .from("exchange_deposits")
     .select("*, wallets(name)")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase

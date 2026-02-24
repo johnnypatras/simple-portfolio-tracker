@@ -143,8 +143,9 @@ export async function updateInstitutionRoles(
 
   const { data: inst } = await supabase
     .from("institutions")
-    .select("name")
+    .select("*")
     .eq("id", institutionId)
+    .is("deleted_at", null)
     .single();
   if (!inst) throw new Error("Institution not found");
 
@@ -153,6 +154,12 @@ export async function updateInstitutionRoles(
   // Rename if changed (DB trigger propagates to wallets, brokers, bank_accounts)
   if (opts.newName && opts.newName.trim() !== inst.name) {
     await renameInstitution(institutionId, opts.newName.trim());
+    const { data: afterRename } = await supabase
+      .from("institutions")
+      .select("*")
+      .eq("id", institutionId)
+      .is("deleted_at", null)
+      .single();
     await logActivity({
       action: "updated",
       entity_type: "institution",
@@ -160,6 +167,8 @@ export async function updateInstitutionRoles(
       description: `Renamed institution "${inst.name}" → "${opts.newName.trim()}"`,
       entity_id: institutionId,
       entity_table: "institutions",
+      before_snapshot: inst,
+      after_snapshot: afterRename,
     });
   }
 
@@ -182,20 +191,24 @@ export async function updateInstitutionRoles(
       .limit(1);
 
     if (!existing?.length) {
-      const { error: walletErr } = await supabase.from("wallets").insert({
+      const { data: walletCreated, error: walletErr } = await supabase.from("wallets").insert({
         user_id: user.id,
         name: instName,
         wallet_type: opts.wallet_type ?? "custodial",
         privacy_label: opts.wallet_privacy ?? null,
         chain: opts.wallet_chain?.trim() || null,
         institution_id: institutionId,
-      });
-      if (!walletErr) {
+      }).select("*").single();
+      if (!walletErr && walletCreated) {
         await logActivity({
           action: "created",
           entity_type: "wallet",
           entity_name: instName,
           description: `Added wallet "${instName}" (via institution edit)`,
+          entity_id: walletCreated.id,
+          entity_table: "wallets",
+          before_snapshot: null,
+          after_snapshot: walletCreated,
         });
       }
     }
@@ -211,17 +224,21 @@ export async function updateInstitutionRoles(
       .limit(1);
 
     if (!existing?.length) {
-      const { error: brokerErr } = await supabase.from("brokers").insert({
+      const { data: brokerCreated, error: brokerErr } = await supabase.from("brokers").insert({
         user_id: user.id,
         name: instName,
         institution_id: institutionId,
-      });
-      if (!brokerErr) {
+      }).select("*").single();
+      if (!brokerErr && brokerCreated) {
         await logActivity({
           action: "created",
           entity_type: "broker",
           entity_name: instName,
           description: `Added broker "${instName}" (via institution edit)`,
+          entity_id: brokerCreated.id,
+          entity_table: "brokers",
+          before_snapshot: null,
+          after_snapshot: brokerCreated,
         });
       }
     }

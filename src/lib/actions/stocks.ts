@@ -173,6 +173,7 @@ export async function updateStockAsset(
     .from("stock_assets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
@@ -188,6 +189,7 @@ export async function updateStockAsset(
     .from("stock_assets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const label = after ? `${after.ticker} (${after.name})` : "Unknown";
@@ -214,6 +216,7 @@ export async function deleteStockAsset(id: string) {
     .from("stock_assets")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
@@ -246,6 +249,7 @@ export async function upsertStockPosition(input: StockPositionInput) {
     .from("stock_assets")
     .select("ticker")
     .eq("id", input.stock_asset_id)
+    .is("deleted_at", null)
     .single();
   const ticker = asset?.ticker ?? "Unknown";
 
@@ -330,6 +334,7 @@ export async function deleteStockPosition(positionId: string) {
     .from("stock_positions")
     .select("*, stock_assets(ticker)")
     .eq("id", positionId)
+    .is("deleted_at", null)
     .single();
   const ticker =
     (snapshot?.stock_assets as unknown as { ticker: string } | null)?.ticker ?? "Unknown";

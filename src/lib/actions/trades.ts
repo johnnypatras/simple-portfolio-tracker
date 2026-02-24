@@ -99,6 +99,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
     .from("trade_entries")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
@@ -123,6 +124,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
     .from("trade_entries")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   await logActivity({
@@ -146,6 +148,7 @@ export async function deleteTradeEntry(id: string) {
     .from("trade_entries")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
