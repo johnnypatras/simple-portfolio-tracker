@@ -42,10 +42,14 @@ ALTER TABLE goal_prices DROP CONSTRAINT goal_prices_crypto_asset_id_label_key;
 CREATE UNIQUE INDEX uq_goal_prices_active
   ON goal_prices(crypto_asset_id, label) WHERE deleted_at IS NULL;
 
--- stock_assets: UNIQUE(user_id, ticker)
-ALTER TABLE stock_assets DROP CONSTRAINT stock_assets_user_id_ticker_key;
-CREATE UNIQUE INDEX uq_stock_assets_active
-  ON stock_assets(user_id, ticker) WHERE deleted_at IS NULL;
+-- stock_assets: two partial indexes from migration 013
+-- (original UNIQUE(user_id, ticker) was already replaced)
+DROP INDEX stock_assets_user_yahoo_ticker_unique;
+DROP INDEX stock_assets_user_ticker_no_yahoo_unique;
+CREATE UNIQUE INDEX uq_stock_assets_yahoo_active
+  ON stock_assets(user_id, yahoo_ticker) WHERE yahoo_ticker IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX uq_stock_assets_ticker_active
+  ON stock_assets(user_id, ticker) WHERE yahoo_ticker IS NULL AND deleted_at IS NULL;
 
 -- stock_positions: UNIQUE(stock_asset_id, broker_id)
 ALTER TABLE stock_positions DROP CONSTRAINT stock_positions_stock_asset_id_broker_id_key;
