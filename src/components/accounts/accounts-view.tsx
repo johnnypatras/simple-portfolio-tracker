@@ -502,9 +502,9 @@ export function AccountsView({
       {/* Institution cards */}
       <div className="space-y-2">
       {(() => {
-        const VISIBLE_COUNT = 8;
-        const visibleGroups = groups.slice(0, VISIBLE_COUNT);
-        const hiddenGroups = groups.slice(VISIBLE_COUNT);
+        const MIN_VISIBLE_VALUE = 1000; // base currency (EUR)
+        const visibleGroups = groups.filter(g => g.totalValue >= MIN_VISIBLE_VALUE);
+        const hiddenGroups = groups.filter(g => g.totalValue < MIN_VISIBLE_VALUE);
         const displayGroups = showAllInstitutions ? groups : visibleGroups;
         return (<>
       {displayGroups.map((group) => {
