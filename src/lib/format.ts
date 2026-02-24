@@ -2,8 +2,8 @@
  * Shared formatting helpers used across server and client components.
  */
 
-/** Compact currency: 1.23M / 12.3K / 1,234 */
-export function fmtCurrencyCompact(value: number, currency: string): string {
+/** Compact currency: 1.23M / 12.3K / 1,234 (decimals defaults to 0) */
+export function fmtCurrencyCompact(value: number, currency: string, decimals = 0): string {
   if (Math.abs(value) >= 1_000_000) {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -15,7 +15,8 @@ export function fmtCurrencyCompact(value: number, currency: string): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   }).format(value);
 }
 

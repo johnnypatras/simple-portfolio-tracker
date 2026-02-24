@@ -7,6 +7,8 @@ import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRates } from "@/lib/prices/fx";
+import { fetchSinglePrice } from "@/lib/prices/yahoo";
+import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { CashTable } from "@/components/cash/cash-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
@@ -28,19 +30,35 @@ export default async function CashPage() {
   // Collect all currencies that need FX conversion
   const allCurrencies = [
     ...new Set([
+      "USD", "EUR", // always include for EUR/USD cross rate
       ...bankAccounts.map((b) => b.currency),
       ...exchangeDeposits.map((d) => d.currency),
       ...brokerDeposits.map((d) => d.currency),
     ]),
   ];
 
-  // Fetch stablecoin prices + FX rates in parallel (both depend on round 1 only)
-  const [stablecoinPrices, fxRates] = await Promise.all([
+  // Fetch stablecoin prices + FX rates + EUR/USD change in parallel
+  const [stablecoinPrices, fxRates, eurUsdData] = await Promise.all([
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
     getFXRates(profile.primary_currency, allCurrencies),
+    fetchSinglePrice("EURUSD=X"),
   ]);
+
+  // Compute cash-only aggregate for summary header enrichment
+  const summary = aggregatePortfolio({
+    cryptoAssets: stablecoins,
+    cryptoPrices: stablecoinPrices,
+    stockAssets: [],
+    stockPrices: {},
+    bankAccounts,
+    exchangeDeposits,
+    brokerDeposits,
+    primaryCurrency: profile.primary_currency,
+    fxRates,
+    eurUsdChange24h: eurUsdData?.change24h ?? 0,
+  });
 
   return (
     <div>
@@ -63,6 +81,11 @@ export default async function CashPage() {
         fxRates={fxRates}
         stablecoins={stablecoins}
         stablecoinPrices={stablecoinPrices}
+        cashChangePercent={summary.change24hPercent}
+        cashChangeValue={summary.cashTotalValueChange24h}
+        fxChangePercent={summary.cashTotalFxChange24hPercent}
+        fxChangeValue={summary.cashTotalFxValueChange24h}
+        stablecoinChange={summary.stablecoinValueChange24h}
       />
     </div>
   );

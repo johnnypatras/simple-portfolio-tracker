@@ -16,6 +16,7 @@ import type {
   StockAssetWithPositions,
   Broker,
   YahooStockPriceData,
+  YahooDividendMap,
 } from "@/lib/types";
 import {
   getStockColumns,
@@ -65,9 +66,15 @@ interface StockTableProps {
   prices: YahooStockPriceData;
   primaryCurrency: string;
   fxRates: FXRates;
+  /** FX-only 24h change % (e.g. EUR/USD impact on stock values) */
+  fxChangePercent?: number;
+  /** FX-only 24h absolute change in primary currency */
+  fxChangeValue?: number;
+  /** Trailing 12-month dividend data per Yahoo ticker */
+  dividends?: YahooDividendMap;
 }
 
-export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }: StockTableProps) {
+export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxChangePercent = 0, fxChangeValue = 0, dividends }: StockTableProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<StockAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -130,8 +137,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
 
   // Build computed rows
   const rows = useMemo(
-    () => buildStockRows(assets, prices, primaryCurrency, fxRates),
-    [assets, prices, primaryCurrency, fxRates]
+    () => buildStockRows(assets, prices, primaryCurrency, fxRates, dividends),
+    [assets, prices, primaryCurrency, fxRates, dividends]
   );
 
   const totalPortfolioValue = useMemo(
@@ -143,6 +150,19 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     if (totalPortfolioValue === 0) return 0;
     return rows.reduce((sum, r) => sum + r.valueBase * r.change24h, 0) / totalPortfolioValue;
   }, [rows, totalPortfolioValue]);
+
+  // Weighted dividend yield across portfolio + annual income projection
+  const { weightedYield, annualDividendIncome } = useMemo(() => {
+    if (totalPortfolioValue === 0) return { weightedYield: 0, annualDividendIncome: 0 };
+    const wYield = rows.reduce((sum, r) => sum + r.valueBase * r.dividendYield, 0) / totalPortfolioValue;
+    // Annual income = sum of (qty × annualDividend) converted to base currency
+    const income = rows.reduce((sum, r) => {
+      if (r.annualDividend <= 0 || r.totalQty <= 0) return sum;
+      const nativeIncome = r.totalQty * r.annualDividend;
+      return sum + convertToBase(nativeIncome, r.asset.currency, primaryCurrency, fxRates);
+    }, 0);
+    return { weightedYield: wYield, annualDividendIncome: income };
+  }, [rows, totalPortfolioValue, primaryCurrency, fxRates]);
 
   // Grouped rows for group-by-type mode
   const typeGroups = useMemo(
@@ -325,7 +345,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:stocks", columns, 7);
+  } = useColumnConfig("colConfig:stocks", columns, 8);
 
   const ctx: RenderContext = { primaryCurrency, fxRates };
 
@@ -345,7 +365,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
               <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
                 Total Equities
               </p>
-              <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
+              <p className="text-3xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(totalPortfolioValue, primaryCurrency)}
               </p>
               {weighted24hChange !== 0 && (() => {
@@ -362,6 +382,18 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates }
                   </div>
                 );
               })()}
+              {fxChangePercent !== 0 && (
+                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                  incl. {fxChangePercent >= 0 ? "+" : ""}{fxChangePercent.toFixed(2)}% ({fxChangeValue > 0 ? "+" : ""}{formatCurrency(fxChangeValue, primaryCurrency)}) EUR/USD
+                </p>
+              )}
+              {weightedYield > 0 && (
+                <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
+                  ~{weightedYield.toFixed(2)}% yield{annualDividendIncome > 0 && (
+                    <> · +{formatCurrency(annualDividendIncome, primaryCurrency)}/yr</>
+                  )}
+                </p>
+              )}
             </div>
             <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
               <p>

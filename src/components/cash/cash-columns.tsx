@@ -396,7 +396,7 @@ export function getCashColumns(handlers: {
         if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") {
           return row.data.weightedApy > 0 ? (
             <span className="text-sm text-emerald-400">
-              ~{row.data.weightedApy.toFixed(1)}%
+              ~{row.data.weightedApy.toFixed(2)}%
             </span>
           ) : (
             <span className="text-sm text-zinc-600">—</span>

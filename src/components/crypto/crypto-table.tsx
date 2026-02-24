@@ -60,9 +60,15 @@ interface CryptoTableProps {
   prices: CoinGeckoPriceData;
   wallets: Wallet[];
   primaryCurrency: string;
+  /** FX-only 24h change % (e.g. EUR/USD impact on crypto value) */
+  fxChangePercent?: number;
+  /** FX-only 24h absolute change in primary currency */
+  fxChangeValue?: number;
+  /** Stablecoin 24h absolute change in primary currency */
+  stablecoinChange?: number;
 }
 
-export function CryptoTable({ assets, prices, wallets, primaryCurrency }: CryptoTableProps) {
+export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxChangePercent = 0, fxChangeValue = 0, stablecoinChange = 0 }: CryptoTableProps) {
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
 
@@ -329,7 +335,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
               <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
                 Total Crypto
               </p>
-              <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
+              <p className="text-3xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(nonStableValue, primaryCurrency)}
               </p>
               {weighted24hChange !== 0 && (() => {
@@ -346,9 +352,17 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency }: Crypto
                   </div>
                 );
               })()}
+              {fxChangePercent !== 0 && (
+                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                  incl. {fxChangePercent >= 0 ? "+" : ""}{fxChangePercent.toFixed(2)}% ({fxChangeValue > 0 ? "+" : ""}{formatCurrency(fxChangeValue, primaryCurrency)}) EUR/USD
+                </p>
+              )}
               {stablecoinTotal > 0 && (
-                <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
+                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
                   excl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins
+                  {stablecoinChange !== 0 && (
+                    <span> ({stablecoinChange > 0 ? "+" : ""}{formatCurrency(stablecoinChange, primaryCurrency)})</span>
+                  )}
                 </p>
               )}
             </div>

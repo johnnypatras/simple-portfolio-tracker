@@ -378,6 +378,15 @@ export interface YahooStockPriceData {
   };
 }
 
+export interface YahooDividendData {
+  trailingYield: number;    // trailing 12-month yield as % (e.g. 2.60)
+  annualDividend: number;   // sum of last 12m dividends per share (native currency)
+  dividendCount: number;    // payment count in last 12m (4 = quarterly, 2 = semi-annual)
+  currency: string;
+}
+
+export type YahooDividendMap = { [yahooTicker: string]: YahooDividendData };
+
 export interface StockPositionInput {
   stock_asset_id: string;
   broker_id: string;

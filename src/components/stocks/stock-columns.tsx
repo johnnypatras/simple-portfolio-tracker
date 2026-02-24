@@ -6,6 +6,7 @@ import type {
   StockAssetWithPositions,
   AssetCategory,
   YahooStockPriceData,
+  YahooDividendMap,
 } from "@/lib/types";
 
 // ── Computed row type (asset + price data) ───────────────────
@@ -18,6 +19,9 @@ export interface StockRow {
   totalQty: number;
   valueNative: number;
   valueBase: number;
+  dividendYield: number;   // trailing 12-month yield % (0 if none)
+  annualDividend: number;  // annual dividend per share (native currency)
+  dividendCount: number;   // payments/year (4 = quarterly, 2 = semi-annual)
 }
 
 // ── Type display maps ────────────────────────────────────────
@@ -80,7 +84,8 @@ export function buildStockRows(
   assets: StockAssetWithPositions[],
   prices: YahooStockPriceData,
   primaryCurrency: string,
-  fxRates: FXRates
+  fxRates: FXRates,
+  dividends?: YahooDividendMap
 ): StockRow[] {
   const rows = assets.map((asset) => {
     const key = asset.yahoo_ticker || asset.ticker;
@@ -91,7 +96,15 @@ export function buildStockRows(
     const valueNative = totalQty * pricePerShare;
     const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
 
-    return { id: asset.id, asset, pricePerShare, change24h, totalQty, valueNative, valueBase };
+    const divData = dividends?.[key] ?? null;
+    const dividendYield = divData?.trailingYield ?? 0;
+    const annualDividend = divData?.annualDividend ?? 0;
+    const dividendCount = divData?.dividendCount ?? 0;
+
+    return {
+      id: asset.id, asset, pricePerShare, change24h, totalQty,
+      valueNative, valueBase, dividendYield, annualDividend, dividendCount,
+    };
   });
 
   // Sort by converted value descending
@@ -213,6 +226,7 @@ export interface TickerGroup {
   rows: StockRow[];
   totalValueBase: number;
   weightedChange24h: number;
+  weightedYield: number;
 }
 
 /**
@@ -249,6 +263,11 @@ export function buildTickerGroups(
         ? tickerRows.reduce((sum, r) => sum + r.valueBase * r.change24h, 0) /
           totalValueBase
         : 0;
+    const weightedYield =
+      totalValueBase > 0
+        ? tickerRows.reduce((sum, r) => sum + r.valueBase * r.dividendYield, 0) /
+          totalValueBase
+        : 0;
 
     // Use largest variant as representative
     const primary = tickerRows[0];
@@ -260,6 +279,7 @@ export function buildTickerGroups(
       rows: tickerRows,
       totalValueBase,
       weightedChange24h,
+      weightedYield,
     });
   }
 
@@ -270,7 +290,7 @@ export function buildTickerGroups(
 
 // ── Sorting ───────────────────────────────────────────────────
 
-export type SortKey = "value" | "name" | "type" | "change" | "currency";
+export type SortKey = "value" | "name" | "type" | "change" | "yield" | "currency";
 export type SortDirection = "asc" | "desc";
 
 export const DEFAULT_SORT_KEY: SortKey = "value";
@@ -281,6 +301,7 @@ export const SORT_OPTIONS: { key: SortKey; label: string; defaultDir: SortDirect
   { key: "name", label: "Name", defaultDir: "asc" },
   { key: "type", label: "Type", defaultDir: "asc" },
   { key: "change", label: "24h %", defaultDir: "desc" },
+  { key: "yield", label: "Yield", defaultDir: "desc" },
   { key: "currency", label: "Currency", defaultDir: "asc" },
 ];
 
@@ -290,6 +311,7 @@ export const COLUMN_TO_SORT: Record<string, SortKey | undefined> = {
   type: "type",
   currency: "currency",
   price: "change",
+  yield: "yield",
   value: "value",
 };
 
@@ -307,6 +329,7 @@ function flatItemSortVal(item: FlatItem, key: SortKey): string | number {
       case "name": return row.asset.name.toLowerCase();
       case "type": return TYPE_LABELS[row.asset.category];
       case "change": return row.change24h;
+      case "yield": return row.dividendYield;
       case "currency": return row.asset.currency;
     }
   } else {
@@ -316,6 +339,7 @@ function flatItemSortVal(item: FlatItem, key: SortKey): string | number {
       case "name": return group.name.toLowerCase();
       case "type": return TYPE_LABELS[group.category];
       case "change": return group.weightedChange24h;
+      case "yield": return group.weightedYield;
       case "currency": return group.rows[0]?.asset.currency ?? "";
     }
   }
@@ -349,6 +373,7 @@ export function sortRows(
       case "name": av = a.asset.name.toLowerCase(); bv = b.asset.name.toLowerCase(); break;
       case "type": av = TYPE_LABELS[a.asset.category]; bv = TYPE_LABELS[b.asset.category]; break;
       case "change": av = a.change24h; bv = b.change24h; break;
+      case "yield": av = a.dividendYield; bv = b.dividendYield; break;
       case "currency": av = a.asset.currency; bv = b.asset.currency; break;
     }
     if (av < bv) return dir === "asc" ? -1 : 1;
@@ -519,27 +544,20 @@ export function getStockColumns(handlers: {
       label: "Type",
       header: "Type",
       align: "left",
-      width: "w-20",
+      width: "w-28",
       hiddenBelow: "md",
       renderCell: (row) => (
-        <span className={`text-xs font-medium ${TYPE_COLORS[row.asset.category]}`}>
-          {TYPE_LABELS[row.asset.category]}
-        </span>
+        <div>
+          <span className={`text-xs font-medium ${TYPE_COLORS[row.asset.category]}`}>
+            {TYPE_LABELS[row.asset.category]}
+          </span>
+          {row.asset.subcategory && (
+            <span className="block text-[11px] text-zinc-500 leading-tight truncate">
+              {row.asset.subcategory}
+            </span>
+          )}
+        </div>
       ),
-    },
-    {
-      key: "subcategory",
-      label: "Subtype",
-      header: "Subtype",
-      align: "left",
-      width: "w-28",
-      hiddenBelow: "lg",
-      renderCell: (row) =>
-        row.asset.subcategory ? (
-          <span className="text-xs text-zinc-400">{row.asset.subcategory}</span>
-        ) : (
-          <span className="text-xs text-zinc-600">—</span>
-        ),
     },
     {
       key: "tags",
@@ -573,6 +591,29 @@ export function getStockColumns(handlers: {
           </div>
         );
       },
+    },
+    {
+      key: "yield",
+      label: "Yield",
+      header: "Yield",
+      align: "right",
+      width: "w-24",
+      hiddenBelow: "md",
+      renderCell: (row) =>
+        row.dividendYield > 0 ? (
+          <div>
+            <span className="text-xs tabular-nums text-emerald-400">
+              ~{row.dividendYield.toFixed(2)}%
+            </span>
+            {row.dividendCount > 0 && (
+              <span className="block text-[11px] tabular-nums text-zinc-500">
+                {row.dividendCount}x/yr
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-zinc-600">—</span>
+        ),
     },
     {
       key: "price",

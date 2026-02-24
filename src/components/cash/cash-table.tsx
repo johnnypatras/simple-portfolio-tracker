@@ -84,6 +84,16 @@ interface CashTableProps {
   fxRates: FXRates;
   stablecoins?: CryptoAssetWithPositions[];
   stablecoinPrices?: CoinGeckoPriceData;
+  /** Total cash 24h change % (FX + stablecoin movement) */
+  cashChangePercent?: number;
+  /** Total cash 24h absolute change in primary currency */
+  cashChangeValue?: number;
+  /** FX-only 24h change % (e.g. EUR/USD impact on cash value) */
+  fxChangePercent?: number;
+  /** FX-only 24h absolute change in primary currency */
+  fxChangeValue?: number;
+  /** Stablecoin 24h absolute change in primary currency */
+  stablecoinChange?: number;
 }
 
 export function CashTable({
@@ -96,6 +106,11 @@ export function CashTable({
   fxRates,
   stablecoins,
   stablecoinPrices,
+  cashChangePercent = 0,
+  cashChangeValue = 0,
+  fxChangePercent = 0,
+  fxChangeValue = 0,
+  stablecoinChange = 0,
 }: CashTableProps) {
   // ── Compute totals ──────────────────────────────────────
   const bankTotal = bankAccounts.reduce(
@@ -388,19 +403,38 @@ export function CashTable({
               <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
                 Total Banks &amp; Deposits
               </p>
-              <p className="text-2xl font-semibold text-zinc-100 mt-1 tabular-nums">
+              <p className="text-3xl font-semibold text-zinc-100 mt-1 tabular-nums">
                 {formatCurrency(totalCash, primaryCurrency)}
               </p>
+              {cashChangePercent !== 0 && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(2)}%
+                  </span>
+                  <span className={`text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    ({cashChangeValue >= 0 ? "+" : ""}{formatCurrency(cashChangeValue, primaryCurrency)})
+                  </span>
+                  <span className="text-xs text-zinc-600">24h</span>
+                </div>
+              )}
               {weightedApy > 0 && (
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs tabular-nums text-emerald-400">
-                    ~{weightedApy.toFixed(1)}% APY
+                    ~{weightedApy.toFixed(2)}% APY · +{formatCurrency(totalCash * weightedApy / 100, primaryCurrency)}/yr
                   </span>
                 </div>
               )}
+              {fxChangePercent !== 0 && (
+                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                  incl. {fxChangePercent >= 0 ? "+" : ""}{fxChangePercent.toFixed(2)}% ({fxChangeValue > 0 ? "+" : ""}{formatCurrency(fxChangeValue, primaryCurrency)}) EUR/USD
+                </p>
+              )}
               {stablecoinTotal > 0 && (
-                <p className="text-xs tabular-nums mt-0.5 text-zinc-500">
+                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
                   incl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins
+                  {stablecoinChange !== 0 && (
+                    <span> ({stablecoinChange > 0 ? "+" : ""}{formatCurrency(stablecoinChange, primaryCurrency)})</span>
+                  )}
                 </p>
               )}
             </div>
@@ -519,7 +553,7 @@ export function CashTable({
                           </div>
                           <div className="text-right shrink-0 ml-3">
                             <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(row.data.totalValue, primaryCurrency)}</p>
-                            {row.data.weightedApy > 0 && <p className="text-xs text-emerald-400">~{row.data.weightedApy.toFixed(1)}% APY</p>}
+                            {row.data.weightedApy > 0 && <p className="text-xs text-emerald-400">~{row.data.weightedApy.toFixed(2)}% APY</p>}
                           </div>
                         </button>
                         {groupExpanded && (
@@ -581,7 +615,7 @@ export function CashTable({
                           </div>
                           <div className="text-right shrink-0 ml-3">
                             <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(row.data.totalValue, primaryCurrency)}</p>
-                            {row.data.weightedApy > 0 && <p className="text-xs text-emerald-400">~{row.data.weightedApy.toFixed(1)}% APY</p>}
+                            {row.data.weightedApy > 0 && <p className="text-xs text-emerald-400">~{row.data.weightedApy.toFixed(2)}% APY</p>}
                           </div>
                         </button>
                         {groupExpanded && (
@@ -642,7 +676,7 @@ export function CashTable({
                           </div>
                           <div className="text-right shrink-0 ml-3">
                             <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(row.data.totalValue, primaryCurrency)}</p>
-                            {row.data.weightedApy > 0 && <p className="text-xs text-emerald-400">~{row.data.weightedApy.toFixed(1)}% APY</p>}
+                            {row.data.weightedApy > 0 && <p className="text-xs text-emerald-400">~{row.data.weightedApy.toFixed(2)}% APY</p>}
                           </div>
                         </button>
                         {groupExpanded && (
@@ -701,7 +735,7 @@ export function CashTable({
                           </div>
                           <div className="text-right shrink-0 ml-3">
                             <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(group.totalValue, primaryCurrency)}</p>
-                            {group.weightedApy > 0 && <p className="text-xs text-emerald-400">~{group.weightedApy.toFixed(1)}% APY</p>}
+                            {group.weightedApy > 0 && <p className="text-xs text-emerald-400">~{group.weightedApy.toFixed(2)}% APY</p>}
                           </div>
                         </button>
                         {groupExpanded && (
@@ -1918,7 +1952,7 @@ function StablecoinWalletGroupRow({
             <td key={col.key} className={`px-4 py-2.5 text-right ${hidden}`}>
               {group.weightedApy > 0 ? (
                 <span className="text-sm text-emerald-400">
-                  ~{group.weightedApy.toFixed(1)}%
+                  ~{group.weightedApy.toFixed(2)}%
                 </span>
               ) : (
                 <span className="text-sm text-zinc-600">—</span>
@@ -1996,7 +2030,7 @@ function ExpandedStablecoinPositionRow({
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
               {position.apy > 0 ? (
                 <span className="text-xs text-emerald-400/70">
-                  {position.apy.toFixed(1)}%
+                  {position.apy.toFixed(2)}%
                 </span>
               ) : (
                 <span className="text-xs text-zinc-600">—</span>

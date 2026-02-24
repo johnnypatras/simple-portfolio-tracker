@@ -6,7 +6,7 @@ import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, fetchSinglePrice } from "@/lib/prices/yahoo";
+import { getStockPrices, fetchSinglePrice, getDividendYields } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
@@ -59,7 +59,7 @@ export default async function DashboardPage() {
   ];
 
   // ── Round 2: Fetch prices + FX rates + snapshots + S&P 500 in parallel
-  const [cryptoPrices, stockPrices, fxRates, chartSnapshots, snap7d, snap30d, snap1y, sp500Data, goldData, nasdaqData, dowData, eurUsdData] =
+  const [cryptoPrices, stockPrices, fxRates, chartSnapshots, snap7d, snap30d, snap1y, sp500Data, goldData, nasdaqData, dowData, eurUsdData, dividends] =
     await Promise.all([
       getPrices(coinIds),
       getStockPrices(yahooTickers),
@@ -73,6 +73,7 @@ export default async function DashboardPage() {
       fetchSinglePrice("^IXIC"), // Nasdaq Composite
       fetchSinglePrice("^DJI"),  // Dow Jones Industrial
       fetchSinglePrice("EURUSD=X"), // EUR/USD cross rate (for 24h change)
+      getDividendYields(yahooTickers), // trailing 12-month yields (6h cache)
     ]);
 
   // ── Aggregate into portfolio summary ──────────────────
@@ -86,6 +87,7 @@ export default async function DashboardPage() {
     brokerDeposits,
     primaryCurrency,
     fxRates,
+    eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 
   // ── Compute dashboard insights ────────────────────────
@@ -109,6 +111,7 @@ export default async function DashboardPage() {
     dowPrice: dowData?.price ?? 0,
     dowChange24h: dowData?.change24h ?? 0,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    dividends,
   });
 
   // ── Save today's snapshot (fire-and-forget) ───────────

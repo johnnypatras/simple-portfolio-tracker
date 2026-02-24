@@ -38,16 +38,16 @@ type ApyPeriod = (typeof APY_PERIODS)[number];
 
 // ─── Formatters ─────────────────────────────────────────
 
-function fmtCurrency(value: number, currency: string): string {
+function fmtCurrency(value: number, currency: string, decimals = 0): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   }).format(value);
 }
 
-function fmtCurrencyCompact(value: number, currency: string): string {
+function fmtCurrencyCompact(value: number, currency: string, decimals = 0): string {
   if (Math.abs(value) >= 1_000_000) {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -57,7 +57,7 @@ function fmtCurrencyCompact(value: number, currency: string): string {
       maximumFractionDigits: 1,
     }).format(value);
   }
-  return fmtCurrency(value, currency);
+  return fmtCurrency(value, currency, decimals);
 }
 
 function fmtPct(value: number, decimals = 1): string {
@@ -87,39 +87,81 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
     stocksValue,
     cashValue,
     change24hPercent,
+    fxChange24hPercent,
     allocation,
     primaryCurrency,
     cryptoValueUsd,
     stocksValueUsd,
+    totalValueUsd,
+    totalValueEur,
+    totalValueChange24h,
+    cryptoValueChange24h,
+    stocksValueChange24h,
+    stablecoinValueChange24h,
+    fxValueChange24h,
+    cryptoFxValueChange24h,
+    cryptoFxChange24hPercent,
+    stocksFxValueChange24h,
+    stocksFxChange24hPercent,
+    cashTotalValueChange24h,
+    cashTotalFxValueChange24h,
+    cashTotalFxChange24hPercent,
   } = summary;
 
   const cur = primaryCurrency;
 
   // Change computation for selected period
   const valueKey = cur === "EUR" ? "total_value_eur" : "total_value_usd";
+  const otherKey = cur === "EUR" ? "total_value_usd" : "total_value_eur";
+  const currentValueOther = cur === "EUR" ? totalValueUsd : totalValueEur;
 
-  function getChangeForPeriod(period: ChangePeriod): { percent: number; valueChange: number; available: boolean } {
+  function getChangeForPeriod(period: ChangePeriod): {
+    percent: number; valueChange: number; available: boolean;
+    fxPercent: number; fxValueChange: number;
+  } {
     if (period === "24h") {
-      const past = change24hPercent !== 0 ? totalValue / (1 + change24hPercent / 100) : totalValue;
-      return { percent: change24hPercent, valueChange: totalValue - past, available: true };
+      return {
+        percent: change24hPercent,
+        valueChange: totalValueChange24h,
+        available: true,
+        fxPercent: fxChange24hPercent,
+        fxValueChange: fxValueChange24h,
+      };
     }
     const snapshot = pastSnapshots[period];
-    if (!snapshot) return { percent: 0, valueChange: 0, available: false };
+    if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastValue = snapshot[valueKey] ?? 0;
-    if (pastValue === 0) return { percent: 0, valueChange: 0, available: false };
+    if (pastValue === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+
+    const primaryReturn = ((totalValue - pastValue) / pastValue) * 100;
+    // FX impact = difference in returns between primary and other currency
+    const pastOther = snapshot[otherKey] ?? 0;
+    let fxPct = 0;
+    if (pastOther > 0 && currentValueOther > 0) {
+      const otherReturn = ((currentValueOther - pastOther) / pastOther) * 100;
+      fxPct = primaryReturn - otherReturn;
+    }
+    const fxAbs = fxPct !== 0
+      ? totalValue - totalValue / (1 + fxPct / 100)
+      : 0;
+
     return {
-      percent: ((totalValue - pastValue) / pastValue) * 100,
+      percent: primaryReturn,
       valueChange: totalValue - pastValue,
       available: true,
+      fxPercent: fxPct,
+      fxValueChange: fxAbs,
     };
   }
 
   // Per-asset-class change for selected period (uses USD snapshots, derives display-currency delta)
   function getCryptoChangeForPeriod(period: ChangePeriod): { percent: number; valueChange: number; available: boolean } {
     if (period === "24h") {
-      if (insights.cryptoChange24h === 0) return { percent: 0, valueChange: 0, available: true };
-      const delta = cryptoValue - cryptoValue / (1 + insights.cryptoChange24h / 100);
-      return { percent: insights.cryptoChange24h, valueChange: delta, available: true };
+      return {
+        percent: insights.cryptoChange24h,
+        valueChange: cryptoValueChange24h,
+        available: true,
+      };
     }
     const snapshot = pastSnapshots[period];
     if (!snapshot) return { percent: 0, valueChange: 0, available: false };
@@ -132,9 +174,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
 
   function getStockChangeForPeriod(period: ChangePeriod): { percent: number; valueChange: number; available: boolean } {
     if (period === "24h") {
-      if (insights.stockChange24h === 0) return { percent: 0, valueChange: 0, available: true };
-      const delta = stocksValue - stocksValue / (1 + insights.stockChange24h / 100);
-      return { percent: insights.stockChange24h, valueChange: delta, available: true };
+      // Use aggregator's delta (includes FX impact on foreign-currency stocks)
+      const pct = stocksValue > 0 ? (stocksValueChange24h / stocksValue) * 100 : 0;
+      return { percent: pct, valueChange: stocksValueChange24h, available: true };
     }
     const snapshot = pastSnapshots[period];
     if (!snapshot) return { percent: 0, valueChange: 0, available: false };
@@ -142,6 +184,21 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
     if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false };
     const pct = ((stocksValueUsd - pastUsd) / pastUsd) * 100;
     const delta = stocksValue - stocksValue / (1 + pct / 100);
+    return { percent: pct, valueChange: delta, available: true };
+  }
+
+  function getCashChangeForPeriod(period: ChangePeriod): { percent: number; valueChange: number; available: boolean } {
+    if (period === "24h") {
+      const pct = cashValue > 0 ? (cashTotalValueChange24h / cashValue) * 100 : 0;
+      return { percent: pct, valueChange: cashTotalValueChange24h, available: true };
+    }
+    const snapshot = pastSnapshots[period];
+    if (!snapshot) return { percent: 0, valueChange: 0, available: false };
+    const pastUsd = snapshot.cash_value_usd ?? 0;
+    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false };
+    const cashValueUsd = summary.cashValueUsd;
+    const pct = ((cashValueUsd - pastUsd) / pastUsd) * 100;
+    const delta = cashValue - cashValue / (1 + pct / 100);
     return { percent: pct, valueChange: delta, available: true };
   }
 
@@ -186,25 +243,33 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
           {/* ── Total value + change ── */}
           {(() => {
             const c = getChangeForPeriod(changePeriod);
+            const showFxImpact = c.available && c.fxPercent !== 0;
             return (
-              <div className="flex items-baseline gap-3 mt-1">
-                <p className="text-4xl font-bold text-zinc-100 tabular-nums">
-                  {fmtCurrency(totalValue, cur)}
-                </p>
-                {c.available && (
-                  <span className={`text-sm font-medium tabular-nums ${changeColor(c.percent)}`}>
-                    {fmtPct(c.percent)}
-                    {c.valueChange !== 0 && (
-                      <span className="ml-1 font-normal">
-                        ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
-                      </span>
-                    )}
-                  </span>
+              <>
+                <div className="flex items-baseline gap-3 mt-1">
+                  <p className="text-5xl font-bold text-zinc-100 tabular-nums">
+                    {fmtCurrency(totalValue, cur)}
+                  </p>
+                  {c.available && (
+                    <span className={`text-sm font-medium tabular-nums ${changeColor(c.percent)}`}>
+                      {fmtPct(c.percent)}
+                      {c.valueChange !== 0 && (
+                        <span className="ml-1 font-normal">
+                          ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {!c.available && (
+                    <span className="text-sm text-zinc-600">—</span>
+                  )}
+                </div>
+                {showFxImpact && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                    incl. {fmtPct(c.fxPercent, 2)} ({c.fxValueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.fxValueChange, cur)}) EUR/USD
+                  </p>
                 )}
-                {!c.available && (
-                  <span className="text-sm text-zinc-600">—</span>
-                )}
-              </div>
+              </>
             );
           })()}
 
@@ -408,49 +473,46 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               ))}
             </div>
           </div>
-          <p className="text-2xl font-semibold text-zinc-100 tabular-nums mt-2">
-            {fmtCurrency(cryptoValue, cur)}
-          </p>
           {(() => {
             const c = getCryptoChangeForPeriod(changePeriod);
+            const showCryptoFx = changePeriod === "24h" && cryptoFxChange24hPercent !== 0;
             return (
-              <div className="flex items-center gap-2 mt-1">
-                {c.available ? (
-                  <>
+              <>
+                <div className="flex items-baseline gap-3 mt-2">
+                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                    {fmtCurrency(cryptoValue, cur)}
+                  </p>
+                  {c.available ? (
                     <span className={`text-xs tabular-nums ${changeColor(c.percent)}`}>
                       {fmtPct(c.percent)}
+                      {c.valueChange !== 0 && (
+                        <span className="ml-1">
+                          ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
+                        </span>
+                      )}
                     </span>
-                    {c.valueChange !== 0 && (
-                      <span className={`text-xs tabular-nums ${changeColor(c.percent)}`}>
-                        ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
+                  ) : (
+                    <span className="text-xs text-zinc-600">—</span>
+                  )}
+                </div>
+                {showCryptoFx && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                    incl. {fmtPct(cryptoFxChange24hPercent, 2)} ({cryptoFxValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(cryptoFxValueChange24h, cur)}) EUR/USD
+                  </p>
+                )}
+                {summary.stablecoinValue > 0 && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                    excl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
+                    {changePeriod === "24h" && stablecoinValueChange24h !== 0 && (
+                      <span>
+                        {" "}({stablecoinValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(stablecoinValueChange24h, cur)})
                       </span>
                     )}
-                  </>
-                ) : (
-                  <span className="text-xs text-zinc-600">—</span>
+                  </p>
                 )}
-                <span className="text-xs text-zinc-600">
-                  {PERIOD_LABELS[changePeriod]} · {insights.cryptoAssetCount} asset{insights.cryptoAssetCount !== 1 ? "s" : ""}
-                </span>
-              </div>
+              </>
             );
           })()}
-          <p className="text-xs text-zinc-600 mt-1">
-            {insights.btcDominancePercent > 0 && (
-              <span>BTC dom. {fmtPctPlain(insights.btcDominancePercent, 1)}</span>
-            )}
-            {insights.btcDominancePercent > 0 && insights.minedStakedPercent > 0 && (
-              <span> · </span>
-            )}
-            {insights.minedStakedPercent > 0 && (
-              <span>{fmtPctPlain(insights.minedStakedPercent, 1)} mined/staked</span>
-            )}
-          </p>
-          {summary.stablecoinValue > 0 && (
-            <p className="text-xs text-zinc-600 mt-0.5">
-              excl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
-            </p>
-          )}
         </Link>
 
         {/* Crypto Breakdown — spans 2 columns for wider bars */}
@@ -560,31 +622,54 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
               ))}
             </div>
           </div>
-          <p className="text-2xl font-semibold text-zinc-100 tabular-nums mt-2">
-            {fmtCurrency(stocksValue, cur)}
-          </p>
           {(() => {
             const c = getStockChangeForPeriod(changePeriod);
+            const showStockFx = changePeriod === "24h" && stocksFxChange24hPercent !== 0;
             return (
-              <div className="flex items-center gap-2 mt-1">
-                {c.available ? (
-                  <>
+              <>
+                <div className="flex items-baseline gap-3 mt-2">
+                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                    {fmtCurrency(stocksValue, cur)}
+                  </p>
+                  {c.available ? (
                     <span className={`text-xs tabular-nums ${changeColor(c.percent)}`}>
                       {fmtPct(c.percent)}
+                      {c.valueChange !== 0 && (
+                        <span className="ml-1">
+                          ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
+                        </span>
+                      )}
                     </span>
-                    {c.valueChange !== 0 && (
-                      <span className={`text-xs tabular-nums ${changeColor(c.percent)}`}>
-                        ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-xs text-zinc-600">—</span>
+                  ) : (
+                    <span className="text-xs text-zinc-600">—</span>
+                  )}
+                </div>
+                {showStockFx && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                    incl. {fmtPct(stocksFxChange24hPercent, 2)} ({stocksFxValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(stocksFxValueChange24h, cur)}) EUR/USD
+                  </p>
                 )}
-                <span className="text-xs text-zinc-600">
-                  {PERIOD_LABELS[changePeriod]} · {insights.stockPositionCount} position{insights.stockPositionCount !== 1 ? "s" : ""}
-                </span>
-              </div>
+                {insights.stocksWeightedYield > 0 && (() => {
+                  const yearly = insights.stocksDividendIncomeYearly;
+                  const periodIncome =
+                    changePeriod === "24h" ? yearly / 365 :
+                    changePeriod === "7d" ? yearly / 365 * 7 :
+                    changePeriod === "30d" ? yearly / 12 :
+                    yearly;
+                  const periodLabel =
+                    changePeriod === "24h" ? "/day" :
+                    changePeriod === "7d" ? "/7d" :
+                    changePeriod === "30d" ? "/mo" :
+                    "/yr";
+                  return (
+                    <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
+                      ~{insights.stocksWeightedYield.toFixed(2)}% yield{periodIncome > 0 && (
+                        <> · +{fmtCurrencyCompact(periodIncome, cur, 2)}{periodLabel}</>
+                      )}
+                    </p>
+                  );
+                })()}
+              </>
             );
           })()}
         </Link>
@@ -690,47 +775,87 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                 Banks & Deposits
               </span>
             </div>
-            {insights.weightedAvgApy > 0 && (
-              <div className="flex gap-0.5">
-                {APY_PERIODS.map((p) => (
-                  <button
-                    key={p}
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setApyPeriod(p); }}
-                    className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-                      p === apyPeriod
-                        ? "bg-emerald-600 text-white"
-                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
-                    }`}
-                  >
-                    {p === "daily" ? "day" : p === "monthly" ? "mo" : "yr"}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex gap-0.5">
+              {CHANGE_PERIODS.map((p) => (
+                <button
+                  key={p}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setChangePeriod(p); }}
+                  className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                    p === changePeriod
+                      ? "bg-zinc-700 text-zinc-100"
+                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                  }`}
+                >
+                  {PERIOD_LABELS[p]}
+                </button>
+              ))}
+            </div>
           </div>
-          <p className="text-2xl font-semibold text-zinc-100 tabular-nums mt-2">
-            {fmtCurrency(cashValue, cur)}
-          </p>
-          <div className="flex items-center gap-2 mt-1">
-            {insights.weightedAvgApy > 0 && (
-              <span className="text-xs tabular-nums text-emerald-500">
-                {insights.weightedAvgApy.toFixed(2)}% APY
-              </span>
-            )}
-            <span className="text-xs text-zinc-600">
-              {insights.cashAccountCount} account{insights.cashAccountCount !== 1 ? "s" : ""}
-            </span>
-          </div>
-          {insights.weightedAvgApy > 0 && (
-            <p className="text-xs text-emerald-500/80 mt-1 tabular-nums">
-              +{fmtCurrencyCompact(apyIncomeMap[apyPeriod], cur)}/{apyPeriod === "daily" ? "day" : apyPeriod === "monthly" ? "mo" : "yr"} projected
-            </p>
-          )}
-          {summary.stablecoinValue > 0 && (
-            <p className="text-xs text-zinc-600 mt-0.5">
-              incl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
-            </p>
-          )}
+          {(() => {
+            const c = getCashChangeForPeriod(changePeriod);
+            const showCashFx = changePeriod === "24h" && cashTotalFxChange24hPercent !== 0;
+            return (
+              <>
+                <div className="flex items-baseline gap-3 mt-2">
+                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                    {fmtCurrency(cashValue, cur)}
+                  </p>
+                  {c.available ? (
+                    <span className={`text-xs tabular-nums ${changeColor(c.percent)}`}>
+                      {fmtPct(c.percent)}
+                      {c.valueChange !== 0 && (
+                        <span className="ml-1">
+                          ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-zinc-600">—</span>
+                  )}
+                </div>
+                {insights.weightedAvgApy > 0 && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-xs tabular-nums text-emerald-500">
+                      {insights.weightedAvgApy.toFixed(2)}% APY
+                    </span>
+                    <span className="text-[11px] text-emerald-500/70 tabular-nums">
+                      · +{fmtCurrencyCompact(apyIncomeMap[apyPeriod], cur, 2)}/{apyPeriod === "daily" ? "day" : apyPeriod === "monthly" ? "mo" : "yr"}
+                    </span>
+                    <div className="flex gap-0.5 ml-auto">
+                      {APY_PERIODS.map((p) => (
+                        <button
+                          key={p}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setApyPeriod(p); }}
+                          className={`px-1 py-0.5 text-[9px] rounded transition-colors ${
+                            p === apyPeriod
+                              ? "bg-emerald-600/30 text-emerald-400"
+                              : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                          }`}
+                        >
+                          {p === "daily" ? "day" : p === "monthly" ? "mo" : "yr"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {showCashFx && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                    incl. {fmtPct(cashTotalFxChange24hPercent, 2)} ({cashTotalFxValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(cashTotalFxValueChange24h, cur)}) EUR/USD
+                  </p>
+                )}
+                {summary.stablecoinValue > 0 && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                    incl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
+                    {changePeriod === "24h" && stablecoinValueChange24h !== 0 && (
+                      <span>
+                        {" "}({stablecoinValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(stablecoinValueChange24h, cur)})
+                      </span>
+                    )}
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </Link>
 
         {/* Currency Breakdown — spans 2 columns for wider bars */}

@@ -14,6 +14,7 @@ import type {
   CoinGeckoPriceData,
   StockAssetWithPositions,
   YahooStockPriceData,
+  YahooDividendMap,
   BankAccount,
   ExchangeDeposit,
   BrokerDeposit,
@@ -82,6 +83,8 @@ export interface DashboardInsights {
   stockChange24h: number;
   equitiesBreakdown: BreakdownEntry[];
   topHolding: { name: string; ticker: string; percent: number } | null;
+  stocksWeightedYield: number;         // value-weighted trailing yield %
+  stocksDividendIncomeYearly: number;  // projected annual income in base currency
 
   // Cash insights
   cashAccountCount: number;
@@ -112,6 +115,7 @@ interface InsightsParams {
   dowPrice: number;
   dowChange24h: number;
   eurUsdChange24h: number;
+  dividends?: YahooDividendMap;
 }
 
 // ─── Computation ────────────────────────────────────────
@@ -137,10 +141,19 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     dowPrice,
     dowChange24h,
     eurUsdChange24h,
+    dividends,
   } = params;
 
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
+
+  // FX impact helper — mirrors aggregate.ts logic
+  function fxChangeForCurrency(assetCurrency: string): number {
+    if (assetCurrency === primaryCurrency) return 0;
+    if (primaryCurrency === "EUR" && assetCurrency === "USD") return -eurUsdChange24h;
+    if (primaryCurrency === "USD" && assetCurrency === "EUR") return eurUsdChange24h;
+    return 0;
+  }
 
   // ── BTC & ETH market prices (USD only) ───────────────
   const btcData = cryptoPrices["bitcoin"];
@@ -260,7 +273,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const valueNative = totalQty * priceData.price;
     const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
-    const change = priceData.change24h ?? 0;
+    const change = (priceData.change24h ?? 0) + fxChangeForCurrency(asset.currency);
 
     stockTotalValue += valueBase;
     stockWeightedChange += valueBase * change;
@@ -302,6 +315,31 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   if (topHolding && stockTotalValue > 0) {
     topHolding.percent = (topHoldingValue / stockTotalValue) * 100;
   }
+
+  // Dividend yield — value-weighted across all stock assets
+  let yieldWeightedSum = 0;
+  let stocksDividendIncomeYearly = 0;
+
+  if (dividends) {
+    for (const asset of stockAssets) {
+      const yahooKey = asset.yahoo_ticker || asset.ticker;
+      const divData = dividends[yahooKey];
+      if (!divData || divData.trailingYield <= 0) continue;
+
+      const priceData = stockPrices[yahooKey];
+      if (!priceData) continue;
+
+      const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
+      const valueNative = totalQty * priceData.price;
+      const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
+
+      yieldWeightedSum += valueBase * divData.trailingYield;
+      const nativeIncome = totalQty * divData.annualDividend;
+      stocksDividendIncomeYearly += convertToBase(nativeIncome, asset.currency, primaryCurrency, fxRates);
+    }
+  }
+
+  const stocksWeightedYield = stockTotalValue > 0 ? yieldWeightedSum / stockTotalValue : 0;
 
   // Build type-level breakdown with subtype & tag children
   const TYPE_META: { cat: string; label: string; color: string }[] = [
@@ -516,6 +554,8 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     stockChange24h,
     equitiesBreakdown,
     topHolding,
+    stocksWeightedYield,
+    stocksDividendIncomeYearly,
 
     cashAccountCount,
     weightedAvgApy,

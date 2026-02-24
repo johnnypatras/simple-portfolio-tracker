@@ -24,12 +24,34 @@ export interface PortfolioSummary {
   cashValue: number;          // includes stablecoins
   stablecoinValue: number;    // stablecoins only (subset of cashValue)
   change24hPercent: number;
+  /** FX-only component of the 24h change (subset of change24hPercent).
+   *  Shows how much of the total change is due to EUR/USD movement. */
+  fxChange24hPercent: number;
   allocation: {
     crypto: number;
     stocks: number;
     cash: number;
   };
   primaryCurrency: string;
+
+  // Absolute 24h value changes — components sum exactly to totalValueChange24h.
+  // Computed as weightedChange / 100 (linear approximation, perfectly additive).
+  totalValueChange24h: number;
+  cryptoValueChange24h: number;
+  stocksValueChange24h: number;
+  stablecoinValueChange24h: number;
+  cashFxValueChange24h: number;   // FX-only impact on fiat cash (bank + exchange + broker deposits)
+  fxValueChange24h: number;       // total FX-only impact (stocks FX + stablecoin FX + fiat cash FX)
+
+  // Per-class FX-only 24h values (for EUR/USD sub-lines on each sub-card)
+  cryptoFxValueChange24h: number;       // FX component embedded in CoinGecko's EUR prices
+  cryptoFxChange24hPercent: number;
+  stocksFxValueChange24h: number;       // FX on foreign-currency stocks
+  stocksFxChange24hPercent: number;
+  // Cash total: stablecoin full change + fiat cash FX (for the cash card's 24h display)
+  cashTotalValueChange24h: number;
+  cashTotalFxValueChange24h: number;    // stablecoin FX + fiat cash FX
+  cashTotalFxChange24hPercent: number;
 
   // Dual-currency values for snapshot storage (DB stores both USD and EUR)
   totalValueUsd: number;
@@ -49,6 +71,9 @@ interface AggregateParams {
   brokerDeposits: BrokerDeposit[];
   primaryCurrency: string;
   fxRates: FXRates;
+  /** 24h change in EUR/USD (% — e.g. +0.5 means EUR gained 0.5% vs USD).
+   *  Used to include FX impact on foreign-currency stocks, cash, and stablecoins. */
+  eurUsdChange24h?: number;
 }
 
 /**
@@ -70,16 +95,32 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     brokerDeposits,
     primaryCurrency,
     fxRates,
+    eurUsdChange24h = 0,
   } = params;
 
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
 
+  // FX impact: when primary currency is EUR and assets are in USD, a move in
+  // EUR/USD changes their EUR value.  EUR/USD going up means EUR strengthened
+  // → USD assets lost value in EUR terms → the FX impact is negative.
+  // Conversely for a USD user with EUR assets.
+  // For non-EUR/USD pairs we don't have 24h change data, so FX impact = 0.
+  function fxChangeForCurrency(assetCurrency: string): number {
+    if (assetCurrency === primaryCurrency) return 0;
+    if (primaryCurrency === "EUR" && assetCurrency === "USD") return -eurUsdChange24h;
+    if (primaryCurrency === "USD" && assetCurrency === "EUR") return eurUsdChange24h;
+    return 0;
+  }
+
   // ── Crypto (stablecoins separated → reclassified as cash) ──
   // CoinGecko gives us prices in both USD and EUR directly
   let cryptoValue = 0;
   let cryptoWeightedChange = 0; // sum of (value × change%)
+  let cryptoFxWeightedChange = 0; // FX-only portion (eur_change - usd_change)
   let stablecoinValue = 0;
+  let stablecoinWeightedChange = 0;    // full return (CoinGecko's changeKey)
+  let stablecoinFxWeightedChange = 0;  // FX-only portion (for the FX sub-line)
 
   for (const asset of cryptoAssets) {
     const price = cryptoPrices[asset.coingecko_id];
@@ -91,10 +132,19 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
 
     if (asset.subcategory?.toLowerCase() === "stablecoin") {
       stablecoinValue += value;
+      // Full return from CoinGecko (includes both price deviation + FX)
+      const stableChange = price[changeKey] ?? 0;
+      stablecoinWeightedChange += value * stableChange;
+      // FX-only: stablecoins are USD-pegged → their FX exposure = EUR/USD change
+      stablecoinFxWeightedChange += value * fxChangeForCurrency("USD");
     } else {
       const change = price[changeKey] ?? 0;
       cryptoValue += value;
       cryptoWeightedChange += value * change;
+      // FX component: difference between base-currency return and USD return.
+      // For USD users this is 0; for EUR users it captures EUR/USD impact.
+      const usdChange = price.usd_24h_change ?? 0;
+      cryptoFxWeightedChange += value * (change - usdChange);
     }
   }
 
@@ -111,7 +161,8 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const valueNative = totalQty * priceData.price;
     const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
-    const change = priceData.change24h ?? 0;
+    // Total change in primary currency ≈ asset price change + FX change
+    const change = (priceData.change24h ?? 0) + fxChangeForCurrency(asset.currency);
 
     stocksValue += valueBase;
     stocksWeightedChange += valueBase * change;
@@ -119,17 +170,24 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
 
   // ── Cash (bank accounts + exchange deposits + broker deposits) ──
   let cashValue = 0;
+  let fiatCashWeightedChange = 0; // FX-only change for foreign-currency cash
 
   for (const bank of bankAccounts) {
-    cashValue += convertToBase(bank.balance, bank.currency, primaryCurrency, fxRates);
+    const valueBase = convertToBase(bank.balance, bank.currency, primaryCurrency, fxRates);
+    cashValue += valueBase;
+    fiatCashWeightedChange += valueBase * fxChangeForCurrency(bank.currency);
   }
 
   for (const deposit of exchangeDeposits) {
-    cashValue += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
+    const valueBase = convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
+    cashValue += valueBase;
+    fiatCashWeightedChange += valueBase * fxChangeForCurrency(deposit.currency);
   }
 
   for (const deposit of brokerDeposits) {
-    cashValue += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
+    const valueBase = convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
+    cashValue += valueBase;
+    fiatCashWeightedChange += valueBase * fxChangeForCurrency(deposit.currency);
   }
 
   // Add stablecoins to cash
@@ -138,12 +196,30 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   // ── Totals ──────────────────────────────────────────────
   const totalValue = cryptoValue + stocksValue + cashValue;
 
-  // Value-weighted 24h change (cash has 0% change → excluded from weighting)
-  const investedValue = cryptoValue + stocksValue;
+  // Value-weighted 24h change across the entire portfolio.
+  // Includes: crypto price changes, stock price changes + FX, stablecoin FX,
+  // and fiat cash FX.  Denominator is totalValue (cash acts as drag/boost).
+  const totalWeightedChange =
+    cryptoWeightedChange + stocksWeightedChange + stablecoinWeightedChange + fiatCashWeightedChange;
   const change24hPercent =
-    investedValue > 0
-      ? (cryptoWeightedChange + stocksWeightedChange) / investedValue
-      : 0;
+    totalValue > 0 ? totalWeightedChange / totalValue : 0;
+
+  // FX-only component: how much of the 24h change is attributable to EUR/USD.
+  // Each asset class contributes its FX-only portion:
+  // - Stocks: fxChangeForCurrency(stock.currency) per stock
+  // - Stablecoins: fxChangeForCurrency("USD") — precise, excludes tiny price deviation
+  // - Fiat cash: fxChangeForCurrency(account.currency) — pure FX
+  const stocksFxWeightedChange = stockAssets.reduce((sum, asset) => {
+    const key = asset.yahoo_ticker || asset.ticker;
+    const priceData = stockPrices[key];
+    if (!priceData) return sum;
+    const totalQty = asset.positions.reduce((s, p) => s + p.quantity, 0);
+    const valueBase = convertToBase(totalQty * priceData.price, asset.currency, primaryCurrency, fxRates);
+    return sum + valueBase * fxChangeForCurrency(asset.currency);
+  }, 0);
+  const fxWeightedChange = cryptoFxWeightedChange + stocksFxWeightedChange + stablecoinFxWeightedChange + fiatCashWeightedChange;
+  const fxChange24hPercent =
+    totalValue > 0 ? fxWeightedChange / totalValue : 0;
 
   // Allocation percentages
   const allocation =
@@ -206,8 +282,25 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     cashValue,
     stablecoinValue,
     change24hPercent,
+    fxChange24hPercent,
     allocation,
     primaryCurrency,
+    // Absolute 24h deltas — weightedChange / 100, perfectly additive
+    totalValueChange24h: totalWeightedChange / 100,
+    cryptoValueChange24h: cryptoWeightedChange / 100,
+    stocksValueChange24h: stocksWeightedChange / 100,
+    stablecoinValueChange24h: stablecoinWeightedChange / 100,
+    cashFxValueChange24h: fiatCashWeightedChange / 100,
+    fxValueChange24h: fxWeightedChange / 100,
+    // Per-class FX-only 24h values
+    cryptoFxValueChange24h: cryptoFxWeightedChange / 100,
+    cryptoFxChange24hPercent: cryptoValue > 0 ? cryptoFxWeightedChange / cryptoValue : 0,
+    stocksFxValueChange24h: stocksFxWeightedChange / 100,
+    stocksFxChange24hPercent: stocksValue > 0 ? stocksFxWeightedChange / stocksValue : 0,
+    cashTotalValueChange24h: (stablecoinWeightedChange + fiatCashWeightedChange) / 100,
+    cashTotalFxValueChange24h: (stablecoinFxWeightedChange + fiatCashWeightedChange) / 100,
+    cashTotalFxChange24hPercent: cashValue > 0 ? (stablecoinFxWeightedChange + fiatCashWeightedChange) / cashValue : 0,
+    // Dual-currency values for snapshot storage
     totalValueUsd: cryptoValueUsd + stocksValueUsd + cashValueUsd,
     totalValueEur: cryptoValueEur + stocksValueEur + cashValueEur,
     cryptoValueUsd,
