@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Save, Trash2, Loader2, X } from "lucide-react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { Plus, Save, Trash2, Loader2, X, Check } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { upsertStockPosition, deleteStockPosition, updateStockAsset } from "@/lib/actions/stocks";
@@ -39,8 +39,18 @@ export function StockPositionEditor({
   existingSubcategories,
   existingTags,
 }: StockPositionEditorProps) {
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Per-row save tracking (replaces single shared `loading`)
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [justSavedId, setJustSavedId] = useState<string | null>(null);
+
+  // Clear the "just saved" checkmark after 1.5s
+  useEffect(() => {
+    if (!justSavedId) return;
+    const t = setTimeout(() => setJustSavedId(null), 1500);
+    return () => clearTimeout(t);
+  }, [justSavedId]);
 
   // Category + subcategory + tags editing
   const [category, setCategory] = useState<AssetCategory>(asset.category);
@@ -81,6 +91,26 @@ export function StockPositionEditor({
     return map;
   });
 
+  // Build a lookup of original values for dirty detection
+  const originals = useMemo(() => {
+    const map: Record<string, string> = {};
+    asset.positions.forEach((p) => {
+      map[p.broker_id] = p.quantity.toString();
+    });
+    return map;
+  }, [asset.positions]);
+
+  // Dirty detection per row
+  const isDirty = useCallback(
+    (brokerId: string) => {
+      const edit = edits[brokerId];
+      const orig = originals[brokerId];
+      if (orig === undefined) return true; // newly added row is always "dirty"
+      return edit !== orig;
+    },
+    [edits, originals]
+  );
+
   // Which broker to add a new position for
   const [addingBroker, setAddingBroker] = useState("");
 
@@ -94,7 +124,7 @@ export function StockPositionEditor({
 
   async function handleSave(brokerId: string) {
     setError(null);
-    setLoading(true);
+    setSavingId(brokerId);
 
     const qty = parseFloat(edits[brokerId] ?? "0");
     try {
@@ -111,17 +141,18 @@ export function StockPositionEditor({
           return next;
         });
       }
+      setJustSavedId(brokerId);
       toast.success("Position saved");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
-      setLoading(false);
+      setSavingId(null);
     }
   }
 
   async function handleDelete(positionId: string, brokerId: string) {
     setError(null);
-    setLoading(true);
+    setSavingId(brokerId);
     try {
       await deleteStockPosition(positionId);
       setEdits((prev) => {
@@ -133,7 +164,7 @@ export function StockPositionEditor({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
     } finally {
-      setLoading(false);
+      setSavingId(null);
     }
   }
 
@@ -325,27 +356,52 @@ export function StockPositionEditor({
           const existingPosition = asset.positions.find(
             (p) => p.broker_id === brokerId
           );
+          const isSaving = savingId === brokerId;
+          const isBusy = savingId !== null;
+          const dirty = isDirty(brokerId);
+          const justSaved = justSavedId === brokerId;
 
           return (
-            <div key={brokerId} className="flex items-center gap-1.5 sm:gap-2">
-              <span className="text-sm text-zinc-300 w-20 sm:w-24 shrink-0 truncate">
-                {broker?.name ?? "Unknown"}
-              </span>
+            <div
+              key={brokerId}
+              className={`flex items-center gap-1.5 sm:gap-2 rounded-lg transition-colors ${
+                justSaved
+                  ? "bg-emerald-500/5 border-l-2 border-emerald-500/60 pl-1.5"
+                  : dirty
+                    ? "bg-blue-500/5 border-l-2 border-blue-500/40 pl-1.5"
+                    : "pl-2"
+              }`}
+            >
+              <div className="w-20 sm:w-24 shrink-0">
+                <span className="text-sm text-zinc-300 truncate block">
+                  {broker?.name ?? "Unknown"}
+                </span>
+                {dirty && !justSaved && (
+                  <span className="text-[10px] text-blue-400/70 font-medium">
+                    unsaved
+                  </span>
+                )}
+                {justSaved && (
+                  <span className="text-[10px] text-emerald-400/70 font-medium flex items-center gap-0.5">
+                    <Check className="w-3 h-3" /> saved
+                  </span>
+                )}
+              </div>
               <input
                 type="number"
                 step="any"
                 value={edits[brokerId] ?? "0"}
                 onChange={(e) => handleQuantityChange(brokerId, e.target.value)}
                 className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                disabled={loading}
+                disabled={isSaving}
               />
               <button
                 onClick={() => handleSave(brokerId)}
-                disabled={loading}
+                disabled={isBusy}
                 className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                 title="Save"
               >
-                {loading ? (
+                {isSaving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Save className="w-4 h-4" />
@@ -356,7 +412,7 @@ export function StockPositionEditor({
                   onClick={() =>
                     handleDelete(existingPosition.id, brokerId)
                   }
-                  disabled={loading}
+                  disabled={isBusy}
                   className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                   title="Remove"
                 >

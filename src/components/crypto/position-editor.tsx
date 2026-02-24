@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Plus, Save, Trash2, Loader2 } from "lucide-react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { Plus, Save, Trash2, Loader2, Check } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
@@ -31,8 +31,18 @@ export function PositionEditor({
   existingSubcategories,
   existingChains,
 }: PositionEditorProps) {
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Per-row save tracking (replaces single shared `loading`)
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [justSavedId, setJustSavedId] = useState<string | null>(null);
+
+  // Clear the "just saved" checkmark after 1.5s
+  useEffect(() => {
+    if (!justSavedId) return;
+    const t = setTimeout(() => setJustSavedId(null), 1500);
+    return () => clearTimeout(t);
+  }, [justSavedId]);
 
   // ─── Asset metadata editing (chain + subcategory) ────────
   const chainOptions = useMemo(() => {
@@ -65,7 +75,7 @@ export function PositionEditor({
     }
   }
 
-  // Track edits: walletId → { quantity, acquisition }
+  // Track edits: walletId → { quantity, acquisition, apy }
   const [edits, setEdits] = useState<Record<string, PositionEdit>>(() => {
     const map: Record<string, PositionEdit> = {};
     asset.positions.forEach((p) => {
@@ -77,6 +87,34 @@ export function PositionEditor({
     });
     return map;
   });
+
+  // Build a lookup of original values for dirty detection
+  const originals = useMemo(() => {
+    const map: Record<string, PositionEdit> = {};
+    asset.positions.forEach((p) => {
+      map[p.wallet_id] = {
+        quantity: p.quantity.toString(),
+        acquisition: p.acquisition_method ?? "bought",
+        apy: (p.apy ?? 0).toString(),
+      };
+    });
+    return map;
+  }, [asset.positions]);
+
+  // Dirty detection per row
+  const isDirty = useCallback(
+    (walletId: string) => {
+      const edit = edits[walletId];
+      const orig = originals[walletId];
+      if (!orig) return true; // newly added row is always "dirty"
+      return (
+        edit.quantity !== orig.quantity ||
+        edit.acquisition !== orig.acquisition ||
+        edit.apy !== orig.apy
+      );
+    },
+    [edits, originals]
+  );
 
   // Which wallet to add a new position for
   const [addingWallet, setAddingWallet] = useState("");
@@ -115,7 +153,7 @@ export function PositionEditor({
 
   async function handleSave(walletId: string) {
     setError(null);
-    setLoading(true);
+    setSavingId(walletId);
 
     const edit = edits[walletId];
     const qty = parseFloat(edit?.quantity ?? "0");
@@ -137,17 +175,18 @@ export function PositionEditor({
           return next;
         });
       }
+      setJustSavedId(walletId);
       toast.success("Position saved");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
-      setLoading(false);
+      setSavingId(null);
     }
   }
 
   async function handleDelete(positionId: string, walletId: string) {
     setError(null);
-    setLoading(true);
+    setSavingId(walletId);
     try {
       await deletePosition(positionId);
       setEdits((prev) => {
@@ -159,7 +198,7 @@ export function PositionEditor({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
     } finally {
-      setLoading(false);
+      setSavingId(null);
     }
   }
 
@@ -289,14 +328,37 @@ export function PositionEditor({
             (p) => p.wallet_id === walletId
           );
           const edit = edits[walletId];
+          const isSaving = savingId === walletId;
+          const isBusy = savingId !== null;
+          const dirty = isDirty(walletId);
+          const justSaved = justSavedId === walletId;
 
           return (
-            <div key={walletId} className="space-y-1.5">
+            <div
+              key={walletId}
+              className={`space-y-1.5 rounded-lg transition-colors ${
+                justSaved
+                  ? "bg-emerald-500/5 border-l-2 border-emerald-500/60 pl-2"
+                  : dirty
+                    ? "bg-blue-500/5 border-l-2 border-blue-500/40 pl-2"
+                    : "pl-2.5"
+              }`}
+            >
               {/* Wallet name header */}
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-zinc-300 truncate">
                   {wallet?.name ?? "Unknown"}
                 </span>
+                {dirty && !justSaved && (
+                  <span className="text-[10px] text-blue-400/70 font-medium">
+                    unsaved
+                  </span>
+                )}
+                {justSaved && (
+                  <span className="text-[10px] text-emerald-400/70 font-medium flex items-center gap-0.5">
+                    <Check className="w-3 h-3" /> saved
+                  </span>
+                )}
               </div>
               {/* Quantity + Acquisition + APY + Actions */}
               <div className="flex items-center gap-1.5 sm:gap-2">
@@ -308,7 +370,7 @@ export function PositionEditor({
                     handleQuantityChange(walletId, e.target.value)
                   }
                   className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                  disabled={loading}
+                  disabled={isSaving}
                   placeholder="Quantity"
                 />
                 <select
@@ -317,7 +379,7 @@ export function PositionEditor({
                     handleAcquisitionChange(walletId, e.target.value)
                   }
                   className="w-24 sm:w-28 px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 shrink-0"
-                  disabled={loading}
+                  disabled={isSaving}
                 >
                   {ACQUISITION_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -334,7 +396,7 @@ export function PositionEditor({
                     value={edit?.apy ?? "0"}
                     onChange={(e) => handleApyChange(walletId, e.target.value)}
                     className="w-full px-2 py-2 pr-6 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                    disabled={loading}
+                    disabled={isSaving}
                     placeholder="APY"
                     title="APY %"
                   />
@@ -342,11 +404,11 @@ export function PositionEditor({
                 </div>
                 <button
                   onClick={() => handleSave(walletId)}
-                  disabled={loading}
+                  disabled={isBusy}
                   className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                   title="Save"
                 >
-                  {loading ? (
+                  {isSaving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Save className="w-4 h-4" />
@@ -357,7 +419,7 @@ export function PositionEditor({
                     onClick={() =>
                       handleDelete(existingPosition.id, walletId)
                     }
-                    disabled={loading}
+                    disabled={isBusy}
                     className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                     title="Remove"
                   >
