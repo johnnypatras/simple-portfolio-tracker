@@ -218,5 +218,6 @@ export async function updateInstitutionRoles(
   }
 
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/cash");
 }

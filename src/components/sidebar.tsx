@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   LayoutDashboard,
+  Building2,
   Bitcoin,
   TrendingUp,
   Landmark,
@@ -20,6 +21,7 @@ import { useSidebar } from "@/components/sidebar-context";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard/accounts", label: "Accounts", icon: Building2 },
   { href: "/dashboard/crypto", label: "Crypto", icon: Bitcoin },
   { href: "/dashboard/stocks", label: "Equities", icon: TrendingUp },
   { href: "/dashboard/cash", label: "Banks & Deposits", icon: Landmark },
