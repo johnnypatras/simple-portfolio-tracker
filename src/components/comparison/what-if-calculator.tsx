@@ -23,10 +23,10 @@ interface WhatIfCalculatorProps {
 
 type AssetClass = keyof Allocation;
 
-const CLASS_META: { key: AssetClass; label: string; colorDot: string; colorBar: string }[] = [
-  { key: "crypto", label: "Crypto", colorDot: "bg-orange-500", colorBar: "bg-orange-500" },
-  { key: "stocks", label: "Equities", colorDot: "bg-blue-500", colorBar: "bg-blue-500" },
-  { key: "cash", label: "Cash", colorDot: "bg-emerald-500", colorBar: "bg-emerald-500" },
+const CLASS_META: { key: AssetClass; label: string; colorDot: string; accentHex: string }[] = [
+  { key: "crypto", label: "Crypto", colorDot: "bg-orange-500", accentHex: "#f97316" },
+  { key: "stocks", label: "Equities", colorDot: "bg-blue-500", accentHex: "#3b82f6" },
+  { key: "cash", label: "Cash", colorDot: "bg-emerald-500", accentHex: "#10b981" },
 ];
 
 // ─── Linked allocation logic ────────────────────────────
@@ -36,13 +36,17 @@ const CLASS_META: { key: AssetClass; label: string; colorDot: string; colorBar: 
  * across the other two proportionally to their current shares.
  * Edge: if both others are 0, split equally.
  * Always returns values clamped to [0, 100] that sum to 100.
+ *
+ * Uses 1-decimal precision for smooth slider interaction while
+ * keeping the sum-to-100 invariant via rounding correction.
  */
 function adjustAllocation(
   current: Allocation,
   changed: AssetClass,
   newValue: number
 ): Allocation {
-  const clamped = Math.min(100, Math.max(0, newValue));
+  const r1 = (n: number) => Math.round(n * 10) / 10; // 1-decimal precision
+  const clamped = Math.min(100, Math.max(0, r1(newValue)));
   const delta = clamped - current[changed];
 
   const otherKeys = (Object.keys(current) as AssetClass[]).filter(
@@ -56,24 +60,24 @@ function adjustAllocation(
     // Both others are 0 — split the reduction equally
     const each = -delta / otherKeys.length;
     for (const k of otherKeys) {
-      result[k] = Math.max(0, Math.round(each));
+      result[k] = Math.max(0, r1(each));
     }
   } else {
     // Distribute proportionally
     for (const k of otherKeys) {
       const proportion = current[k] / otherSum;
-      result[k] = Math.max(0, Math.round(current[k] - delta * proportion));
+      result[k] = Math.max(0, r1(current[k] - delta * proportion));
     }
   }
 
   // Fix rounding: ensure sum is exactly 100
-  const sum = result.crypto + result.stocks + result.cash;
+  const sum = r1(result.crypto + result.stocks + result.cash);
   if (sum !== 100) {
     // Adjust the largest "other" field by the rounding error
     const largest = otherKeys.reduce((a, b) =>
       result[a] >= result[b] ? a : b
     );
-    result[largest] = Math.max(0, result[largest] + (100 - sum));
+    result[largest] = Math.max(0, r1(result[largest] + (100 - sum)));
   }
 
   return result;
@@ -84,13 +88,13 @@ function adjustAllocation(
 function AllocationRow({
   label,
   colorDot,
-  colorBar,
+  accentColor,
   value,
   onChange,
 }: {
   label: string;
   colorDot: string;
-  colorBar: string;
+  accentColor: string;
   value: number;
   onChange: (v: number) => void;
 }) {
@@ -100,10 +104,34 @@ function AllocationRow({
         <div className={`w-2 h-2 rounded-full ${colorDot}`} />
         <span className="text-xs text-zinc-400">{label}</span>
       </div>
-      <div className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-        <div
-          className={`h-full rounded-full ${colorBar} transition-all duration-200`}
-          style={{ width: `${Math.min(value, 100)}%` }}
+      <div className="relative flex-1 flex items-center">
+        <style>{`
+          .alloc-slider-${label.toLowerCase()}::-webkit-slider-thumb {
+            background: ${accentColor};
+          }
+          .alloc-slider-${label.toLowerCase()}::-moz-range-thumb {
+            background: ${accentColor};
+          }
+        `}</style>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={Math.round(value)}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={`alloc-slider-${label.toLowerCase()} w-full h-1.5 rounded-full appearance-none cursor-pointer
+                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5
+                     [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full
+                     [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-zinc-900
+                     [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:cursor-grab
+                     [&::-webkit-slider-thumb]:active:cursor-grabbing
+                     [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5
+                     [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2
+                     [&::-moz-range-thumb]:border-zinc-900 [&::-moz-range-thumb]:cursor-grab`}
+          style={{
+            background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${value}%, #27272a ${value}%, #27272a 100%)`,
+          }}
         />
       </div>
       <div className="flex items-center gap-0.5 shrink-0">
@@ -111,7 +139,7 @@ function AllocationRow({
           type="number"
           min={0}
           max={100}
-          value={value}
+          value={Math.round(value)}
           onChange={(e) => onChange(Number(e.target.value))}
           className="w-12 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-200 text-right
                      focus:outline-none focus:border-zinc-500 [appearance:textfield]
@@ -193,10 +221,11 @@ export function WhatIfCalculator({
   currency,
 }: WhatIfCalculatorProps) {
   const defaultTotal = viewerSummary.totalValue;
+  // Keep exact percentages from the summary so default "What If" = "Current"
   const defaultAlloc: Allocation = {
-    crypto: Math.round(viewerSummary.allocation.crypto),
-    stocks: Math.round(viewerSummary.allocation.stocks),
-    cash: Math.round(viewerSummary.allocation.cash),
+    crypto: viewerSummary.allocation.crypto,
+    stocks: viewerSummary.allocation.stocks,
+    cash: viewerSummary.allocation.cash,
   };
 
   const [total, setTotal] = useState(defaultTotal);
@@ -221,9 +250,9 @@ export function WhatIfCalculator({
 
   const matchOwnerAlloc = useCallback(() => {
     setAlloc({
-      crypto: Math.round(ownerSummary.allocation.crypto),
-      stocks: Math.round(ownerSummary.allocation.stocks),
-      cash: Math.round(ownerSummary.allocation.cash),
+      crypto: ownerSummary.allocation.crypto,
+      stocks: ownerSummary.allocation.stocks,
+      cash: ownerSummary.allocation.cash,
     });
   }, [ownerSummary.allocation]);
 
@@ -298,7 +327,7 @@ export function WhatIfCalculator({
               key={cls.key}
               label={cls.label}
               colorDot={cls.colorDot}
-              colorBar={cls.colorBar}
+              accentColor={cls.accentHex}
               value={alloc[cls.key]}
               onChange={(v) => handleAllocChange(cls.key, v)}
             />
