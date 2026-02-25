@@ -6,7 +6,8 @@ import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, fetchSinglePrice, getDividendYields } from "@/lib/prices/yahoo";
+import { getStockPrices, fetchSinglePrice, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
+import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getFXRates } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
@@ -30,6 +31,8 @@ export default async function DashboardPage() {
     profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits,
     chartSnapshots, snap7d, snap30d, snap1y,
     sp500Data, goldData, nasdaqData, dowData, eurUsdData,
+    sp500TRHistory,
+    cashFlows,
   ] = await Promise.all([
     getProfile(),
     getCryptoAssetsWithPositions(),
@@ -46,6 +49,8 @@ export default async function DashboardPage() {
     fetchSinglePrice("^IXIC"),   // Nasdaq Composite
     fetchSinglePrice("^DJI"),    // Dow Jones Industrial
     fetchSinglePrice("EURUSD=X"),// EUR/USD cross rate (for 24h change)
+    fetchIndexHistory("^SP500TR", 365), // S&P 500 Total Return (benchmark line)
+    deriveCashFlows(),
   ]);
 
   const primaryCurrency = profile.primary_currency;
@@ -157,7 +162,10 @@ export default async function DashboardPage() {
         <PortfolioChart
           snapshots={chartSnapshots}
           liveValue={summary.totalValue}
+          liveValueUsd={summary.totalValueUsd}
           primaryCurrency={primaryCurrency}
+          sp500History={sp500TRHistory}
+          cashFlows={cashFlows}
         />
       </div>
     </div>

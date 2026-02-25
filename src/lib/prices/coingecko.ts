@@ -62,6 +62,42 @@ export async function getPrices(
   return res.json();
 }
 
+// ── Historical daily prices (for benchmark cash flow valuation) ──
+
+/**
+ * Fetch daily USD prices for a coin over N days.
+ * Returns { date: "YYYY-MM-DD", price: number }[].
+ * Cached for 6 hours — historical data rarely changes.
+ */
+export async function fetchCoinHistory(
+  coinId: string,
+  days: number
+): Promise<{ date: string; price: number }[]> {
+  try {
+    const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
+    const res = await fetch(url, {
+      headers: headers(),
+      next: { revalidate: 21600 }, // 6 hours
+    });
+
+    if (!res.ok) {
+      console.error(`[coingecko] History fetch failed for ${coinId}:`, res.status);
+      return [];
+    }
+
+    const data = await res.json();
+    const prices: [number, number][] = data.prices ?? [];
+
+    return prices.map(([ts, price]) => ({
+      date: new Date(ts).toISOString().split("T")[0],
+      price,
+    }));
+  } catch (err) {
+    console.error(`[coingecko] History error for ${coinId}:`, err);
+    return [];
+  }
+}
+
 // ── Coin detail (chain + categories) ──────────────────────
 
 export interface CoinGeckoDetail {

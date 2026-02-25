@@ -19,6 +19,28 @@ Built with Next.js, Supabase, and Tailwind CSS. Runs entirely on your own infras
 - **Mobile-friendly** — fully responsive dark-themed UI
 - **MFA support** — optional TOTP two-factor authentication
 
+## S&P 500 Benchmark
+
+The dashboard includes an S&P 500 Total Return benchmark overlay on the portfolio chart. It answers: **"What if every dollar I invested had gone into the S&P 500 instead?"**
+
+### How It Works
+
+The benchmark uses a **cash-flow-adjusted** approach rather than naive normalization. Each deposit, purchase, or withdrawal is replayed against the S&P 500 TR index: for each cash flow, hypothetical "S&P units" are bought or sold at the index price on that date. The hypothetical portfolio value on any day is simply `units * S&P price`.
+
+Cash flows are derived from the activity log, which tracks bank account changes, exchange/broker deposits, and crypto/stock position changes (valued at historical market prices from CoinGecko and Yahoo Finance). All amounts are converted to USD using actual daily FX rates.
+
+### Known Compromises
+
+1. **Backfilled history is approximate.** Pre-existing positions are recorded as a single "created" event using the current quantity at the asset's original `created_at` date. Intermediate buys/sells before activity log snapshots were enabled are not captured. This approximation naturally shrinks over time as new changes are tracked precisely.
+
+2. **Position creation dates use the parent asset's timestamp.** Crypto/stock positions inherit `created_at` from their parent asset — if multiple positions were added on different days, they share one date.
+
+3. **No explicit cash flow ledger.** Cash flows are derived from activity log snapshots rather than a dedicated table. This avoids schema changes while providing a good approximation.
+
+4. **FX conversion for chart display** uses the portfolio snapshot's implicit EUR/USD rate rather than a separate FX spot feed. This is exact per snapshot date but is a portfolio-weighted rate.
+
+For the full algorithm deep-dive, see [NOTES-benchmark-algorithm.md](./NOTES-benchmark-algorithm.md).
+
 ## Tech Stack
 
 | Layer | Tech |

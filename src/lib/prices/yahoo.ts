@@ -150,6 +150,55 @@ export async function fetchSinglePrice(ticker: string): Promise<{
   }
 }
 
+// ─── Index History (for benchmark lines) ─────────────────
+
+/**
+ * Fetch daily closing prices for an index over N days.
+ * Used to plot benchmark lines (e.g. ^SP500TR) on the portfolio chart.
+ * Cached for 1 hour since historical data rarely changes.
+ */
+export async function fetchIndexHistory(
+  ticker: string,
+  days: number
+): Promise<{ date: string; close: number }[]> {
+  const range =
+    days <= 7 ? "7d" : days <= 30 ? "1mo" : days <= 90 ? "3mo" : days <= 365 ? "1y" : "max";
+
+  try {
+    const url = `${CHART_URL}/${encodeURIComponent(ticker)}?interval=1d&range=${range}`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      next: { revalidate: 3600 }, // 1 hour
+    });
+
+    if (!res.ok) {
+      console.error(`[yahoo] Index history fetch failed for ${ticker}:`, res.status);
+      return [];
+    }
+
+    const json = await res.json();
+    const result = json?.chart?.result?.[0];
+    if (!result) return [];
+
+    const timestamps: number[] = result.timestamp ?? [];
+    const closes: (number | null)[] =
+      result.indicators?.quote?.[0]?.close ?? [];
+
+    const points: { date: string; close: number }[] = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const close = closes[i];
+      if (close == null) continue;
+      const date = new Date(timestamps[i] * 1000).toISOString().split("T")[0];
+      points.push({ date, close });
+    }
+
+    return points;
+  } catch (err) {
+    console.error(`[yahoo] Index history error for ${ticker}:`, err);
+    return [];
+  }
+}
+
 // ─── Dividend Yields ──────────────────────────────────────
 
 /**
