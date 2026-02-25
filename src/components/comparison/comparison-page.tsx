@@ -7,6 +7,7 @@ import { fmtCurrency, fmtPct, changeColorClass } from "@/lib/format";
 import { AllocationRadar } from "./allocation-radar";
 import { HoldingsOverlap } from "./holdings-overlap";
 import { PerformanceRaceChart } from "./performance-race-chart";
+import { WhatIfCalculator } from "./what-if-calculator";
 
 interface ComparisonPageProps {
   data: ComparisonData;
@@ -93,16 +94,6 @@ function BreakdownCard({
           {ownerValue > 0 && ` (${fmtPct(deltaPercent)})`}
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Placeholder card for future increments ─────────────
-
-function ComingSoonCard({ title }: { title: string }) {
-  return (
-    <div className="border border-dashed border-zinc-800 rounded-lg p-6 flex items-center justify-center">
-      <span className="text-sm text-zinc-600">{title} — Coming soon</span>
     </div>
   );
 }
@@ -274,8 +265,14 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
         currency={cur}
       />
 
-      {/* ── Coming soon sections ────────────────────────── */}
-      <ComingSoonCard title="What If Calculator" />
+      {/* ── What If Calculator ──────────────────────────── */}
+      <WhatIfCalculator
+        viewerSummary={vs}
+        ownerSummary={os}
+        viewerName="You"
+        ownerName={owner.name}
+        currency={cur}
+      />
     </div>
   );
 }
