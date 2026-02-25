@@ -24,6 +24,7 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 import { exportActivityLogsCsv } from "@/lib/actions/activity-log";
 import { undoActivity } from "@/lib/actions/undo";
+import { useSharedView } from "@/components/shared-view-context";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -215,6 +216,7 @@ export function ActivityTimeline({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const { isReadOnly } = useSharedView();
 
   const totalPages = Math.ceil(total / limit);
 
@@ -301,7 +303,7 @@ export function ActivityTimeline({
 
           <div className="flex-1" />
 
-          {total > 0 && (
+          {!isReadOnly && total > 0 && (
             <button
               onClick={handleExportCsv}
               className="shrink-0 p-2 text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800/80 transition-colors"
@@ -391,7 +393,7 @@ export function ActivityTimeline({
                             <span className="text-[10px] font-medium text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded">
                               Undone
                             </span>
-                          ) : log.entity_id ? (
+                          ) : !isReadOnly && log.entity_id ? (
                             <ConfirmButton
                               onConfirm={() => handleUndo(log.id)}
                               confirmLabel="Undo?"

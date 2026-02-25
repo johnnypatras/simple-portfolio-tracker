@@ -46,6 +46,7 @@ import type {
   YahooStockPriceData,
   YahooDividendMap,
 } from "@/lib/types";
+import { useSharedView } from "@/components/shared-view-context";
 
 // ── Types ────────────────────────────────────────────────
 
@@ -152,6 +153,7 @@ export function AccountsView({
   const [editingBrokerDeposit, setEditingBrokerDeposit] = useState<BrokerDeposit | null>(null);
   const [showAddBrokerDeposit, setShowAddBrokerDeposit] = useState<string | null>(null);
   const [showAllInstitutions, setShowAllInstitutions] = useState(false);
+  const { isReadOnly } = useSharedView();
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -489,15 +491,17 @@ export function AccountsView({
       </div>
 
       {/* Action bar — matches crypto/stocks/cash placement */}
-      <div className="flex items-center justify-end mt-2 mb-3">
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Institution
-        </button>
-      </div>
+      {!isReadOnly && (
+        <div className="flex items-center justify-end mt-2 mb-3">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Institution
+          </button>
+        </div>
+      )}
 
       {/* Institution cards */}
       <div className="space-y-2">
@@ -577,7 +581,7 @@ export function AccountsView({
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pl-4">
                   {/* Edit button — visible on expand (mobile) or hover (desktop) */}
-                  {!isSelfCustody && (
+                  {!isReadOnly && !isSelfCustody && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -663,23 +667,27 @@ export function AccountsView({
                                 ×{formatQuantity(row.quantity)}
                               </span>
                               <span className="flex-1" />
-                              <button
-                                onClick={() => {
-                                  const asset = cryptoAssets.find((a) => a.id === row.assetId);
-                                  if (asset) { setActiveRowId(null); setEditingCryptoAsset(asset); }
-                                }}
-                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-                              >
-                                <Pencil className="w-3 h-3" />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "crypto", id: row.assetId, label: `${row.ticker} (${row.name})` }); }}
-                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                Delete
-                              </button>
+                              {!isReadOnly && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      const asset = cryptoAssets.find((a) => a.id === row.assetId);
+                                      if (asset) { setActiveRowId(null); setEditingCryptoAsset(asset); }
+                                    }}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "crypto", id: row.assetId, label: `${row.ticker} (${row.name})` }); }}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    Delete
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                         </div>
@@ -731,23 +739,27 @@ export function AccountsView({
                                 ×{formatQuantity(row.quantity, 2)}
                               </span>
                               <span className="flex-1" />
-                              <button
-                                onClick={() => {
-                                  const asset = stockAssets.find((a) => a.id === row.assetId);
-                                  if (asset) { setActiveRowId(null); setEditingStockAsset(asset); }
-                                }}
-                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-                              >
-                                <Pencil className="w-3 h-3" />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "stock", id: row.assetId, label: `${row.ticker} (${row.name})` }); }}
-                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                Delete
-                              </button>
+                              {!isReadOnly && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      const asset = stockAssets.find((a) => a.id === row.assetId);
+                                      if (asset) { setActiveRowId(null); setEditingStockAsset(asset); }
+                                    }}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "stock", id: row.assetId, label: `${row.ticker} (${row.name})` }); }}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    Delete
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                         </div>
@@ -805,32 +817,36 @@ export function AccountsView({
                                 {row.currency !== primaryCurrency && formatCurrency(row.amount, row.currency)}
                               </span>
                               <span className="flex-1" />
-                              <button
-                                onClick={() => {
-                                  setActiveRowId(null);
-                                  if (row.type === "bank") {
-                                    const acct = bankAccounts.find((b) => b.id === row.id);
-                                    if (acct) setEditingBankAccount(acct);
-                                  } else if (row.type === "exchange_deposit") {
-                                    const dep = exchangeDeposits.find((d) => d.id === row.id);
-                                    if (dep) setEditingExchangeDeposit(dep);
-                                  } else {
-                                    const dep = brokerDeposits.find((d) => d.id === row.id);
-                                    if (dep) setEditingBrokerDeposit(dep);
-                                  }
-                                }}
-                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-                              >
-                                <Pencil className="w-3 h-3" />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => { setActiveRowId(null); setDeleteTarget({ type: row.type, id: row.id, label: row.label }); }}
-                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                Delete
-                              </button>
+                              {!isReadOnly && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setActiveRowId(null);
+                                      if (row.type === "bank") {
+                                        const acct = bankAccounts.find((b) => b.id === row.id);
+                                        if (acct) setEditingBankAccount(acct);
+                                      } else if (row.type === "exchange_deposit") {
+                                        const dep = exchangeDeposits.find((d) => d.id === row.id);
+                                        if (dep) setEditingExchangeDeposit(dep);
+                                      } else {
+                                        const dep = brokerDeposits.find((d) => d.id === row.id);
+                                        if (dep) setEditingBrokerDeposit(dep);
+                                      }
+                                    }}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => { setActiveRowId(null); setDeleteTarget({ type: row.type, id: row.id, label: row.label }); }}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    Delete
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                         </div>
@@ -846,15 +862,17 @@ export function AccountsView({
                 )}
 
                 {/* Add asset dropdown */}
-                <AddAssetDropdown
-                  institution={institution}
-                  isSelfCustody={isSelfCustody}
-                  onAddCrypto={() => setShowAddCrypto(institution.id)}
-                  onAddStock={() => setShowAddStock(institution.id)}
-                  onAddBankAccount={() => setShowAddBankAccount(institution.id)}
-                  onAddExchangeDeposit={() => setShowAddExchangeDeposit(institution.id)}
-                  onAddBrokerDeposit={() => setShowAddBrokerDeposit(institution.id)}
-                />
+                {!isReadOnly && (
+                  <AddAssetDropdown
+                    institution={institution}
+                    isSelfCustody={isSelfCustody}
+                    onAddCrypto={() => setShowAddCrypto(institution.id)}
+                    onAddStock={() => setShowAddStock(institution.id)}
+                    onAddBankAccount={() => setShowAddBankAccount(institution.id)}
+                    onAddExchangeDeposit={() => setShowAddExchangeDeposit(institution.id)}
+                    onAddBrokerDeposit={() => setShowAddBrokerDeposit(institution.id)}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -893,117 +911,120 @@ export function AccountsView({
       )}
 
       {/* ── Modals ──────────────────────────────────────── */}
+      {!isReadOnly && (
+        <>
+          {/* Institution modals */}
+          {editingInstitution && (
+            <EditInstitutionModal
+              open={!!editingInstitution}
+              onClose={() => setEditingInstitution(null)}
+              institution={editingInstitution}
+            />
+          )}
+          <AddInstitutionModal
+            open={showAddModal}
+            onClose={() => setShowAddModal(false)}
+          />
 
-      {/* Institution modals */}
-      {editingInstitution && (
-        <EditInstitutionModal
-          open={!!editingInstitution}
-          onClose={() => setEditingInstitution(null)}
-          institution={editingInstitution}
-        />
-      )}
-      <AddInstitutionModal
-        open={showAddModal}
-        onClose={() => setShowAddModal(false)}
-      />
+          {/* Crypto modals */}
+          {editingCryptoAsset && (
+            <PositionEditor
+              open
+              onClose={() => setEditingCryptoAsset(null)}
+              asset={editingCryptoAsset}
+              wallets={wallets}
+              existingSubcategories={existingSubcategories}
+              existingChains={existingChains}
+            />
+          )}
+          {showAddCrypto && (
+            <AddCryptoModal
+              open
+              onClose={() => setShowAddCrypto(null)}
+              wallets={walletsForInstitution(showAddCrypto)}
+              existingSubcategories={existingSubcategories}
+              existingChains={existingChains}
+            />
+          )}
 
-      {/* Crypto modals */}
-      {editingCryptoAsset && (
-        <PositionEditor
-          open
-          onClose={() => setEditingCryptoAsset(null)}
-          asset={editingCryptoAsset}
-          wallets={wallets}
-          existingSubcategories={existingSubcategories}
-          existingChains={existingChains}
-        />
-      )}
-      {showAddCrypto && (
-        <AddCryptoModal
-          open
-          onClose={() => setShowAddCrypto(null)}
-          wallets={walletsForInstitution(showAddCrypto)}
-          existingSubcategories={existingSubcategories}
-          existingChains={existingChains}
-        />
-      )}
+          {/* Stock modals */}
+          {editingStockAsset && (
+            <StockPositionEditor
+              open
+              onClose={() => setEditingStockAsset(null)}
+              asset={editingStockAsset}
+              brokers={brokers}
+              existingSubcategories={existingSubcategories}
+              existingTags={existingTags}
+            />
+          )}
+          {showAddStock && (
+            <AddStockModal
+              open
+              onClose={() => setShowAddStock(null)}
+              brokers={brokersForInstitution(showAddStock)}
+              existingSubcategories={existingSubcategories}
+              existingTags={existingTags}
+            />
+          )}
 
-      {/* Stock modals */}
-      {editingStockAsset && (
-        <StockPositionEditor
-          open
-          onClose={() => setEditingStockAsset(null)}
-          asset={editingStockAsset}
-          brokers={brokers}
-          existingSubcategories={existingSubcategories}
-          existingTags={existingTags}
-        />
-      )}
-      {showAddStock && (
-        <AddStockModal
-          open
-          onClose={() => setShowAddStock(null)}
-          brokers={brokersForInstitution(showAddStock)}
-          existingSubcategories={existingSubcategories}
-          existingTags={existingTags}
-        />
-      )}
+          {/* Cash modals */}
+          {(editingBankAccount !== null || showAddBankAccount !== null) && (
+            <BankAccountModal
+              open
+              onClose={() => { setEditingBankAccount(null); setShowAddBankAccount(null); }}
+              editing={editingBankAccount}
+              existingBankNames={existingBankNames}
+            />
+          )}
+          {(editingExchangeDeposit !== null || showAddExchangeDeposit !== null) && (
+            <ExchangeDepositModal
+              open
+              onClose={() => { setEditingExchangeDeposit(null); setShowAddExchangeDeposit(null); }}
+              editing={editingExchangeDeposit}
+              wallets={showAddExchangeDeposit ? walletsForInstitution(showAddExchangeDeposit) : wallets}
+            />
+          )}
+          {(editingBrokerDeposit !== null || showAddBrokerDeposit !== null) && (
+            <BrokerDepositModal
+              open
+              onClose={() => { setEditingBrokerDeposit(null); setShowAddBrokerDeposit(null); }}
+              editing={editingBrokerDeposit}
+              brokers={showAddBrokerDeposit ? brokersForInstitution(showAddBrokerDeposit) : brokers}
+            />
+          )}
 
-      {/* Cash modals */}
-      {(editingBankAccount !== null || showAddBankAccount !== null) && (
-        <BankAccountModal
-          open
-          onClose={() => { setEditingBankAccount(null); setShowAddBankAccount(null); }}
-          editing={editingBankAccount}
-          existingBankNames={existingBankNames}
-        />
-      )}
-      {(editingExchangeDeposit !== null || showAddExchangeDeposit !== null) && (
-        <ExchangeDepositModal
-          open
-          onClose={() => { setEditingExchangeDeposit(null); setShowAddExchangeDeposit(null); }}
-          editing={editingExchangeDeposit}
-          wallets={showAddExchangeDeposit ? walletsForInstitution(showAddExchangeDeposit) : wallets}
-        />
-      )}
-      {(editingBrokerDeposit !== null || showAddBrokerDeposit !== null) && (
-        <BrokerDepositModal
-          open
-          onClose={() => { setEditingBrokerDeposit(null); setShowAddBrokerDeposit(null); }}
-          editing={editingBrokerDeposit}
-          brokers={showAddBrokerDeposit ? brokersForInstitution(showAddBrokerDeposit) : brokers}
-        />
-      )}
-
-      {/* Delete confirmation */}
-      {deleteTarget && (
-        <Modal
-          open
-          onClose={() => setDeleteTarget(null)}
-          title="Confirm Delete"
-        >
-          <div className="space-y-4">
-            <p className="text-sm text-zinc-300">
-              Are you sure you want to delete <span className="font-medium text-zinc-100">{deleteTarget.label}</span>?
-              This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
-              >
-                {deleting ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
-        </Modal>
+          {/* Delete confirmation */}
+          {deleteTarget && (
+            <Modal
+              open
+              onClose={() => setDeleteTarget(null)}
+              title="Confirm Delete"
+            >
+              <div className="space-y-4">
+                <p className="text-sm text-zinc-300">
+                  Are you sure you want to delete <span className="font-medium text-zinc-100">{deleteTarget.label}</span>?
+                  This action cannot be undone.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setDeleteTarget(null)}
+                    className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+                  >
+                    {deleting ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
+        </>
       )}
     </div>
   );

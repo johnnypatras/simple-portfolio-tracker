@@ -16,6 +16,7 @@ import type {
   TradeAssetType,
   TradeAction,
 } from "@/lib/types";
+import { useSharedView } from "@/components/shared-view-context";
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ export function TradeTable({
   trades: TradeEntry[];
   assetOptions: AssetOptions;
 }) {
+  const { isReadOnly } = useSharedView();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TradeEntry | null>(null);
   const [loading, setLoading] = useState(false);
@@ -424,15 +426,17 @@ export function TradeTable({
           <p className="text-xs text-zinc-600 mb-4">
             Record your significant buys and sells for future reference
           </p>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Trade
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Trade
+            </button>
+          )}
         </div>
-        {modalJSX}
+        {!isReadOnly && modalJSX}
       </div>
     );
   }
@@ -446,13 +450,15 @@ export function TradeTable({
         <p className="text-sm text-zinc-400">
           {trades.length} trade{trades.length !== 1 ? "s" : ""} logged
         </p>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Trade
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Trade
+          </button>
+        )}
       </div>
 
       {/* Desktop table */}
@@ -525,20 +531,22 @@ export function TradeTable({
                   {t.notes || "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity">
-                    <button
-                      onClick={() => openEdit(t)}
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <ConfirmButton
-                      onConfirm={() => handleDelete(t.id)}
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </ConfirmButton>
-                  </div>
+                  {!isReadOnly && (
+                    <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity">
+                      <button
+                        onClick={() => openEdit(t)}
+                        className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <ConfirmButton
+                        onConfirm={() => handleDelete(t.id)}
+                        className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </ConfirmButton>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -592,20 +600,22 @@ export function TradeTable({
                 </div>
               </div>
               {/* Actions */}
-              <div className="flex items-center gap-0.5 shrink-0">
-                <button
-                  onClick={() => openEdit(t)}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => handleDelete(t.id)}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              {!isReadOnly && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => openEdit(t)}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(t.id)}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}

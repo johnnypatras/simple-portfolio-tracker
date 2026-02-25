@@ -35,6 +35,7 @@ import type {
 } from "@/lib/types";
 import { countryName } from "@/lib/types";
 import { HIDDEN_BELOW } from "@/lib/constants";
+import { useSharedView } from "@/components/shared-view-context";
 
 // ═══════════════════════════════════════════════════════════════
 // Stablecoin wallet grouping types
@@ -100,6 +101,8 @@ export function CashTable({
   fxChangeValue = 0,
   stablecoinChange = 0,
 }: CashTableProps) {
+  const { isReadOnly } = useSharedView();
+
   // ── Compute totals ──────────────────────────────────────
   const bankTotal = bankAccounts.reduce(
     (sum, b) =>
@@ -464,27 +467,31 @@ export function CashTable({
               onReset={resetToDefaults}
             />
             {/* Mobile: + Add Asset in toolbar */}
-            <button
-              onClick={() => setAddChooserOpen(true)}
-              className="ml-auto md:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Add
-            </button>
+            {!isReadOnly && (
+              <button
+                onClick={() => setAddChooserOpen(true)}
+                className="ml-auto md:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Add
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* ── Action bar (desktop) ─────────────────────────── */}
-      <div className="hidden md:flex items-center justify-end mt-2 mb-3">
-        <button
-          onClick={() => setAddChooserOpen(true)}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Asset
-        </button>
-      </div>
+      {!isReadOnly && (
+        <div className="hidden md:flex items-center justify-end mt-2 mb-3">
+          <button
+            onClick={() => setAddChooserOpen(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Asset
+          </button>
+        </div>
+      )}
 
       {/* ── Single unified table ─────────────────────────────── */}
       {!hasAnyRows ? (
@@ -494,13 +501,15 @@ export function CashTable({
           <p className="text-xs text-zinc-600 mt-1">
             Add a bank account or exchange deposit to get started
           </p>
-          <button
-            onClick={() => setAddChooserOpen(true)}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 mx-auto mt-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-          >
-            <Plus className="w-3 h-3" />
-            Add Asset
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => setAddChooserOpen(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 mx-auto mt-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              Add Asset
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -553,8 +562,12 @@ export function CashTable({
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(acctValueBase, primaryCurrency)}</span>
-                                    <button onClick={() => openEditBank(acct)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                    <ConfirmButton onConfirm={() => handleDeleteBank(acct.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                    {!isReadOnly && (
+                                      <>
+                                        <button onClick={() => openEditBank(acct)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
+                                        <ConfirmButton onConfirm={() => handleDeleteBank(acct.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -614,8 +627,12 @@ export function CashTable({
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(depValueBase, primaryCurrency)}</span>
-                                    <button onClick={() => openEditExchange(dep)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                    <ConfirmButton onConfirm={() => handleDeleteExchange(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                    {!isReadOnly && (
+                                      <>
+                                        <button onClick={() => openEditExchange(dep)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
+                                        <ConfirmButton onConfirm={() => handleDeleteExchange(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -675,8 +692,12 @@ export function CashTable({
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(depValueBase, primaryCurrency)}</span>
-                                    <button onClick={() => openEditBrokerDeposit(dep)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                    <ConfirmButton onConfirm={() => handleDeleteBrokerDeposit(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                    {!isReadOnly && (
+                                      <>
+                                        <button onClick={() => openEditBrokerDeposit(dep)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
+                                        <ConfirmButton onConfirm={() => handleDeleteBrokerDeposit(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1023,79 +1044,83 @@ export function CashTable({
         </>
       )}
 
-      {/* ── Add Type Chooser ────────────────────────────────── */}
-      <Modal
-        open={addChooserOpen}
-        onClose={() => setAddChooserOpen(false)}
-        title="What would you like to add?"
-      >
-        <div className="space-y-2">
-          <button
-            onClick={openCreateBank}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors text-left"
+      {!isReadOnly && (
+        <>
+          {/* ── Add Type Chooser ────────────────────────────────── */}
+          <Modal
+            open={addChooserOpen}
+            onClose={() => setAddChooserOpen(false)}
+            title="What would you like to add?"
           >
-            <Landmark className="w-5 h-5 text-zinc-400 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-zinc-200">Bank Account</p>
-              <p className="text-xs text-zinc-500">Savings, checking, or other bank accounts</p>
+            <div className="space-y-2">
+              <button
+                onClick={openCreateBank}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors text-left"
+              >
+                <Landmark className="w-5 h-5 text-zinc-400 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Bank Account</p>
+                  <p className="text-xs text-zinc-500">Savings, checking, or other bank accounts</p>
+                </div>
+              </button>
+              <button
+                onClick={openCreateExchange}
+                disabled={wallets.length === 0}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 disabled:opacity-40 disabled:hover:border-zinc-800 disabled:hover:bg-transparent transition-colors text-left"
+              >
+                <WalletIcon className="w-5 h-5 text-zinc-400 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Exchange Deposit</p>
+                  <p className="text-xs text-zinc-500">
+                    {wallets.length === 0
+                      ? "Add a wallet in Settings first"
+                      : "Fiat deposits on crypto exchanges"}
+                  </p>
+                </div>
+              </button>
+              <button
+                onClick={openCreateBrokerDeposit}
+                disabled={brokers.length === 0}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 disabled:opacity-40 disabled:hover:border-zinc-800 disabled:hover:bg-transparent transition-colors text-left"
+              >
+                <Briefcase className="w-5 h-5 text-zinc-400 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Broker Deposit</p>
+                  <p className="text-xs text-zinc-500">
+                    {brokers.length === 0
+                      ? "Add a broker in Settings first"
+                      : "Uninvested cash on stock brokers"}
+                  </p>
+                </div>
+              </button>
             </div>
-          </button>
-          <button
-            onClick={openCreateExchange}
-            disabled={wallets.length === 0}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 disabled:opacity-40 disabled:hover:border-zinc-800 disabled:hover:bg-transparent transition-colors text-left"
-          >
-            <WalletIcon className="w-5 h-5 text-zinc-400 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-zinc-200">Exchange Deposit</p>
-              <p className="text-xs text-zinc-500">
-                {wallets.length === 0
-                  ? "Add a wallet in Settings first"
-                  : "Fiat deposits on crypto exchanges"}
-              </p>
-            </div>
-          </button>
-          <button
-            onClick={openCreateBrokerDeposit}
-            disabled={brokers.length === 0}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 disabled:opacity-40 disabled:hover:border-zinc-800 disabled:hover:bg-transparent transition-colors text-left"
-          >
-            <Briefcase className="w-5 h-5 text-zinc-400 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-zinc-200">Broker Deposit</p>
-              <p className="text-xs text-zinc-500">
-                {brokers.length === 0
-                  ? "Add a broker in Settings first"
-                  : "Uninvested cash on stock brokers"}
-              </p>
-            </div>
-          </button>
-        </div>
-      </Modal>
+          </Modal>
 
-      {/* ── Bank Account Modal ─────────────────────────────── */}
-      <BankAccountModal
-        open={bankModalOpen}
-        onClose={() => setBankModalOpen(false)}
-        editing={editingBank}
-        existingBankNames={[...new Set(bankAccounts.map((b) => b.bank_name))]}
-      />
+          {/* ── Bank Account Modal ─────────────────────────────── */}
+          <BankAccountModal
+            open={bankModalOpen}
+            onClose={() => setBankModalOpen(false)}
+            editing={editingBank}
+            existingBankNames={[...new Set(bankAccounts.map((b) => b.bank_name))]}
+          />
 
-      {/* ── Exchange Deposit Modal ─────────────────────────── */}
-      <ExchangeDepositModal
-        open={exchModalOpen}
-        onClose={() => setExchModalOpen(false)}
-        editing={editingExch}
-        wallets={wallets}
-      />
+          {/* ── Exchange Deposit Modal ─────────────────────────── */}
+          <ExchangeDepositModal
+            open={exchModalOpen}
+            onClose={() => setExchModalOpen(false)}
+            editing={editingExch}
+            wallets={wallets}
+          />
 
-      {/* ── Broker Deposit Modal ──────────────────────────── */}
-      <BrokerDepositModal
-        open={brokerDepModalOpen}
-        onClose={() => setBrokerDepModalOpen(false)}
-        editing={editingBrokerDep}
-        brokers={brokers}
-      />
+          {/* ── Broker Deposit Modal ──────────────────────────── */}
+          <BrokerDepositModal
+            open={brokerDepModalOpen}
+            onClose={() => setBrokerDepModalOpen(false)}
+            editing={editingBrokerDep}
+            brokers={brokers}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -1125,6 +1150,7 @@ function ExpandedBankRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { isReadOnly } = useSharedView();
   const valueInBase = convertToBase(
     account.balance,
     account.currency,
@@ -1197,20 +1223,22 @@ function ExpandedBankRow({
         if (col.key === "actions") {
           return (
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
-              <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity">
-                <button
-                  onClick={onEdit}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <ConfirmButton
-                  onConfirm={onDelete}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </ConfirmButton>
-              </div>
+              {!isReadOnly && (
+                <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity">
+                  <button
+                    onClick={onEdit}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <ConfirmButton
+                    onConfirm={onDelete}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </ConfirmButton>
+                </div>
+              )}
             </td>
           );
         }
@@ -1237,6 +1265,7 @@ function ExpandedExchangeRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { isReadOnly } = useSharedView();
   const valueInBase = convertToBase(
     deposit.amount,
     deposit.currency,
@@ -1304,20 +1333,22 @@ function ExpandedExchangeRow({
         if (col.key === "actions") {
           return (
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
-              <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity">
-                <button
-                  onClick={onEdit}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <ConfirmButton
-                  onConfirm={onDelete}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </ConfirmButton>
-              </div>
+              {!isReadOnly && (
+                <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity">
+                  <button
+                    onClick={onEdit}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <ConfirmButton
+                    onConfirm={onDelete}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </ConfirmButton>
+                </div>
+              )}
             </td>
           );
         }

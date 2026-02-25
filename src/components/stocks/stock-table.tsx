@@ -46,6 +46,7 @@ import {
   type SortDirection,
 } from "./stock-columns";
 import { formatCurrency } from "@/lib/format";
+import { useSharedView } from "@/components/shared-view-context";
 
 // ── Group mode ──────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ interface StockTableProps {
 }
 
 export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxChangePercent = 0, fxChangeValue = 0, dividends }: StockTableProps) {
+  const { isReadOnly } = useSharedView();
   const [addOpen, setAddOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<StockAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -499,27 +501,31 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               onReset={resetToDefaults}
             />
             {/* Mobile: + Add Asset in toolbar */}
-            <button
-              onClick={() => setAddOpen(true)}
-              className="ml-auto md:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Add
-            </button>
+            {!isReadOnly && (
+              <button
+                onClick={() => setAddOpen(true)}
+                className="ml-auto md:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Add
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* ── Action bar (desktop) ─────────────────────────── */}
-      <div className="hidden md:flex items-center justify-end mt-2 mb-3">
-        <button
-          onClick={() => setAddOpen(true)}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Asset
-        </button>
-      </div>
+      {!isReadOnly && (
+        <div className="hidden md:flex items-center justify-end mt-2 mb-3">
+          <button
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Asset
+          </button>
+        </div>
+      )}
 
       {assets.length === 0 ? (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-8 text-center">
@@ -1217,16 +1223,20 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
       )}
 
       {/* Modals */}
-      <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
-      {editingAsset && (
-        <StockPositionEditor
-          open={!!editingAsset}
-          onClose={() => setEditingAsset(null)}
-          asset={editingAsset}
-          brokers={brokers}
-          existingSubcategories={existingSubcategories}
-          existingTags={existingTags}
-        />
+      {!isReadOnly && (
+        <>
+          <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
+          {editingAsset && (
+            <StockPositionEditor
+              open={!!editingAsset}
+              onClose={() => setEditingAsset(null)}
+              asset={editingAsset}
+              brokers={brokers}
+              existingSubcategories={existingSubcategories}
+              existingTags={existingTags}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -1259,6 +1269,7 @@ function MobileStockCard({
   groupPositions?: StockAssetWithPositions["positions"];
   isVariant?: boolean;
 }) {
+  const { isReadOnly } = useSharedView();
   const displayQty = overrideQty ?? row.totalQty;
   const displayValue = overrideValue ?? row.valueBase;
   const displayPositions = groupPositions ?? row.asset.positions;
@@ -1351,23 +1362,25 @@ function MobileStockCard({
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-2 mt-3 pt-2 border-t border-zinc-800/20">
-            <button
-              onClick={() => handleEdit(row.asset)}
-              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
-            >
-              <Pencil className="w-3 h-3" />
-              Edit positions
-            </button>
-            <ConfirmButton
-              onConfirm={() => handleDelete(row.asset.id, row.asset.name)}
-              confirmLabel="Remove?"
-              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
-            >
-              <Trash2 className="w-3 h-3" />
-              Remove
-            </ConfirmButton>
-          </div>
+          {!isReadOnly && (
+            <div className="flex gap-2 mt-3 pt-2 border-t border-zinc-800/20">
+              <button
+                onClick={() => handleEdit(row.asset)}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+              >
+                <Pencil className="w-3 h-3" />
+                Edit positions
+              </button>
+              <ConfirmButton
+                onConfirm={() => handleDelete(row.asset.id, row.asset.name)}
+                confirmLabel="Remove?"
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                Remove
+              </ConfirmButton>
+            </div>
+          )}
         </div>
       )}
     </div>

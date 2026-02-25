@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Settings2, ArrowLeftRight, UserCog } from "lucide-react";
+import { Settings2, ArrowLeftRight, UserCog, Share2 } from "lucide-react";
 import { GeneralSettings } from "./general-settings";
 import { ImportExportSettings } from "./import-export-settings";
 import { AccountSettings } from "./account-settings";
+import { SharingSettings } from "./sharing-settings";
 import type { Profile } from "@/lib/types";
 
 const tabs = [
   { id: "general", label: "General", icon: Settings2 },
+  { id: "sharing", label: "Sharing", icon: Share2 },
   { id: "import-export", label: "Import / Export", icon: ArrowLeftRight },
   { id: "account", label: "Account", icon: UserCog },
 ] as const;
@@ -48,6 +50,7 @@ export function SettingsTabs({ profile }: SettingsTabsProps) {
 
       {/* Tab content */}
       {active === "general" && <GeneralSettings profile={profile} />}
+      {active === "sharing" && <SharingSettings />}
       {active === "import-export" && <ImportExportSettings />}
       {active === "account" && <AccountSettings profile={profile} />}
     </div>
