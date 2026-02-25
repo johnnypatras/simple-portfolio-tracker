@@ -38,13 +38,18 @@ export async function createExchangeDeposit(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // Fetch wallet name for logging
+  // Fetch wallet and verify it's custodial (only exchanges can hold fiat deposits)
   const { data: wallet } = await supabase
     .from("wallets")
-    .select("name")
+    .select("name, wallet_type")
     .eq("id", input.wallet_id)
     .is("deleted_at", null)
     .single();
+
+  if (!wallet) throw new Error("Wallet not found");
+  if (wallet.wallet_type !== "custodial") {
+    throw new Error("Exchange deposits can only be added to custodial wallets (exchanges)");
+  }
 
   const { data: created, error } = await supabase.from("exchange_deposits").insert({
     user_id: user.id,
@@ -85,13 +90,18 @@ export async function updateExchangeDeposit(
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
 
-  // Fetch wallet name for logging
+  // Fetch wallet and verify it's custodial (only exchanges can hold fiat deposits)
   const { data: wallet } = await supabase
     .from("wallets")
-    .select("name")
+    .select("name, wallet_type")
     .eq("id", input.wallet_id)
     .is("deleted_at", null)
     .single();
+
+  if (!wallet) throw new Error("Wallet not found");
+  if (wallet.wallet_type !== "custodial") {
+    throw new Error("Exchange deposits can only be added to custodial wallets (exchanges)");
+  }
 
   // Capture before snapshot
   const { data: before } = await supabase

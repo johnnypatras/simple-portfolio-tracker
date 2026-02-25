@@ -25,6 +25,9 @@ export function ExchangeDepositModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Only custodial wallets can hold exchange deposits (fiat on exchanges)
+  const custodialWallets = wallets.filter((w) => w.wallet_type === "custodial");
+
   // Form state
   const [walletId, setWalletId] = useState("");
   const [currency, setCurrency] = useState<CurrencyType>("USD");
@@ -40,13 +43,13 @@ export function ExchangeDepositModal({
       setApy(editing.apy.toString());
       setError(null);
     } else if (open && !editing) {
-      setWalletId(wallets[0]?.id ?? "");
+      setWalletId(custodialWallets[0]?.id ?? "");
       setCurrency("USD");
       setAmount("");
       setApy("");
       setError(null);
     }
-  }, [open, editing, wallets]);
+  }, [open, editing, custodialWallets]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -91,8 +94,12 @@ export function ExchangeDepositModal({
             onChange={(e) => setWalletId(e.target.value)}
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             required
+            disabled={custodialWallets.length === 0}
           >
-            {wallets.map((w) => (
+            {custodialWallets.length === 0 && (
+              <option value="">No exchange wallets available</option>
+            )}
+            {custodialWallets.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name}
               </option>

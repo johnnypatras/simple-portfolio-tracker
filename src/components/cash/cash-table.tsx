@@ -1109,7 +1109,7 @@ export function CashTable({
             open={exchModalOpen}
             onClose={() => setExchModalOpen(false)}
             editing={editingExch}
-            wallets={wallets}
+            wallets={wallets.filter((w) => w.wallet_type === "custodial")}
           />
 
           {/* ── Broker Deposit Modal ──────────────────────────── */}

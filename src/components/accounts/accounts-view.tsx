@@ -1022,7 +1022,7 @@ export function AccountsView({
               open
               onClose={() => { setEditingExchangeDeposit(null); setShowAddExchangeDeposit(null); }}
               editing={editingExchangeDeposit}
-              wallets={showAddExchangeDeposit ? walletsForInstitution(showAddExchangeDeposit) : wallets}
+              wallets={(showAddExchangeDeposit ? walletsForInstitution(showAddExchangeDeposit) : wallets).filter((w) => w.wallet_type === "custodial")}
             />
           )}
           {(editingBrokerDeposit !== null || showAddBrokerDeposit !== null) && (
