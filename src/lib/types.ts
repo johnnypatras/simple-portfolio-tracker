@@ -8,12 +8,19 @@ export type Currency = CurrencyType;
 
 // ─── User Profile ───────────────────────────────────────
 
+export type UserRole = "admin" | "user";
+export type UserStatus = "pending" | "active" | "suspended";
+
 export interface Profile {
   id: string;
   email: string;
+  first_name: string | null;
+  last_name: string | null;
   display_name: string | null;
   primary_currency: CurrencyType;
   theme: string | null;
+  role: UserRole;
+  status: UserStatus;
   created_at: string;
   updated_at: string;
 }

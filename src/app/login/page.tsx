@@ -231,7 +231,13 @@ export default function LoginPage() {
         )}
 
         <p className="text-xs text-zinc-600 text-center mt-6">
-          Invite-only access. Contact the admin for an account.
+          Don&apos;t have an account?{" "}
+          <a
+            href="/invite"
+            className="text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            Create one
+          </a>
         </p>
       </div>
     </div>

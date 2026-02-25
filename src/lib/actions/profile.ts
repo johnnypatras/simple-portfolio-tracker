@@ -22,8 +22,10 @@ export async function getProfile(): Promise<Profile> {
   return data as Profile;
 }
 
-/** Update the current user's profile (display name, currency, theme). */
+/** Update the current user's profile fields. */
 export async function updateProfile(input: {
+  first_name?: string | null;
+  last_name?: string | null;
   display_name?: string | null;
   primary_currency?: Currency;
   theme?: string | null;
@@ -104,4 +106,45 @@ export async function deleteAccount(): Promise<void> {
 
   // Sign out the user
   await supabase.auth.signOut();
+}
+
+/**
+ * Request an email change for the current user.
+ * Supabase sends a verification link to the new address automatically.
+ */
+export async function changeEmail(newEmail: string): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase.auth.updateUser({ email: newEmail });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Change the current user's password.
+ * Requires the current password for verification.
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !user.email) throw new Error("Not authenticated");
+
+  // Verify current password
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  });
+  if (signInError) throw new Error("Current password is incorrect");
+
+  // Apply new password
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw new Error(error.message);
 }

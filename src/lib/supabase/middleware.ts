@@ -30,23 +30,44 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Redirect unauthenticated users to login (except for public pages)
+  // Public pages that don't require authentication
   const isPublicPage =
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/invite") ||
     request.nextUrl.pathname.startsWith("/share");
 
-  if (!user && !isPublicPage) {
+  const isPendingPage = request.nextUrl.pathname.startsWith("/pending");
+
+  // Redirect unauthenticated users to login (except for public pages)
+  if (!user && !isPublicPage && !isPendingPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  // Redirect authenticated users away from login page
-  if (user && isPublicPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+  // For authenticated users, check profile status
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("status")
+      .eq("id", user.id)
+      .single();
+
+    const isPending = profile?.status === "pending";
+
+    // Pending users can only see /pending — redirect everywhere else
+    if (isPending && !isPendingPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/pending";
+      return NextResponse.redirect(url);
+    }
+
+    // Active/admin users on public pages → send to dashboard
+    if (!isPending && (isPublicPage || isPendingPage)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

@@ -2,8 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { clearAllData, deleteAccount } from "@/lib/actions/profile";
-import { AlertTriangle, Trash2, DatabaseZap } from "lucide-react";
+import {
+  clearAllData,
+  deleteAccount,
+  changeEmail,
+  changePassword,
+} from "@/lib/actions/profile";
+import {
+  AlertTriangle,
+  Trash2,
+  DatabaseZap,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import type { Profile } from "@/lib/types";
 
 export function AccountSettings({ profile }: { profile: Profile }) {
@@ -11,6 +24,67 @@ export function AccountSettings({ profile }: { profile: Profile }) {
   const [clearing, setClearing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Change email
+  const [newEmail, setNewEmail] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  // Change password
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwSuccess, setPwSuccess] = useState<string | null>(null);
+  const [pwError, setPwError] = useState<string | null>(null);
+
+  async function handleChangeEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setEmailError(null);
+    setEmailSuccess(null);
+    setEmailLoading(true);
+    try {
+      await changeEmail(newEmail.trim());
+      setEmailSuccess(
+        `Verification email sent to ${newEmail.trim()}. Check your inbox.`
+      );
+      setNewEmail("");
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Failed to update email");
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPwError(null);
+    setPwSuccess(null);
+
+    if (newPw !== confirmPw) {
+      setPwError("Passwords do not match");
+      return;
+    }
+    if (newPw.length < 8) {
+      setPwError("New password must be at least 8 characters");
+      return;
+    }
+
+    setPwLoading(true);
+    try {
+      await changePassword(currentPw, newPw);
+      setPwSuccess("Password updated successfully");
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : "Failed to change password");
+    } finally {
+      setPwLoading(false);
+    }
+  }
 
   async function handleClearData() {
     const confirmed = window.prompt(
@@ -69,6 +143,103 @@ export function AccountSettings({ profile }: { profile: Profile }) {
           </p>
         </div>
       </div>
+
+      {/* Change Email */}
+      <form onSubmit={handleChangeEmail} className="max-w-md space-y-3">
+        <h3 className="text-sm font-medium text-zinc-300">Change Email</h3>
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="New email address"
+            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            required
+          />
+        </div>
+        {emailError && (
+          <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+            {emailError}
+          </p>
+        )}
+        {emailSuccess && (
+          <p className="text-sm text-emerald-400 bg-emerald-400/10 px-3 py-2 rounded-lg">
+            {emailSuccess}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={emailLoading || !newEmail.trim()}
+          className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+        >
+          {emailLoading ? "Sending..." : "Send Verification Email"}
+        </button>
+      </form>
+
+      {/* Change Password */}
+      <form onSubmit={handleChangePassword} className="max-w-md space-y-3 border-t border-zinc-800 pt-6">
+        <h3 className="text-sm font-medium text-zinc-300">Change Password</h3>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input
+            type={showPw ? "text" : "password"}
+            value={currentPw}
+            onChange={(e) => setCurrentPw(e.target.value)}
+            placeholder="Current password"
+            className="w-full pl-10 pr-10 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            required
+          />
+          <button
+            type="button"
+            onClick={() => setShowPw(!showPw)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+          >
+            {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input
+            type={showPw ? "text" : "password"}
+            value={newPw}
+            onChange={(e) => setNewPw(e.target.value)}
+            placeholder="New password (min. 8 characters)"
+            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            required
+            minLength={8}
+          />
+        </div>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input
+            type={showPw ? "text" : "password"}
+            value={confirmPw}
+            onChange={(e) => setConfirmPw(e.target.value)}
+            placeholder="Confirm new password"
+            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            required
+            minLength={8}
+          />
+        </div>
+        {pwError && (
+          <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+            {pwError}
+          </p>
+        )}
+        {pwSuccess && (
+          <p className="text-sm text-emerald-400 bg-emerald-400/10 px-3 py-2 rounded-lg">
+            {pwSuccess}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={pwLoading || !currentPw || !newPw || !confirmPw}
+          className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+        >
+          {pwLoading ? "Updating..." : "Update Password"}
+        </button>
+      </form>
 
       {error && (
         <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg max-w-md">
