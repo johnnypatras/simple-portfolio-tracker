@@ -214,12 +214,12 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
             const showFxImpact = c.available && c.fxPercent !== 0;
             return (
               <>
-                <div className="flex items-baseline gap-3 mt-1">
-                  <p className="text-5xl font-bold text-zinc-100 tabular-nums">
+                <div className="flex items-baseline gap-3 mt-1 flex-nowrap">
+                  <p className="text-3xl sm:text-5xl font-bold text-zinc-100 tabular-nums">
                     {fmtCurrency(totalValue, cur, 0)}
                   </p>
                   {c.available && (
-                    <span className={`text-sm font-medium tabular-nums ${changeColorClass(c.percent)}`}>
+                    <span className={`text-sm font-medium tabular-nums whitespace-nowrap ${changeColorClass(c.percent)}`}>
                       {fmtPct(c.percent)}
                       {c.valueChange !== 0 && (
                         <span className="ml-1 font-normal">
