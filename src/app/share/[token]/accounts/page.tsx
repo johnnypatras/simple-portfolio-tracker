@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireScope } from "../scope-gate";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, getDividendYields, fetchSinglePrice } from "@/lib/prices/yahoo";
+import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { AccountsView } from "@/components/accounts/accounts-view";
 
@@ -43,20 +43,28 @@ export default async function SharedAccountsPage({
   ]);
 
   return (
-    <AccountsView
-      institutions={institutions}
-      cryptoAssets={cryptoAssets}
-      stockAssets={stockAssets}
-      wallets={wallets}
-      brokers={brokers}
-      bankAccounts={bankAccounts}
-      exchangeDeposits={exchangeDeposits}
-      brokerDeposits={brokerDeposits}
-      cryptoPrices={cryptoPrices}
-      stockPrices={stockPrices}
-      fxRates={fxRates}
-      dividends={dividends}
-      primaryCurrency={primaryCurrency}
-    />
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-zinc-100">Accounts</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          View all institutions and their assets in one place
+        </p>
+      </div>
+      <AccountsView
+        institutions={institutions}
+        cryptoAssets={cryptoAssets}
+        stockAssets={stockAssets}
+        wallets={wallets}
+        brokers={brokers}
+        bankAccounts={bankAccounts}
+        exchangeDeposits={exchangeDeposits}
+        brokerDeposits={brokerDeposits}
+        cryptoPrices={cryptoPrices}
+        stockPrices={stockPrices}
+        fxRates={fxRates}
+        dividends={dividends}
+        primaryCurrency={primaryCurrency}
+      />
+    </div>
   );
 }

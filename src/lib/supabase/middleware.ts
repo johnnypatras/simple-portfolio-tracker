@@ -30,19 +30,26 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Public pages that don't require authentication
-  const isPublicPage =
+  // Pages that don't require authentication
+  const isAuthPage =
     request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/invite") ||
-    request.nextUrl.pathname.startsWith("/share");
+    request.nextUrl.pathname.startsWith("/register");
+
+  // Share links are always accessible, regardless of auth state
+  const isSharePage = request.nextUrl.pathname.startsWith("/share");
 
   const isPendingPage = request.nextUrl.pathname.startsWith("/pending");
 
-  // Redirect unauthenticated users to login (except for public pages)
-  if (!user && !isPublicPage && !isPendingPage) {
+  // Redirect unauthenticated users to login (except public/share pages)
+  if (!user && !isAuthPage && !isSharePage && !isPendingPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
+  }
+
+  // Share pages always pass through — no redirect for logged-in users
+  if (isSharePage) {
+    return supabaseResponse;
   }
 
   // For authenticated users, check profile status
@@ -62,8 +69,8 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Active/admin users on public pages → send to dashboard
-    if (!isPending && (isPublicPage || isPendingPage)) {
+    // Active/admin users on auth pages → send to dashboard
+    if (!isPending && (isAuthPage || isPendingPage)) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);

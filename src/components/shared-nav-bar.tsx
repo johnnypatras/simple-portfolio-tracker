@@ -8,6 +8,7 @@ interface SharedNavBarProps {
   token: string;
   scope: ShareScope;
   ownerName: string;
+  isAuthenticated?: boolean;
 }
 
 const allTabs = [
@@ -26,7 +27,7 @@ const SCOPE_RANK: Record<ShareScope, number> = {
   full_with_history: 2,
 };
 
-export function SharedNavBar({ token, scope, ownerName }: SharedNavBarProps) {
+export function SharedNavBar({ token, scope, ownerName, isAuthenticated }: SharedNavBarProps) {
   const pathname = usePathname();
   const basePath = `/share/${token}`;
 
@@ -36,11 +37,28 @@ export function SharedNavBar({ token, scope, ownerName }: SharedNavBarProps) {
 
   return (
     <div className="border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-40">
-      {/* Read-only banner */}
+      {/* Read-only banner with context-aware CTA */}
       <div className="bg-blue-500/10 border-b border-blue-500/20 px-4 py-2">
-        <p className="text-xs text-blue-400 text-center">
-          Viewing <span className="font-medium">{ownerName}&apos;s</span> portfolio
-          <span className="text-blue-500/70"> &middot; Read-only</span>
+        <p className="text-xs text-blue-400 text-center flex items-center justify-center gap-2 flex-wrap">
+          <span>
+            Viewing <span className="font-medium">{ownerName}&apos;s</span> portfolio
+            <span className="text-blue-500/70"> &middot; Read-only</span>
+          </span>
+          {isAuthenticated ? (
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1 text-blue-300 hover:text-blue-200 font-medium transition-colors"
+            >
+              &rarr; My Portfolio
+            </Link>
+          ) : (
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-1 text-blue-300 hover:text-blue-200 font-medium transition-colors"
+            >
+              &rarr; Track your own
+            </Link>
+          )}
         </p>
       </div>
 

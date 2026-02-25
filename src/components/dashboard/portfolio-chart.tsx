@@ -25,6 +25,8 @@ const TODAY = new Date().toISOString().split("T")[0];
 const TODAY_MS = new Date(TODAY + "T00:00:00").getTime();
 
 const PERIODS = [
+  { label: "24H", days: 1 },
+  { label: "3D", days: 3 },
   { label: "7D", days: 7 },
   { label: "30D", days: 30 },
   { label: "90D", days: 90 },
@@ -43,7 +45,7 @@ export function PortfolioChart({
   liveValue,
   primaryCurrency,
 }: PortfolioChartProps) {
-  const [periodIdx, setPeriodIdx] = useState(1); // default to 30D
+  const [periodIdx, setPeriodIdx] = useState(3); // default to 30D
   const [showAllocation, setShowAllocation] = useState(false);
   const period = PERIODS[periodIdx];
 

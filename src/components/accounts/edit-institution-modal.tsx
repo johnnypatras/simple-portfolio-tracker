@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
-import { updateInstitutionRoles } from "@/lib/actions/institutions";
+import { updateInstitutionRoles, removeInstitutionRole, deleteInstitution } from "@/lib/actions/institutions";
 import { updateWallet } from "@/lib/actions/wallets";
 import type { InstitutionWithRoles, Wallet, PrivacyLabel } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, parseWalletChains, serializeChains } from "@/lib/types";
@@ -21,6 +22,7 @@ export function EditInstitutionModal({
   institution,
   wallets,
 }: EditInstitutionModalProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +48,14 @@ export function EditInstitutionModal({
   const hasBroker = institution.roles.includes("broker");
   const [addBroker, setAddBroker] = useState(false);
 
-  const hasBank = institution.roles.includes("bank");
+  // Phase 2: Role removal state
+  const [removingRole, setRemovingRole] = useState(false);
+  const [confirmRemoveRole, setConfirmRemoveRole] = useState<"wallet" | "broker" | null>(null);
+
+  // Phase 2: Institution deletion state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingInstitution, setDeletingInstitution] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -83,6 +92,35 @@ export function EditInstitutionModal({
     }
   }
 
+  async function handleRemoveRole(role: "wallet" | "broker") {
+    setRemovingRole(true);
+    try {
+      await removeInstitutionRole(institution.id, role);
+      toast.success(`${role === "wallet" ? "Exchange" : "Broker"} role removed`);
+      router.refresh();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove role");
+    } finally {
+      setRemovingRole(false);
+      setConfirmRemoveRole(null);
+    }
+  }
+
+  async function handleDeleteInstitution() {
+    setDeletingInstitution(true);
+    try {
+      await deleteInstitution(institution.id);
+      toast.success(`"${institution.name}" deleted`);
+      router.refresh();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete institution");
+    } finally {
+      setDeletingInstitution(false);
+    }
+  }
+
   // Reset form when modal closes
   function handleClose() {
     setName(institution.name);
@@ -91,8 +129,14 @@ export function EditInstitutionModal({
     setPrivacyLabel(existingWallet?.privacy_label ?? "");
     setSelectedChains(existingWallet ? parseWalletChains(existingWallet.chain) : []);
     setError(null);
+    setConfirmRemoveRole(null);
+    setShowDeleteConfirm(false);
+    setDeleteConfirmText("");
     onClose();
   }
+
+  const roleLabel = (role: string) =>
+    role === "wallet" ? "Exchange" : role === "bank" ? "Bank" : "Broker";
 
   return (
     <Modal open={open} onClose={handleClose} title="Edit Institution">
@@ -120,28 +164,69 @@ export function EditInstitutionModal({
         <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/10 p-3 space-y-3">
           <label className="text-sm font-medium text-zinc-300">Roles</label>
 
-          {/* Existing roles (read-only) */}
-          <div className="flex flex-wrap gap-2">
-            {institution.roles.map((role) => (
-              <span
-                key={role}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-400 border border-zinc-700/50"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                {role === "wallet"
-                  ? "Exchange"
-                  : role === "bank"
-                    ? "Bank"
-                    : "Broker"}
-              </span>
-            ))}
-            {institution.roles.length === 0 && (
-              <span className="text-xs text-zinc-600">No roles yet</span>
-            )}
-          </div>
+          {/* Role removal confirmation banner */}
+          {confirmRemoveRole && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+              <p className="text-sm text-amber-200">
+                Remove <strong>{roleLabel(confirmRemoveRole)}</strong> role?
+              </p>
+              <p className="text-xs text-amber-200/70">
+                {confirmRemoveRole === "wallet"
+                  ? "This will delete the exchange wallet and all its crypto positions and deposits."
+                  : "This will delete the broker and all its stock positions and deposits."}
+                {" "}If no other roles remain, the institution will also be removed.
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={removingRole}
+                  onClick={() => handleRemoveRole(confirmRemoveRole)}
+                  className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-md transition-colors"
+                >
+                  {removingRole ? "Removing..." : "Yes, remove"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmRemoveRole(null)}
+                  className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Existing roles with × buttons */}
+          {!confirmRemoveRole && (
+            <div className="flex flex-wrap gap-2">
+              {institution.roles.map((role) => (
+                <span
+                  key={role}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-400 border border-zinc-700/50"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {roleLabel(role)}
+                  {/* × button — only for wallet and broker (bank is removed by deleting bank accounts) */}
+                  {(role === "wallet" || role === "broker") && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRemoveRole(role)}
+                      className="ml-1 text-zinc-600 hover:text-red-400 transition-colors"
+                      title={`Remove ${roleLabel(role)} role`}
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+              {institution.roles.length === 0 && (
+                <span className="text-xs text-zinc-600">No roles yet</span>
+              )}
+            </div>
+          )}
 
           {/* Add new roles */}
-          {(!hasWallet || !hasBroker) && (
+          {(!hasWallet || !hasBroker) && !confirmRemoveRole && (
             <div className="pt-2 border-t border-zinc-800/50">
               <p className="text-xs text-zinc-500 mb-2">Add roles</p>
               <div className="space-y-2">
@@ -283,6 +368,62 @@ export function EditInstitutionModal({
           >
             {loading ? "Saving..." : "Save Changes"}
           </button>
+        </div>
+
+        {/* Danger zone — delete institution */}
+        <div className="border-t border-zinc-800/50 pt-4 mt-2">
+          {!showDeleteConfirm ? (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+            >
+              Delete this institution...
+            </button>
+          ) : (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 space-y-3">
+              <p className="text-sm text-red-300 font-medium">
+                Delete &ldquo;{institution.name}&rdquo;?
+              </p>
+              <p className="text-xs text-red-300/70">
+                This will permanently remove the institution and all linked
+                accounts, wallets, brokers, positions, and deposits. This
+                action cannot be undone.
+              </p>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">
+                  Type <span className="font-mono text-red-400">{institution.name}</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder={institution.name}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-red-500/30 rounded-lg text-sm text-zinc-100 placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={deleteConfirmText !== institution.name || deletingInstitution}
+                  onClick={handleDeleteInstitution}
+                  className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-md transition-colors"
+                >
+                  {deletingInstitution ? "Deleting..." : "Delete permanently"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDeleteConfirmText("");
+                  }}
+                  className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </form>
     </Modal>

@@ -21,9 +21,7 @@ import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  await supabase.auth.getUser();
 
   // ── Round 1: Portfolio data + independent fetches in parallel ──
   // Market indices and snapshots don't depend on asset data,

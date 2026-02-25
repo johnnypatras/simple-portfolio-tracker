@@ -42,14 +42,19 @@ export default async function SharedCryptoPage({
   });
 
   return (
-    <CryptoTable
-      assets={cryptoAssets}
-      prices={prices}
-      wallets={wallets}
-      primaryCurrency={cur}
-      fxChangePercent={summary.cryptoFxChange24hPercent}
-      fxChangeValue={summary.cryptoFxValueChange24h}
-      stablecoinChange={summary.stablecoinValueChange24h}
-    />
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-zinc-100">Crypto Portfolio</h1>
+      </div>
+      <CryptoTable
+        assets={cryptoAssets}
+        prices={prices}
+        wallets={wallets}
+        primaryCurrency={cur}
+        fxChangePercent={summary.cryptoFxChange24hPercent}
+        fxChangeValue={summary.cryptoFxValueChange24h}
+        stablecoinChange={summary.stablecoinValueChange24h}
+      />
+    </div>
   );
 }

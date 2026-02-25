@@ -1,6 +1,4 @@
-import { notFound } from "next/navigation";
 import { requireScope } from "../scope-gate";
-import { validateShareToken } from "@/lib/actions/shares";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ActivityTimeline } from "@/components/history/activity-timeline";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
@@ -8,7 +6,8 @@ import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 const VALID_ENTITY_TYPES: EntityType[] = [
   "crypto_asset", "stock_asset", "wallet", "broker",
   "bank_account", "exchange_deposit", "crypto_position",
-  "stock_position", "diary_entry", "goal_price", "trade_entry",
+  "stock_position", "broker_deposit", "diary_entry", "goal_price",
+  "trade_entry", "institution",
 ];
 
 const VALID_ACTIONS: ActionType[] = ["created", "updated", "removed"];
@@ -40,15 +39,11 @@ export default async function SharedHistoryPage({
   const limit = 50;
   const offset = (page - 1) * limit;
 
-  // Fetch activity logs using admin client (bypasses RLS)
-  const validated = await validateShareToken(token);
-  if (!validated) notFound();
-
   const admin = createAdminClient();
   let query = admin
     .from("activity_log")
     .select("*", { count: "exact" })
-    .eq("user_id", validated.owner_id)
+    .eq("user_id", share.owner_id)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -58,13 +53,21 @@ export default async function SharedHistoryPage({
   const { data, count } = await query;
 
   return (
-    <ActivityTimeline
-      logs={(data ?? []) as ActivityLog[]}
-      total={count ?? 0}
-      page={page}
-      limit={limit}
-      currentEntityType={entityType}
-      currentAction={action}
-    />
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-zinc-100">Activity History</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          Audit trail of all portfolio changes
+        </p>
+      </div>
+      <ActivityTimeline
+        logs={(data ?? []) as ActivityLog[]}
+        total={count ?? 0}
+        page={page}
+        limit={limit}
+        currentEntityType={entityType}
+        currentAction={action}
+      />
+    </div>
   );
 }

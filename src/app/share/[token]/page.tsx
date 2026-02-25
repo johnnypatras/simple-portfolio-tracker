@@ -97,6 +97,9 @@ export default async function SharedOverviewPage({
 
   return (
     <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-zinc-100">Dashboard</h1>
+      </div>
       <DashboardGrid
         summary={summary}
         insights={insights}

@@ -55,21 +55,29 @@ export default async function SharedCashPage({
   });
 
   return (
-    <CashTable
-      bankAccounts={bankAccounts}
-      exchangeDeposits={exchangeDeposits}
-      brokerDeposits={brokerDeposits}
-      wallets={wallets}
-      brokers={brokers}
-      primaryCurrency={cur}
-      fxRates={fxRates}
-      stablecoins={stablecoins}
-      stablecoinPrices={stablecoinPrices}
-      cashChangePercent={summary.change24hPercent}
-      cashChangeValue={summary.cashTotalValueChange24h}
-      fxChangePercent={summary.cashTotalFxChange24hPercent}
-      fxChangeValue={summary.cashTotalFxValueChange24h}
-      stablecoinChange={summary.stablecoinValueChange24h}
-    />
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-zinc-100">Banks & Deposits</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          Bank accounts and exchange / broker deposits
+        </p>
+      </div>
+      <CashTable
+        bankAccounts={bankAccounts}
+        exchangeDeposits={exchangeDeposits}
+        brokerDeposits={brokerDeposits}
+        wallets={wallets}
+        brokers={brokers}
+        primaryCurrency={cur}
+        fxRates={fxRates}
+        stablecoins={stablecoins}
+        stablecoinPrices={stablecoinPrices}
+        cashChangePercent={summary.change24hPercent}
+        cashChangeValue={summary.cashTotalValueChange24h}
+        fxChangePercent={summary.cashTotalFxChange24hPercent}
+        fxChangeValue={summary.cashTotalFxValueChange24h}
+        stablecoinChange={summary.stablecoinValueChange24h}
+      />
+    </div>
   );
 }

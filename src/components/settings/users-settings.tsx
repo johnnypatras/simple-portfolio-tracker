@@ -169,7 +169,7 @@ export function UsersSettings() {
   }
 
   async function copyCode(code: string) {
-    const link = `${window.location.origin}/invite?code=${code}`;
+    const link = `${window.location.origin}/register?code=${code}`;
     await navigator.clipboard.writeText(link);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);

@@ -84,6 +84,8 @@ export async function findOrCreateInstitution(name: string): Promise<string> {
  */
 export async function cleanupOrphanedInstitution(institutionId: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Only count active (non-soft-deleted) children
   const [w, b, ba] = await Promise.all([
@@ -101,7 +103,8 @@ export async function cleanupOrphanedInstitution(institutionId: string): Promise
     await supabase
       .from("institutions")
       .update({ deleted_at: new Date().toISOString() })
-      .eq("id", institutionId);
+      .eq("id", institutionId)
+      .eq("user_id", user.id);
   }
 }
 
@@ -111,10 +114,14 @@ export async function cleanupOrphanedInstitution(institutionId: string): Promise
  */
 export async function renameInstitution(id: string, newName: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const { error } = await supabase
     .from("institutions")
     .update({ name: newName.trim() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 }
@@ -246,4 +253,96 @@ export async function updateInstitutionRoles(
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/cash");
+}
+
+/**
+ * Remove a specific role from an institution.
+ * Soft-deletes all linked wallets or brokers (cascade trigger handles children).
+ * If no roles remain, the institution itself is cleaned up.
+ */
+export async function removeInstitutionRole(
+  institutionId: string,
+  role: "wallet" | "broker"
+): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  if (role === "wallet") {
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("id")
+      .eq("institution_id", institutionId)
+      .is("deleted_at", null);
+
+    if (wallets?.length) {
+      const { deleteWallet } = await import("@/lib/actions/wallets");
+      for (const w of wallets) {
+        await deleteWallet(w.id);
+      }
+    }
+  } else if (role === "broker") {
+    const { data: brokers } = await supabase
+      .from("brokers")
+      .select("id")
+      .eq("institution_id", institutionId)
+      .is("deleted_at", null);
+
+    if (brokers?.length) {
+      const { deleteBroker } = await import("@/lib/actions/brokers");
+      for (const b of brokers) {
+        await deleteBroker(b.id);
+      }
+    }
+  }
+
+  // cleanupOrphanedInstitution is already called inside deleteWallet/deleteBroker
+  revalidatePath("/dashboard/accounts");
+  revalidatePath("/dashboard/cash");
+}
+
+/**
+ * Delete an institution and all its children (cascade trigger handles soft-deletes).
+ */
+export async function deleteInstitution(institutionId: string): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: inst } = await supabase
+    .from("institutions")
+    .select("*")
+    .eq("id", institutionId)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .single();
+  if (!inst) throw new Error("Institution not found");
+
+  const { error } = await supabase
+    .from("institutions")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", institutionId);
+
+  if (error) throw new Error(error.message);
+
+  await logActivity({
+    action: "removed",
+    entity_type: "institution",
+    entity_name: inst.name,
+    description: `Deleted institution "${inst.name}" and all linked accounts`,
+    entity_id: institutionId,
+    entity_table: "institutions",
+    before_snapshot: inst,
+    after_snapshot: null,
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/accounts");
+  revalidatePath("/dashboard/cash");
+  revalidatePath("/dashboard/crypto");
+  revalidatePath("/dashboard/stocks");
 }

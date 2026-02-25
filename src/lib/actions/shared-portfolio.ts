@@ -1,7 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { validateShareToken, type ValidatedShare, type ShareScope } from "./shares";
+import { validateShareToken, type ValidatedShare } from "./shares";
 import type {
   Profile,
   CryptoAssetWithPositions,

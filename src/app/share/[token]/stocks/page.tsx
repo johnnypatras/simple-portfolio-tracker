@@ -46,15 +46,20 @@ export default async function SharedStocksPage({
   });
 
   return (
-    <StockTable
-      assets={stockAssets}
-      brokers={brokers}
-      prices={prices}
-      primaryCurrency={cur}
-      fxRates={fxRates}
-      fxChangePercent={summary.stocksFxChange24hPercent}
-      fxChangeValue={summary.stocksFxValueChange24h}
-      dividends={dividends}
-    />
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-zinc-100">Equities</h1>
+      </div>
+      <StockTable
+        assets={stockAssets}
+        brokers={brokers}
+        prices={prices}
+        primaryCurrency={cur}
+        fxRates={fxRates}
+        fxChangePercent={summary.stocksFxChange24hPercent}
+        fxChangeValue={summary.stocksFxValueChange24h}
+        dividends={dividends}
+      />
+    </div>
   );
 }

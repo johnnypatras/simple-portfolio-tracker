@@ -6,7 +6,8 @@ import type { ActionType, EntityType } from "@/lib/types";
 const VALID_ENTITY_TYPES: EntityType[] = [
   "crypto_asset", "stock_asset", "wallet", "broker",
   "bank_account", "exchange_deposit", "crypto_position",
-  "stock_position", "diary_entry", "goal_price", "trade_entry",
+  "stock_position", "broker_deposit", "diary_entry", "goal_price",
+  "trade_entry", "institution",
 ];
 
 const VALID_ACTIONS: ActionType[] = ["created", "updated", "removed"];

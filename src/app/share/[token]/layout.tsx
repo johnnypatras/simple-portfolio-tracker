@@ -2,7 +2,9 @@ import { notFound } from "next/navigation";
 import { validateShareToken } from "@/lib/actions/shares";
 import { SharedViewProvider } from "@/components/shared-view-context";
 import { SharedNavBar } from "@/components/shared-nav-bar";
+import { ThemeSync } from "@/components/theme-sync";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
 
 interface Props {
@@ -17,21 +19,26 @@ export default async function ShareLayout({ params, children }: Props) {
   const share = await validateShareToken(token);
   if (!share) notFound();
 
-  // Fetch owner's display name
+  // Fetch owner's display name + theme (never expose email to shared viewers)
   const admin = createAdminClient();
   const { data: profile } = await admin
     .from("profiles")
-    .select("display_name, email")
+    .select("display_name, theme")
     .eq("id", share.owner_id)
     .single();
 
-  const ownerName = profile?.display_name || profile?.email || "Anonymous";
+  const ownerName = profile?.display_name || "Anonymous";
+
+  // Check if viewer is logged in (for "My Portfolio" / "Track your own" CTA)
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
   return (
     <SharedViewProvider ownerName={ownerName} scope={share.scope} shareToken={token}>
+      <ThemeSync profileTheme={profile?.theme ?? null} />
       <div className="min-h-screen bg-zinc-950 text-zinc-100">
-        <SharedNavBar token={token} scope={share.scope} ownerName={ownerName} />
-        <main className="max-w-7xl mx-auto px-4 py-6">
+        <SharedNavBar token={token} scope={share.scope} ownerName={ownerName} isAuthenticated={!!user} />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 overflow-x-hidden">
           {children}
         </main>
       </div>

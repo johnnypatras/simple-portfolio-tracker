@@ -8,7 +8,7 @@ import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, getDividendYields, fetchSinglePrice } from "@/lib/prices/yahoo";
+import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { AccountsView } from "@/components/accounts/accounts-view";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -19,7 +19,6 @@ export default async function AccountsPage() {
     profile, institutions, cryptoAssets, stockAssets,
     wallets, brokers, bankAccounts,
     exchangeDeposits, brokerDeposits,
-    eurUsdData,
   ] = await Promise.all([
     getProfile(),
     getInstitutionsWithRoles(),
@@ -30,7 +29,6 @@ export default async function AccountsPage() {
     getBankAccounts(),
     getExchangeDeposits(),
     getBrokerDeposits(),
-    fetchSinglePrice("EURUSD=X"),
   ]);
 
   const primaryCurrency = profile.primary_currency;

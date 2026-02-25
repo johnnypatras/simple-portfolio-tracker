@@ -1,6 +1,4 @@
-import { notFound } from "next/navigation";
 import { requireScope } from "../scope-gate";
-import { validateShareToken } from "@/lib/actions/shares";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { TradeTable } from "@/components/diary/trade-table";
 import type { TradeEntry } from "@/lib/types";
@@ -11,37 +9,31 @@ export default async function SharedDiaryPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  await requireScope(token, "full_with_history");
-
-  const validated = await validateShareToken(token);
-  if (!validated) notFound();
+  const share = await requireScope(token, "full_with_history");
 
   const admin = createAdminClient();
-  const userId = validated.owner_id;
 
-  // Fetch trades + asset options for the dropdown (read-only, won't be used)
-  const [tradesRes, cryptoRes, stockRes, bankRes] = await Promise.all([
-    admin.from("trade_entries").select("*").eq("user_id", userId)
-      .is("deleted_at", null).order("trade_date", { ascending: false }),
-    admin.from("crypto_assets").select("ticker, name").eq("user_id", userId)
-      .is("deleted_at", null).order("ticker"),
-    admin.from("stock_assets").select("ticker, name, currency").eq("user_id", userId)
-      .is("deleted_at", null).order("ticker"),
-    admin.from("bank_accounts").select("currency").eq("user_id", userId)
-      .is("deleted_at", null),
-  ]);
+  const { data } = await admin
+    .from("trade_entries")
+    .select("*")
+    .eq("user_id", share.owner_id)
+    .is("deleted_at", null)
+    .order("trade_date", { ascending: false });
 
-  const trades = (tradesRes.data ?? []) as TradeEntry[];
+  const trades = (data ?? []) as TradeEntry[];
 
-  const cashCurrencies = [
-    ...new Set((bankRes.data ?? []).map((b) => b.currency as string)),
-  ].sort();
+  // Asset options are only used by the add-entry form, which is hidden in read-only mode
+  const assetOptions = { crypto: [], stock: [], cash: [] };
 
-  const assetOptions = {
-    crypto: cryptoRes.data ?? [],
-    stock: stockRes.data ?? [],
-    cash: cashCurrencies,
-  };
-
-  return <TradeTable trades={trades} assetOptions={assetOptions} />;
+  return (
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-zinc-100">Trade Diary</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          Log your significant buys and sells
+        </p>
+      </div>
+      <TradeTable trades={trades} assetOptions={assetOptions} />
+    </div>
+  );
 }
