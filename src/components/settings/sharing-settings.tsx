@@ -30,11 +30,12 @@ const SCOPE_OPTIONS: { value: ShareScope; label: string; description: string; ic
 ];
 
 const EXPIRY_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "Never expires" },
+  { value: "1h", label: "1 hour" },
   { value: "1", label: "1 day" },
   { value: "7", label: "7 days" },
   { value: "30", label: "30 days" },
   { value: "90", label: "90 days" },
+  { value: "", label: "Never expires" },
 ];
 
 function scopeBadge(scope: ShareScope) {
@@ -74,7 +75,7 @@ export function SharingSettings() {
 
   // Form state
   const [scope, setScope] = useState<ShareScope>("full");
-  const [expiresInDays, setExpiresInDays] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("1");
   const [label, setLabel] = useState("");
 
   // Copy feedback per share
@@ -103,7 +104,7 @@ export function SharingSettings() {
       const token = await createShareLink({
         scope,
         label: label.trim() || undefined,
-        expiresInDays: expiresInDays ? parseInt(expiresInDays, 10) : null,
+        expiresInDays: expiresInDays === "1h" ? 1 / 24 : expiresInDays ? parseInt(expiresInDays, 10) : null,
       });
 
       // Copy link to clipboard

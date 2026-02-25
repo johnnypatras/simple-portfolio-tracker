@@ -18,6 +18,7 @@ import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
+import { useSharedView } from "@/components/shared-view-context";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
   const [changePeriod, setChangePeriod] = useState<ChangePeriod>("24h");
   const [apyPeriod, setApyPeriod] = useState<ApyPeriod>("monthly");
   const [fxFlipped, setFxFlipped] = useState(false);
+  const { shareToken } = useSharedView();
+  const basePath = shareToken ? `/share/${shareToken}` : "/dashboard";
 
   const {
     totalValue,
@@ -412,7 +415,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Crypto Summary */}
         <Link
-          href="/dashboard/crypto"
+          href={`${basePath}/crypto`}
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
         >
           <div className="flex items-center justify-between mb-2">
@@ -561,7 +564,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Equities Summary */}
         <Link
-          href="/dashboard/stocks"
+          href={`${basePath}/stocks`}
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
         >
           <div className="flex items-center justify-between mb-2">
@@ -730,7 +733,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Cash Summary (with APY income integrated) */}
         <Link
-          href="/dashboard/cash"
+          href={`${basePath}/cash`}
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
         >
           <div className="flex items-center justify-between mb-2">

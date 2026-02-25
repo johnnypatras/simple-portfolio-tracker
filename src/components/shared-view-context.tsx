@@ -10,6 +10,8 @@ interface SharedViewState {
   ownerName: string;
   /** What sections the viewer can access */
   scope: ShareScope;
+  /** Share token for constructing links (e.g. /share/[token]/crypto) */
+  shareToken?: string;
 }
 
 const SharedViewContext = createContext<SharedViewState>({
@@ -21,14 +23,16 @@ const SharedViewContext = createContext<SharedViewState>({
 export function SharedViewProvider({
   ownerName,
   scope,
+  shareToken,
   children,
 }: {
   ownerName: string;
   scope: ShareScope;
+  shareToken: string;
   children: ReactNode;
 }) {
   return (
-    <SharedViewContext.Provider value={{ isReadOnly: true, ownerName, scope }}>
+    <SharedViewContext.Provider value={{ isReadOnly: true, ownerName, scope, shareToken }}>
       {children}
     </SharedViewContext.Provider>
   );

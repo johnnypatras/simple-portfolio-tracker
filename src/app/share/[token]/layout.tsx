@@ -28,7 +28,7 @@ export default async function ShareLayout({ params, children }: Props) {
   const ownerName = profile?.display_name || profile?.email || "Anonymous";
 
   return (
-    <SharedViewProvider ownerName={ownerName} scope={share.scope}>
+    <SharedViewProvider ownerName={ownerName} scope={share.scope} shareToken={token}>
       <div className="min-h-screen bg-zinc-950 text-zinc-100">
         <SharedNavBar token={token} scope={share.scope} ownerName={ownerName} />
         <main className="max-w-7xl mx-auto px-4 py-6">
