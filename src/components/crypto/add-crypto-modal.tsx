@@ -156,6 +156,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         coingecko_id: selectedCoin.id,
         chain: chain.trim() || null,
         subcategory: subcategory.trim() || null,
+        image_url: selectedCoin.thumb || null,
       });
 
       // If user filled in an initial position, create it with its acquisition method

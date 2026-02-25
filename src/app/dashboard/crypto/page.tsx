@@ -1,4 +1,4 @@
-import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
+import { getCryptoAssetsWithPositions, backfillCryptoImages } from "@/lib/actions/crypto";
 import { getWallets } from "@/lib/actions/wallets";
 import { getProfile } from "@/lib/actions/profile";
 import { getPrices } from "@/lib/prices/coingecko";
@@ -24,6 +24,9 @@ export default async function CryptoPage() {
     getFXRates(cur, ["USD", "EUR"]),
     fetchSinglePrice("EURUSD=X"),
   ]);
+
+  // Fire-and-forget: backfill missing icons from CoinGecko
+  backfillCryptoImages().catch(() => {});
 
   // Compute crypto-only aggregate for summary header enrichment
   const summary = aggregatePortfolio({

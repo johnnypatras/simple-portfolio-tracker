@@ -507,8 +507,9 @@ export function AccountsView({
       <div className="space-y-2">
       {(() => {
         const MIN_VISIBLE_VALUE = 1000; // base currency (EUR)
-        const visibleGroups = groups.filter(g => g.totalValue >= MIN_VISIBLE_VALUE);
-        const hiddenGroups = groups.filter(g => g.totalValue < MIN_VISIBLE_VALUE);
+        const MIN_VISIBLE_COUNT = 10;  // always show top N by value
+        const visibleGroups = groups.filter((g, i) => i < MIN_VISIBLE_COUNT || g.totalValue >= MIN_VISIBLE_VALUE);
+        const hiddenGroups = groups.filter((g, i) => i >= MIN_VISIBLE_COUNT && g.totalValue < MIN_VISIBLE_VALUE);
         const displayGroups = showAllInstitutions ? groups : visibleGroups;
         return (<>
       {displayGroups.map((group) => {
@@ -529,7 +530,7 @@ export function AccountsView({
         return (
           <div
             key={institution.id}
-            className={`group border rounded-xl overflow-hidden ${
+            className={`group border rounded-xl ${
               isSelfCustody
                 ? "border-amber-900/40 bg-amber-950/10"
                 : "border-zinc-800 bg-zinc-900/50"

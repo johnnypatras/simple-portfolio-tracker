@@ -496,6 +496,12 @@ export function getCryptoColumns(handlers: {
           ) : (
             <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
           )}
+          {row.asset.image_url ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={row.asset.image_url} alt="" className="w-5 h-5 rounded-full bg-zinc-800 shrink-0" />
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0" />
+          )}
           <div className="min-w-0">
             <span className="text-sm font-medium text-zinc-200 truncate block">
               {row.asset.name}

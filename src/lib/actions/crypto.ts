@@ -9,6 +9,7 @@ import type {
   Wallet,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
+import { getCoinImage } from "@/lib/prices/coingecko";
 
 /** Get all crypto assets with their positions and wallet names */
 export async function getCryptoAssetsWithPositions(): Promise<
@@ -88,6 +89,7 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
       coingecko_id: input.coingecko_id,
       chain: input.chain ?? null,
       subcategory: input.subcategory?.trim() || null,
+      image_url: input.image_url ?? null,
     })
     .select("*")
     .single();
@@ -260,16 +262,19 @@ export async function upsertPosition(input: CryptoPositionInput) {
       .is("deleted_at", null)
       .single();
 
-    const { error } = await supabase.from("crypto_positions").upsert(
-      {
-        crypto_asset_id: input.crypto_asset_id,
-        wallet_id: input.wallet_id,
-        quantity: input.quantity,
-        acquisition_method: input.acquisition_method ?? "bought",
-        apy: input.apy ?? 0,
-      },
-      { onConflict: "crypto_asset_id,wallet_id" }
-    );
+    const { error } = before
+      ? await supabase.from("crypto_positions").update({
+          quantity: input.quantity,
+          acquisition_method: input.acquisition_method ?? "bought",
+          apy: input.apy ?? 0,
+        }).eq("id", before.id)
+      : await supabase.from("crypto_positions").insert({
+          crypto_asset_id: input.crypto_asset_id,
+          wallet_id: input.wallet_id,
+          quantity: input.quantity,
+          acquisition_method: input.acquisition_method ?? "bought",
+          apy: input.apy ?? 0,
+        });
     if (error) throw new Error(error.message);
 
     // Capture after state
@@ -329,4 +334,40 @@ export async function deletePosition(positionId: string) {
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");
+}
+
+/**
+ * Backfill image_url for crypto assets that don't have one yet.
+ * Safe to call on every page load — only fetches for NULL rows,
+ * and processes sequentially to respect CoinGecko rate limits.
+ */
+export async function backfillCryptoImages() {
+  const supabase = await createServerSupabaseClient();
+
+  const { data: missing } = await supabase
+    .from("crypto_assets")
+    .select("id, coingecko_id")
+    .is("image_url", null)
+    .is("deleted_at", null);
+
+  if (!missing || missing.length === 0) return;
+
+  for (const asset of missing) {
+    try {
+      const thumbUrl = await getCoinImage(asset.coingecko_id);
+      if (thumbUrl) {
+        await supabase
+          .from("crypto_assets")
+          .update({ image_url: thumbUrl })
+          .eq("id", asset.id);
+      }
+    } catch (err) {
+      console.error("[backfill] Failed for", asset.coingecko_id, err);
+    }
+  }
+
+  if (missing.length > 0) {
+    revalidatePath("/dashboard/crypto");
+    revalidatePath("/dashboard");
+  }
 }

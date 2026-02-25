@@ -290,14 +290,15 @@ export async function upsertStockPosition(input: StockPositionInput) {
       .is("deleted_at", null)
       .single();
 
-    const { error } = await supabase.from("stock_positions").upsert(
-      {
-        stock_asset_id: input.stock_asset_id,
-        broker_id: input.broker_id,
-        quantity: input.quantity,
-      },
-      { onConflict: "stock_asset_id,broker_id" }
-    );
+    const { error } = before
+      ? await supabase.from("stock_positions").update({
+          quantity: input.quantity,
+        }).eq("id", before.id)
+      : await supabase.from("stock_positions").insert({
+          stock_asset_id: input.stock_asset_id,
+          broker_id: input.broker_id,
+          quantity: input.quantity,
+        });
     if (error) throw new Error(error.message);
 
     // Capture after state

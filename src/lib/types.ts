@@ -292,6 +292,7 @@ export interface CryptoAsset {
   coingecko_id: string;
   chain: string | null;
   subcategory: string | null;
+  image_url: string | null;
   created_at: string;
   deleted_at?: string | null;
 }
@@ -318,6 +319,7 @@ export interface CryptoAssetInput {
   coingecko_id: string;
   chain?: string | null;
   subcategory?: string | null;
+  image_url?: string | null;
 }
 
 export interface CryptoPositionInput {

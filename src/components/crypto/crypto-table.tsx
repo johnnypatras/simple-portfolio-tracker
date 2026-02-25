@@ -1593,11 +1593,19 @@ function MobileCryptoCard({
         onClick={() => toggleExpand(row.asset.id)}
         className="w-full px-4 py-3 flex items-center justify-between overflow-hidden"
       >
-        <div className="text-left min-w-0">
-          <p className="text-sm font-medium text-zinc-200 truncate">
-            {row.asset.name}
-          </p>
-          <p className="text-xs text-zinc-500 uppercase">{row.asset.ticker}</p>
+        <div className="flex items-center gap-2.5 min-w-0">
+          {row.asset.image_url ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={row.asset.image_url} alt="" className="w-6 h-6 rounded-full bg-zinc-800 shrink-0" />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-zinc-800 shrink-0" />
+          )}
+          <div className="text-left min-w-0">
+            <p className="text-sm font-medium text-zinc-200 truncate">
+              {row.asset.name}
+            </p>
+            <p className="text-xs text-zinc-500 uppercase">{row.asset.ticker}</p>
+          </div>
         </div>
         <div className="text-right shrink-0 ml-3">
           <p className="text-sm font-medium text-zinc-200 tabular-nums">

@@ -102,6 +102,23 @@ export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | n
   };
 }
 
+/**
+ * Fetch the thumbnail image URL for a single coin.
+ * Used to backfill image_url for assets created before icon storage was added.
+ */
+export async function getCoinImage(coinId: string): Promise<string | null> {
+  const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`;
+  const res = await fetch(url, { headers: headers(), next: { revalidate: 86400 } });
+
+  if (!res.ok) {
+    console.error("[coingecko] Image fetch failed for", coinId, res.status);
+    return null;
+  }
+
+  const data = await res.json();
+  return (data.image?.thumb as string) ?? null;
+}
+
 // ── Mapping helpers ───────────────────────────────────────
 
 /** Map CoinGecko asset_platform_id to a friendly chain name */
