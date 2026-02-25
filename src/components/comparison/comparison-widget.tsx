@@ -167,7 +167,7 @@ export function ComparisonWidget({
             </div>
           )}
 
-          {!loading && !error && data && <ComparisonContent data={data} />}
+          {!loading && !error && data && <ComparisonContent data={data} token={token} />}
         </div>
       </div>
     </>

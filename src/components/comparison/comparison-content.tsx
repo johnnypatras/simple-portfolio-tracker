@@ -6,6 +6,7 @@ import { fmtCurrency, fmtPct, changeColorClass } from "@/lib/format";
 
 interface ComparisonContentProps {
   data: ComparisonData;
+  token: string;
 }
 
 // ─── Allocation bar ─────────────────────────────────────
@@ -96,7 +97,7 @@ function BreakdownRow({
 
 // ─── Main content ───────────────────────────────────────
 
-export function ComparisonContent({ data }: ComparisonContentProps) {
+export function ComparisonContent({ data, token }: ComparisonContentProps) {
   const { viewer, owner, normalizedCurrency: cur } = data;
   const vs = viewer.summary;
   const os = owner.summary;
@@ -231,9 +232,12 @@ export function ComparisonContent({ data }: ComparisonContentProps) {
 
       {/* ── Footer ────────────────────────────────────── */}
       <div className="pt-3 border-t border-zinc-800/50">
-        <span className="text-xs text-zinc-600">
-          Full comparison page coming soon
-        </span>
+        <Link
+          href={`/dashboard/compare/${token}`}
+          className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+        >
+          View full comparison &rarr;
+        </Link>
       </div>
     </div>
   );
