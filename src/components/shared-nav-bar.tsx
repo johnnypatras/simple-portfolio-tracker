@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BarChart2 } from "lucide-react";
 import type { ShareScope } from "@/lib/actions/shares";
 
 interface SharedNavBarProps {
@@ -9,6 +10,7 @@ interface SharedNavBarProps {
   scope: ShareScope;
   ownerName: string;
   isAuthenticated?: boolean;
+  onCompareClick?: () => void;
 }
 
 const allTabs = [
@@ -27,7 +29,7 @@ const SCOPE_RANK: Record<ShareScope, number> = {
   full_with_history: 2,
 };
 
-export function SharedNavBar({ token, scope, ownerName, isAuthenticated }: SharedNavBarProps) {
+export function SharedNavBar({ token, scope, ownerName, isAuthenticated, onCompareClick }: SharedNavBarProps) {
   const pathname = usePathname();
   const basePath = `/share/${token}`;
 
@@ -45,12 +47,23 @@ export function SharedNavBar({ token, scope, ownerName, isAuthenticated }: Share
             <span className="text-blue-500/70"> &middot; Read-only</span>
           </span>
           {isAuthenticated ? (
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-1 text-blue-300 hover:text-blue-200 font-medium transition-colors"
-            >
-              &rarr; My Portfolio
-            </Link>
+            <>
+              {onCompareClick && (
+                <button
+                  onClick={onCompareClick}
+                  className="inline-flex items-center gap-1 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors"
+                >
+                  <BarChart2 className="w-3 h-3" />
+                  Compare
+                </button>
+              )}
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-1 text-blue-300 hover:text-blue-200 font-medium transition-colors"
+              >
+                &rarr; My Portfolio
+              </Link>
+            </>
           ) : (
             <Link
               href="/register"
