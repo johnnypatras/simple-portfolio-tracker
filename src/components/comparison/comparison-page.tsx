@@ -6,6 +6,7 @@ import type { ComparisonData } from "@/lib/actions/comparison";
 import { fmtCurrency, fmtPct, changeColorClass } from "@/lib/format";
 import { AllocationRadar } from "./allocation-radar";
 import { HoldingsOverlap } from "./holdings-overlap";
+import { PerformanceRaceChart } from "./performance-race-chart";
 
 interface ComparisonPageProps {
   data: ComparisonData;
@@ -262,16 +263,19 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
         currency={cur}
       />
 
+      {/* ── Performance race chart ─────────────────────── */}
+      <PerformanceRaceChart
+        viewerSnapshots={data.viewerSnapshots}
+        ownerSnapshots={data.ownerSnapshots}
+        viewerLiveValue={vs.totalValue}
+        ownerLiveValue={os.totalValue}
+        viewerName="You"
+        ownerName={owner.name}
+        currency={cur}
+      />
+
       {/* ── Coming soon sections ────────────────────────── */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-          More Comparisons
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <ComingSoonCard title="Performance History" />
-          <ComingSoonCard title="What If Calculator" />
-        </div>
-      </div>
+      <ComingSoonCard title="What If Calculator" />
     </div>
   );
 }

@@ -8,10 +8,12 @@ import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
+import { getSnapshots } from "@/lib/actions/snapshots";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices, fetchSinglePrice } from "@/lib/prices/yahoo";
 import { getFXRates, convertToBase } from "@/lib/prices/fx";
 import { aggregatePortfolio, type PortfolioSummary } from "@/lib/portfolio/aggregate";
+import type { PortfolioSnapshot } from "@/lib/types";
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -30,6 +32,8 @@ export interface ComparisonData {
   owner: { name: string; summary: PortfolioSummary };
   normalizedCurrency: string;
   holdings: HoldingItem[];
+  viewerSnapshots: PortfolioSnapshot[];
+  ownerSnapshots: PortfolioSnapshot[];
 }
 
 export type ComparisonResult =
@@ -66,19 +70,21 @@ export async function getComparisonData(
   const ownerName = ownerData.profile.display_name || "Anonymous";
   const viewerName = viewerProfile.display_name || "You";
 
-  // 3. Fetch viewer's portfolio data in parallel
+  // 3. Fetch viewer's portfolio data + snapshots in parallel
   const [
     viewerCrypto,
     viewerStocks,
     viewerBanks,
     viewerExchangeDeps,
     viewerBrokerDeps,
+    viewerSnapshots,
   ] = await Promise.all([
     getCryptoAssetsWithPositions(),
     getStockAssetsWithPositions(),
     getBankAccounts(),
     getExchangeDeposits(),
     getBrokerDeposits(),
+    getSnapshots(365),
   ]);
 
   // 4. Build merged ticker/coin/currency lists from BOTH portfolios
@@ -290,6 +296,8 @@ export async function getComparisonData(
       owner: { name: ownerName, summary: ownerSummary },
       normalizedCurrency: viewerCurrency,
       holdings,
+      viewerSnapshots,
+      ownerSnapshots: ownerData.snapshots,
     },
   };
 }
