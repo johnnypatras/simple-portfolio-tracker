@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { HoldingItem } from "@/lib/actions/comparison";
 import { fmtCurrency } from "@/lib/format";
+
+const INITIAL_LIMIT = 5;
 
 interface HoldingsOverlapProps {
   holdings: HoldingItem[];
@@ -160,6 +164,40 @@ function UniqueHoldingRow({
   );
 }
 
+// ─── Show more / less toggle ─────────────────────────────
+
+function ShowMoreToggle({
+  totalCount,
+  expanded,
+  onToggle,
+}: {
+  totalCount: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const remaining = totalCount - INITIAL_LIMIT;
+  if (remaining <= 0) return null;
+
+  return (
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-1 mt-2 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+    >
+      {expanded ? (
+        <>
+          <ChevronUp className="w-3.5 h-3.5" />
+          Show less
+        </>
+      ) : (
+        <>
+          <ChevronDown className="w-3.5 h-3.5" />
+          Show {remaining} more
+        </>
+      )}
+    </button>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────
 
 export function HoldingsOverlap({
@@ -168,6 +206,10 @@ export function HoldingsOverlap({
   ownerName,
   currency,
 }: HoldingsOverlapProps) {
+  const [sharedExpanded, setSharedExpanded] = useState(false);
+  const [viewerExpanded, setViewerExpanded] = useState(false);
+  const [ownerExpanded, setOwnerExpanded] = useState(false);
+
   const shared = holdings.filter(
     (h) => h.viewerValue > 0 && h.ownerValue > 0
   );
@@ -177,6 +219,10 @@ export function HoldingsOverlap({
   const ownerOnly = holdings.filter(
     (h) => h.ownerValue > 0 && h.viewerValue === 0
   );
+
+  const sharedVisible = sharedExpanded ? shared : shared.slice(0, INITIAL_LIMIT);
+  const viewerVisible = viewerExpanded ? viewerOnly : viewerOnly.slice(0, INITIAL_LIMIT);
+  const ownerVisible = ownerExpanded ? ownerOnly : ownerOnly.slice(0, INITIAL_LIMIT);
 
   const totalUnique = holdings.length;
   const sharedCount = shared.length;
@@ -251,7 +297,7 @@ export function HoldingsOverlap({
             </div>
           </div>
           <div>
-            {shared.map((h) => (
+            {sharedVisible.map((h) => (
               <SharedHoldingRow
                 key={h.key}
                 item={h}
@@ -260,6 +306,11 @@ export function HoldingsOverlap({
               />
             ))}
           </div>
+          <ShowMoreToggle
+            totalCount={shared.length}
+            expanded={sharedExpanded}
+            onToggle={() => setSharedExpanded(!sharedExpanded)}
+          />
         </div>
       )}
 
@@ -273,16 +324,23 @@ export function HoldingsOverlap({
               Only {viewerName}
             </div>
             {viewerOnly.length > 0 ? (
-              <div>
-                {viewerOnly.map((h) => (
-                  <UniqueHoldingRow
-                    key={h.key}
-                    item={h}
-                    side="viewer"
-                    currency={currency}
-                  />
-                ))}
-              </div>
+              <>
+                <div>
+                  {viewerVisible.map((h) => (
+                    <UniqueHoldingRow
+                      key={h.key}
+                      item={h}
+                      side="viewer"
+                      currency={currency}
+                    />
+                  ))}
+                </div>
+                <ShowMoreToggle
+                  totalCount={viewerOnly.length}
+                  expanded={viewerExpanded}
+                  onToggle={() => setViewerExpanded(!viewerExpanded)}
+                />
+              </>
             ) : (
               <div className="text-sm text-zinc-700 py-2">—</div>
             )}
@@ -295,16 +353,23 @@ export function HoldingsOverlap({
               Only {ownerName}
             </div>
             {ownerOnly.length > 0 ? (
-              <div>
-                {ownerOnly.map((h) => (
-                  <UniqueHoldingRow
-                    key={h.key}
-                    item={h}
-                    side="owner"
-                    currency={currency}
-                  />
-                ))}
-              </div>
+              <>
+                <div>
+                  {ownerVisible.map((h) => (
+                    <UniqueHoldingRow
+                      key={h.key}
+                      item={h}
+                      side="owner"
+                      currency={currency}
+                    />
+                  ))}
+                </div>
+                <ShowMoreToggle
+                  totalCount={ownerOnly.length}
+                  expanded={ownerExpanded}
+                  onToggle={() => setOwnerExpanded(!ownerExpanded)}
+                />
+              </>
             ) : (
               <div className="text-sm text-zinc-700 py-2">—</div>
             )}
