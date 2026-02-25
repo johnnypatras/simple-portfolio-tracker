@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import type { ComparisonData } from "@/lib/actions/comparison";
 import { fmtCurrency, fmtPct, changeColorClass } from "@/lib/format";
 import { AllocationRadar } from "./allocation-radar";
+import { HoldingsOverlap } from "./holdings-overlap";
 
 interface ComparisonPageProps {
   data: ComparisonData;
@@ -253,13 +254,20 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
         </div>
       </div>
 
+      {/* ── Holdings overlap ─────────────────────────────── */}
+      <HoldingsOverlap
+        holdings={data.holdings}
+        viewerName="You"
+        ownerName={owner.name}
+        currency={cur}
+      />
+
       {/* ── Coming soon sections ────────────────────────── */}
       <div className="space-y-3">
         <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
           More Comparisons
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <ComingSoonCard title="Holdings Overlap" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <ComingSoonCard title="Performance History" />
           <ComingSoonCard title="What If Calculator" />
         </div>

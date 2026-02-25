@@ -10,15 +10,26 @@ import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices, fetchSinglePrice } from "@/lib/prices/yahoo";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRates, convertToBase } from "@/lib/prices/fx";
 import { aggregatePortfolio, type PortfolioSummary } from "@/lib/portfolio/aggregate";
 
 // ─── Types ──────────────────────────────────────────────
+
+export interface HoldingItem {
+  key: string;             // dedup key: coingecko_id | ticker | "cash:{currency}"
+  name: string;            // "Bitcoin", "VWCE", "EUR Cash"
+  ticker: string;          // "BTC", "VWCE", "EUR"
+  class: "crypto" | "equities" | "cash";
+  imageUrl: string | null; // CoinGecko thumb for crypto, null for others
+  viewerValue: number;     // 0 if viewer doesn't hold it
+  ownerValue: number;      // 0 if owner doesn't hold it
+}
 
 export interface ComparisonData {
   viewer: { name: string; summary: PortfolioSummary };
   owner: { name: string; summary: PortfolioSummary };
   normalizedCurrency: string;
+  holdings: HoldingItem[];
 }
 
 export type ComparisonResult =
@@ -141,12 +152,144 @@ export async function getComparisonData(
     eurUsdChange24h,
   });
 
+  // 7. Compute per-asset holdings for overlap visualization.
+  //    Only names/tickers/values leave the server — no quantities or positions.
+  const currencyKey = viewerCurrency.toLowerCase() as "usd" | "eur";
+  const holdingsMap = new Map<string, HoldingItem>();
+
+  function upsertHolding(
+    key: string,
+    init: Omit<HoldingItem, "viewerValue" | "ownerValue">,
+    side: "viewer" | "owner",
+    value: number
+  ) {
+    let h = holdingsMap.get(key);
+    if (!h) {
+      h = { ...init, viewerValue: 0, ownerValue: 0 };
+      holdingsMap.set(key, h);
+    }
+    if (side === "viewer") h.viewerValue += value;
+    else h.ownerValue += value;
+  }
+
+  // Crypto holdings
+  for (const assets of [
+    { list: viewerCrypto, side: "viewer" as const },
+    { list: ownerData.cryptoAssets, side: "owner" as const },
+  ]) {
+    for (const asset of assets.list) {
+      const price = cryptoPrices[asset.coingecko_id];
+      if (!price) continue;
+      const priceInBase = price[currencyKey] ?? 0;
+      const totalQty = asset.positions.reduce((s, p) => s + p.quantity, 0);
+      const value = totalQty * priceInBase;
+      if (value === 0) continue;
+
+      const isStable = asset.subcategory?.toLowerCase() === "stablecoin";
+      upsertHolding(
+        isStable ? `cash:${asset.ticker.toUpperCase()}` : asset.coingecko_id,
+        {
+          key: isStable ? `cash:${asset.ticker.toUpperCase()}` : asset.coingecko_id,
+          name: isStable ? `${asset.ticker.toUpperCase()} (Stablecoin)` : asset.name,
+          ticker: asset.ticker.toUpperCase(),
+          class: isStable ? "cash" : "crypto",
+          imageUrl: asset.image_url,
+        },
+        assets.side,
+        value
+      );
+    }
+  }
+
+  // Stock holdings (merge by display ticker — e.g. VWCE.DE + VWCE.AS → VWCE)
+  for (const assets of [
+    { list: viewerStocks, side: "viewer" as const },
+    { list: ownerData.stockAssets, side: "owner" as const },
+  ]) {
+    for (const asset of assets.list) {
+      const yahooKey = asset.yahoo_ticker || asset.ticker;
+      const priceData = stockPrices[yahooKey];
+      if (!priceData) continue;
+      const totalQty = asset.positions.reduce((s, p) => s + p.quantity, 0);
+      const valueNative = totalQty * priceData.price;
+      const value = convertToBase(valueNative, asset.currency, viewerCurrency, fxRates);
+      if (value === 0) continue;
+
+      // Use base ticker (strip exchange suffix) for merging
+      const displayTicker = asset.ticker.split(".")[0];
+      upsertHolding(
+        `stock:${displayTicker}`,
+        {
+          key: `stock:${displayTicker}`,
+          name: asset.name,
+          ticker: displayTicker,
+          class: "equities",
+          imageUrl: null,
+        },
+        assets.side,
+        value
+      );
+    }
+  }
+
+  // Cash holdings (bank accounts + exchange deposits + broker deposits by currency)
+  for (const sources of [
+    {
+      viewer: { banks: viewerBanks, exDeps: viewerExchangeDeps, brDeps: viewerBrokerDeps },
+      owner: {
+        banks: ownerData.bankAccounts,
+        exDeps: ownerData.exchangeDeposits,
+        brDeps: ownerData.brokerDeposits,
+      },
+    },
+  ]) {
+    for (const side of ["viewer", "owner"] as const) {
+      const src = sources[side];
+      for (const bank of src.banks) {
+        const value = convertToBase(bank.balance, bank.currency, viewerCurrency, fxRates);
+        if (value === 0) continue;
+        upsertHolding(
+          `cash:${bank.currency}`,
+          { key: `cash:${bank.currency}`, name: `${bank.currency} Cash`, ticker: bank.currency, class: "cash", imageUrl: null },
+          side,
+          value
+        );
+      }
+      for (const dep of src.exDeps) {
+        const value = convertToBase(dep.amount, dep.currency, viewerCurrency, fxRates);
+        if (value === 0) continue;
+        upsertHolding(
+          `cash:${dep.currency}`,
+          { key: `cash:${dep.currency}`, name: `${dep.currency} Cash`, ticker: dep.currency, class: "cash", imageUrl: null },
+          side,
+          value
+        );
+      }
+      for (const dep of src.brDeps) {
+        const value = convertToBase(dep.amount, dep.currency, viewerCurrency, fxRates);
+        if (value === 0) continue;
+        upsertHolding(
+          `cash:${dep.currency}`,
+          { key: `cash:${dep.currency}`, name: `${dep.currency} Cash`, ticker: dep.currency, class: "cash", imageUrl: null },
+          side,
+          value
+        );
+      }
+    }
+  }
+
+  // Sort by max value descending
+  const holdings = [...holdingsMap.values()].sort(
+    (a, b) => Math.max(b.viewerValue, b.ownerValue) - Math.max(a.viewerValue, a.ownerValue)
+  );
+
   return {
     ok: true,
     data: {
       viewer: { name: viewerName, summary: viewerSummary },
       owner: { name: ownerName, summary: ownerSummary },
       normalizedCurrency: viewerCurrency,
+      holdings,
     },
   };
 }
