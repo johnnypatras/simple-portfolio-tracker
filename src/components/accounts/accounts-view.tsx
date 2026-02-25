@@ -20,6 +20,8 @@ import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import { EditInstitutionModal } from "@/components/accounts/edit-institution-modal";
 import { AddInstitutionModal } from "@/components/accounts/add-institution-modal";
+import { AddWalletModal } from "@/components/accounts/add-wallet-modal";
+import { EditWalletModal } from "@/components/accounts/edit-wallet-modal";
 import { PositionEditor } from "@/components/crypto/position-editor";
 import { AddCryptoModal } from "@/components/crypto/add-crypto-modal";
 import { StockPositionEditor } from "@/components/stocks/stock-position-editor";
@@ -135,6 +137,8 @@ export function AccountsView({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [editingInstitution, setEditingInstitution] = useState<InstitutionWithRoles | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddWalletModal, setShowAddWalletModal] = useState(false);
+  const [editingStandaloneWallet, setEditingStandaloneWallet] = useState<Wallet | null>(null);
 
   // ── CRUD state ─────────────────────────────────────────
   // Crypto
@@ -233,14 +237,14 @@ export function AccountsView({
   const groups = useMemo(() => {
     // wallet_id → group key (institution_id or synthetic __wallet__<id>)
     const walletToInst = new Map<string, string>();
-    // Virtual groups for non-custodial wallets (each wallet = its own entity)
+    // Virtual groups for standalone wallets without institution (each = its own entity)
     const walletVirtualGroups = new Map<string, InstitutionGroup>();
 
     for (const w of wallets) {
       if (w.institution_id) {
         walletToInst.set(w.id, w.institution_id);
       } else {
-        // Each non-custodial wallet is its own independent entity
+        // Each standalone wallet (no institution) is its own independent entity
         const virtualId = `__wallet__${w.id}`;
         walletToInst.set(w.id, virtualId);
         walletVirtualGroups.set(virtualId, {
@@ -492,7 +496,14 @@ export function AccountsView({
 
       {/* Action bar — matches crypto/stocks/cash placement */}
       {!isReadOnly && (
-        <div className="flex items-center justify-end mt-2 mb-3">
+        <div className="flex items-center justify-end gap-2 mt-2 mb-3">
+          <button
+            onClick={() => setShowAddWalletModal(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-amber-800/50 bg-amber-950/20 hover:bg-amber-950/40 text-amber-400 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Wallet
+          </button>
           <button
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
@@ -589,6 +600,22 @@ export function AccountsView({
                         setEditingInstitution(institution);
                       }}
                       className={`p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors ${
+                        isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                      }`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {/* Edit standalone wallet */}
+                  {!isReadOnly && isSelfCustody && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const realId = institution.id.replace("__wallet__", "");
+                        const w = wallets.find((w) => w.id === realId);
+                        if (w) setEditingStandaloneWallet(w);
+                      }}
+                      className={`p-1.5 rounded-lg text-zinc-600 hover:text-amber-400 hover:bg-amber-950/30 transition-colors ${
                         isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
                       }`}
                     >
@@ -920,12 +947,24 @@ export function AccountsView({
               open={!!editingInstitution}
               onClose={() => setEditingInstitution(null)}
               institution={editingInstitution}
+              wallets={wallets}
             />
           )}
           <AddInstitutionModal
             open={showAddModal}
             onClose={() => setShowAddModal(false)}
           />
+          <AddWalletModal
+            open={showAddWalletModal}
+            onClose={() => setShowAddWalletModal(false)}
+          />
+          {editingStandaloneWallet && (
+            <EditWalletModal
+              open={!!editingStandaloneWallet}
+              onClose={() => setEditingStandaloneWallet(null)}
+              wallet={editingStandaloneWallet}
+            />
+          )}
 
           {/* Crypto modals */}
           {editingCryptoAsset && (

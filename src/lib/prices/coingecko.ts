@@ -149,6 +149,7 @@ export const PLATFORM_TO_CHAIN: Record<string, string> = {
   linea: "Linea",
   "zksync-era": "zkSync",
   scroll: "Scroll",
+  "the-open-network": "TON",
 };
 
 /** Well-known L1 native coins (where asset_platform_id is null) */

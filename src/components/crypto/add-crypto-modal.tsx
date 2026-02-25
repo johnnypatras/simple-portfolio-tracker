@@ -41,9 +41,10 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
   const [positionQuantity, setPositionQuantity] = useState("");
   const [acquisitionType, setAcquisitionType] = useState("bought");
   const [positionApy, setPositionApy] = useState("");
+  const [showAllWallets, setShowAllWallets] = useState(false);
 
   // Filter wallets by chain compatibility
-  const compatibleWallets = useMemo(() => {
+  const chainFilteredWallets = useMemo(() => {
     if (!chain) return wallets;
     return wallets.filter((w) => {
       // Wallets with no chain set (multi-chain / exchange) are always compatible
@@ -52,6 +53,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       return parseWalletChains(w.chain).includes(chain);
     });
   }, [wallets, chain]);
+
+  // If user toggled "show all" or no chain-compatible wallets exist, show everything
+  const compatibleWallets = showAllWallets || chainFilteredWallets.length === 0
+    ? wallets
+    : chainFilteredWallets;
 
   // Reset wallet selection when chain changes and selected wallet is incompatible
   useEffect(() => {
@@ -107,6 +113,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       setPositionQuantity("");
       setAcquisitionType("bought");
       setPositionApy("");
+      setShowAllWallets(false);
     }
   }, [open]);
 
@@ -453,14 +460,21 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                             );
                           })}
                         </select>
-                        {chain && compatibleWallets.length === 0 && (
-                          <p className="text-xs text-amber-400/80 mt-1">
-                            No wallets/exchanges compatible with {chain}
+                        {chain && chainFilteredWallets.length === 0 && (
+                          <p className="text-xs text-zinc-500 mt-1">
+                            No {chain}-specific wallets — showing all
                           </p>
                         )}
-                        {chain && compatibleWallets.length > 0 && compatibleWallets.length < wallets.length && (
+                        {chain && !showAllWallets && chainFilteredWallets.length > 0 && chainFilteredWallets.length < wallets.length && (
                           <p className="text-xs text-zinc-600 mt-1">
-                            Showing {chain}-compatible only
+                            Showing {chain}-compatible only{" "}
+                            <button
+                              type="button"
+                              onClick={() => setShowAllWallets(true)}
+                              className="text-blue-400 hover:text-blue-300 underline"
+                            >
+                              show all
+                            </button>
                           </p>
                         )}
                       </div>

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { createWallet } from "@/lib/actions/wallets";
 import { createBroker } from "@/lib/actions/brokers";
 import { createBankAccount } from "@/lib/actions/bank-accounts";
-import type { WalletType, PrivacyLabel, CurrencyType } from "@/lib/types";
+import type { PrivacyLabel, CurrencyType } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains } from "@/lib/types";
 
 interface AddInstitutionModalProps {
@@ -27,7 +27,6 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
   const [wantBank, setWantBank] = useState(false);
 
   // Wallet config
-  const [walletType, setWalletType] = useState<WalletType>("custodial");
   const [privacyLabel, setPrivacyLabel] = useState<PrivacyLabel | "">("");
   const [selectedChains, setSelectedChains] = useState<string[]>([]);
 
@@ -42,7 +41,6 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
     setWantWallet(true);
     setWantBroker(false);
     setWantBank(false);
-    setWalletType("custodial");
     setPrivacyLabel("");
     setSelectedChains([]);
     setBankAccountName("");
@@ -65,7 +63,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
         await createWallet(
           {
             name,
-            wallet_type: walletType,
+            wallet_type: "custodial",
             privacy_label: privacyLabel || null,
             chain: chainStr,
           },
@@ -133,7 +131,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 onChange={(e) => setWantWallet(e.target.checked)}
                 className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
               />
-              Exchange / Wallet
+              Exchange
               <span className="text-xs text-zinc-600">— for crypto assets</span>
             </label>
             <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
@@ -166,33 +164,20 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
         {wantWallet && (
           <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/10 p-3 space-y-3">
             <label className="text-sm font-medium text-zinc-300">
-              Wallet Settings
+              Exchange Settings
             </label>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1">Type</label>
-                <select
-                  value={walletType}
-                  onChange={(e) => setWalletType(e.target.value as WalletType)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                >
-                  <option value="custodial">Exchange / Custodial</option>
-                  <option value="non_custodial">Self-custody</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1">Privacy</label>
-                <select
-                  value={privacyLabel}
-                  onChange={(e) => setPrivacyLabel(e.target.value as PrivacyLabel | "")}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                >
-                  <option value="">Not set</option>
-                  <option value="anon">Anonymous</option>
-                  <option value="doxxed">KYC / Doxxed</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">Privacy</label>
+              <select
+                value={privacyLabel}
+                onChange={(e) => setPrivacyLabel(e.target.value as PrivacyLabel | "")}
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="">Not set</option>
+                <option value="anon">Anonymous</option>
+                <option value="doxxed">KYC / Doxxed</option>
+              </select>
             </div>
 
             {/* Chains */}

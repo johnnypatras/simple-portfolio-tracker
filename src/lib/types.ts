@@ -98,7 +98,7 @@ const EVM_SET = new Set<string>(EVM_CHAINS);
 /** Non-EVM chains that need explicit selection. */
 export const NON_EVM_CHAINS = [
   "Bitcoin", "Solana", "Cardano", "Polkadot", "NEAR", "Cosmos",
-  "Sui", "Aptos", "Tron", "Stellar",
+  "Sui", "Aptos", "Tron", "Stellar", "TON",
 ] as const;
 
 /**

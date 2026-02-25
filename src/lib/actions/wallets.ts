@@ -131,6 +131,45 @@ export async function createWallet(
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
 }
 
+/**
+ * Create a standalone self-custody wallet (no institution).
+ * Used for non-custodial wallets like MetaMask, Ledger, etc.
+ */
+export async function createStandaloneWallet(input: WalletInput): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const trimmedName = input.name.trim();
+
+  const { data: created, error } = await supabase.from("wallets").insert({
+    user_id: user.id,
+    name: trimmedName,
+    wallet_type: "non_custodial",
+    privacy_label: input.privacy_label ?? null,
+    chain: input.chain?.trim() || null,
+    institution_id: null,
+  }).select("*").single();
+
+  if (error) throw new Error(error.message);
+
+  await logActivity({
+    action: "created",
+    entity_type: "wallet",
+    entity_name: trimmedName,
+    description: `Added self-custody wallet "${trimmedName}"`,
+    entity_id: created?.id,
+    entity_table: "wallets",
+    before_snapshot: null,
+    after_snapshot: created,
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/accounts");
+}
+
 export async function updateWallet(
   id: string,
   input: WalletInput,

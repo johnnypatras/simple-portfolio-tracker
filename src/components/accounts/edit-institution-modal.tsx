@@ -4,19 +4,22 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { updateInstitutionRoles } from "@/lib/actions/institutions";
-import type { InstitutionWithRoles, WalletType, PrivacyLabel } from "@/lib/types";
-import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain } from "@/lib/types";
+import { updateWallet } from "@/lib/actions/wallets";
+import type { InstitutionWithRoles, Wallet, PrivacyLabel } from "@/lib/types";
+import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, parseWalletChains, serializeChains } from "@/lib/types";
 
 interface EditInstitutionModalProps {
   open: boolean;
   onClose: () => void;
   institution: InstitutionWithRoles;
+  wallets: Wallet[];
 }
 
 export function EditInstitutionModal({
   open,
   onClose,
   institution,
+  wallets,
 }: EditInstitutionModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +27,20 @@ export function EditInstitutionModal({
   // Form fields
   const [name, setName] = useState(institution.name);
 
-  // "Add wallet" role fields
+  // Existing wallet for this institution (if any)
   const hasWallet = institution.roles.includes("wallet");
+  const existingWallet = wallets.find(
+    (w) => w.institution_id === institution.id && !w.deleted_at
+  );
+
+  // "Add wallet" role fields — pre-fill from existing wallet when editing
   const [addWallet, setAddWallet] = useState(false);
-  const [walletType, setWalletType] = useState<WalletType>("custodial");
-  const [privacyLabel, setPrivacyLabel] = useState<PrivacyLabel | "">("");
-  const [selectedChains, setSelectedChains] = useState<string[]>([]);
+  const [privacyLabel, setPrivacyLabel] = useState<PrivacyLabel | "">(
+    existingWallet?.privacy_label ?? ""
+  );
+  const [selectedChains, setSelectedChains] = useState<string[]>(
+    existingWallet ? parseWalletChains(existingWallet.chain) : []
+  );
 
   // "Add broker" role
   const hasBroker = institution.roles.includes("broker");
@@ -43,25 +54,25 @@ export function EditInstitutionModal({
     setLoading(true);
 
     try {
-      const chainStr =
-        selectedChains.length > 0
-          ? (() => {
-              const hasAllEvm = EVM_CHAINS.every((c) => selectedChains.includes(c));
-              const nonEvmSelected = selectedChains.filter((c) => !isEvmChain(c));
-              return hasAllEvm
-                ? ["evm", ...nonEvmSelected].join(",")
-                : selectedChains.join(",");
-            })()
-          : null;
+      const chainStr = serializeChains(selectedChains);
 
       await updateInstitutionRoles(institution.id, {
         newName: name !== institution.name ? name : undefined,
         also_wallet: addWallet && !hasWallet,
-        wallet_type: walletType,
         wallet_privacy: privacyLabel || null,
         wallet_chain: chainStr,
         also_broker: addBroker && !hasBroker,
       });
+
+      // Update existing wallet settings (type, privacy, chains)
+      if (hasWallet && existingWallet) {
+        await updateWallet(existingWallet.id, {
+          name: existingWallet.name,
+          wallet_type: existingWallet.wallet_type,
+          privacy_label: privacyLabel || null,
+          chain: chainStr,
+        });
+      }
 
       toast.success("Institution updated");
       onClose();
@@ -72,11 +83,13 @@ export function EditInstitutionModal({
     }
   }
 
-  // Reset form when modal opens with new institution
+  // Reset form when modal closes
   function handleClose() {
     setName(institution.name);
     setAddWallet(false);
     setAddBroker(false);
+    setPrivacyLabel(existingWallet?.privacy_label ?? "");
+    setSelectedChains(existingWallet ? parseWalletChains(existingWallet.chain) : []);
     setError(null);
     onClose();
   }
@@ -116,7 +129,7 @@ export function EditInstitutionModal({
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 {role === "wallet"
-                  ? "Exchange / Wallet"
+                  ? "Exchange"
                   : role === "bank"
                     ? "Bank"
                     : "Broker"}
@@ -140,7 +153,7 @@ export function EditInstitutionModal({
                       onChange={(e) => setAddWallet(e.target.checked)}
                       className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
                     />
-                    Exchange / Wallet
+                    Exchange
                   </label>
                 )}
                 {!hasBroker && (
@@ -159,42 +172,29 @@ export function EditInstitutionModal({
           )}
         </div>
 
-        {/* Wallet config — only shown when adding wallet role */}
-        {addWallet && !hasWallet && (
+        {/* Wallet config — shown when adding wallet role OR editing existing wallet */}
+        {((addWallet && !hasWallet) || (hasWallet && existingWallet)) && (
           <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/10 p-3 space-y-3">
             <label className="text-sm font-medium text-zinc-300">
-              Wallet Settings
+              Exchange Settings
             </label>
 
-            {/* Type + Privacy */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1">Type</label>
-                <select
-                  value={walletType}
-                  onChange={(e) => setWalletType(e.target.value as WalletType)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                >
-                  <option value="custodial">Exchange / Custodial</option>
-                  <option value="non_custodial">Self-custody</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1">
-                  Privacy
-                </label>
-                <select
-                  value={privacyLabel}
-                  onChange={(e) =>
-                    setPrivacyLabel(e.target.value as PrivacyLabel | "")
-                  }
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                >
-                  <option value="">Not set</option>
-                  <option value="anon">Anonymous</option>
-                  <option value="doxxed">KYC / Doxxed</option>
-                </select>
-              </div>
+            {/* Privacy */}
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">
+                Privacy
+              </label>
+              <select
+                value={privacyLabel}
+                onChange={(e) =>
+                  setPrivacyLabel(e.target.value as PrivacyLabel | "")
+                }
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="">Not set</option>
+                <option value="anon">Anonymous</option>
+                <option value="doxxed">KYC / Doxxed</option>
+              </select>
             </div>
 
             {/* Chains */}

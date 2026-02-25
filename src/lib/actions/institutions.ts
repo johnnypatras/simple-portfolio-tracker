@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { InstitutionWithRoles, InstitutionRole, WalletType, PrivacyLabel } from "@/lib/types";
+import type { InstitutionWithRoles, InstitutionRole, PrivacyLabel } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 
 /**
@@ -129,7 +129,6 @@ export async function updateInstitutionRoles(
     newName?: string;
     country?: string;
     also_wallet?: boolean;
-    wallet_type?: WalletType;
     wallet_privacy?: PrivacyLabel | null;
     wallet_chain?: string | null;
     also_broker?: boolean;
@@ -194,7 +193,7 @@ export async function updateInstitutionRoles(
       const { data: walletCreated, error: walletErr } = await supabase.from("wallets").insert({
         user_id: user.id,
         name: instName,
-        wallet_type: opts.wallet_type ?? "custodial",
+        wallet_type: "custodial",
         privacy_label: opts.wallet_privacy ?? null,
         chain: opts.wallet_chain?.trim() || null,
         institution_id: institutionId,
