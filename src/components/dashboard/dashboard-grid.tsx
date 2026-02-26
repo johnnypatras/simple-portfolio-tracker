@@ -182,16 +182,16 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
       {/* ─── ROW 1: Overview ──────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Portfolio Overview (merged Total + Allocation) */}
-        <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+        <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           {/* ── Header row: title + period toggle ── */}
-          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
               <Wallet className="w-4 h-4 text-zinc-500" />
               <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
                 Portfolio
               </span>
             </div>
-            <div className="flex gap-0.5 shrink-0">
+            <div className="flex gap-0.5">
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
@@ -286,7 +286,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
         </div>
 
         {/* Market Indices */}
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+        <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="w-4 h-4 text-zinc-500" />
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
@@ -416,16 +416,16 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
         {/* Crypto Summary */}
         <Link
           href={`${basePath}/crypto`}
-          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
+          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
         >
-          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
               <Bitcoin className="w-4 h-4 text-zinc-500" />
               <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
                 Crypto
               </span>
             </div>
-            <div className="flex gap-0.5 shrink-0">
+            <div className="flex gap-0.5">
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
@@ -484,7 +484,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
         </Link>
 
         {/* Crypto Breakdown — spans 2 columns for wider bars */}
-        <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+        <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           <div className="flex items-center gap-2 mb-2">
             <PieChart className="w-4 h-4 text-zinc-500" />
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
@@ -565,16 +565,16 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
         {/* Equities Summary */}
         <Link
           href={`${basePath}/stocks`}
-          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
+          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
         >
-          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-zinc-500" />
               <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
                 Equities
               </span>
             </div>
-            <div className="flex gap-0.5 shrink-0">
+            <div className="flex gap-0.5">
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
@@ -643,7 +643,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
         </Link>
 
         {/* Breakdown — spans 2 columns for wider bars */}
-        <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+        <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           <div className="flex items-center gap-2 mb-2">
             <Layers className="w-4 h-4 text-zinc-500" />
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
@@ -734,16 +734,16 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
         {/* Cash Summary (with APY income integrated) */}
         <Link
           href={`${basePath}/cash`}
-          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
+          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
         >
-          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
               <Banknote className="w-4 h-4 text-zinc-500" />
               <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
                 Banks & Deposits
               </span>
             </div>
-            <div className="flex gap-0.5 shrink-0">
+            <div className="flex gap-0.5">
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
@@ -827,7 +827,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
         </Link>
 
         {/* Currency Breakdown — spans 2 columns for wider bars */}
-        <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-5">
+        <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           <div className="flex items-center gap-2 mb-2">
             <PieChart className="w-4 h-4 text-zinc-500" />
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
