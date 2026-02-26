@@ -103,7 +103,7 @@ function countEntities(data: PortfolioBackup) {
   ].filter((e) => e.count > 0);
 }
 
-type ImportStage = "idle" | "previewing" | "importing" | "done";
+type ImportStage = "idle" | "previewing" | "confirming" | "importing" | "done";
 
 export function ImportExportSettings() {
   const [loadingJson, setLoadingJson] = useState(false);
@@ -182,7 +182,16 @@ export function ImportExportSettings() {
     setImportError(null);
   }
 
-  async function handleImport() {
+  function handleImportClick() {
+    if (!previewData) return;
+    if (importMode === "replace") {
+      setImportStage("confirming");
+    } else {
+      executeImport();
+    }
+  }
+
+  async function executeImport() {
     if (!previewData) return;
     setImportStage("importing");
     setImportError(null);
@@ -403,7 +412,7 @@ export function ImportExportSettings() {
             )}
 
             <button
-              onClick={handleImport}
+              onClick={handleImportClick}
               className={`w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                 importMode === "replace"
                   ? "bg-red-900/50 hover:bg-red-900/70 text-red-200 border border-red-800/50"
@@ -413,6 +422,36 @@ export function ImportExportSettings() {
               <Upload className="w-4 h-4" />
               {importMode === "replace" ? "Replace & Import" : "Merge Import"}
             </button>
+          </div>
+        )}
+
+        {/* ── Confirm replace ── */}
+        {importStage === "confirming" && (
+          <div className="bg-zinc-900/50 border border-red-900/40 rounded-lg p-4 space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <p className="text-sm font-medium text-red-300">Are you sure?</p>
+            </div>
+            <p className="text-xs text-zinc-400">
+              This will <span className="text-red-300 font-medium">permanently delete</span> all
+              your existing portfolio data — assets, positions, wallets, brokers, bank accounts,
+              deposits, trades, and snapshots — then replace it with the backup file.
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setImportStage("previewing")}
+                className="flex-1 px-3 py-2 text-sm font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeImport}
+                className="flex-1 px-3 py-2 text-sm font-medium text-red-200 bg-red-900/60 hover:bg-red-900/80 border border-red-800/50 rounded-lg transition-colors"
+              >
+                Yes, delete and replace
+              </button>
+            </div>
           </div>
         )}
 
