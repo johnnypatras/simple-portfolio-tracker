@@ -44,5 +44,20 @@ next-env.d.ts
 
 # tooling / local-only
 .serena/
+.claude/
+.playwright-mcp/
 supabase/.temp/
 .audit-report.md
+
+# one-off scripts and debug utilities
+_*.mjs
+
+# screenshots and generated docs
+*.png
+*.pdf
+!public/**/*.png
+
+# database backups (keep these outside the repo)
+*.sql
+!supabase/migrations/*.sql
+backup_*.json
