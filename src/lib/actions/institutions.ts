@@ -79,36 +79,6 @@ export async function findOrCreateInstitution(name: string): Promise<string> {
 }
 
 /**
- * Check if an institution has any remaining active linked records.
- * If orphaned, soft-delete it.
- */
-export async function cleanupOrphanedInstitution(institutionId: string): Promise<void> {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  // Only count active (non-soft-deleted) children
-  const [w, b, ba] = await Promise.all([
-    supabase.from("wallets").select("id").eq("institution_id", institutionId).is("deleted_at", null).limit(1),
-    supabase.from("brokers").select("id").eq("institution_id", institutionId).is("deleted_at", null).limit(1),
-    supabase.from("bank_accounts").select("id").eq("institution_id", institutionId).is("deleted_at", null).limit(1),
-  ]);
-
-  const hasChildren =
-    (w.data?.length ?? 0) > 0 ||
-    (b.data?.length ?? 0) > 0 ||
-    (ba.data?.length ?? 0) > 0;
-
-  if (!hasChildren) {
-    await supabase
-      .from("institutions")
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", institutionId)
-      .eq("user_id", user.id);
-  }
-}
-
-/**
  * Rename an institution. The DB trigger will propagate the name
  * change to all linked wallets, brokers, and bank_accounts.
  */
@@ -139,6 +109,8 @@ export async function updateInstitutionRoles(
     wallet_privacy?: PrivacyLabel | null;
     wallet_chain?: string | null;
     also_broker?: boolean;
+    also_bank?: boolean;
+    bank_currency?: string;
   }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
@@ -250,6 +222,40 @@ export async function updateInstitutionRoles(
     }
   }
 
+  // Create sibling bank account if requested
+  if (opts.also_bank) {
+    const { data: existing } = await supabase
+      .from("bank_accounts")
+      .select("id")
+      .eq("institution_id", institutionId)
+      .is("deleted_at", null)
+      .limit(1);
+
+    if (!existing?.length) {
+      const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
+        user_id: user.id,
+        name: instName,
+        bank_name: instName,
+        currency: opts.bank_currency ?? "EUR",
+        balance: 0,
+        apy: 0,
+        institution_id: institutionId,
+      }).select("*").single();
+      if (!bankErr && bankCreated) {
+        await logActivity({
+          action: "created",
+          entity_type: "bank_account",
+          entity_name: instName,
+          description: `Added bank account "${instName}" (via institution edit)`,
+          entity_id: bankCreated.id,
+          entity_table: "bank_accounts",
+          before_snapshot: null,
+          after_snapshot: bankCreated,
+        });
+      }
+    }
+  }
+
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/cash");
@@ -262,7 +268,7 @@ export async function updateInstitutionRoles(
  */
 export async function removeInstitutionRole(
   institutionId: string,
-  role: "wallet" | "broker"
+  role: "wallet" | "broker" | "bank"
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -296,9 +302,22 @@ export async function removeInstitutionRole(
         await deleteBroker(b.id);
       }
     }
+  } else if (role === "bank") {
+    const { data: banks } = await supabase
+      .from("bank_accounts")
+      .select("id")
+      .eq("institution_id", institutionId)
+      .is("deleted_at", null);
+
+    if (banks?.length) {
+      const { deleteBankAccount } = await import("@/lib/actions/bank-accounts");
+      for (const ba of banks) {
+        await deleteBankAccount(ba.id);
+      }
+    }
   }
 
-  // cleanupOrphanedInstitution is already called inside deleteWallet/deleteBroker
+  // Institution persists even if empty — user can delete it explicitly via the edit modal
   revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/cash");
 }

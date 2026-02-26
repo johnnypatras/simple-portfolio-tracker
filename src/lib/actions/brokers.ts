@@ -7,7 +7,6 @@ import { DEFAULT_COUNTRY } from "@/lib/constants";
 import { logActivity } from "@/lib/actions/activity-log";
 import {
   findOrCreateInstitution,
-  cleanupOrphanedInstitution,
   renameInstitution,
 } from "@/lib/actions/institutions";
 
@@ -294,11 +293,6 @@ export async function deleteBroker(id: string) {
     before_snapshot: snapshot,
     after_snapshot: null,
   });
-
-  // Cleanup orphaned institution (checks active children only)
-  if (snapshot?.institution_id) {
-    await cleanupOrphanedInstitution(snapshot.institution_id);
-  }
 
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");

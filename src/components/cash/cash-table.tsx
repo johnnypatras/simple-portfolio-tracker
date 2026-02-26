@@ -241,7 +241,7 @@ export function CashTable({
   const handleDeleteExchange = useCallback(async (id: string) => {
     try {
       await deleteExchangeDeposit(id);
-      toast.success("Exchange deposit deleted");
+      toast.success("Fiat deposit deleted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
@@ -259,7 +259,7 @@ export function CashTable({
   const handleDeleteBrokerDeposit = useCallback(async (id: string) => {
     try {
       await deleteBrokerDeposit(id);
-      toast.success("Broker deposit deleted");
+      toast.success("Fiat deposit deleted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
@@ -433,14 +433,12 @@ export function CashTable({
               </p>
               {exchangeDeposits.length > 0 && (
                 <p>
-                  {exchangeDeposits.length} exchange deposit
-                  {exchangeDeposits.length !== 1 ? "s" : ""}
+                  {exchangeDeposits.length} fiat deposit{exchangeDeposits.length !== 1 ? "s" : ""} (exchanges)
                 </p>
               )}
               {brokerDeposits.length > 0 && (
                 <p>
-                  {brokerDeposits.length} broker deposit
-                  {brokerDeposits.length !== 1 ? "s" : ""}
+                  {brokerDeposits.length} fiat deposit{brokerDeposits.length !== 1 ? "s" : ""} (brokers)
                 </p>
               )}
             </div>
@@ -499,7 +497,7 @@ export function CashTable({
           <Landmark className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
           <p className="text-sm text-zinc-500">No cash holdings yet</p>
           <p className="text-xs text-zinc-600 mt-1">
-            Add a bank account or exchange deposit to get started
+            Add a bank account or fiat deposit to get started
           </p>
           {!isReadOnly && (
             <button
@@ -585,7 +583,7 @@ export function CashTable({
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <WalletIcon className="w-3.5 h-3.5 text-zinc-500" />
-                <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
+                <span className="text-xs font-medium text-zinc-400">Fiat Deposits (Exchanges)</span>
                 <span className="text-xs text-zinc-600">{formatCurrency(exchangeDepositTotal, primaryCurrency)}</span>
                 {exchGroupIds.length > 1 && (
                   <button
@@ -598,7 +596,7 @@ export function CashTable({
                 )}
               </div>
               {exchRows.length === 0 ? (
-                <p className="text-xs text-zinc-600 px-4 py-3">{wallets.length === 0 ? "Add a wallet in Settings first" : "No exchange deposits yet"}</p>
+                <p className="text-xs text-zinc-600 px-4 py-3">{wallets.length === 0 ? "Add a wallet in Settings first" : "No fiat deposits yet"}</p>
               ) : (
                 <div className="space-y-2">
                   {exchRows.map((row) => {
@@ -650,7 +648,7 @@ export function CashTable({
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Briefcase className="w-3.5 h-3.5 text-zinc-500" />
-                <span className="text-xs font-medium text-zinc-400">Broker Deposits</span>
+                <span className="text-xs font-medium text-zinc-400">Fiat Deposits (Brokers)</span>
                 <span className="text-xs text-zinc-600">{formatCurrency(brokerDepositTotal, primaryCurrency)}</span>
                 {brokerGroupIds.length > 1 && (
                   <button
@@ -663,7 +661,7 @@ export function CashTable({
                 )}
               </div>
               {brokerDepRows.length === 0 ? (
-                <p className="text-xs text-zinc-600 px-4 py-3">{brokers.length === 0 ? "Add a broker in Settings first" : "No broker deposits yet"}</p>
+                <p className="text-xs text-zinc-600 px-4 py-3">{brokers.length === 0 ? "Add a broker in Settings first" : "No fiat deposits yet"}</p>
               ) : (
                 <div className="space-y-2">
                   {brokerDepRows.map((row) => {
@@ -857,7 +855,7 @@ export function CashTable({
                         <td key={col.key} className="px-4 py-2">
                           <div className="flex items-center gap-2">
                             <WalletIcon className="w-3.5 h-3.5 text-zinc-500" />
-                            <span className="text-xs font-medium text-zinc-400">Exchange Deposits</span>
+                            <span className="text-xs font-medium text-zinc-400">Fiat Deposits (Exchanges)</span>
                             {exchGroupIds.length > 1 && (
                               <button
                                 onClick={() => toggleSectionGroups(exchGroupIds)}
@@ -885,7 +883,7 @@ export function CashTable({
                 {exchRows.length === 0 ? (
                   <tr>
                     <td colSpan={orderedColumns.length} className="px-4 py-4 text-center">
-                      <p className="text-xs text-zinc-600">{wallets.length === 0 ? "Add a wallet in Settings first" : "No exchange deposits yet — click Add to create one"}</p>
+                      <p className="text-xs text-zinc-600">{wallets.length === 0 ? "Add a wallet in Settings first" : "No fiat deposits yet — click Add to create one"}</p>
                     </td>
                   </tr>
                 ) : (
@@ -921,7 +919,7 @@ export function CashTable({
                         <td key={col.key} className="px-4 py-2">
                           <div className="flex items-center gap-2">
                             <Briefcase className="w-3.5 h-3.5 text-zinc-500" />
-                            <span className="text-xs font-medium text-zinc-400">Broker Deposits</span>
+                            <span className="text-xs font-medium text-zinc-400">Fiat Deposits (Brokers)</span>
                             {brokerGroupIds.length > 1 && (
                               <button
                                 onClick={() => toggleSectionGroups(brokerGroupIds)}
@@ -949,7 +947,7 @@ export function CashTable({
                 {brokerDepRows.length === 0 ? (
                   <tr>
                     <td colSpan={orderedColumns.length} className="px-4 py-4 text-center">
-                      <p className="text-xs text-zinc-600">{brokers.length === 0 ? "Add a broker in Settings first" : "No broker deposits yet — click Add to create one"}</p>
+                      <p className="text-xs text-zinc-600">{brokers.length === 0 ? "Add a broker in Settings first" : "No fiat deposits yet — click Add to create one"}</p>
                     </td>
                   </tr>
                 ) : (
@@ -1070,11 +1068,11 @@ export function CashTable({
               >
                 <WalletIcon className="w-5 h-5 text-zinc-400 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-zinc-200">Exchange Deposit</p>
+                  <p className="text-sm font-medium text-zinc-200">Fiat Deposit (Exchange)</p>
                   <p className="text-xs text-zinc-500">
                     {wallets.length === 0
                       ? "Add a wallet in Settings first"
-                      : "Fiat deposits on crypto exchanges"}
+                      : "Cash deposited on crypto exchanges"}
                   </p>
                 </div>
               </button>
@@ -1085,7 +1083,7 @@ export function CashTable({
               >
                 <Briefcase className="w-5 h-5 text-zinc-400 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-zinc-200">Broker Deposit</p>
+                  <p className="text-sm font-medium text-zinc-200">Fiat Deposit (Broker)</p>
                   <p className="text-xs text-zinc-500">
                     {brokers.length === 0
                       ? "Add a broker in Settings first"

@@ -428,6 +428,7 @@ export async function importFromJson(
         .eq("user_id", uid)
         .eq("wallet_id", mappedWalletId)
         .eq("currency", dep.currency)
+        .is("deleted_at", null)
         .limit(1);
       if (existing && existing.length > 0) found = true;
     }
@@ -462,6 +463,7 @@ export async function importFromJson(
         .eq("user_id", uid)
         .eq("broker_id", mappedBrokerId)
         .eq("currency", dep.currency)
+        .is("deleted_at", null)
         .limit(1);
       if (existing && existing.length > 0) found = true;
     }

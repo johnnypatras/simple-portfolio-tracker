@@ -66,7 +66,7 @@ export function BrokerDepositModal({
         await createBrokerDeposit(input);
       }
       onClose();
-      toast.success(editing ? "Broker deposit updated" : "Broker deposit added");
+      toast.success(editing ? "Fiat deposit updated" : "Fiat deposit added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -78,7 +78,7 @@ export function BrokerDepositModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={editing ? "Edit Broker Deposit" : "Add Broker Deposit"}
+      title={editing ? "Edit Fiat Deposit" : "Add Fiat Deposit"}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

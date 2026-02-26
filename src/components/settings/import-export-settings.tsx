@@ -59,7 +59,7 @@ const csvExports = [
   {
     id: "cash",
     label: "Cash & Deposits",
-    desc: "Bank accounts, exchange deposits, and broker deposits",
+    desc: "Bank accounts and fiat deposits",
     action: exportCashCsv,
   },
   {
@@ -96,8 +96,8 @@ function countEntities(data: PortfolioBackup) {
     { label: "Crypto Positions", count: data.cryptoAssets.reduce((s, a) => s + a.positions.length, 0) },
     { label: "Stock Assets", count: data.stockAssets.length },
     { label: "Stock Positions", count: data.stockAssets.reduce((s, a) => s + a.positions.length, 0) },
-    { label: "Exchange Deposits", count: data.exchangeDeposits.length },
-    { label: "Broker Deposits", count: data.brokerDeposits.length },
+    { label: "Fiat Deposits (Exchanges)", count: data.exchangeDeposits.length },
+    { label: "Fiat Deposits (Brokers)", count: data.brokerDeposits.length },
     { label: "Trade Entries", count: data.tradeEntries.length },
     { label: "Snapshots", count: data.snapshots.length },
   ].filter((e) => e.count > 0);

@@ -64,7 +64,7 @@ const ENTITY_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "wallet", label: "Wallets" },
   { value: "broker", label: "Brokers" },
   { value: "bank_account", label: "Bank Accounts" },
-  { value: "exchange_deposit", label: "Exchange Deposits" },
+  { value: "exchange_deposit", label: "Fiat Deposits" },
   { value: "trade_entry", label: "Trades" },
 ];
 

@@ -193,10 +193,10 @@ export async function exportCashCsv(): Promise<string> {
     rows.push(["Bank Account", b.name, b.bank_name, b.currency, b.balance, b.apy, b.region, b.created_at, b.updated_at]);
   }
   for (const d of exDeps) {
-    rows.push(["Exchange Deposit", null, d.wallet_name, d.currency, d.amount, d.apy, null, d.created_at, d.updated_at]);
+    rows.push(["Fiat Deposit (Exchange)", null, d.wallet_name, d.currency, d.amount, d.apy, null, d.created_at, d.updated_at]);
   }
   for (const d of brDeps) {
-    rows.push(["Broker Deposit", null, d.broker_name, d.currency, d.amount, d.apy, null, d.created_at, d.updated_at]);
+    rows.push(["Fiat Deposit (Broker)", null, d.broker_name, d.currency, d.amount, d.apy, null, d.created_at, d.updated_at]);
   }
 
   return toCsv(headers, rows);

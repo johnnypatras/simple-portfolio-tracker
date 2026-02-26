@@ -68,7 +68,7 @@ export default async function CashPage() {
           <h1 className="text-2xl font-semibold text-zinc-100">Banks & Deposits</h1>
         </div>
         <p className="text-sm text-zinc-500 mt-1">
-          Bank accounts and exchange / broker deposits
+          Bank accounts and fiat deposits
         </p>
       </div>
       <CashTable

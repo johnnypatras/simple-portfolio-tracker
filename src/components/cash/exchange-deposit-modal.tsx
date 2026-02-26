@@ -70,7 +70,7 @@ export function ExchangeDepositModal({
         await createExchangeDeposit(input);
       }
       onClose();
-      toast.success(editing ? "Exchange deposit updated" : "Exchange deposit added");
+      toast.success(editing ? "Fiat deposit updated" : "Fiat deposit added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -82,7 +82,7 @@ export function ExchangeDepositModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={editing ? "Edit Exchange Deposit" : "Add Exchange Deposit"}
+      title={editing ? "Edit Fiat Deposit" : "Add Fiat Deposit"}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

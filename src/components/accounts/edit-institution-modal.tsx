@@ -48,9 +48,14 @@ export function EditInstitutionModal({
   const hasBroker = institution.roles.includes("broker");
   const [addBroker, setAddBroker] = useState(false);
 
+  // "Add bank" role
+  const hasBank = institution.roles.includes("bank");
+  const [addBank, setAddBank] = useState(false);
+  const [bankCurrency, setBankCurrency] = useState("EUR");
+
   // Phase 2: Role removal state
   const [removingRole, setRemovingRole] = useState(false);
-  const [confirmRemoveRole, setConfirmRemoveRole] = useState<"wallet" | "broker" | null>(null);
+  const [confirmRemoveRole, setConfirmRemoveRole] = useState<"wallet" | "broker" | "bank" | null>(null);
 
   // Phase 2: Institution deletion state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -71,6 +76,8 @@ export function EditInstitutionModal({
         wallet_privacy: privacyLabel || null,
         wallet_chain: chainStr,
         also_broker: addBroker && !hasBroker,
+        also_bank: addBank && !hasBank,
+        bank_currency: bankCurrency,
       });
 
       // Update existing wallet settings (type, privacy, chains)
@@ -92,11 +99,11 @@ export function EditInstitutionModal({
     }
   }
 
-  async function handleRemoveRole(role: "wallet" | "broker") {
+  async function handleRemoveRole(role: "wallet" | "broker" | "bank") {
     setRemovingRole(true);
     try {
       await removeInstitutionRole(institution.id, role);
-      toast.success(`${role === "wallet" ? "Exchange" : "Broker"} role removed`);
+      toast.success(`${roleLabel(role)} role removed`);
       router.refresh();
       onClose();
     } catch (err) {
@@ -126,6 +133,8 @@ export function EditInstitutionModal({
     setName(institution.name);
     setAddWallet(false);
     setAddBroker(false);
+    setAddBank(false);
+    setBankCurrency("EUR");
     setPrivacyLabel(existingWallet?.privacy_label ?? "");
     setSelectedChains(existingWallet ? parseWalletChains(existingWallet.chain) : []);
     setError(null);
@@ -173,7 +182,9 @@ export function EditInstitutionModal({
               <p className="text-xs text-amber-200/70">
                 {confirmRemoveRole === "wallet"
                   ? "This will delete the exchange wallet and all its crypto positions and deposits."
-                  : "This will delete the broker and all its stock positions and deposits."}
+                  : confirmRemoveRole === "broker"
+                    ? "This will delete the broker and all its stock positions and deposits."
+                    : "This will delete all bank accounts linked to this institution."}
                 {" "}If no other roles remain, the institution will also be removed.
               </p>
               <div className="flex gap-2 pt-1">
@@ -206,11 +217,10 @@ export function EditInstitutionModal({
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   {roleLabel(role)}
-                  {/* × button — only for wallet and broker (bank is removed by deleting bank accounts) */}
-                  {(role === "wallet" || role === "broker") && (
+                  {(role === "wallet" || role === "broker" || role === "bank") && (
                     <button
                       type="button"
-                      onClick={() => setConfirmRemoveRole(role)}
+                      onClick={() => setConfirmRemoveRole(role as "wallet" | "broker" | "bank")}
                       className="ml-1 text-zinc-600 hover:text-red-400 transition-colors"
                       title={`Remove ${roleLabel(role)} role`}
                     >
@@ -226,7 +236,7 @@ export function EditInstitutionModal({
           )}
 
           {/* Add new roles */}
-          {(!hasWallet || !hasBroker) && !confirmRemoveRole && (
+          {(!hasWallet || !hasBroker || !hasBank) && !confirmRemoveRole && (
             <div className="pt-2 border-t border-zinc-800/50">
               <p className="text-xs text-zinc-500 mb-2">Add roles</p>
               <div className="space-y-2">
@@ -250,6 +260,17 @@ export function EditInstitutionModal({
                       className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
                     />
                     Broker
+                  </label>
+                )}
+                {!hasBank && (
+                  <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={addBank}
+                      onChange={(e) => setAddBank(e.target.checked)}
+                      className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                    />
+                    Bank
                   </label>
                 )}
               </div>
@@ -341,6 +362,28 @@ export function EditInstitutionModal({
                   );
                 })}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bank config — shown when adding bank role */}
+        {addBank && !hasBank && (
+          <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/10 p-3 space-y-3">
+            <label className="text-sm font-medium text-zinc-300">
+              Bank Settings
+            </label>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">
+                Currency
+              </label>
+              <select
+                value={bankCurrency}
+                onChange={(e) => setBankCurrency(e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+              </select>
             </div>
           </div>
         )}

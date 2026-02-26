@@ -374,7 +374,7 @@ export function AccountsView({
       group.cash.push({
         id: dep.id,
         type: "exchange_deposit",
-        label: "Exchange deposit",
+        label: "Fiat deposit",
         currency: dep.currency,
         amount: dep.amount,
         valueBase,
@@ -393,7 +393,7 @@ export function AccountsView({
       group.cash.push({
         id: dep.id,
         type: "broker_deposit",
-        label: "Broker deposit",
+        label: "Fiat deposit",
         currency: dep.currency,
         amount: dep.amount,
         valueBase,
@@ -1151,11 +1151,13 @@ function AddAssetDropdown({
 
   if (isSelfCustody || roles.includes("wallet")) {
     options.push({ label: "Add Crypto Asset", onClick: onAddCrypto });
-    options.push({ label: "Add Exchange Deposit", onClick: onAddExchangeDeposit });
+  }
+  if (!isSelfCustody && roles.includes("wallet")) {
+    options.push({ label: "Add Fiat Deposit", onClick: onAddExchangeDeposit });
   }
   if (roles.includes("broker")) {
     options.push({ label: "Add Stock Asset", onClick: onAddStock });
-    options.push({ label: "Add Broker Deposit", onClick: onAddBrokerDeposit });
+    options.push({ label: "Add Fiat Deposit", onClick: onAddBrokerDeposit });
   }
   if (roles.includes("bank")) {
     options.push({ label: "Add Bank Account", onClick: onAddBankAccount });
