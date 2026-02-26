@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, fetchSinglePrice, getDividendYields } from "@/lib/prices/yahoo";
+import { getStockPrices, fetchSinglePrice, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
+import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
@@ -42,10 +43,11 @@ export default async function SharedOverviewPage({
     ]),
   ];
 
-  // Fetch prices + market data
+  // Fetch prices + market data + benchmark
   const [
     cryptoPrices, stockPrices, fxRates, dividends,
     sp500Data, goldData, nasdaqData, dowData, eurUsdData,
+    sp500TRHistory, cashFlows,
   ] = await Promise.all([
     getPrices(coinIds),
     getStockPrices(yahooTickers),
@@ -56,6 +58,8 @@ export default async function SharedOverviewPage({
     fetchSinglePrice("^IXIC"),
     fetchSinglePrice("^DJI"),
     fetchSinglePrice("EURUSD=X"),
+    fetchIndexHistory("^SP500TR", 365),
+    deriveCashFlows(data.share.owner_id),
   ]);
 
   const summary = aggregatePortfolio({
@@ -109,7 +113,10 @@ export default async function SharedOverviewPage({
         <PortfolioChart
           snapshots={snapshots}
           liveValue={summary.totalValue}
+          liveValueUsd={summary.totalValueUsd}
           primaryCurrency={primaryCurrency}
+          sp500History={sp500TRHistory}
+          cashFlows={cashFlows}
         />
       </div>
     </div>

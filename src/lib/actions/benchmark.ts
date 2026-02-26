@@ -1,6 +1,7 @@
 "use server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
 import { fetchCoinHistory } from "@/lib/prices/coingecko";
 
@@ -50,19 +51,21 @@ function getPrice(map: PriceMap, date: string): number | undefined {
  * For positions (crypto, stocks): use quantity × historical market price.
  * EUR and other non-USD currencies: converted using actual FX rate on date.
  */
-export async function deriveCashFlows(): Promise<CashFlowEvent[]> {
-  const supabase = await createServerSupabaseClient();
+export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]> {
+  // When userId is provided (share page), use admin client to bypass RLS
+  const supabase = userId ? createAdminClient() : await createServerSupabaseClient();
 
   // ── Step 1: Fetch activity log entries with non-null snapshots ──
-  const { data: allLogs, error } = await supabase
+  let query = supabase
     .from("activity_log")
     .select("action, entity_type, before_snapshot, after_snapshot, created_at")
     .in("entity_type", [
       "exchange_deposit", "broker_deposit", "bank_account",
       "crypto_position", "stock_position",
     ])
-    .in("action", ["created", "updated", "removed"])
-    .order("created_at", { ascending: true });
+    .in("action", ["created", "updated", "removed"]);
+  if (userId) query = query.eq("user_id", userId);
+  const { data: allLogs, error } = await query.order("created_at", { ascending: true });
 
   if (error || !allLogs || allLogs.length === 0) return [];
 

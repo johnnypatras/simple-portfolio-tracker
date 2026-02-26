@@ -49,11 +49,13 @@ function scopeBadge(scope: ShareScope) {
   }
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+function formatDateTime(dateStr: string) {
+  return new Date(dateStr).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
@@ -270,8 +272,8 @@ export function SharingSettings() {
                       </span>
                     </div>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      Created {formatDate(share.created_at)}
-                      {share.expires_at && ` · Expires ${formatDate(share.expires_at)}`}
+                      Created {formatDateTime(share.created_at)}
+                      {share.expires_at && ` · Expires ${formatDateTime(share.expires_at)}`}
                     </p>
                   </div>
 
@@ -334,7 +336,7 @@ export function SharingSettings() {
                       </span>
                     </div>
                     <p className="text-xs text-zinc-600 mt-0.5">
-                      Created {formatDate(share.created_at)}
+                      Created {formatDateTime(share.created_at)}
                     </p>
                   </div>
                 </div>
