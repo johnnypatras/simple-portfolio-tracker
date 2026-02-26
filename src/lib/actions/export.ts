@@ -110,8 +110,9 @@ export async function exportCryptoCsv(): Promise<string> {
   const assets = await getCryptoAssetsWithPositions();
 
   const headers = [
-    "Ticker", "Name", "CoinGecko ID", "Subcategory",
+    "Ticker", "Name", "CoinGecko ID", "Chain", "Subcategory",
     "Wallet", "Wallet Type", "Quantity", "Acquisition Method", "APY %",
+    "Asset Created", "Position Updated",
   ];
 
   const rows: (string | number | null)[][] = [];
@@ -121,12 +122,15 @@ export async function exportCryptoCsv(): Promise<string> {
         asset.ticker,
         asset.name,
         asset.coingecko_id,
+        asset.chain,
         asset.subcategory,
         pos.wallet_name,
         pos.wallet_type,
         pos.quantity,
         pos.acquisition_method,
         pos.apy,
+        asset.created_at,
+        pos.updated_at,
       ]);
     }
   }
@@ -143,6 +147,7 @@ export async function exportStocksCsv(): Promise<string> {
     "Ticker", "Name", "ISIN", "Yahoo Ticker", "Category",
     "Currency", "Subcategory", "Tags",
     "Broker", "Quantity",
+    "Asset Created", "Position Updated",
   ];
 
   const rows: (string | number | null)[][] = [];
@@ -159,6 +164,8 @@ export async function exportStocksCsv(): Promise<string> {
         asset.tags?.join("; ") || null,
         pos.broker_name,
         pos.quantity,
+        asset.created_at,
+        pos.updated_at,
       ]);
     }
   }
@@ -176,19 +183,20 @@ export async function exportCashCsv(): Promise<string> {
   ]);
 
   const headers = [
-    "Type", "Name", "Currency", "Amount", "APY %", "Region",
+    "Type", "Account Name", "Institution", "Currency", "Amount", "APY %", "Region",
+    "Created", "Updated",
   ];
 
   const rows: (string | number | null)[][] = [];
 
   for (const b of banks) {
-    rows.push(["Bank Account", b.name, b.currency, b.balance, b.apy, b.region]);
+    rows.push(["Bank Account", b.name, b.bank_name, b.currency, b.balance, b.apy, b.region, b.created_at, b.updated_at]);
   }
   for (const d of exDeps) {
-    rows.push(["Exchange Deposit", d.wallet_name, d.currency, d.amount, d.apy, null]);
+    rows.push(["Exchange Deposit", null, d.wallet_name, d.currency, d.amount, d.apy, null, d.created_at, d.updated_at]);
   }
   for (const d of brDeps) {
-    rows.push(["Broker Deposit", d.broker_name, d.currency, d.amount, d.apy, null]);
+    rows.push(["Broker Deposit", null, d.broker_name, d.currency, d.amount, d.apy, null, d.created_at, d.updated_at]);
   }
 
   return toCsv(headers, rows);
@@ -202,6 +210,7 @@ export async function exportTradesCsv(): Promise<string> {
   const headers = [
     "Date", "Action", "Asset Type", "Asset Name",
     "Quantity", "Price", "Currency", "Total Value", "Notes",
+    "Created", "Updated",
   ];
 
   const rows: (string | number | null)[][] = [];
@@ -216,6 +225,8 @@ export async function exportTradesCsv(): Promise<string> {
       t.currency,
       t.total_value,
       t.notes,
+      t.created_at,
+      t.updated_at,
     ]);
   }
 
