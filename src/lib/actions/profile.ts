@@ -58,28 +58,37 @@ export async function clearAllData(): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // Tables with user_id column, in safe deletion order.
+  // All user-owned tables in safe deletion order (children before parents).
   // crypto_positions, stock_positions, goal_prices cascade from their parents.
-  const tables = [
+  const tablesWithUserId = [
     "activity_log",
     "portfolio_snapshots",
     "diary_entries",
     "trade_entries",
     "exchange_deposits",
+    "broker_deposits",
     "stock_assets",
     "crypto_assets",
     "bank_accounts",
     "brokers",
     "wallets",
+    "institutions",
   ];
 
-  for (const table of tables) {
+  for (const table of tablesWithUserId) {
     const { error } = await supabase
       .from(table)
       .delete()
       .eq("user_id", user.id);
     if (error) throw new Error(`Failed to clear ${table}: ${error.message}`);
   }
+
+  // portfolio_shares uses owner_id instead of user_id
+  const { error: sharesErr } = await supabase
+    .from("portfolio_shares")
+    .delete()
+    .eq("owner_id", user.id);
+  if (sharesErr) throw new Error(`Failed to clear portfolio_shares: ${sharesErr.message}`);
 
   revalidatePath("/dashboard");
 }
