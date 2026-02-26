@@ -33,7 +33,10 @@ export async function updateSession(request: NextRequest) {
   // Pages that don't require authentication
   const isAuthPage =
     request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/register");
+    request.nextUrl.pathname.startsWith("/register") ||
+    request.nextUrl.pathname.startsWith("/forgot-password") ||
+    request.nextUrl.pathname.startsWith("/reset-password") ||
+    request.nextUrl.pathname.startsWith("/auth/callback");
 
   // Share links are always accessible, regardless of auth state
   const isSharePage = request.nextUrl.pathname.startsWith("/share");

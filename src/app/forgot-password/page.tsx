@@ -1,0 +1,123 @@
+"use client";
+
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Mail, Lock, ArrowLeft, CheckCircle2 } from "lucide-react";
+
+export default function ForgotPasswordPage() {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const supabase = createClient();
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email,
+        { redirectTo: `${window.location.origin}/auth/callback?next=/reset-password` }
+      );
+
+      if (resetError) {
+        setError(resetError.message);
+      } else {
+        setSent(true);
+      }
+    } catch {
+      setError("An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 mb-4">
+            <Lock className="w-6 h-6 text-zinc-300" />
+          </div>
+          <h1 className="text-xl font-semibold text-zinc-100">
+            Reset Password
+          </h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            {sent
+              ? "Check your email"
+              : "Enter your email to receive a reset link"}
+          </p>
+        </div>
+
+        {sent ? (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 px-4 py-3 bg-emerald-950/30 border border-emerald-900/30 rounded-lg">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-emerald-300">Reset link sent</p>
+                <p className="text-xs text-zinc-400 mt-1">
+                  If an account exists for <span className="text-zinc-300">{email}</span>,
+                  you&apos;ll receive a password reset link shortly. Check your spam folder if
+                  you don&apos;t see it.
+                </p>
+              </div>
+            </div>
+
+            <a
+              href="/login"
+              className="flex items-center justify-center gap-2 w-full py-2.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to login
+            </a>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm text-zinc-400 mb-1.5">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40"
+                  required
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {error && (
+              <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-medium rounded-lg transition-colors"
+            >
+              {loading ? "Sending..." : "Send reset link"}
+            </button>
+
+            <a
+              href="/login"
+              className="flex items-center justify-center gap-2 w-full text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to login
+            </a>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
