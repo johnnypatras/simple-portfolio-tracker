@@ -145,11 +145,15 @@ export function UsersSettings() {
     try {
       const days = expiresInDays === "" ? null : Number(expiresInDays);
       const code = await createInviteCode(days);
-      toast.success("Invite code created");
-      // Auto-copy
-      await navigator.clipboard.writeText(code);
-      setCopiedCode(code);
-      setTimeout(() => setCopiedCode(null), 2000);
+      // Auto-copy (may fail if browser denies permission after async)
+      try {
+        await navigator.clipboard.writeText(code);
+        setCopiedCode(code);
+        setTimeout(() => setCopiedCode(null), 2000);
+        toast.success("Invite code created and copied");
+      } catch {
+        toast.success("Invite code created");
+      }
       loadData();
     } catch {
       toast.error("Failed to create invite code");

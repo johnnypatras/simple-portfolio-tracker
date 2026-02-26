@@ -109,10 +109,14 @@ export function SharingSettings() {
         expiresInDays: expiresInDays === "1h" ? 1 / 24 : expiresInDays ? parseInt(expiresInDays, 10) : null,
       });
 
-      // Copy link to clipboard
+      // Copy link to clipboard (may fail if browser denies permission after async)
       const url = `${window.location.origin}/share/${token}`;
-      await navigator.clipboard.writeText(url);
-      toast.success("Share link created and copied to clipboard");
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success("Share link created and copied to clipboard");
+      } catch {
+        toast.success("Share link created — click copy to grab the URL");
+      }
 
       // Reset form and reload
       setLabel("");
