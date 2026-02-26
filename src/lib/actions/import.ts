@@ -82,12 +82,19 @@ export async function importFromJson(
   if (!user) return { ok: false, error: "Not authenticated" };
 
   const uid = user.id;
+  const isReplace = mode === "replace";
 
   // ── Replace mode: clear all existing data first ──
-  if (mode === "replace") {
+  // Children before parents. crypto_positions, stock_positions, and
+  // goal_prices don't have user_id — they're cascade-deleted when their
+  // parent asset tables are deleted (ON DELETE CASCADE FKs).
+  // diary_entries and activity_log are NOT deleted — they're not in the
+  // backup and would be permanently lost.
+  if (isReplace) {
     const tables = [
-      "activity_log", "portfolio_snapshots", "diary_entries", "trade_entries",
-      "exchange_deposits", "broker_deposits", "stock_assets", "crypto_assets",
+      "portfolio_snapshots", "trade_entries",
+      "exchange_deposits", "broker_deposits",
+      "crypto_assets", "stock_assets",
       "bank_accounts", "brokers", "wallets", "institutions",
     ];
     for (const table of tables) {
@@ -116,17 +123,21 @@ export async function importFromJson(
 
   // ── 1. Institutions ───────────────────────────────────
   for (const inst of data.institutions) {
-    // Dedup by name
-    const { data: existing } = await supabase
-      .from("institutions")
-      .select("id")
-      .eq("user_id", uid)
-      .eq("name", inst.name)
-      .is("deleted_at", null)
-      .limit(1);
+    let existingId: string | null = null;
 
-    if (existing && existing.length > 0) {
-      instMap.set(inst.id, existing[0].id);
+    if (!isReplace) {
+      const { data: existing } = await supabase
+        .from("institutions")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("name", inst.name)
+        .is("deleted_at", null)
+        .limit(1);
+      if (existing && existing.length > 0) existingId = existing[0].id;
+    }
+
+    if (existingId) {
+      instMap.set(inst.id, existingId);
       skipped.institutions++;
     } else {
       const { data: created, error } = await supabase
@@ -143,19 +154,22 @@ export async function importFromJson(
   // ── 2. Wallets ────────────────────────────────────────
   for (const w of data.wallets) {
     const mappedInstId = w.institution_id ? instMap.get(w.institution_id) ?? null : null;
+    let existingId: string | null = null;
 
-    // Dedup by name + wallet_type
-    const { data: existing } = await supabase
-      .from("wallets")
-      .select("id")
-      .eq("user_id", uid)
-      .eq("name", w.name)
-      .eq("wallet_type", w.wallet_type)
-      .is("deleted_at", null)
-      .limit(1);
+    if (!isReplace) {
+      const { data: existing } = await supabase
+        .from("wallets")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("name", w.name)
+        .eq("wallet_type", w.wallet_type)
+        .is("deleted_at", null)
+        .limit(1);
+      if (existing && existing.length > 0) existingId = existing[0].id;
+    }
 
-    if (existing && existing.length > 0) {
-      walletMap.set(w.id, existing[0].id);
+    if (existingId) {
+      walletMap.set(w.id, existingId);
       skipped.wallets++;
     } else {
       const { data: created, error } = await supabase
@@ -179,17 +193,21 @@ export async function importFromJson(
   // ── 3. Brokers ────────────────────────────────────────
   for (const b of data.brokers) {
     const mappedInstId = b.institution_id ? instMap.get(b.institution_id) ?? null : null;
+    let existingId: string | null = null;
 
-    const { data: existing } = await supabase
-      .from("brokers")
-      .select("id")
-      .eq("user_id", uid)
-      .eq("name", b.name)
-      .is("deleted_at", null)
-      .limit(1);
+    if (!isReplace) {
+      const { data: existing } = await supabase
+        .from("brokers")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("name", b.name)
+        .is("deleted_at", null)
+        .limit(1);
+      if (existing && existing.length > 0) existingId = existing[0].id;
+    }
 
-    if (existing && existing.length > 0) {
-      brokerMap.set(b.id, existing[0].id);
+    if (existingId) {
+      brokerMap.set(b.id, existingId);
       skipped.brokers++;
     } else {
       const { data: created, error } = await supabase
@@ -210,17 +228,21 @@ export async function importFromJson(
   // ── 4. Bank Accounts ──────────────────────────────────
   for (const ba of data.bankAccounts) {
     const mappedInstId = ba.institution_id ? instMap.get(ba.institution_id) ?? null : null;
+    let found = false;
 
-    const { data: existing } = await supabase
-      .from("bank_accounts")
-      .select("id")
-      .eq("user_id", uid)
-      .eq("name", ba.name)
-      .eq("currency", ba.currency)
-      .is("deleted_at", null)
-      .limit(1);
+    if (!isReplace) {
+      const { data: existing } = await supabase
+        .from("bank_accounts")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("name", ba.name)
+        .eq("currency", ba.currency)
+        .is("deleted_at", null)
+        .limit(1);
+      if (existing && existing.length > 0) found = true;
+    }
 
-    if (existing && existing.length > 0) {
+    if (found) {
       skipped.bankAccounts++;
     } else {
       const { error } = await supabase
@@ -242,18 +264,22 @@ export async function importFromJson(
 
   // ── 5. Crypto Assets + Positions ──────────────────────
   for (const asset of data.cryptoAssets) {
-    // Dedup by coingecko_id (more reliable than ticker)
-    const { data: existing } = await supabase
-      .from("crypto_assets")
-      .select("id")
-      .eq("user_id", uid)
-      .eq("coingecko_id", asset.coingecko_id)
-      .is("deleted_at", null)
-      .limit(1);
+    let existingId: string | null = null;
+
+    if (!isReplace) {
+      const { data: existing } = await supabase
+        .from("crypto_assets")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("coingecko_id", asset.coingecko_id)
+        .is("deleted_at", null)
+        .limit(1);
+      if (existing && existing.length > 0) existingId = existing[0].id;
+    }
 
     let newAssetId: string;
-    if (existing && existing.length > 0) {
-      newAssetId = existing[0].id;
+    if (existingId) {
+      newAssetId = existingId;
       cryptoAssetMap.set(asset.id, newAssetId);
       skipped.cryptoAssets++;
     } else {
@@ -281,16 +307,16 @@ export async function importFromJson(
       const mappedWalletId = walletMap.get(pos.wallet_id);
       if (!mappedWalletId) continue; // wallet wasn't imported/found
 
-      // Check if position already exists for this asset+wallet
-      const { data: existingPos } = await supabase
-        .from("crypto_positions")
-        .select("id")
-        .eq("crypto_asset_id", newAssetId)
-        .eq("wallet_id", mappedWalletId)
-        .is("deleted_at", null)
-        .limit(1);
-
-      if (existingPos && existingPos.length > 0) continue; // skip duplicate
+      if (!isReplace) {
+        const { data: existingPos } = await supabase
+          .from("crypto_positions")
+          .select("id")
+          .eq("crypto_asset_id", newAssetId)
+          .eq("wallet_id", mappedWalletId)
+          .is("deleted_at", null)
+          .limit(1);
+        if (existingPos && existingPos.length > 0) continue; // skip duplicate
+      }
 
       const { error } = await supabase
         .from("crypto_positions")
@@ -308,18 +334,35 @@ export async function importFromJson(
 
   // ── 6. Stock Assets + Positions ───────────────────────
   for (const asset of data.stockAssets) {
-    // Dedup by ticker
-    const { data: existing } = await supabase
-      .from("stock_assets")
-      .select("id")
-      .eq("user_id", uid)
-      .eq("ticker", asset.ticker)
-      .is("deleted_at", null)
-      .limit(1);
+    let existingId: string | null = null;
+
+    // Dedup by yahoo_ticker (when available) or ticker — matches DB unique indexes
+    if (!isReplace) {
+      if (asset.yahoo_ticker) {
+        const { data: existing } = await supabase
+          .from("stock_assets")
+          .select("id")
+          .eq("user_id", uid)
+          .eq("yahoo_ticker", asset.yahoo_ticker)
+          .is("deleted_at", null)
+          .limit(1);
+        if (existing && existing.length > 0) existingId = existing[0].id;
+      } else {
+        const { data: existing } = await supabase
+          .from("stock_assets")
+          .select("id")
+          .eq("user_id", uid)
+          .eq("ticker", asset.ticker)
+          .is("yahoo_ticker", null)
+          .is("deleted_at", null)
+          .limit(1);
+        if (existing && existing.length > 0) existingId = existing[0].id;
+      }
+    }
 
     let newAssetId: string;
-    if (existing && existing.length > 0) {
-      newAssetId = existing[0].id;
+    if (existingId) {
+      newAssetId = existingId;
       stockAssetMap.set(asset.id, newAssetId);
       skipped.stockAssets++;
     } else {
@@ -349,15 +392,16 @@ export async function importFromJson(
       const mappedBrokerId = brokerMap.get(pos.broker_id);
       if (!mappedBrokerId) continue; // broker wasn't imported/found
 
-      const { data: existingPos } = await supabase
-        .from("stock_positions")
-        .select("id")
-        .eq("stock_asset_id", newAssetId)
-        .eq("broker_id", mappedBrokerId)
-        .is("deleted_at", null)
-        .limit(1);
-
-      if (existingPos && existingPos.length > 0) continue; // skip duplicate
+      if (!isReplace) {
+        const { data: existingPos } = await supabase
+          .from("stock_positions")
+          .select("id")
+          .eq("stock_asset_id", newAssetId)
+          .eq("broker_id", mappedBrokerId)
+          .is("deleted_at", null)
+          .limit(1);
+        if (existingPos && existingPos.length > 0) continue; // skip duplicate
+      }
 
       const { error } = await supabase
         .from("stock_positions")
@@ -375,16 +419,20 @@ export async function importFromJson(
   for (const dep of data.exchangeDeposits) {
     const mappedWalletId = walletMap.get(dep.wallet_id);
     if (!mappedWalletId) continue;
+    let found = false;
 
-    const { data: existing } = await supabase
-      .from("exchange_deposits")
-      .select("id")
-      .eq("user_id", uid)
-      .eq("wallet_id", mappedWalletId)
-      .eq("currency", dep.currency)
-      .limit(1);
+    if (!isReplace) {
+      const { data: existing } = await supabase
+        .from("exchange_deposits")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("wallet_id", mappedWalletId)
+        .eq("currency", dep.currency)
+        .limit(1);
+      if (existing && existing.length > 0) found = true;
+    }
 
-    if (existing && existing.length > 0) {
+    if (found) {
       skipped.exchangeDeposits++;
     } else {
       const { error } = await supabase
@@ -405,16 +453,20 @@ export async function importFromJson(
   for (const dep of data.brokerDeposits) {
     const mappedBrokerId = brokerMap.get(dep.broker_id);
     if (!mappedBrokerId) continue;
+    let found = false;
 
-    const { data: existing } = await supabase
-      .from("broker_deposits")
-      .select("id")
-      .eq("user_id", uid)
-      .eq("broker_id", mappedBrokerId)
-      .eq("currency", dep.currency)
-      .limit(1);
+    if (!isReplace) {
+      const { data: existing } = await supabase
+        .from("broker_deposits")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("broker_id", mappedBrokerId)
+        .eq("currency", dep.currency)
+        .limit(1);
+      if (existing && existing.length > 0) found = true;
+    }
 
-    if (existing && existing.length > 0) {
+    if (found) {
       skipped.brokerDeposits++;
     } else {
       const { error } = await supabase
