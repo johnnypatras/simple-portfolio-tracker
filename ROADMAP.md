@@ -114,11 +114,21 @@ Data portability and account security features.
 
 ## Upcoming Phases
 
-### Phase 18 — User Management & Multi-User 🔲
-Expand beyond single-user to support invited collaborators.
-- User invitations system (foundations laid with invite codes table)
-- Role-based permissions for shared portfolios
-- Per-user display names and profile settings
+### Phase 18 — Multi-User & User Management ✅
+Full multi-user isolation with admin controls and invite system.
+- Supabase Auth with sign-up, login, forgot/reset password, MFA (TOTP)
+- RLS policies on every portfolio table scoped to `auth.uid() = user_id`
+- Profiles table with per-user settings (currency, theme, display name, role, status)
+- Invite code system (nanoid, expiry, single-use) — invited users auto-approved
+- Pending approval flow for users registering without invite code
+- Admin panel: approve/reject/suspend users, manage invite codes
+- Admin role enforcement with service-role client for privileged operations
+
+### Phase 19 — Collaborative Portfolios 🔲
+Invite others to view or contribute to your portfolio.
+- Role-based permissions (viewer, editor) on shared portfolios
+- Collaborative editing with conflict resolution
+- Shared portfolio notifications
 
 ---
 
@@ -132,4 +142,4 @@ Expand beyond single-user to support invited collaborators.
 
 ---
 
-*Last updated after: Phase 17 — Import/Export & Auth*
+*Last updated after: Phase 18 — Multi-User & User Management*
