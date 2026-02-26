@@ -174,10 +174,14 @@ export function UsersSettings() {
 
   async function copyCode(code: string) {
     const link = `${window.location.origin}/register?code=${code}`;
-    await navigator.clipboard.writeText(link);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
-    toast.success("Invite link copied");
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(null), 2000);
+      toast.success("Invite link copied");
+    } catch {
+      toast.error("Failed to copy — check browser permissions");
+    }
   }
 
   if (loading) {
