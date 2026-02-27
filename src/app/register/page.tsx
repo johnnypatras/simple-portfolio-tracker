@@ -7,6 +7,7 @@ import { Lock, Mail, KeyRound, Ticket, Eye, EyeOff, Clock, User } from "lucide-r
 function InviteForm() {
   const searchParams = useSearchParams();
   const [code, setCode] = useState(searchParams.get("code") ?? "");
+  const [displayName, setDisplayName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -41,6 +42,7 @@ function InviteForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: code.trim() || undefined,
+          display_name: displayName.trim() || undefined,
           first_name: firstName.trim() || undefined,
           last_name: lastName.trim() || undefined,
           email,
@@ -135,6 +137,23 @@ function InviteForm() {
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="Have a code? Enter for instant access"
+              className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40"
+            />
+          </div>
+        </div>
+
+        {/* Display Name (optional) */}
+        <div>
+          <label className="block text-sm text-zinc-400 mb-1.5">
+            Display Name <span className="text-zinc-600">(optional)</span>
+          </label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="How others will see you"
               className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40"
             />
           </div>

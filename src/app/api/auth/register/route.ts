@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   try {
-    const { code, email, password, first_name, last_name } = await req.json();
+    const { code, email, password, display_name, first_name, last_name } = await req.json();
 
     if (!email || !password) {
       return NextResponse.json(
@@ -67,6 +67,8 @@ export async function POST(req: NextRequest) {
     if (userData.user) {
       // Save optional name fields
       const nameFields: Record<string, string> = {};
+      if (typeof display_name === "string" && display_name.trim())
+        nameFields.display_name = display_name.trim();
       if (typeof first_name === "string" && first_name.trim())
         nameFields.first_name = first_name.trim();
       if (typeof last_name === "string" && last_name.trim())
