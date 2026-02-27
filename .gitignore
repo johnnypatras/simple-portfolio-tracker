@@ -46,6 +46,7 @@ next-env.d.ts
 .serena/
 .claude/
 .playwright-mcp/
+CLAUDE.md
 supabase/.temp/
 .audit-report.md
 
@@ -61,3 +62,6 @@ _*.mjs
 *.sql
 !supabase/migrations/*.sql
 backup_*.json
+
+# spreadsheets
+*.xlsx
