@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, fetchSinglePrice, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
+import { getStockAndIndexPrices, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
@@ -43,24 +43,24 @@ export default async function SharedOverviewPage({
     ]),
   ];
 
-  // Fetch prices + market data + benchmark
+  // Fetch prices + market data + benchmark (stocks + indices in one batch)
   const [
-    cryptoPrices, stockPrices, fxRates, dividends,
-    sp500Data, goldData, nasdaqData, dowData, eurUsdData,
+    cryptoPrices, { stockPrices, indexPrices }, fxRates, dividends,
     sp500TRHistory, cashFlows,
   ] = await Promise.all([
     getPrices(coinIds),
-    getStockPrices(yahooTickers),
+    getStockAndIndexPrices(yahooTickers),
     getFXRates(primaryCurrency, allCurrencies),
     getDividendYields(yahooTickers),
-    fetchSinglePrice("^GSPC"),
-    fetchSinglePrice("GC=F"),
-    fetchSinglePrice("^IXIC"),
-    fetchSinglePrice("^DJI"),
-    fetchSinglePrice("EURUSD=X"),
     fetchIndexHistory("^SP500TR", 365),
     deriveCashFlows(data.share.owner_id),
   ]);
+
+  const sp500Data = indexPrices["^GSPC"] ?? null;
+  const goldData = indexPrices["GC=F"] ?? null;
+  const nasdaqData = indexPrices["^IXIC"] ?? null;
+  const dowData = indexPrices["^DJI"] ?? null;
+  const eurUsdData = indexPrices["EURUSD=X"] ?? null;
 
   const summary = aggregatePortfolio({
     cryptoAssets,

@@ -10,7 +10,7 @@ import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getSnapshots } from "@/lib/actions/snapshots";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, fetchSinglePrice } from "@/lib/prices/yahoo";
+import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRates, convertToBase } from "@/lib/prices/fx";
 import { aggregatePortfolio, type PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { PortfolioSnapshot } from "@/lib/types";
@@ -122,14 +122,19 @@ export async function getComparisonData(
   ];
 
   // 5. Single set of price fetches (shared between both aggregations)
-  const [cryptoPrices, stockPrices, fxRates, eurUsdData] = await Promise.all([
+  //    Fold EURUSD=X into the stock batch for a single Yahoo request
+  const allTickersWithEurUsd = [...new Set([...allYahooTickers, "EURUSD=X"])];
+  const [cryptoPrices, allStockPrices, fxRates] = await Promise.all([
     getPrices(allCoinIds),
-    getStockPrices(allYahooTickers),
+    getStockPrices(allTickersWithEurUsd),
     getFXRates(viewerCurrency, allCurrencies),
-    fetchSinglePrice("EURUSD=X"),
   ]);
 
-  const eurUsdChange24h = eurUsdData?.change24h ?? 0;
+  const eurUsdChange24h = allStockPrices["EURUSD=X"]?.change24h ?? 0;
+  // Separate EURUSD=X from stock prices passed to aggregation
+  const stockPrices = Object.fromEntries(
+    Object.entries(allStockPrices).filter(([k]) => k !== "EURUSD=X")
+  );
 
   // 6. Aggregate both portfolios with the VIEWER's currency
   const viewerSummary = aggregatePortfolio({

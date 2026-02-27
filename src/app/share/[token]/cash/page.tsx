@@ -3,7 +3,7 @@ import { requireScope } from "../scope-gate";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRates } from "@/lib/prices/fx";
-import { fetchSinglePrice } from "@/lib/prices/yahoo";
+import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { CashTable } from "@/components/cash/cash-table";
 
@@ -33,13 +33,14 @@ export default async function SharedCashPage({
     ]),
   ];
 
-  const [stablecoinPrices, fxRates, eurUsdData] = await Promise.all([
+  const [stablecoinPrices, fxRates, eurUsdBatch] = await Promise.all([
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
     getFXRates(cur, allCurrencies),
-    fetchSinglePrice("EURUSD=X"),
+    getStockPrices(["EURUSD=X"]),
   ]);
+  const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
   const summary = aggregatePortfolio({
     cryptoAssets: stablecoins,

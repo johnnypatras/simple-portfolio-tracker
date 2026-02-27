@@ -1,6 +1,7 @@
 import type { YahooStockPriceData, YahooSearchResult, YahooDividendData, YahooDividendMap } from "@/lib/types";
 
 const CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
+const QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote";
 const SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search";
 
 // ─── Search ────────────────────────────────────────────────
@@ -80,33 +81,226 @@ export async function getStockQuote(
   }
 }
 
+// ─── Crumb auth (required for v7 batch endpoint) ──────────
+
+let cachedCrumb: { crumb: string; cookie: string; expiry: number } | null = null;
+
+/**
+ * Acquire a Yahoo Finance crumb + session cookie.
+ * Yahoo v7 requires cookie-based auth with a CSRF-like crumb token.
+ * Flow: GET fc.yahoo.com → extract cookies → GET getcrumb → cache both.
+ */
+async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null> {
+  // Return cached if still valid (30 min TTL)
+  if (cachedCrumb && Date.now() < cachedCrumb.expiry) {
+    return { crumb: cachedCrumb.crumb, cookie: cachedCrumb.cookie };
+  }
+
+  try {
+    // Step 1: Get session cookies from Yahoo
+    const cookieRes = await fetch("https://fc.yahoo.com/", {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      redirect: "manual",
+    });
+    const setCookies = cookieRes.headers.getSetCookie?.() ?? [];
+    const cookie = setCookies
+      .map((c) => c.split(";")[0])
+      .filter(Boolean)
+      .join("; ");
+
+    if (!cookie) {
+      console.error("[yahoo] No cookies received from fc.yahoo.com");
+      return null;
+    }
+
+    // Step 2: Exchange cookies for a crumb token
+    const crumbRes = await fetch(
+      "https://query2.finance.yahoo.com/v1/test/getcrumb",
+      { headers: { "User-Agent": "Mozilla/5.0", Cookie: cookie } }
+    );
+    if (!crumbRes.ok) {
+      console.error("[yahoo] Crumb fetch failed:", crumbRes.status);
+      return null;
+    }
+    const crumb = await crumbRes.text();
+    if (!crumb || crumb.includes("Unauthorized")) return null;
+
+    cachedCrumb = { crumb, cookie, expiry: Date.now() + 30 * 60 * 1000 };
+    return { crumb, cookie };
+  } catch (err) {
+    console.error("[yahoo] Crumb auth error:", err);
+    return null;
+  }
+}
+
+// ─── Batch Quotes (v7) ─────────────────────────────────────
+
+type QuoteResult = {
+  price: number;
+  previousClose: number;
+  change24h: number;
+  currency: string;
+  name: string;
+};
+
+/**
+ * Fetch quotes for multiple symbols in a single HTTP request via v7/finance/quote.
+ * Requires crumb+cookie auth. Falls back gracefully if auth fails.
+ */
+async function fetchQuotesBatch(
+  symbols: string[]
+): Promise<Map<string, QuoteResult>> {
+  const map = new Map<string, QuoteResult>();
+  if (symbols.length === 0) return map;
+
+  try {
+    const auth = await getYahooCrumb();
+    if (!auth) return map; // caller will fall back to v8/chart
+
+    const url = `${QUOTE_URL}?symbols=${symbols.join(",")}&crumb=${encodeURIComponent(auth.crumb)}`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0", Cookie: auth.cookie },
+      next: { revalidate: 60 },
+    });
+
+    if (!res.ok) {
+      // Invalidate crumb on auth failure so next call retries
+      if (res.status === 401 || res.status === 403) cachedCrumb = null;
+      console.error("[yahoo] Batch quote fetch failed:", res.status);
+      return map;
+    }
+
+    const json = await res.json();
+    const quotes = json?.quoteResponse?.result;
+    if (!Array.isArray(quotes)) return map;
+
+    for (const q of quotes) {
+      const symbol = q.symbol as string;
+      if (!symbol) continue;
+
+      const price = (q.regularMarketPrice as number) ?? 0;
+      const previousClose = (q.regularMarketPreviousClose as number) ?? 0;
+      const change24h = (q.regularMarketChangePercent as number) ?? 0;
+
+      map.set(symbol, {
+        price,
+        previousClose,
+        change24h,
+        currency: (q.currency as string) ?? "USD",
+        name: (q.longName as string) ?? (q.shortName as string) ?? symbol,
+      });
+    }
+  } catch (err) {
+    console.error("[yahoo] Batch quote error:", err);
+  }
+
+  return map;
+}
+
 // ─── Prices ────────────────────────────────────────────────
 
 /**
- * Fetch current prices for multiple stock tickers from Yahoo Finance.
- * Makes one request per ticker (Yahoo doesn't support batch in the chart API).
- * Uses Next.js fetch cache with 60s revalidation.
+ * Fetch current prices for multiple stock tickers via a single v7 batch request.
+ * Falls back to individual v8/chart requests if the batch fails for any ticker.
  */
 export async function getStockPrices(
   yahooTickers: string[]
 ): Promise<YahooStockPriceData> {
   if (yahooTickers.length === 0) return {};
 
-  const results = await Promise.allSettled(
-    yahooTickers.map((ticker) => fetchSinglePrice(ticker))
-  );
+  const batchResult = await fetchQuotesBatch(yahooTickers);
 
   const data: YahooStockPriceData = {};
-  results.forEach((result, i) => {
-    if (result.status === "fulfilled" && result.value) {
-      data[yahooTickers[i]] = result.value;
+  for (const ticker of yahooTickers) {
+    const quote = batchResult.get(ticker);
+    if (quote) {
+      data[ticker] = quote;
     }
-  });
+  }
+
+  // Fall back to individual fetch for any missing tickers
+  const missing = yahooTickers.filter((t) => !data[t]);
+  if (missing.length > 0) {
+    const fallbackResults = await Promise.allSettled(
+      missing.map((ticker) => fetchSinglePrice(ticker))
+    );
+    fallbackResults.forEach((result, i) => {
+      if (result.status === "fulfilled" && result.value) {
+        data[missing[i]] = result.value;
+      }
+    });
+  }
 
   return data;
 }
 
-export async function fetchSinglePrice(ticker: string): Promise<{
+// ─── Index & Combined Batch ─────────────────────────────────
+
+const INDEX_SYMBOLS = ["^GSPC", "GC=F", "^IXIC", "^DJI", "EURUSD=X"] as const;
+
+export type IndexPrices = {
+  [symbol: string]: QuoteResult;
+};
+
+/**
+ * Fetch all market index/indicator quotes in a single batch.
+ * Returns: ^GSPC (S&P 500), GC=F (Gold), ^IXIC (Nasdaq), ^DJI (Dow), EURUSD=X.
+ */
+export async function getIndexPrices(): Promise<IndexPrices> {
+  const batch = await fetchQuotesBatch([...INDEX_SYMBOLS]);
+  const data: IndexPrices = {};
+  for (const sym of INDEX_SYMBOLS) {
+    const quote = batch.get(sym);
+    if (quote) data[sym] = quote;
+  }
+  return data;
+}
+
+/**
+ * Fetch stock prices + index prices in a single combined batch.
+ * Deduplicates overlapping symbols (e.g. if EURUSD=X is also in user tickers).
+ * Returns split result: { stockPrices, indexPrices }.
+ */
+export async function getStockAndIndexPrices(
+  yahooTickers: string[]
+): Promise<{ stockPrices: YahooStockPriceData; indexPrices: IndexPrices }> {
+  // Merge all symbols, deduplicating
+  const allSymbols = [...new Set([...yahooTickers, ...INDEX_SYMBOLS])];
+
+  const batch = await fetchQuotesBatch(allSymbols);
+
+  // Split results
+  const stockPrices: YahooStockPriceData = {};
+  for (const ticker of yahooTickers) {
+    const quote = batch.get(ticker);
+    if (quote) stockPrices[ticker] = quote;
+  }
+
+  // Fall back to individual fetch for any missing stock tickers
+  const missing = yahooTickers.filter((t) => !stockPrices[t]);
+  if (missing.length > 0) {
+    const fallbackResults = await Promise.allSettled(
+      missing.map((ticker) => fetchSinglePrice(ticker))
+    );
+    fallbackResults.forEach((result, i) => {
+      if (result.status === "fulfilled" && result.value) {
+        stockPrices[missing[i]] = result.value;
+      }
+    });
+  }
+
+  const indexPrices: IndexPrices = {};
+  for (const sym of INDEX_SYMBOLS) {
+    const quote = batch.get(sym);
+    if (quote) indexPrices[sym] = quote;
+  }
+
+  return { stockPrices, indexPrices };
+}
+
+// ─── Single-ticker (v8/chart) ──────────────────────────────
+
+async function fetchSinglePrice(ticker: string): Promise<{
   price: number;
   previousClose: number;
   change24h: number;

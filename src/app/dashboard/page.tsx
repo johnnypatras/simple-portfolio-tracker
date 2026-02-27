@@ -6,7 +6,7 @@ import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, fetchSinglePrice, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
+import { getStockAndIndexPrices, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getFXRates } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
@@ -25,12 +25,11 @@ export default async function DashboardPage() {
   await supabase.auth.getUser();
 
   // ── Round 1: Portfolio data + independent fetches in parallel ──
-  // Market indices and snapshots don't depend on asset data,
-  // so they run alongside DB queries instead of waiting for Round 2.
+  // Snapshots and benchmark history don't depend on asset data,
+  // so they run alongside DB queries.
   const [
     profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits,
     chartSnapshots, snap7d, snap30d, snap1y,
-    sp500Data, goldData, nasdaqData, dowData, eurUsdData,
     sp500TRHistory,
     cashFlows,
   ] = await Promise.all([
@@ -44,11 +43,6 @@ export default async function DashboardPage() {
     getSnapshotAt(7),            // for 7d change
     getSnapshotAt(30),           // for 30d change
     getSnapshotAt(365),          // for 1y change
-    fetchSinglePrice("^GSPC"),   // S&P 500 index
-    fetchSinglePrice("GC=F"),    // Gold futures
-    fetchSinglePrice("^IXIC"),   // Nasdaq Composite
-    fetchSinglePrice("^DJI"),    // Dow Jones Industrial
-    fetchSinglePrice("EURUSD=X"),// EUR/USD cross rate (for 24h change)
     fetchIndexHistory("^SP500TR", 365), // S&P 500 Total Return (benchmark line)
     deriveCashFlows(),
   ]);
@@ -75,14 +69,20 @@ export default async function DashboardPage() {
     ]),
   ];
 
-  // ── Round 2: Only fetches that depend on Round 1 data ───
-  const [cryptoPrices, stockPrices, fxRates, dividends] =
+  // ── Round 2: Prices (stocks + indices in one batch) ─────
+  const [cryptoPrices, { stockPrices, indexPrices }, fxRates, dividends] =
     await Promise.all([
       getPrices(coinIds),
-      getStockPrices(yahooTickers),
+      getStockAndIndexPrices(yahooTickers),
       getFXRates(primaryCurrency, allCurrencies),
       getDividendYields(yahooTickers), // trailing 12-month yields (6h cache)
     ]);
+
+  const sp500Data = indexPrices["^GSPC"] ?? null;
+  const goldData = indexPrices["GC=F"] ?? null;
+  const nasdaqData = indexPrices["^IXIC"] ?? null;
+  const dowData = indexPrices["^DJI"] ?? null;
+  const eurUsdData = indexPrices["EURUSD=X"] ?? null;
 
   // ── Aggregate into portfolio summary ──────────────────
   const summary = aggregatePortfolio({

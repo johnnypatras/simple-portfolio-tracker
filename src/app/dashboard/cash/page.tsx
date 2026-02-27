@@ -7,7 +7,7 @@ import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRates } from "@/lib/prices/fx";
-import { fetchSinglePrice } from "@/lib/prices/yahoo";
+import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { CashTable } from "@/components/cash/cash-table";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -38,13 +38,14 @@ export default async function CashPage() {
   ];
 
   // Fetch stablecoin prices + FX rates + EUR/USD change in parallel
-  const [stablecoinPrices, fxRates, eurUsdData] = await Promise.all([
+  const [stablecoinPrices, fxRates, eurUsdBatch] = await Promise.all([
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
     getFXRates(profile.primary_currency, allCurrencies),
-    fetchSinglePrice("EURUSD=X"),
+    getStockPrices(["EURUSD=X"]),
   ]);
+  const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
   // Compute cash-only aggregate for summary header enrichment
   const summary = aggregatePortfolio({

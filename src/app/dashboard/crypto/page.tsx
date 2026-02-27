@@ -3,7 +3,7 @@ import { getWallets } from "@/lib/actions/wallets";
 import { getProfile } from "@/lib/actions/profile";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRates } from "@/lib/prices/fx";
-import { fetchSinglePrice } from "@/lib/prices/yahoo";
+import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { CryptoTable } from "@/components/crypto/crypto-table";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -19,11 +19,12 @@ export default async function CryptoPage() {
 
   // Fetch live prices + FX rates + EUR/USD change in parallel
   const coinIds = assets.map((a) => a.coingecko_id);
-  const [prices, fxRates, eurUsdData] = await Promise.all([
+  const [prices, fxRates, eurUsdBatch] = await Promise.all([
     getPrices(coinIds),
     getFXRates(cur, ["USD", "EUR"]),
-    fetchSinglePrice("EURUSD=X"),
+    getStockPrices(["EURUSD=X"]),
   ]);
+  const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
   // Fire-and-forget: backfill missing icons from CoinGecko
   backfillCryptoImages().catch(() => {});
