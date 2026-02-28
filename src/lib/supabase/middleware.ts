@@ -2,6 +2,24 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
+  // Pages that don't require authentication
+  const isAuthPage =
+    request.nextUrl.pathname.startsWith("/login") ||
+    request.nextUrl.pathname.startsWith("/register") ||
+    request.nextUrl.pathname.startsWith("/forgot-password") ||
+    request.nextUrl.pathname.startsWith("/reset-password") ||
+    request.nextUrl.pathname.startsWith("/auth/callback");
+
+  // Share links are always accessible, regardless of auth state
+  const isSharePage = request.nextUrl.pathname.startsWith("/share");
+
+  // Skip Supabase calls entirely for public pages — avoids a network
+  // round-trip to Supabase on every request, which was the primary
+  // cause of 6-7s TTFB on /login and /share routes.
+  if (isAuthPage || isSharePage) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -30,29 +48,13 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Pages that don't require authentication
-  const isAuthPage =
-    request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/register") ||
-    request.nextUrl.pathname.startsWith("/forgot-password") ||
-    request.nextUrl.pathname.startsWith("/reset-password") ||
-    request.nextUrl.pathname.startsWith("/auth/callback");
-
-  // Share links are always accessible, regardless of auth state
-  const isSharePage = request.nextUrl.pathname.startsWith("/share");
-
   const isPendingPage = request.nextUrl.pathname.startsWith("/pending");
 
-  // Redirect unauthenticated users to login (except public/share pages)
-  if (!user && !isAuthPage && !isSharePage && !isPendingPage) {
+  // Redirect unauthenticated users to login
+  if (!user && !isPendingPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
-  }
-
-  // Share pages always pass through — no redirect for logged-in users
-  if (isSharePage) {
-    return supabaseResponse;
   }
 
   // For authenticated users, check profile status
@@ -72,8 +74,8 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Active/admin users on auth pages → send to dashboard
-    if (!isPending && (isAuthPage || isPendingPage)) {
+    // Active/admin users on /pending → send to dashboard
+    if (!isPending && isPendingPage) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);

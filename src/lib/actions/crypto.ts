@@ -182,19 +182,25 @@ export async function updateCryptoAsset(
 /** Soft-delete a crypto asset (cascade trigger handles positions + goal_prices) */
 export async function deleteCryptoAsset(id: string) {
   const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase
     .from("crypto_assets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
     .from("crypto_assets")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
   const label = snapshot ? `${snapshot.ticker} (${snapshot.name})` : "Unknown";
@@ -352,8 +358,9 @@ export async function backfillCryptoImages() {
 
   if (!missing || missing.length === 0) return;
 
-  for (const asset of missing) {
-    try {
+  const batch = missing.slice(0, 3);
+  const results = await Promise.allSettled(
+    batch.map(async (asset) => {
       const thumbUrl = await getCoinImage(asset.coingecko_id);
       if (thumbUrl) {
         await supabase
@@ -361,12 +368,15 @@ export async function backfillCryptoImages() {
           .update({ image_url: thumbUrl })
           .eq("id", asset.id);
       }
-    } catch (err) {
-      console.error("[backfill] Failed for", asset.coingecko_id, err);
+    })
+  );
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.error("[backfill] Failed:", result.reason);
     }
   }
 
-  if (missing.length > 0) {
+  if (batch.length > 0) {
     revalidatePath("/dashboard/crypto");
     revalidatePath("/dashboard");
   }

@@ -43,6 +43,15 @@ export async function undoActivity(
 
   const log = entry as ActivityLog;
 
+  // ── Guard: allowed table names ─────────────────────────
+  const ALLOWED_UNDO_TABLES = new Set([
+    "crypto_assets", "crypto_positions",
+    "stock_assets", "stock_positions",
+    "wallets", "brokers", "bank_accounts",
+    "exchange_deposits", "broker_deposits",
+    "trade_entries",
+  ]);
+
   // ── Guard: already undone ────────────────────────────────
   if (log.undone_at) {
     return { success: false, message: "This action has already been undone" };
@@ -54,6 +63,11 @@ export async function undoActivity(
       success: false,
       message: "This action predates the undo system and cannot be reversed",
     };
+  }
+
+  // ── Guard: table whitelist ─────────────────────────────
+  if (!ALLOWED_UNDO_TABLES.has(log.entity_table)) {
+    return { success: false, message: "Undo not supported for this entity type" };
   }
 
   // ── Guard: entity still exists and is in the correct state ─

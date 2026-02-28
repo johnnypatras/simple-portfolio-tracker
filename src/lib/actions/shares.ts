@@ -1,5 +1,6 @@
 "use server";
 
+import { cache } from "react";
 import { revalidatePath } from "next/cache";
 import { nanoid } from "nanoid";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -71,10 +72,14 @@ export async function createShareLink(
 /** Revoke a share (sets revoked_at). */
 export async function revokeShare(shareId: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const { error } = await supabase
     .from("portfolio_shares")
     .update({ revoked_at: new Date().toISOString() })
-    .eq("id", shareId);
+    .eq("id", shareId)
+    .eq("owner_id", user.id);
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
@@ -102,10 +107,11 @@ export async function getMyShares(): Promise<ShareLink[]> {
 /**
  * Validate a share token. Returns share metadata if valid, null otherwise.
  * Uses service-role client since the caller may be anonymous.
+ * Wrapped in React.cache() so layout + page share a single DB call per render.
  */
-export async function validateShareToken(
+export const validateShareToken = cache(async (
   token: string
-): Promise<ValidatedShare | null> {
+): Promise<ValidatedShare | null> => {
   const admin = createAdminClient();
 
   const { data, error } = await admin
@@ -129,4 +135,4 @@ export async function validateShareToken(
     scope: data.scope as ShareScope,
     label: data.label,
   };
-}
+});

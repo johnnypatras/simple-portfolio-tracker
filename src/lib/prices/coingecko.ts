@@ -3,7 +3,7 @@ import type { CoinGeckoSearchResult, CoinGeckoPriceData } from "@/lib/types";
 const BASE_URL = "https://api.coingecko.com/api/v3";
 
 function apiKey(): string {
-  return process.env.NEXT_PUBLIC_COINGECKO_API_KEY ?? "";
+  return process.env.COINGECKO_API_KEY ?? "";
 }
 
 function headers(): HeadersInit {

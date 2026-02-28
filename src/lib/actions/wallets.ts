@@ -175,6 +175,11 @@ export async function updateWallet(
   opts?: { also_broker?: boolean; also_bank?: boolean }
 ) {
   const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const trimmedName = input.name.trim();
 
   // Capture before snapshot
@@ -193,7 +198,8 @@ export async function updateWallet(
       privacy_label: input.privacy_label ?? null,
       chain: input.chain?.trim() || null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 

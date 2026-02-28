@@ -210,19 +210,25 @@ export async function updateStockAsset(
 /** Soft-delete a stock asset (cascade trigger handles positions) */
 export async function deleteStockAsset(id: string) {
   const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase
     .from("stock_assets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
     .from("stock_assets")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
   const label = snapshot ? `${snapshot.ticker} (${snapshot.name})` : "Unknown";

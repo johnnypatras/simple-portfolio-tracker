@@ -1,4 +1,3 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
@@ -17,13 +16,15 @@ import {
   getSnapshotAt,
 } from "@/lib/actions/snapshots";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
-import { PortfolioChart } from "@/components/dashboard/portfolio-chart";
 import { MobileMenuButton } from "@/components/sidebar";
+import dynamic from "next/dynamic";
+
+const PortfolioChart = dynamic(
+  () => import("@/components/dashboard/portfolio-chart").then((m) => m.PortfolioChart),
+  { loading: () => <div className="h-64 rounded-xl bg-zinc-900 animate-pulse" /> }
+);
 
 export default async function DashboardPage() {
-  const supabase = await createServerSupabaseClient();
-  await supabase.auth.getUser();
-
   // ── Round 1: Portfolio data + independent fetches in parallel ──
   // Snapshots and benchmark history don't depend on asset data,
   // so they run alongside DB queries.

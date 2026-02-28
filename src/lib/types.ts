@@ -2,9 +2,12 @@
 
 export type WalletType = "custodial" | "non_custodial";
 export type PrivacyLabel = "anon" | "doxxed";
-export type CurrencyType = "USD" | "EUR";
-/** @deprecated Use CurrencyType instead */
-export type Currency = CurrencyType;
+/** User's base/display currency (EUR or USD) */
+export type BaseCurrency = "USD" | "EUR";
+/** Any ISO 4217 currency code */
+export type CurrencyType = string;
+/** @deprecated Use BaseCurrency for profile currency, CurrencyType for general */
+export type Currency = BaseCurrency;
 
 // ─── User Profile ───────────────────────────────────────
 
@@ -17,7 +20,7 @@ export interface Profile {
   first_name: string | null;
   last_name: string | null;
   display_name: string | null;
-  primary_currency: CurrencyType;
+  primary_currency: BaseCurrency;
   theme: string | null;
   role: UserRole;
   status: UserStatus;

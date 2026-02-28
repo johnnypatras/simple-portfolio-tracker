@@ -31,7 +31,7 @@ export default async function ShareLayout({ params, children }: Props) {
 
   // Check if viewer is logged in (for "My Portfolio" / "Track your own" CTA)
   const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
 
   return (
     <SharedViewProvider ownerName={ownerName} scope={share.scope} shareToken={token}>
@@ -41,7 +41,7 @@ export default async function ShareLayout({ params, children }: Props) {
           token={token}
           scope={share.scope}
           ownerName={ownerName}
-          isAuthenticated={!!user}
+          isAuthenticated={!!session}
         >
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 overflow-x-hidden">
             {children}

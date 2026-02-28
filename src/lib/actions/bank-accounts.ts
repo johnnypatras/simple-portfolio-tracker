@@ -145,6 +145,11 @@ export async function updateBankAccount(
   }
 ) {
   const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const trimmedBankName = input.bank_name.trim();
 
   // Capture before snapshot
@@ -167,7 +172,8 @@ export async function updateBankAccount(
   const { error } = await supabase
     .from("bank_accounts")
     .update(updateFields)
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 

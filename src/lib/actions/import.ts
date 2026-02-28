@@ -42,6 +42,11 @@ export interface ImportError {
 
 // ─── Validation ─────────────────────────────────────────
 
+function hasRequiredFields(item: unknown, fields: string[]): boolean {
+  if (typeof item !== "object" || item === null) return false;
+  return fields.every((f) => f in item);
+}
+
 export async function validateBackup(
   data: unknown
 ): Promise<{ ok: true; preview: PortfolioBackup } | { ok: false; error: string }> {
@@ -66,6 +71,29 @@ export async function validateBackup(
     }
   }
 
+  // Validate item shapes
+  const shapeRules: Record<string, string[]> = {
+    institutions: ["id", "name"],
+    wallets: ["id", "name", "wallet_type"],
+    brokers: ["id", "name"],
+    cryptoAssets: ["id", "ticker", "name", "coingecko_id"],
+    stockAssets: ["id", "ticker", "name"],
+    bankAccounts: ["name", "currency", "balance"],
+    exchangeDeposits: ["wallet_id", "currency", "amount"],
+    brokerDeposits: ["broker_id", "currency", "amount"],
+    tradeEntries: ["asset_name", "quantity", "price"],
+    snapshots: ["snapshot_date", "total_value_usd"],
+  };
+
+  for (const [key, fields] of Object.entries(shapeRules)) {
+    const arr = d[key] as unknown[];
+    for (let i = 0; i < arr.length; i++) {
+      if (!hasRequiredFields(arr[i], fields)) {
+        return { ok: false, error: `${key}[${i}] is missing required fields: ${fields.join(", ")}` };
+      }
+    }
+  }
+
   return { ok: true, preview: data as PortfolioBackup };
 }
 
@@ -83,6 +111,13 @@ export async function importFromJson(
 
   const uid = user.id;
   const isReplace = mode === "replace";
+
+  // ── Re-validate before destructive operations ──
+  // Ensures a malformed file can't wipe data and then fail midway.
+  if (isReplace) {
+    const check = await validateBackup(data);
+    if (!check.ok) return { ok: false, error: check.error };
+  }
 
   // ── Replace mode: clear all existing data first ──
   // Children before parents. crypto_positions, stock_positions, and

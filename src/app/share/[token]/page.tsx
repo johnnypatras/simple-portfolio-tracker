@@ -7,7 +7,12 @@ import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
-import { PortfolioChart } from "@/components/dashboard/portfolio-chart";
+import dynamic from "next/dynamic";
+
+const PortfolioChart = dynamic(
+  () => import("@/components/dashboard/portfolio-chart").then((m) => m.PortfolioChart),
+  { loading: () => <div className="h-64 rounded-xl bg-zinc-900 animate-pulse" /> }
+);
 
 export default async function SharedOverviewPage({
   params,
