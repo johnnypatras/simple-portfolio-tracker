@@ -542,14 +542,14 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               </p>
             )}
 
-            <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
               <input
                 type="checkbox"
                 checked={isAdjustment}
                 onChange={(e) => setIsAdjustment(e.target.checked)}
-                className="accent-blue-500"
+                className="accent-amber-500"
               />
-              Portfolio adjustment (not a real transaction)
+              Portfolio adjustment
             </label>
 
             <button

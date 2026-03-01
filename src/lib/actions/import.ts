@@ -291,6 +291,7 @@ export async function importFromJson(
           balance: ba.balance,
           apy: ba.apy,
           institution_id: mappedInstId,
+          last_was_adjustment: ba.last_was_adjustment ?? false,
         });
       if (error) return { ok: false, error: `Bank account "${ba.name}": ${error.message}` };
       counts.bankAccounts++;
@@ -361,6 +362,7 @@ export async function importFromJson(
           quantity: pos.quantity,
           acquisition_method: pos.acquisition_method ?? "bought",
           apy: pos.apy ?? 0,
+          last_was_adjustment: pos.last_was_adjustment ?? false,
         });
       if (error) return { ok: false, error: `Crypto position ${asset.ticker}/${pos.wallet_name}: ${error.message}` };
       counts.cryptoPositions++;
@@ -444,6 +446,7 @@ export async function importFromJson(
           stock_asset_id: newAssetId,
           broker_id: mappedBrokerId,
           quantity: pos.quantity,
+          last_was_adjustment: pos.last_was_adjustment ?? false,
         });
       if (error) return { ok: false, error: `Stock position ${asset.ticker}/${pos.broker_name}: ${error.message}` };
       counts.stockPositions++;
@@ -479,6 +482,7 @@ export async function importFromJson(
           currency: dep.currency,
           amount: dep.amount,
           apy: dep.apy ?? 0,
+          last_was_adjustment: dep.last_was_adjustment ?? false,
         });
       if (error) return { ok: false, error: `Exchange deposit ${dep.wallet_name}/${dep.currency}: ${error.message}` };
       counts.exchangeDeposits++;
@@ -514,6 +518,7 @@ export async function importFromJson(
           currency: dep.currency,
           amount: dep.amount,
           apy: dep.apy ?? 0,
+          last_was_adjustment: dep.last_was_adjustment ?? false,
         });
       if (error) return { ok: false, error: `Broker deposit ${dep.broker_name}/${dep.currency}: ${error.message}` };
       counts.brokerDeposits++;

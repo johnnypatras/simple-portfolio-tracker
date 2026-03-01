@@ -98,7 +98,7 @@ export function BankAccountModal({
       <form onSubmit={handleSubmit} className="space-y-4">
         {editing?.last_was_adjustment && (
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
-            <span className="text-[10px] text-amber-400 font-medium">adj</span>
+            <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">Adj.</span>
             <span className="text-[10px] text-zinc-600">Last saved as portfolio adjustment</span>
           </div>
         )}
@@ -206,12 +206,12 @@ export function BankAccountModal({
         )}
 
         <div className="flex items-center justify-between gap-2 pt-2">
-          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
             <input
               type="checkbox"
               checked={isAdjustment}
               onChange={(e) => setIsAdjustment(e.target.checked)}
-              className="accent-blue-500"
+              className="accent-amber-500"
             />
             Portfolio adjustment
           </label>

@@ -111,7 +111,7 @@ export async function exportCryptoCsv(): Promise<string> {
 
   const headers = [
     "Ticker", "Name", "CoinGecko ID", "Chain", "Subcategory",
-    "Wallet", "Wallet Type", "Quantity", "Acquisition Method", "APY %",
+    "Wallet", "Wallet Type", "Quantity", "Acquisition Method", "APY %", "Adjustment",
     "Asset Created", "Position Updated",
   ];
 
@@ -129,6 +129,7 @@ export async function exportCryptoCsv(): Promise<string> {
         pos.quantity,
         pos.acquisition_method,
         pos.apy,
+        pos.last_was_adjustment ? "Yes" : "No",
         asset.created_at,
         pos.updated_at,
       ]);
@@ -146,7 +147,7 @@ export async function exportStocksCsv(): Promise<string> {
   const headers = [
     "Ticker", "Name", "ISIN", "Yahoo Ticker", "Category",
     "Currency", "Subcategory", "Tags",
-    "Broker", "Quantity",
+    "Broker", "Quantity", "Adjustment",
     "Asset Created", "Position Updated",
   ];
 
@@ -164,6 +165,7 @@ export async function exportStocksCsv(): Promise<string> {
         asset.tags?.join("; ") || null,
         pos.broker_name,
         pos.quantity,
+        pos.last_was_adjustment ? "Yes" : "No",
         asset.created_at,
         pos.updated_at,
       ]);
@@ -183,20 +185,20 @@ export async function exportCashCsv(): Promise<string> {
   ]);
 
   const headers = [
-    "Type", "Account Name", "Institution", "Currency", "Amount", "APY %", "Region",
+    "Type", "Account Name", "Institution", "Currency", "Amount", "APY %", "Region", "Adjustment",
     "Created", "Updated",
   ];
 
   const rows: (string | number | null)[][] = [];
 
   for (const b of banks) {
-    rows.push(["Bank Account", b.name, b.bank_name, b.currency, b.balance, b.apy, b.region, b.created_at, b.updated_at]);
+    rows.push(["Bank Account", b.name, b.bank_name, b.currency, b.balance, b.apy, b.region, b.last_was_adjustment ? "Yes" : "No", b.created_at, b.updated_at]);
   }
   for (const d of exDeps) {
-    rows.push(["Fiat Deposit (Exchange)", null, d.wallet_name, d.currency, d.amount, d.apy, null, d.created_at, d.updated_at]);
+    rows.push(["Fiat Deposit (Exchange)", null, d.wallet_name, d.currency, d.amount, d.apy, null, d.last_was_adjustment ? "Yes" : "No", d.created_at, d.updated_at]);
   }
   for (const d of brDeps) {
-    rows.push(["Fiat Deposit (Broker)", null, d.broker_name, d.currency, d.amount, d.apy, null, d.created_at, d.updated_at]);
+    rows.push(["Fiat Deposit (Broker)", null, d.broker_name, d.currency, d.amount, d.apy, null, d.last_was_adjustment ? "Yes" : "No", d.created_at, d.updated_at]);
   }
 
   return toCsv(headers, rows);

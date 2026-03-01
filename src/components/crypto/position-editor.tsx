@@ -399,19 +399,19 @@ export function PositionEditor({
                     </span>
                   )}
                   {(adjOverrides[walletId] ?? existingPosition?.last_was_adjustment) && !justSaved && (
-                    <span className="text-[10px] text-amber-400 font-medium">
-                      adj
+                    <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">
+                      Adj.
                     </span>
                   )}
                 </div>
-                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500 cursor-pointer select-none">
+                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
                   <input
                     type="checkbox"
                     checked={edit?.isAdjustment ?? false}
                     onChange={(e) => handleAdjustmentChange(walletId, e.target.checked)}
                     className="w-3 h-3 accent-amber-500"
                   />
-                  Adj
+                  Adj.
                 </label>
               </div>
               {/* Quantity + Acquisition + APY + Actions */}

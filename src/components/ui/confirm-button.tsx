@@ -64,14 +64,14 @@ export function ConfirmButton({
           {confirmLabel}
         </span>
         {showAdjustmentCheckbox && (
-          <label className="flex items-center gap-1 cursor-pointer select-none" title="Portfolio adjustment (not a real transaction)">
+          <label className="flex items-center gap-1 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
             <input
               type="checkbox"
               checked={adjChecked}
               onChange={(e) => setAdjChecked(e.target.checked)}
               className="w-3 h-3 accent-amber-500"
             />
-            <span className="text-[10px] text-zinc-500">Adj</span>
+            <span className="text-[10px] text-zinc-500">Adj.</span>
           </label>
         )}
         <button

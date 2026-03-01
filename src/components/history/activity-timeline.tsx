@@ -19,7 +19,7 @@ import {
   ArrowLeftRight,
   BookOpen,
   Undo2,
-  Wrench,
+  SlidersHorizontal,
 } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
@@ -399,8 +399,8 @@ export function ActivityTimeline({
                               </span>
                             )}
                             {log.is_adjustment && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400">
-                                Adj
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title="Not a real transaction — portfolio balance correction">
+                                Adj.
                               </span>
                             )}
                           </div>
@@ -421,7 +421,7 @@ export function ActivityTimeline({
                               }`}
                               title={log.is_adjustment ? "Marked as adjustment — click to count as transaction" : "Mark as portfolio adjustment"}
                             >
-                              <Wrench className="w-3.5 h-3.5" />
+                              <SlidersHorizontal className="w-3.5 h-3.5" />
                             </button>
                           )}
                           {log.undone_at ? (

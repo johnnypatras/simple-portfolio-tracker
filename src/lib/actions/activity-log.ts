@@ -107,7 +107,7 @@ export async function exportActivityLogsCsv(): Promise<string> {
   const rows = (data ?? []) as ActivityLog[];
 
   // CSV header
-  const lines = ["Date,Action,Type,Name,Description"];
+  const lines = ["Date,Action,Type,Name,Description,Adjustment,Undone At"];
 
   for (const row of rows) {
     const date = new Date(row.created_at).toISOString();
@@ -123,6 +123,8 @@ export async function exportActivityLogsCsv(): Promise<string> {
         row.entity_type,
         escapeCsv(row.entity_name),
         escapeCsv(row.description),
+        row.is_adjustment ? "Yes" : "No",
+        row.undone_at ?? "",
       ].join(",")
     );
   }
