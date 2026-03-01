@@ -24,13 +24,15 @@ export async function getExchangeDeposits(): Promise<ExchangeDeposit[]> {
     currency: row.currency,
     amount: row.amount,
     apy: row.apy,
+    last_was_adjustment: row.last_was_adjustment ?? false,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }));
 }
 
 export async function createExchangeDeposit(
-  input: ExchangeDepositInput
+  input: ExchangeDepositInput,
+  opts?: { isAdjustment?: boolean }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -57,6 +59,7 @@ export async function createExchangeDeposit(
     currency: input.currency,
     amount: input.amount,
     apy: input.apy ?? 0,
+    last_was_adjustment: opts?.isAdjustment ?? false,
   }).select("*").single();
 
   if (error) {
@@ -79,6 +82,7 @@ export async function createExchangeDeposit(
     entity_table: "exchange_deposits",
     before_snapshot: null,
     after_snapshot: created,
+    is_adjustment: opts?.isAdjustment,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
@@ -86,7 +90,8 @@ export async function createExchangeDeposit(
 
 export async function updateExchangeDeposit(
   id: string,
-  input: ExchangeDepositInput
+  input: ExchangeDepositInput,
+  opts?: { isAdjustment?: boolean }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
 
@@ -118,6 +123,7 @@ export async function updateExchangeDeposit(
       currency: input.currency,
       amount: input.amount,
       apy: input.apy ?? 0,
+      last_was_adjustment: opts?.isAdjustment ?? false,
     })
     .eq("id", id);
 
@@ -148,12 +154,13 @@ export async function updateExchangeDeposit(
     entity_table: "exchange_deposits",
     before_snapshot: before,
     after_snapshot: after,
+    is_adjustment: opts?.isAdjustment,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
 }
 
-export async function deleteExchangeDeposit(id: string): Promise<void> {
+export async function deleteExchangeDeposit(id: string, opts?: { isAdjustment?: boolean }): Promise<void> {
   const supabase = await createServerSupabaseClient();
 
   // Capture full snapshot before soft-delete
@@ -184,6 +191,7 @@ export async function deleteExchangeDeposit(id: string): Promise<void> {
     entity_table: "exchange_deposits",
     before_snapshot: snapshot,
     after_snapshot: null,
+    is_adjustment: opts?.isAdjustment,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");

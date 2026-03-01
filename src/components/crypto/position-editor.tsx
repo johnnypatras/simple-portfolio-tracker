@@ -21,6 +21,7 @@ interface PositionEdit {
   quantity: string;
   acquisition: string;
   apy: string;
+  isAdjustment: boolean;
 }
 
 export function PositionEditor({
@@ -36,6 +37,8 @@ export function PositionEditor({
   // Per-row save tracking (replaces single shared `loading`)
   const [savingId, setSavingId] = useState<string | null>(null);
   const [justSavedId, setJustSavedId] = useState<string | null>(null);
+  // Optimistic override for last_was_adjustment (bridges gap until props refresh)
+  const [adjOverrides, setAdjOverrides] = useState<Record<string, boolean>>({});
 
   // Clear the "just saved" checkmark after 1.5s
   useEffect(() => {
@@ -84,6 +87,7 @@ export function PositionEditor({
         quantity: p.quantity.toString(),
         acquisition: p.acquisition_method ?? "bought",
         apy: (p.apy ?? 0).toString(),
+        isAdjustment: false,
       };
     });
     return map;
@@ -97,6 +101,7 @@ export function PositionEditor({
         quantity: p.quantity.toString(),
         acquisition: p.acquisition_method ?? "bought",
         apy: (p.apy ?? 0).toString(),
+        isAdjustment: false,
       };
     });
     return map;
@@ -152,6 +157,13 @@ export function PositionEditor({
     }));
   }
 
+  function handleAdjustmentChange(walletId: string, checked: boolean) {
+    setEdits((prev) => ({
+      ...prev,
+      [walletId]: { ...prev[walletId], isAdjustment: checked },
+    }));
+  }
+
   async function handleSave(walletId: string) {
     setError(null);
     setSavingId(walletId);
@@ -167,7 +179,7 @@ export function PositionEditor({
         quantity: qty,
         acquisition_method: method,
         apy: apy || undefined,
-      });
+      }, { isAdjustment: edit.isAdjustment });
       // If zero, remove from local state
       if (qty <= 0) {
         setEdits((prev) => {
@@ -176,8 +188,14 @@ export function PositionEditor({
           return next;
         });
       }
+      // Optimistic badge update + reset the adj checkbox after save
+      setAdjOverrides((prev) => ({ ...prev, [walletId]: edit.isAdjustment }));
+      setEdits((prev) => ({
+        ...prev,
+        ...(prev[walletId] ? { [walletId]: { ...prev[walletId], isAdjustment: false } } : {}),
+      }));
       setJustSavedId(walletId);
-      toast.success("Position saved");
+      toast.success(edit.isAdjustment ? "Saved as adjustment" : "Position saved");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -189,7 +207,7 @@ export function PositionEditor({
     setError(null);
     setSavingId(walletId);
     try {
-      await deletePosition(positionId);
+      await deletePosition(positionId, { isAdjustment: edits[walletId]?.isAdjustment });
       setEdits((prev) => {
         const next = { ...prev };
         delete next[walletId];
@@ -207,7 +225,7 @@ export function PositionEditor({
     if (!addingWallet) return;
     setEdits((prev) => ({
       ...prev,
-      [addingWallet]: { quantity: "0", acquisition: "bought", apy: "0" },
+      [addingWallet]: { quantity: "0", acquisition: "bought", apy: "0", isAdjustment: false },
     }));
     setAddingWallet("");
   }
@@ -368,16 +386,33 @@ export function PositionEditor({
                 <span className="text-sm font-medium text-zinc-300 truncate">
                   {wallet?.name ?? "Unknown"}
                 </span>
-                {dirty && !justSaved && (
-                  <span className="text-[10px] text-blue-400/70 font-medium">
-                    unsaved
-                  </span>
-                )}
-                {justSaved && (
-                  <span className="text-[10px] text-emerald-400/70 font-medium flex items-center gap-0.5">
-                    <Check className="w-3 h-3" /> saved
-                  </span>
-                )}
+                {/* Stable container prevents insertBefore errors from browser extensions (Safari + Dark Reader) */}
+                <div className="flex items-center gap-1.5">
+                  {dirty && !justSaved && (
+                    <span className="text-[10px] text-blue-400/70 font-medium">
+                      unsaved
+                    </span>
+                  )}
+                  {justSaved && (
+                    <span className="text-[10px] text-emerald-400/70 font-medium flex items-center gap-0.5">
+                      <Check className="w-3 h-3" /> saved
+                    </span>
+                  )}
+                  {(adjOverrides[walletId] ?? existingPosition?.last_was_adjustment) && !justSaved && (
+                    <span className="text-[10px] text-amber-400 font-medium">
+                      adj
+                    </span>
+                  )}
+                </div>
+                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={edit?.isAdjustment ?? false}
+                    onChange={(e) => handleAdjustmentChange(walletId, e.target.checked)}
+                    className="w-3 h-3 accent-amber-500"
+                  />
+                  Adj
+                </label>
               </div>
               {/* Quantity + Acquisition + APY + Actions */}
               <div className="flex items-center gap-1.5 sm:gap-2">

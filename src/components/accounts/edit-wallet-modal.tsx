@@ -58,7 +58,7 @@ export function EditWalletModal({ open, onClose, wallet }: EditWalletModalProps)
 
   return (
     <Modal open={open} onClose={handleClose} title="Edit Wallet">
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name */}
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-1.5">

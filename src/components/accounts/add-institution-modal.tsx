@@ -102,7 +102,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
 
   return (
     <Modal open={open} onClose={handleClose} title="Add Institution">
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name */}
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-1.5">
@@ -129,7 +129,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 type="checkbox"
                 checked={wantWallet}
                 onChange={(e) => setWantWallet(e.target.checked)}
-                className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                className="accent-blue-500"
               />
               Exchange
               <span className="text-xs text-zinc-600">— for crypto assets</span>
@@ -139,7 +139,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 type="checkbox"
                 checked={wantBroker}
                 onChange={(e) => setWantBroker(e.target.checked)}
-                className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                className="accent-blue-500"
               />
               Broker
               <span className="text-xs text-zinc-600">— for stocks &amp; ETFs</span>
@@ -149,7 +149,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 type="checkbox"
                 checked={wantBank}
                 onChange={(e) => setWantBank(e.target.checked)}
-                className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                className="accent-blue-500"
               />
               Bank
               <span className="text-xs text-zinc-600">— for cash accounts</span>

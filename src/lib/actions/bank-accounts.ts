@@ -30,6 +30,7 @@ export async function createBankAccount(
     wallet_privacy?: PrivacyLabel | null;
     wallet_chain?: string | null;
     also_broker?: boolean;
+    isAdjustment?: boolean;
   }
 ) {
   const supabase = await createServerSupabaseClient();
@@ -50,6 +51,7 @@ export async function createBankAccount(
     balance: input.balance ?? 0,
     apy: input.apy ?? 0,
     institution_id: institutionId,
+    last_was_adjustment: opts?.isAdjustment ?? false,
   }).select("*").single();
 
   if (error) throw new Error(error.message);
@@ -62,6 +64,7 @@ export async function createBankAccount(
     entity_table: "bank_accounts",
     before_snapshot: null,
     after_snapshot: created,
+    is_adjustment: opts?.isAdjustment,
   });
 
   // Create sibling wallet if requested
@@ -142,6 +145,7 @@ export async function updateBankAccount(
     wallet_privacy?: PrivacyLabel | null;
     wallet_chain?: string | null;
     also_broker?: boolean;
+    isAdjustment?: boolean;
   }
 ) {
   const supabase = await createServerSupabaseClient();
@@ -166,6 +170,7 @@ export async function updateBankAccount(
     currency: input.currency ?? "EUR",
     balance: input.balance ?? 0,
     apy: input.apy ?? 0,
+    last_was_adjustment: opts?.isAdjustment ?? false,
   };
   if (input.country !== undefined) updateFields.region = input.country;
 
@@ -272,6 +277,7 @@ export async function updateBankAccount(
     entity_table: "bank_accounts",
     before_snapshot: before,
     after_snapshot: after,
+    is_adjustment: opts?.isAdjustment,
   });
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
@@ -279,7 +285,7 @@ export async function updateBankAccount(
   revalidatePath("/dashboard");
 }
 
-export async function deleteBankAccount(id: string) {
+export async function deleteBankAccount(id: string, opts?: { isAdjustment?: boolean }) {
   const supabase = await createServerSupabaseClient();
 
   // Capture full snapshot before soft-delete
@@ -308,6 +314,7 @@ export async function deleteBankAccount(id: string) {
     entity_table: "bank_accounts",
     before_snapshot: snapshot,
     after_snapshot: null,
+    is_adjustment: opts?.isAdjustment,
   });
 
   revalidatePath("/dashboard/settings");

@@ -98,7 +98,7 @@ export function ColumnSettingsPopover({
                       type="checkbox"
                       checked={col.visible}
                       onChange={() => onToggle(col.key)}
-                      className="w-3.5 h-3.5 rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/30 focus:ring-offset-0 shrink-0"
+                      className="w-3.5 h-3.5 accent-blue-500 shrink-0"
                     />
                     <span
                       className={`text-sm truncate ${

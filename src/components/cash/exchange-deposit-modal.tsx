@@ -24,6 +24,7 @@ export function ExchangeDepositModal({
 }: ExchangeDepositModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAdjustment, setIsAdjustment] = useState(false);
 
   // Only custodial wallets can hold exchange deposits (fiat on exchanges)
   const custodialWallets = wallets.filter((w) => w.wallet_type === "custodial");
@@ -42,12 +43,14 @@ export function ExchangeDepositModal({
       setAmount(editing.amount.toString());
       setApy(editing.apy.toString());
       setError(null);
+      setIsAdjustment(false);
     } else if (open && !editing) {
       setWalletId(custodialWallets[0]?.id ?? "");
       setCurrency("USD");
       setAmount("");
       setApy("");
       setError(null);
+      setIsAdjustment(false);
     }
   }, [open, editing, custodialWallets]);
 
@@ -65,12 +68,13 @@ export function ExchangeDepositModal({
 
     try {
       if (editing) {
-        await updateExchangeDeposit(editing.id, input);
+        await updateExchangeDeposit(editing.id, input, { isAdjustment });
       } else {
-        await createExchangeDeposit(input);
+        await createExchangeDeposit(input, { isAdjustment });
       }
       onClose();
-      toast.success(editing ? "Fiat deposit updated" : "Fiat deposit added");
+      const adjLabel = isAdjustment ? " (adjustment)" : "";
+      toast.success((editing ? "Fiat deposit updated" : "Fiat deposit added") + adjLabel);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -85,8 +89,14 @@ export function ExchangeDepositModal({
       title={editing ? "Edit Fiat Deposit" : "Add Fiat Deposit"}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {editing?.last_was_adjustment && (
+          <div className="flex items-center gap-1.5 -mt-2 mb-1">
+            <span className="text-[10px] text-amber-400 font-medium">adj</span>
+            <span className="text-[10px] text-zinc-600">Last saved as portfolio adjustment</span>
+          </div>
+        )}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label className="block text-xs text-zinc-500 mb-1">
             Wallet / Exchange
           </label>
           <select
@@ -109,7 +119,7 @@ export function ExchangeDepositModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-xs text-zinc-500 mb-1">
               Currency
             </label>
             <select
@@ -122,7 +132,7 @@ export function ExchangeDepositModal({
             </select>
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-xs text-zinc-500 mb-1">
               Amount
             </label>
             <input
@@ -138,7 +148,7 @@ export function ExchangeDepositModal({
         </div>
 
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label className="block text-xs text-zinc-500 mb-1">
             APY % <span className="text-zinc-600">(optional)</span>
           </label>
           <input
@@ -157,25 +167,36 @@ export function ExchangeDepositModal({
           </p>
         )}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
-          >
-            {loading
-              ? "Saving..."
-              : editing
-                ? "Save Changes"
-                : "Add Deposit"}
-          </button>
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isAdjustment}
+              onChange={(e) => setIsAdjustment(e.target.checked)}
+              className="accent-blue-500"
+            />
+            Portfolio adjustment
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+            >
+              {loading
+                ? "Saving..."
+                : editing
+                  ? "Save Changes"
+                  : "Add Deposit"}
+            </button>
+          </div>
         </div>
       </form>
     </Modal>

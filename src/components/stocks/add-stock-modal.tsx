@@ -91,6 +91,9 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ─── Adjustment flag ─────────────────────────────────────
+  const [isAdjustment, setIsAdjustment] = useState(false);
+
   // ─── Optional initial position state ───────────────────
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionBrokerId, setPositionBrokerId] = useState("");
@@ -147,6 +150,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
       setPositionOpen(false);
       setPositionBrokerId("");
       setPositionQuantity("");
+      setIsAdjustment(false);
     }
   }, [open]);
 
@@ -180,6 +184,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
     setLoading(true);
 
     try {
+      const adjustOpts = isAdjustment ? { isAdjustment: true } : undefined;
       const assetId = await createStockAsset({
         ticker: ticker.trim(),
         name: name.trim(),
@@ -189,7 +194,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
         tags,
         currency,
         subcategory: subcategory.trim() || null,
-      });
+      }, adjustOpts);
 
       // If user filled in an initial position, create it too
       const qty = parseFloat(positionQuantity);
@@ -198,7 +203,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
           stock_asset_id: assetId,
           broker_id: positionBrokerId,
           quantity: qty,
-        });
+        }, adjustOpts);
       }
 
       onClose();
@@ -614,6 +619,16 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 {error}
               </p>
             )}
+
+            <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isAdjustment}
+                onChange={(e) => setIsAdjustment(e.target.checked)}
+                className="accent-blue-500"
+              />
+              Portfolio adjustment (not a real transaction)
+            </label>
 
             <button
               type="submit"

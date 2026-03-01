@@ -182,7 +182,7 @@ export function TradeTable({
         {/* Row 1: Date + Buy/Sell */}
         <div className="grid grid-cols-[1fr_120px] gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">
+            <label className="block text-xs text-zinc-500 mb-1">
               Trade Date
             </label>
             <input
@@ -194,7 +194,7 @@ export function TradeTable({
             />
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">
+            <label className="block text-xs text-zinc-500 mb-1">
               Side
             </label>
             <div className="grid grid-cols-2 gap-1">
@@ -227,7 +227,7 @@ export function TradeTable({
         {/* Row 2: Asset type + name */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">
+            <label className="block text-xs text-zinc-500 mb-1">
               Asset Type
             </label>
             <select
@@ -246,7 +246,7 @@ export function TradeTable({
             </select>
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">
+            <label className="block text-xs text-zinc-500 mb-1">
               Asset Name
             </label>
             {assetType === "crypto" && assetOptions.crypto.length > 0 ? (
@@ -316,7 +316,7 @@ export function TradeTable({
         {/* Row 3: Quantity + Price + Currency */}
         <div className="grid grid-cols-[1fr_1fr_70px] gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">
+            <label className="block text-xs text-zinc-500 mb-1">
               Quantity
             </label>
             <input
@@ -330,7 +330,7 @@ export function TradeTable({
             />
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">
+            <label className="block text-xs text-zinc-500 mb-1">
               Price
             </label>
             <input
@@ -344,7 +344,7 @@ export function TradeTable({
             />
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">
+            <label className="block text-xs text-zinc-500 mb-1">
               Ccy
             </label>
             <input
@@ -360,7 +360,7 @@ export function TradeTable({
 
         {/* Notes — single line on mobile */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1">
+          <label className="block text-xs text-zinc-500 mb-1">
             Notes{" "}
             <span className="text-zinc-600 font-normal">(optional)</span>
           </label>

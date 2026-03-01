@@ -59,6 +59,7 @@ export interface BankAccount {
   balance: number;
   apy: number;
   institution_id: string | null;
+  last_was_adjustment?: boolean;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -231,6 +232,7 @@ export interface ExchangeDeposit {
   currency: CurrencyType;
   amount: number;
   apy: number;
+  last_was_adjustment?: boolean;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -253,6 +255,7 @@ export interface BrokerDeposit {
   currency: CurrencyType;
   amount: number;
   apy: number;
+  last_was_adjustment?: boolean;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -307,6 +310,7 @@ export interface CryptoPosition {
   quantity: number;
   acquisition_method: string;
   apy: number;
+  last_was_adjustment?: boolean;
   updated_at: string;
   deleted_at?: string | null;
 }
@@ -357,6 +361,7 @@ export interface StockPosition {
   stock_asset_id: string;
   broker_id: string;
   quantity: number;
+  last_was_adjustment?: boolean;
   updated_at: string;
   deleted_at?: string | null;
 }
@@ -500,5 +505,6 @@ export interface ActivityLog {
   before_snapshot: Record<string, unknown> | null;
   after_snapshot: Record<string, unknown> | null;
   undone_at: string | null;
+  is_adjustment: boolean;
   created_at: string;
 }

@@ -78,7 +78,7 @@ export async function getStockAssetsWithPositions(): Promise<
 }
 
 /** Add a new stock/ETF asset. Returns the new asset's id. */
-export async function createStockAsset(input: StockAssetInput): Promise<string> {
+export async function createStockAsset(input: StockAssetInput, opts?: { isAdjustment?: boolean }): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -144,6 +144,7 @@ export async function createStockAsset(input: StockAssetInput): Promise<string> 
     entity_table: "stock_assets",
     before_snapshot: null,
     after_snapshot: data,
+    is_adjustment: opts?.isAdjustment,
   });
   revalidatePath("/dashboard/stocks");
   revalidatePath("/dashboard");
@@ -247,7 +248,7 @@ export async function deleteStockAsset(id: string) {
 }
 
 /** Upsert a position (set quantity for a stock asset at a specific broker) */
-export async function upsertStockPosition(input: StockPositionInput) {
+export async function upsertStockPosition(input: StockPositionInput, opts?: { isAdjustment?: boolean }) {
   const supabase = await createServerSupabaseClient();
 
   // Fetch asset ticker for logging
@@ -284,6 +285,7 @@ export async function upsertStockPosition(input: StockPositionInput) {
         entity_table: "stock_positions",
         before_snapshot: existing,
         after_snapshot: null,
+        is_adjustment: opts?.isAdjustment,
       });
     }
   } else {
@@ -299,11 +301,13 @@ export async function upsertStockPosition(input: StockPositionInput) {
     const { error } = before
       ? await supabase.from("stock_positions").update({
           quantity: input.quantity,
+          last_was_adjustment: opts?.isAdjustment ?? false,
         }).eq("id", before.id)
       : await supabase.from("stock_positions").insert({
           stock_asset_id: input.stock_asset_id,
           broker_id: input.broker_id,
           quantity: input.quantity,
+          last_was_adjustment: opts?.isAdjustment ?? false,
         });
     if (error) throw new Error(error.message);
 
@@ -325,6 +329,7 @@ export async function upsertStockPosition(input: StockPositionInput) {
       entity_table: "stock_positions",
       before_snapshot: before,
       after_snapshot: after,
+      is_adjustment: opts?.isAdjustment,
     });
   }
 
@@ -333,7 +338,7 @@ export async function upsertStockPosition(input: StockPositionInput) {
 }
 
 /** Soft-delete a specific stock position */
-export async function deleteStockPosition(positionId: string) {
+export async function deleteStockPosition(positionId: string, opts?: { isAdjustment?: boolean }) {
   const supabase = await createServerSupabaseClient();
 
   // Capture full snapshot before soft-delete
@@ -361,6 +366,7 @@ export async function deleteStockPosition(positionId: string) {
     entity_table: "stock_positions",
     before_snapshot: snapshot,
     after_snapshot: null,
+    is_adjustment: opts?.isAdjustment,
   });
   revalidatePath("/dashboard/stocks");
   revalidatePath("/dashboard");

@@ -157,6 +157,7 @@ export default async function DashboardPage() {
         summary={summary}
         insights={insights}
         pastSnapshots={pastSnapshots}
+        cashFlows={cashFlows}
       />
 
       <div className="mt-6">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Wallet,
@@ -17,6 +17,7 @@ import {
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
+import type { CashFlowEvent } from "@/lib/actions/benchmark";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
 import { useSharedView } from "@/components/shared-view-context";
 
@@ -26,6 +27,7 @@ interface DashboardGridProps {
   summary: PortfolioSummary;
   insights: DashboardInsights;
   pastSnapshots: Record<string, PortfolioSnapshot | null>;
+  cashFlows: CashFlowEvent[];
 }
 
 // ─── Constants ──────────────────────────────────────────
@@ -42,12 +44,31 @@ type ApyPeriod = (typeof APY_PERIODS)[number];
 
 // ─── Component ──────────────────────────────────────────
 
-export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGridProps) {
+export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: DashboardGridProps) {
   const [changePeriod, setChangePeriod] = useState<ChangePeriod>("24h");
   const [apyPeriod, setApyPeriod] = useState<ApyPeriod>("monthly");
   const [fxFlipped, setFxFlipped] = useState(false);
+  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
   const { shareToken } = useSharedView();
   const basePath = shareToken ? `/share/${shareToken}` : "/dashboard";
+
+  const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpenTooltip((prev) => (prev === id ? null : id));
+  }, []);
+
+  useEffect(() => {
+    if (!openTooltip) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) {
+        setOpenTooltip(null);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [openTooltip]);
 
   const {
     totalValue,
@@ -59,13 +80,16 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
     allocation,
     primaryCurrency,
     cryptoValueUsd,
+    cryptoValueEur,
     stocksValueUsd,
+    stocksValueEur,
+    cashValueUsd,
+    cashValueEur,
     totalValueUsd,
     totalValueEur,
     totalValueChange24h,
     cryptoValueChange24h,
     stocksValueChange24h,
-    stablecoinValueChange24h,
     fxValueChange24h,
     cryptoFxValueChange24h,
     cryptoFxChange24hPercent,
@@ -122,52 +146,110 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
     };
   }
 
+  // Return type for per-class change functions (extended with FX)
+  type ClassChange = {
+    percent: number; valueChange: number; available: boolean;
+    fxPercent: number; fxValueChange: number;
+  };
+
+  // Derive per-class FX from snapshot dual-currency data for non-24h periods
+  function deriveClassFx(
+    currentClassValue: number,
+    currentClassUsd: number,
+    currentClassEur: number,
+    pastClassUsd: number,
+    snapshot: PortfolioSnapshot,
+  ): { fxPct: number; fxAbs: number } {
+    // Estimate past class EUR value using the portfolio's implied EUR/USD rate at snapshot time
+    const snapTotalUsd = snapshot.total_value_usd ?? 0;
+    const snapTotalEur = snapshot.total_value_eur ?? 0;
+    if (snapTotalUsd === 0 || snapTotalEur === 0 || pastClassUsd === 0)
+      return { fxPct: 0, fxAbs: 0 };
+
+    const impliedRate = snapTotalEur / snapTotalUsd; // EUR per USD at snapshot time
+    const pastClassEur = pastClassUsd * impliedRate;
+
+    const usdReturn = ((currentClassUsd - pastClassUsd) / pastClassUsd) * 100;
+    const eurReturn = ((currentClassEur - pastClassEur) / pastClassEur) * 100;
+
+    // FX impact = primary currency return - other currency return
+    const primaryReturn = cur === "EUR" ? eurReturn : usdReturn;
+    const otherReturn = cur === "EUR" ? usdReturn : eurReturn;
+    const fxPct = primaryReturn - otherReturn;
+    const fxAbs = fxPct !== 0 ? currentClassValue - currentClassValue / (1 + fxPct / 100) : 0;
+    return { fxPct, fxAbs };
+  }
+
   // Per-asset-class change for selected period (uses USD snapshots, derives display-currency delta)
-  function getCryptoChangeForPeriod(period: ChangePeriod): { percent: number; valueChange: number; available: boolean } {
+  function getCryptoChangeForPeriod(period: ChangePeriod): ClassChange {
     if (period === "24h") {
       return {
         percent: insights.cryptoChange24h,
         valueChange: cryptoValueChange24h,
         available: true,
+        fxPercent: cryptoFxChange24hPercent,
+        fxValueChange: cryptoFxValueChange24h,
       };
     }
     const snapshot = pastSnapshots[period];
-    if (!snapshot) return { percent: 0, valueChange: 0, available: false };
+    if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastUsd = snapshot.crypto_value_usd ?? 0;
-    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false };
+    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pct = ((cryptoValueUsd - pastUsd) / pastUsd) * 100;
     const delta = cryptoValue - cryptoValue / (1 + pct / 100);
-    return { percent: pct, valueChange: delta, available: true };
+    const { fxPct, fxAbs } = deriveClassFx(cryptoValue, cryptoValueUsd, cryptoValueEur, pastUsd, snapshot);
+    return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
   }
 
-  function getStockChangeForPeriod(period: ChangePeriod): { percent: number; valueChange: number; available: boolean } {
+  function getStockChangeForPeriod(period: ChangePeriod): ClassChange {
     if (period === "24h") {
-      // Use aggregator's delta (includes FX impact on foreign-currency stocks)
       const pct = stocksValue > 0 ? (stocksValueChange24h / stocksValue) * 100 : 0;
-      return { percent: pct, valueChange: stocksValueChange24h, available: true };
+      return {
+        percent: pct, valueChange: stocksValueChange24h, available: true,
+        fxPercent: stocksFxChange24hPercent, fxValueChange: stocksFxValueChange24h,
+      };
     }
     const snapshot = pastSnapshots[period];
-    if (!snapshot) return { percent: 0, valueChange: 0, available: false };
+    if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastUsd = snapshot.stocks_value_usd ?? 0;
-    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false };
+    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pct = ((stocksValueUsd - pastUsd) / pastUsd) * 100;
     const delta = stocksValue - stocksValue / (1 + pct / 100);
-    return { percent: pct, valueChange: delta, available: true };
+    const { fxPct, fxAbs } = deriveClassFx(stocksValue, stocksValueUsd, stocksValueEur, pastUsd, snapshot);
+    return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
   }
 
-  function getCashChangeForPeriod(period: ChangePeriod): { percent: number; valueChange: number; available: boolean } {
+  function getCashChangeForPeriod(period: ChangePeriod): ClassChange {
     if (period === "24h") {
       const pct = cashValue > 0 ? (cashTotalValueChange24h / cashValue) * 100 : 0;
-      return { percent: pct, valueChange: cashTotalValueChange24h, available: true };
+      return {
+        percent: pct, valueChange: cashTotalValueChange24h, available: true,
+        fxPercent: cashTotalFxChange24hPercent, fxValueChange: cashTotalFxValueChange24h,
+      };
     }
     const snapshot = pastSnapshots[period];
-    if (!snapshot) return { percent: 0, valueChange: 0, available: false };
+    if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastUsd = snapshot.cash_value_usd ?? 0;
-    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false };
-    const cashValueUsd = summary.cashValueUsd;
+    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pct = ((cashValueUsd - pastUsd) / pastUsd) * 100;
     const delta = cashValue - cashValue / (1 + pct / 100);
-    return { percent: pct, valueChange: delta, available: true };
+    const { fxPct, fxAbs } = deriveClassFx(cashValue, cashValueUsd, cashValueEur, pastUsd, snapshot);
+    return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
+  }
+
+  // Deposit sums per period from cash flow events
+  function getDepositsForPeriod(period: ChangePeriod): number {
+    const now = new Date();
+    const msMap: Record<ChangePeriod, number> = {
+      "24h": 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000, "1y": 365 * 86400000,
+    };
+    const cutoff = new Date(now.getTime() - msMap[period]);
+    const sumUsd = cashFlows
+      .filter(f => new Date(f.date) >= cutoff)
+      .reduce((s, f) => s + f.amount_usd, 0);
+    // Convert USD to primary currency using current portfolio rate
+    if (cur === "USD" || totalValueUsd === 0) return sumUsd;
+    return sumUsd * (totalValue / totalValueUsd);
   }
 
   // APY income for selected period
@@ -211,33 +293,41 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
           {/* ── Total value + change ── */}
           {(() => {
             const c = getChangeForPeriod(changePeriod);
-            const showFxImpact = c.available && c.fxPercent !== 0;
+            const deposits = getDepositsForPeriod(changePeriod);
             return (
-              <>
-                <div className="flex items-baseline gap-3 mt-1 flex-nowrap">
-                  <p className="text-3xl sm:text-5xl font-bold text-zinc-100 tabular-nums">
-                    {fmtCurrency(totalValue, cur, 0)}
-                  </p>
-                  {c.available && (
-                    <span className={`text-sm font-medium tabular-nums whitespace-nowrap ${changeColorClass(c.percent)}`}>
-                      {fmtPct(c.percent)}
-                      {c.valueChange !== 0 && (
+              <div className="flex items-baseline gap-3 mt-1 flex-nowrap">
+                <p className="text-3xl sm:text-5xl font-bold text-zinc-100 tabular-nums">
+                  {fmtCurrency(totalValue, cur, 0)}
+                </p>
+                {c.available && (
+                  <span
+                    ref={openTooltip === "total" ? tooltipRef : undefined}
+                    onClick={(e) => toggleTooltip("total", e)}
+                    className={`relative group/tip cursor-pointer text-sm font-medium tabular-nums whitespace-nowrap ${changeColorClass(c.percent)}`}
+                  >
+                    {c.valueChange !== 0 ? (
+                      <>
+                        {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
                         <span className="ml-1 font-normal">
-                          ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
+                          ({fmtPct(c.percent)})
                         </span>
-                      )}
-                    </span>
-                  )}
-                  {!c.available && (
-                    <span className="text-sm text-zinc-600">—</span>
-                  )}
-                </div>
-                {showFxImpact && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                    incl. {fmtPct(c.fxPercent, 2)} ({c.fxValueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.fxValueChange, cur)}) EUR/USD
-                  </p>
+                      </>
+                    ) : (
+                      fmtPct(c.percent)
+                    )}
+                    <ChangeTooltip
+                      valueChange={c.valueChange}
+                      fxValueChange={c.fxValueChange}
+                      deposits={deposits}
+                      cur={cur}
+                      open={openTooltip === "total"}
+                    />
+                  </span>
                 )}
-              </>
+                {!c.available && (
+                  <span className="text-sm text-zinc-600">—</span>
+                )}
+              </div>
             );
           })()}
 
@@ -443,7 +533,6 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
           </div>
           {(() => {
             const c = getCryptoChangeForPeriod(changePeriod);
-            const showCryptoFx = changePeriod === "24h" && cryptoFxChange24hPercent !== 0;
             return (
               <>
                 <div className="flex items-baseline gap-3 mt-2">
@@ -451,31 +540,34 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                     {fmtCurrency(cryptoValue, cur, 0)}
                   </p>
                   {c.available ? (
-                    <span className={`text-xs tabular-nums ${changeColorClass(c.percent)}`}>
-                      {fmtPct(c.percent)}
-                      {c.valueChange !== 0 && (
-                        <span className="ml-1">
-                          ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
-                        </span>
+                    <span
+                      ref={openTooltip === "crypto" ? tooltipRef : undefined}
+                      onClick={(e) => toggleTooltip("crypto", e)}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                    >
+                      {c.valueChange !== 0 ? (
+                        <>
+                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                          <span className="ml-1">({fmtPct(c.percent)})</span>
+                        </>
+                      ) : (
+                        fmtPct(c.percent)
                       )}
+                      <ChangeTooltip
+                        valueChange={c.valueChange}
+                        fxValueChange={c.fxValueChange}
+                        deposits={0}
+                        cur={cur}
+                        open={openTooltip === "crypto"}
+                      />
                     </span>
                   ) : (
                     <span className="text-xs text-zinc-600">—</span>
                   )}
                 </div>
-                {showCryptoFx && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                    incl. {fmtPct(cryptoFxChange24hPercent, 2)} ({cryptoFxValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(cryptoFxValueChange24h, cur)}) EUR/USD
-                  </p>
-                )}
                 {summary.stablecoinValue > 0 && (
                   <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
                     excl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
-                    {changePeriod === "24h" && stablecoinValueChange24h !== 0 && (
-                      <span>
-                        {" "}({stablecoinValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(stablecoinValueChange24h, cur)})
-                      </span>
-                    )}
                   </p>
                 )}
               </>
@@ -592,7 +684,6 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
           </div>
           {(() => {
             const c = getStockChangeForPeriod(changePeriod);
-            const showStockFx = changePeriod === "24h" && stocksFxChange24hPercent !== 0;
             return (
               <>
                 <div className="flex items-baseline gap-3 mt-2">
@@ -600,23 +691,31 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                     {fmtCurrency(stocksValue, cur, 0)}
                   </p>
                   {c.available ? (
-                    <span className={`text-xs tabular-nums ${changeColorClass(c.percent)}`}>
-                      {fmtPct(c.percent)}
-                      {c.valueChange !== 0 && (
-                        <span className="ml-1">
-                          ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
-                        </span>
+                    <span
+                      ref={openTooltip === "equities" ? tooltipRef : undefined}
+                      onClick={(e) => toggleTooltip("equities", e)}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                    >
+                      {c.valueChange !== 0 ? (
+                        <>
+                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                          <span className="ml-1">({fmtPct(c.percent)})</span>
+                        </>
+                      ) : (
+                        fmtPct(c.percent)
                       )}
+                      <ChangeTooltip
+                        valueChange={c.valueChange}
+                        fxValueChange={c.fxValueChange}
+                        deposits={0}
+                        cur={cur}
+                        open={openTooltip === "equities"}
+                      />
                     </span>
                   ) : (
                     <span className="text-xs text-zinc-600">—</span>
                   )}
                 </div>
-                {showStockFx && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                    incl. {fmtPct(stocksFxChange24hPercent, 2)} ({stocksFxValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(stocksFxValueChange24h, cur)}) EUR/USD
-                  </p>
-                )}
                 {insights.stocksWeightedYield > 0 && (() => {
                   const yearly = insights.stocksDividendIncomeYearly;
                   const periodIncome =
@@ -761,7 +860,6 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
           </div>
           {(() => {
             const c = getCashChangeForPeriod(changePeriod);
-            const showCashFx = changePeriod === "24h" && cashTotalFxChange24hPercent !== 0;
             return (
               <>
                 <div className="flex items-baseline gap-3 mt-2">
@@ -769,13 +867,26 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                     {fmtCurrency(cashValue, cur, 0)}
                   </p>
                   {c.available ? (
-                    <span className={`text-xs tabular-nums ${changeColorClass(c.percent)}`}>
-                      {fmtPct(c.percent)}
-                      {c.valueChange !== 0 && (
-                        <span className="ml-1">
-                          ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
-                        </span>
+                    <span
+                      ref={openTooltip === "cash" ? tooltipRef : undefined}
+                      onClick={(e) => toggleTooltip("cash", e)}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                    >
+                      {c.valueChange !== 0 ? (
+                        <>
+                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                          <span className="ml-1">({fmtPct(c.percent)})</span>
+                        </>
+                      ) : (
+                        fmtPct(c.percent)
                       )}
+                      <ChangeTooltip
+                        valueChange={c.valueChange}
+                        fxValueChange={c.fxValueChange}
+                        deposits={0}
+                        cur={cur}
+                        open={openTooltip === "cash"}
+                      />
                     </span>
                   ) : (
                     <span className="text-xs text-zinc-600">—</span>
@@ -806,19 +917,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots }: DashboardGri
                     </div>
                   </div>
                 )}
-                {showCashFx && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                    incl. {fmtPct(cashTotalFxChange24hPercent, 2)} ({cashTotalFxValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(cashTotalFxValueChange24h, cur)}) EUR/USD
-                  </p>
-                )}
                 {summary.stablecoinValue > 0 && (
                   <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
                     incl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
-                    {changePeriod === "24h" && stablecoinValueChange24h !== 0 && (
-                      <span>
-                        {" "}({stablecoinValueChange24h > 0 ? "+" : ""}{fmtCurrencyCompact(stablecoinValueChange24h, cur)})
-                      </span>
-                    )}
                   </p>
                 )}
               </>
@@ -967,6 +1068,53 @@ const SEGMENT_SHADES: Record<string, string[]> = {
 function segmentColor(parentColor: string, index: number): string {
   const shades = SEGMENT_SHADES[parentColor] ?? [parentColor];
   return shades[index % shades.length];
+}
+
+// ─── Change Tooltip ─────────────────────────────────────
+
+function TooltipRow({
+  label, value, cur, colored, bold,
+}: {
+  label: string; value: number; cur: string; colored?: boolean; bold?: boolean;
+}) {
+  const formatted = `${value > 0 ? "+" : ""}${fmtCurrencyCompact(value, cur)}`;
+  const colorCls = colored ? changeColorClass(value) : "text-zinc-300";
+  return (
+    <div className={`flex justify-between gap-4 ${bold ? "font-medium" : ""}`}>
+      <span className="text-zinc-400">{label}</span>
+      <span className={`${colorCls} tabular-nums`}>{formatted}</span>
+    </div>
+  );
+}
+
+function ChangeTooltip({
+  valueChange, fxValueChange, deposits, cur, open,
+}: {
+  valueChange: number; fxValueChange: number; deposits: number; cur: string; open?: boolean;
+}) {
+  const hasFx = Math.abs(fxValueChange) >= 0.5;
+  const hasDeposits = Math.abs(deposits) >= 0.5;
+
+  // Nothing to decompose — suppress tooltip
+  if (!hasFx && !hasDeposits) return null;
+
+  const assetPrices = valueChange - fxValueChange - deposits;
+  const fxLabel = cur === "EUR" ? "EUR/USD" : "USD/EUR";
+
+  return (
+    <div className={`absolute right-0 top-full mt-1 z-50 ${open ? "block" : "hidden group-hover/tip:block"}`}>
+      <div className="bg-zinc-800/95 backdrop-blur border border-zinc-700 rounded-lg shadow-xl p-3 text-xs tabular-nums min-w-[200px]">
+        <TooltipRow label="Asset prices" value={assetPrices} cur={cur} colored />
+        {hasFx && <TooltipRow label={fxLabel} value={fxValueChange} cur={cur} colored />}
+        {hasDeposits && (
+          <TooltipRow label={deposits > 0 ? "Deposits" : "Withdrawals"} value={deposits} cur={cur} />
+        )}
+        <div className="border-t border-zinc-700 mt-1.5 pt-1.5">
+          <TooltipRow label="Total" value={valueChange} cur={cur} colored bold />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Allocation bar ─────────────────────────────────────

@@ -73,7 +73,7 @@ export async function getCryptoAssetsWithPositions(): Promise<
 }
 
 /** Add a new crypto asset. Returns the new asset's id. */
-export async function createCryptoAsset(input: CryptoAssetInput): Promise<string> {
+export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdjustment?: boolean }): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -122,6 +122,7 @@ export async function createCryptoAsset(input: CryptoAssetInput): Promise<string
     entity_table: "crypto_assets",
     before_snapshot: null,
     after_snapshot: data,
+    is_adjustment: opts?.isAdjustment,
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");
@@ -219,7 +220,7 @@ export async function deleteCryptoAsset(id: string) {
 }
 
 /** Upsert a position (set quantity for a crypto asset in a specific wallet) */
-export async function upsertPosition(input: CryptoPositionInput) {
+export async function upsertPosition(input: CryptoPositionInput, opts?: { isAdjustment?: boolean }) {
   const supabase = await createServerSupabaseClient();
 
   // Fetch asset ticker for logging
@@ -256,6 +257,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
         entity_table: "crypto_positions",
         before_snapshot: existing,
         after_snapshot: null,
+        is_adjustment: opts?.isAdjustment,
       });
     }
   } else {
@@ -273,6 +275,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
           quantity: input.quantity,
           acquisition_method: input.acquisition_method ?? "bought",
           apy: input.apy ?? 0,
+          last_was_adjustment: opts?.isAdjustment ?? false,
         }).eq("id", before.id)
       : await supabase.from("crypto_positions").insert({
           crypto_asset_id: input.crypto_asset_id,
@@ -280,6 +283,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
           quantity: input.quantity,
           acquisition_method: input.acquisition_method ?? "bought",
           apy: input.apy ?? 0,
+          last_was_adjustment: opts?.isAdjustment ?? false,
         });
     if (error) throw new Error(error.message);
 
@@ -301,6 +305,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
       entity_table: "crypto_positions",
       before_snapshot: before,
       after_snapshot: after,
+      is_adjustment: opts?.isAdjustment,
     });
   }
 
@@ -309,7 +314,7 @@ export async function upsertPosition(input: CryptoPositionInput) {
 }
 
 /** Soft-delete a specific position */
-export async function deletePosition(positionId: string) {
+export async function deletePosition(positionId: string, opts?: { isAdjustment?: boolean }) {
   const supabase = await createServerSupabaseClient();
 
   // Capture full snapshot before soft-delete
@@ -337,6 +342,7 @@ export async function deletePosition(positionId: string) {
     entity_table: "crypto_positions",
     before_snapshot: snapshot,
     after_snapshot: null,
+    is_adjustment: opts?.isAdjustment,
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");

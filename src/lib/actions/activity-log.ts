@@ -16,6 +16,7 @@ export async function logActivity(params: {
   entity_table?: string;
   before_snapshot?: unknown;
   after_snapshot?: unknown;
+  is_adjustment?: boolean;
 }): Promise<void> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -35,6 +36,7 @@ export async function logActivity(params: {
       entity_table: params.entity_table ?? null,
       before_snapshot: params.before_snapshot ?? null,
       after_snapshot: params.after_snapshot ?? null,
+      is_adjustment: params.is_adjustment ?? false,
     });
   } catch {
     // Swallow — audit logging is best-effort
@@ -74,6 +76,20 @@ export async function getActivityLogs(filters?: {
     logs: (data ?? []) as ActivityLog[],
     total: count ?? 0,
   };
+}
+
+// ─── Toggle adjustment flag ─────────────────────────────
+
+export async function toggleActivityAdjustment(
+  logId: string,
+  isAdjustment: boolean
+): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase
+    .from("activity_log")
+    .update({ is_adjustment: isAdjustment })
+    .eq("id", logId);
+  if (error) throw new Error(error.message);
 }
 
 // ─── CSV export ─────────────────────────────────────────

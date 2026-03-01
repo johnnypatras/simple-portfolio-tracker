@@ -149,7 +149,7 @@ export function EditInstitutionModal({
 
   return (
     <Modal open={open} onClose={handleClose} title="Edit Institution">
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name */}
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-1.5">
@@ -246,7 +246,7 @@ export function EditInstitutionModal({
                       type="checkbox"
                       checked={addWallet}
                       onChange={(e) => setAddWallet(e.target.checked)}
-                      className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                      className="accent-blue-500"
                     />
                     Exchange
                   </label>
@@ -257,7 +257,7 @@ export function EditInstitutionModal({
                       type="checkbox"
                       checked={addBroker}
                       onChange={(e) => setAddBroker(e.target.checked)}
-                      className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                      className="accent-blue-500"
                     />
                     Broker
                   </label>
@@ -268,7 +268,7 @@ export function EditInstitutionModal({
                       type="checkbox"
                       checked={addBank}
                       onChange={(e) => setAddBank(e.target.checked)}
-                      className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-blue-500/40"
+                      className="accent-blue-500"
                     />
                     Bank
                   </label>

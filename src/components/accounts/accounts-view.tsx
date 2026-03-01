@@ -15,7 +15,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, fmtCurrencyCompact, fmtPct, changeColorClass } from "@/lib/format";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import { EditInstitutionModal } from "@/components/accounts/edit-institution-modal";
@@ -64,6 +64,7 @@ interface CryptoRow {
   valueBase: number;
   walletName: string;
   apy: number;
+  change24h: number;
 }
 
 /** A stock position enriched with asset-level info for display */
@@ -78,6 +79,7 @@ interface StockRow {
   valueBase: number;
   currency: string;
   brokerName: string;
+  change24h: number;
 }
 
 /** Cash item (bank account, exchange deposit, or broker deposit) */
@@ -98,6 +100,7 @@ interface InstitutionGroup {
   stocks: StockRow[];
   cash: CashRow[];
   totalValue: number;
+  change24h: { valueChange: number; percentChange: number };
 }
 
 // ── Props ────────────────────────────────────────────────
@@ -260,6 +263,7 @@ export function AccountsView({
           stocks: [],
           cash: [],
           totalValue: 0,
+          change24h: { valueChange: 0, percentChange: 0 },
         });
       }
     }
@@ -279,6 +283,7 @@ export function AccountsView({
         stocks: [],
         cash: [],
         totalValue: 0,
+        change24h: { valueChange: 0, percentChange: 0 },
       });
     }
 
@@ -288,9 +293,11 @@ export function AccountsView({
     }
 
     // ── Crypto positions ──────────────────────────────
+    const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
     for (const asset of cryptoAssets) {
       const price = cryptoPrices[asset.coingecko_id];
       const priceBase = price?.[currencyKey] ?? 0;
+      const assetChange24h = price?.[changeKey] ?? 0;
 
       for (const pos of asset.positions) {
         const instId = walletToInst.get(pos.wallet_id);
@@ -309,6 +316,7 @@ export function AccountsView({
           valueBase,
           walletName: pos.wallet_name,
           apy: pos.apy,
+          change24h: assetChange24h,
         });
         group.totalValue += valueBase;
       }
@@ -340,6 +348,7 @@ export function AccountsView({
           valueBase,
           currency: asset.currency,
           brokerName: pos.broker_name,
+          change24h: priceData.change24h,
         });
         group.totalValue += valueBase;
       }
@@ -402,6 +411,41 @@ export function AccountsView({
       group.totalValue += valueBase;
     }
 
+    // ── Compute 24h change per group ─────────────────
+    const allGroupMaps = [groupMap, walletVirtualGroups];
+    for (const map of allGroupMaps) {
+      for (const group of map.values()) {
+        let totalPrev = 0;
+        // Crypto: back-derive previous value from 24h change %
+        for (const row of group.crypto) {
+          const change = cryptoPrices[row.coingeckoId]?.[changeKey] ?? 0;
+          const prev = Math.abs(change) > 0.0001
+            ? row.valueBase / (1 + change / 100)
+            : row.valueBase;
+          totalPrev += prev;
+        }
+        // Stocks: use previousClose × quantity, converted to base
+        for (const row of group.stocks) {
+          const priceData = stockPrices[row.yahooTicker];
+          if (priceData?.previousClose) {
+            const prevNative = row.quantity * priceData.previousClose;
+            totalPrev += convertToBase(prevNative, row.currency, primaryCurrency, fxRates);
+          } else {
+            totalPrev += row.valueBase;
+          }
+        }
+        // Cash: no 24h change
+        for (const row of group.cash) {
+          totalPrev += row.valueBase;
+        }
+
+        const currentVal = group.totalValue;
+        const valueChange = currentVal - totalPrev;
+        const percentChange = totalPrev > 0 ? (valueChange / totalPrev) * 100 : 0;
+        group.change24h = { valueChange, percentChange };
+      }
+    }
+
     // Combine real institutions + per-wallet virtual groups
     const allGroups = [
       ...Array.from(groupMap.values()),
@@ -437,60 +481,66 @@ export function AccountsView({
   const totalStocks = groups.reduce((sum, g) => sum + g.stocks.reduce((s, st) => s + st.valueBase, 0), 0);
   const totalCash = groups.reduce((sum, g) => sum + g.cash.reduce((s, c) => s + c.valueBase, 0), 0);
   const totalAssets = groups.reduce((sum, g) => sum + g.crypto.length + g.stocks.length + g.cash.length, 0);
+  const grandChange24h = groups.reduce(
+    (acc, g) => ({ valueChange: acc.valueChange + g.change24h.valueChange }),
+    { valueChange: 0 },
+  );
+  const grandPrev = grandTotal - grandChange24h.valueChange;
+  const grandPercentChange = grandPrev > 0 ? (grandChange24h.valueChange / grandPrev) * 100 : 0;
 
   return (
     <div>
       {/* Summary stat card */}
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-4 md:p-5">
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          {/* Left: Total + allocation breakdown */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between md:justify-start md:gap-6">
-              <div>
-                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                  Portfolio Total
-                </p>
-                <p className="text-3xl font-semibold text-zinc-100 mt-1 tabular-nums">
-                  {formatCurrency(grandTotal, primaryCurrency)}
-                </p>
-              </div>
-              <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
-                <p>{nonEmptyGroups.length} institution{nonEmptyGroups.length !== 1 ? "s" : ""}</p>
-                <p>{totalAssets} asset{totalAssets !== 1 ? "s" : ""}</p>
-              </div>
-            </div>
-
-            {/* Allocation breakdown — stacked bar + legend */}
-            {grandTotal > 0 && (() => {
-              const slices = ([
-                { label: "Crypto", value: totalCrypto, bar: "bg-orange-500/70", dot: "bg-orange-500" },
-                { label: "Equities", value: totalStocks, bar: "bg-blue-500/70", dot: "bg-blue-500" },
-                { label: "Cash", value: totalCash, bar: "bg-emerald-500/70", dot: "bg-emerald-500" },
-              ] as const).filter(s => s.value > 0).map(s => ({ ...s, pct: (s.value / grandTotal) * 100 }));
-              return (
-                <div className="mt-4 max-w-sm">
-                  {/* Stacked bar */}
-                  <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800/50 gap-px">
-                    {slices.map(s => (
-                      <div key={s.label} className={`${s.bar} rounded-sm`} style={{ width: `${s.pct}%` }} />
-                    ))}
-                  </div>
-                  {/* Legend */}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px]">
-                    {slices.map(s => (
-                      <span key={s.label} className="flex items-center gap-1.5">
-                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                        <span className="text-zinc-500">{s.label}</span>
-                        <span className="text-zinc-400 tabular-nums">{s.pct.toFixed(0)}%</span>
-                        <span className="text-zinc-600 tabular-nums">{formatCurrency(s.value, primaryCurrency)}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+            Portfolio Total
+          </p>
+          <div className="flex items-baseline gap-3 mt-1">
+            <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+              {formatCurrency(grandTotal, primaryCurrency)}
+            </p>
+            {grandChange24h.valueChange !== 0 && (
+              <span className={`text-sm tabular-nums ${changeColorClass(grandPercentChange)}`}>
+                {grandChange24h.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(grandChange24h.valueChange, primaryCurrency)}
+                <span className="ml-1 font-normal">({fmtPct(grandPercentChange)})</span>
+              </span>
+            )}
           </div>
 
+          {/* Allocation breakdown — stacked bar + legend */}
+          {grandTotal > 0 && (() => {
+            const slices = ([
+              { label: "Crypto", value: totalCrypto, bar: "bg-orange-500/70", dot: "bg-orange-500" },
+              { label: "Equities", value: totalStocks, bar: "bg-blue-500/70", dot: "bg-blue-500" },
+              { label: "Cash", value: totalCash, bar: "bg-emerald-500/70", dot: "bg-emerald-500" },
+            ] as const).filter(s => s.value > 0).map(s => ({ ...s, pct: (s.value / grandTotal) * 100 }));
+            return (
+              <div className="mt-4">
+                {/* Stacked bar */}
+                <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800/50 gap-px max-w-md">
+                  {slices.map(s => (
+                    <div key={s.label} className={`${s.bar} rounded-sm`} style={{ width: `${s.pct}%` }} />
+                  ))}
+                </div>
+                {/* Legend + stats */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px]">
+                  {slices.map(s => (
+                    <span key={s.label} className="flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                      <span className="text-zinc-500">{s.label}</span>
+                      <span className="text-zinc-400 tabular-nums">{s.pct.toFixed(0)}%</span>
+                      <span className="hidden md:inline text-zinc-600 tabular-nums">{formatCurrency(s.value, primaryCurrency)}</span>
+                    </span>
+                  ))}
+                  <span className="hidden md:flex items-center gap-x-4 text-zinc-600">
+                    <span>·</span>
+                    <span>{nonEmptyGroups.length} institution{nonEmptyGroups.length !== 1 ? "s" : ""}, {totalAssets} asset{totalAssets !== 1 ? "s" : ""}</span>
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -524,7 +574,7 @@ export function AccountsView({
         const displayGroups = showAllInstitutions ? groups : visibleGroups;
         return (<>
       {displayGroups.map((group) => {
-        const { institution, crypto, stocks, cash, totalValue } = group;
+        const { institution, crypto, stocks, cash, totalValue, change24h } = group;
         const isEmpty = crypto.length === 0 && stocks.length === 0 && cash.length === 0;
         const isExpanded = expandedIds.has(institution.id);
         const isSelfCustody = institution.id.startsWith("__wallet__");
@@ -592,21 +642,21 @@ export function AccountsView({
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pl-4">
-                  {/* Edit button — visible on expand (mobile) or hover (desktop) */}
+                  {/* Edit institution — hover-reveal */}
                   {!isReadOnly && !isSelfCustody && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setEditingInstitution(institution);
                       }}
-                      className={`p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors ${
+                      className={`p-1.5 rounded-lg text-zinc-600 hover:text-blue-400 hover:bg-zinc-800 transition-colors ${
                         isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
                       }`}
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {/* Edit standalone wallet */}
+                  {/* Edit standalone wallet — hover-reveal */}
                   {!isReadOnly && isSelfCustody && (
                     <button
                       onClick={(e) => {
@@ -626,9 +676,16 @@ export function AccountsView({
                     {isEmpty ? (
                       <span className="text-sm text-zinc-600">No assets</span>
                     ) : (
-                      <span className="text-sm font-medium text-zinc-200">
-                        {formatCurrency(totalValue, primaryCurrency)}
-                      </span>
+                      <>
+                        <span className="text-sm font-medium text-zinc-200">
+                          {formatCurrency(totalValue, primaryCurrency)}
+                        </span>
+                        <p className={`text-xs tabular-nums ${change24h.valueChange !== 0 ? changeColorClass(change24h.percentChange) : "invisible"}`}>
+                          {change24h.valueChange !== 0
+                            ? `${change24h.valueChange > 0 ? "+" : ""}${fmtCurrencyCompact(change24h.valueChange, primaryCurrency)} (${fmtPct(change24h.percentChange)})`
+                            : "\u00A0"}
+                        </p>
+                      </>
                     )}
                   </div>
                 </div>
@@ -679,11 +736,43 @@ export function AccountsView({
                               )}
                             </span>
                             <span className="flex-1 md:hidden" />
+                            {!isReadOnly && (
+                              <span className="hidden md:flex items-center gap-0.5 shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const asset = cryptoAssets.find((a) => a.id === row.assetId);
+                                    if (asset) setEditingCryptoAsset(asset);
+                                  }}
+                                  className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                                  title="Edit positions"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteTarget({ type: "crypto", id: row.assetId, label: `${row.ticker} (${row.name})` });
+                                  }}
+                                  className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                                  title="Remove asset"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </span>
+                            )}
                             <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
                               ×{formatQuantity(row.quantity)}
                             </span>
-                            <span className="text-zinc-200 tabular-nums w-28 text-right shrink-0 pl-2">
-                              {formatCurrency(row.valueBase, primaryCurrency)}
+                            <span className="text-right shrink-0 pl-2 min-w-[7rem]">
+                              <span className="text-zinc-200 tabular-nums text-sm">
+                                {formatCurrency(row.valueBase, primaryCurrency)}
+                              </span>
+                              {row.change24h !== 0 && (
+                                <span className={`block text-xs tabular-nums ${changeColorClass(row.change24h)}`}>
+                                  {fmtPct(row.change24h)}
+                                </span>
+                              )}
                             </span>
                           </div>
                           {activeRowId === row.positionId && (
@@ -696,7 +785,7 @@ export function AccountsView({
                               </span>
                               <span className="flex-1" />
                               {!isReadOnly && (
-                                <>
+                                <span className="md:hidden flex items-center gap-2">
                                   <button
                                     onClick={() => {
                                       const asset = cryptoAssets.find((a) => a.id === row.assetId);
@@ -714,7 +803,7 @@ export function AccountsView({
                                     <Trash2 className="w-3 h-3" />
                                     Delete
                                   </button>
-                                </>
+                                </span>
                               )}
                             </div>
                           )}
@@ -752,11 +841,43 @@ export function AccountsView({
                             </span>
                             <span className="hidden md:inline text-zinc-500 truncate flex-1 min-w-0">{row.name}</span>
                             <span className="flex-1 md:hidden" />
+                            {!isReadOnly && (
+                              <span className="hidden md:flex items-center gap-0.5 shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const asset = stockAssets.find((a) => a.id === row.assetId);
+                                    if (asset) setEditingStockAsset(asset);
+                                  }}
+                                  className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                                  title="Edit positions"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteTarget({ type: "stock", id: row.assetId, label: `${row.ticker} (${row.name})` });
+                                  }}
+                                  className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                                  title="Remove asset"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </span>
+                            )}
                             <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
                               ×{formatQuantity(row.quantity, 2)}
                             </span>
-                            <span className="text-zinc-200 tabular-nums w-28 text-right shrink-0 pl-2">
-                              {formatCurrency(row.valueBase, primaryCurrency)}
+                            <span className="text-right shrink-0 pl-2 min-w-[7rem]">
+                              <span className="text-zinc-200 tabular-nums text-sm">
+                                {formatCurrency(row.valueBase, primaryCurrency)}
+                              </span>
+                              {row.change24h !== 0 && (
+                                <span className={`block text-xs tabular-nums ${changeColorClass(row.change24h)}`}>
+                                  {fmtPct(row.change24h)}
+                                </span>
+                              )}
                             </span>
                           </div>
                           {activeRowId === row.positionId && (
@@ -768,7 +889,7 @@ export function AccountsView({
                               </span>
                               <span className="flex-1" />
                               {!isReadOnly && (
-                                <>
+                                <span className="md:hidden flex items-center gap-2">
                                   <button
                                     onClick={() => {
                                       const asset = stockAssets.find((a) => a.id === row.assetId);
@@ -786,7 +907,7 @@ export function AccountsView({
                                     <Trash2 className="w-3 h-3" />
                                     Delete
                                   </button>
-                                </>
+                                </span>
                               )}
                             </div>
                           )}
@@ -826,6 +947,39 @@ export function AccountsView({
                               )}
                             </span>
                             <span className="flex-1 md:hidden" />
+                            {!isReadOnly && (
+                              <span className="hidden md:flex items-center gap-0.5 shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (row.type === "bank") {
+                                      const acct = bankAccounts.find((b) => b.id === row.id);
+                                      if (acct) setEditingBankAccount(acct);
+                                    } else if (row.type === "exchange_deposit") {
+                                      const dep = exchangeDeposits.find((d) => d.id === row.id);
+                                      if (dep) setEditingExchangeDeposit(dep);
+                                    } else {
+                                      const dep = brokerDeposits.find((d) => d.id === row.id);
+                                      if (dep) setEditingBrokerDeposit(dep);
+                                    }
+                                  }}
+                                  className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                                  title="Edit"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteTarget({ type: row.type, id: row.id, label: row.label });
+                                  }}
+                                  className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                                  title="Remove"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </span>
+                            )}
                             {row.currency !== primaryCurrency ? (
                               <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
                                 {formatCurrency(row.amount, row.currency)}
@@ -846,7 +1000,7 @@ export function AccountsView({
                               </span>
                               <span className="flex-1" />
                               {!isReadOnly && (
-                                <>
+                                <span className="md:hidden flex items-center gap-2">
                                   <button
                                     onClick={() => {
                                       setActiveRowId(null);
@@ -873,7 +1027,7 @@ export function AccountsView({
                                     <Trash2 className="w-3 h-3" />
                                     Delete
                                   </button>
-                                </>
+                                </span>
                               )}
                             </div>
                           )}

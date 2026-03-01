@@ -19,10 +19,11 @@ import {
   ArrowLeftRight,
   BookOpen,
   Undo2,
+  Wrench,
 } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
-import { exportActivityLogsCsv } from "@/lib/actions/activity-log";
+import { exportActivityLogsCsv, toggleActivityAdjustment } from "@/lib/actions/activity-log";
 import { undoActivity } from "@/lib/actions/undo";
 import { useSharedView } from "@/components/shared-view-context";
 
@@ -270,6 +271,22 @@ export function ActivityTimeline({
     }
   }
 
+  // Entity types that affect cash flow derivation
+  const CASH_FLOW_ENTITIES: EntityType[] = [
+    "exchange_deposit", "broker_deposit", "bank_account",
+    "crypto_position", "stock_position",
+  ];
+
+  async function handleToggleAdjustment(logId: string, isAdjustment: boolean) {
+    try {
+      await toggleActivityAdjustment(logId, isAdjustment);
+      startTransition(() => { router.refresh(); });
+      toast.success(isAdjustment ? "Marked as adjustment" : "Marked as transaction");
+    } catch {
+      toast.error("Failed to update");
+    }
+  }
+
   const grouped = groupByDate(logs);
 
   return (
@@ -381,14 +398,32 @@ export function ActivityTimeline({
                                 Undo
                               </span>
                             )}
+                            {log.is_adjustment && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400">
+                                Adj
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-zinc-500 mt-0.5 truncate">
                             {log.description}
                           </p>
                         </div>
 
-                        {/* Undo / Undone badge / Time */}
+                        {/* Adjustment toggle / Undo / Undone badge / Time */}
                         <div className="shrink-0 flex items-center gap-2 mt-0.5">
+                          {!isReadOnly && !log.undone_at && CASH_FLOW_ENTITIES.includes(log.entity_type) && (
+                            <button
+                              onClick={() => handleToggleAdjustment(log.id, !log.is_adjustment)}
+                              className={`p-1 rounded transition-all ${
+                                log.is_adjustment
+                                  ? "text-amber-400 bg-amber-500/10"
+                                  : "md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                              }`}
+                              title={log.is_adjustment ? "Marked as adjustment — click to count as transaction" : "Mark as portfolio adjustment"}
+                            >
+                              <Wrench className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {log.undone_at ? (
                             <span className="text-[10px] font-medium text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded">
                               Undone

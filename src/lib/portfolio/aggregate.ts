@@ -57,8 +57,11 @@ export interface PortfolioSummary {
   totalValueUsd: number;
   totalValueEur: number;
   cryptoValueUsd: number;
+  cryptoValueEur: number;
   stocksValueUsd: number;
+  stocksValueEur: number;
   cashValueUsd: number;
+  cashValueEur: number;
 }
 
 interface AggregateParams {
@@ -304,7 +307,10 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     totalValueUsd: cryptoValueUsd + stocksValueUsd + cashValueUsd,
     totalValueEur: cryptoValueEur + stocksValueEur + cashValueEur,
     cryptoValueUsd,
+    cryptoValueEur,
     stocksValueUsd,
+    stocksValueEur,
     cashValueUsd,
+    cashValueEur,
   };
 }

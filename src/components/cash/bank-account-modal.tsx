@@ -26,6 +26,7 @@ export function BankAccountModal({
 }: BankAccountModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAdjustment, setIsAdjustment] = useState(false);
 
   // Form state
   const [name, setName] = useState("");
@@ -45,6 +46,7 @@ export function BankAccountModal({
       setApy(editing.apy.toString());
       setCountry(editing.region || DEFAULT_COUNTRY);
       setError(null);
+      setIsAdjustment(false);
     } else if (open && !editing) {
       setName("");
       setBankName("");
@@ -53,6 +55,7 @@ export function BankAccountModal({
       setApy("");
       setCountry(DEFAULT_COUNTRY);
       setError(null);
+      setIsAdjustment(false);
     }
   }, [open, editing]);
 
@@ -72,12 +75,13 @@ export function BankAccountModal({
 
     try {
       if (editing) {
-        await updateBankAccount(editing.id, input);
+        await updateBankAccount(editing.id, input, { isAdjustment });
       } else {
-        await createBankAccount(input);
+        await createBankAccount(input, { isAdjustment });
       }
       onClose();
-      toast.success(editing ? "Bank account updated" : "Bank account added");
+      const adjLabel = isAdjustment ? " (adjustment)" : "";
+      toast.success((editing ? "Bank account updated" : "Bank account added") + adjLabel);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -92,9 +96,15 @@ export function BankAccountModal({
       title={editing ? "Edit Bank Account" : "Add Bank Account"}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {editing?.last_was_adjustment && (
+          <div className="flex items-center gap-1.5 -mt-2 mb-1">
+            <span className="text-[10px] text-amber-400 font-medium">adj</span>
+            <span className="text-[10px] text-zinc-600">Last saved as portfolio adjustment</span>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-xs text-zinc-500 mb-1">
               Account Label
             </label>
             <input
@@ -107,7 +117,7 @@ export function BankAccountModal({
             />
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-xs text-zinc-500 mb-1">
               Bank Name
             </label>
             <input
@@ -132,7 +142,7 @@ export function BankAccountModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-xs text-zinc-500 mb-1">
               Currency
             </label>
             <select
@@ -145,7 +155,7 @@ export function BankAccountModal({
             </select>
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-xs text-zinc-500 mb-1">
               Country
             </label>
             <select
@@ -162,7 +172,7 @@ export function BankAccountModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-xs text-zinc-500 mb-1">
               Balance
             </label>
             <input
@@ -175,7 +185,7 @@ export function BankAccountModal({
             />
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label className="block text-xs text-zinc-500 mb-1">
               APY %
             </label>
             <input
@@ -195,25 +205,36 @@ export function BankAccountModal({
           </p>
         )}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
-          >
-            {loading
-              ? "Saving..."
-              : editing
-                ? "Save Changes"
-                : "Add Account"}
-          </button>
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isAdjustment}
+              onChange={(e) => setIsAdjustment(e.target.checked)}
+              className="accent-blue-500"
+            />
+            Portfolio adjustment
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+            >
+              {loading
+                ? "Saving..."
+                : editing
+                  ? "Save Changes"
+                  : "Add Account"}
+            </button>
+          </div>
         </div>
       </form>
     </Modal>

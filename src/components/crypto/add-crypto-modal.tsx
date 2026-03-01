@@ -35,6 +35,9 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
   const [subcategory, setSubcategory] = useState("");
   const [subcategoryDropdownOpen, setSubcategoryDropdownOpen] = useState(false);
 
+  // ─── Adjustment flag ─────────────────────────────────────
+  const [isAdjustment, setIsAdjustment] = useState(false);
+
   // ─── Optional initial position state ───────────────────
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionWalletId, setPositionWalletId] = useState("");
@@ -114,6 +117,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       setAcquisitionType("bought");
       setPositionApy("");
       setShowAllWallets(false);
+      setIsAdjustment(false);
     }
   }, [open]);
 
@@ -157,6 +161,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
     setAdding(true);
 
     try {
+      const adjustOpts = isAdjustment ? { isAdjustment: true } : undefined;
       const assetId = await createCryptoAsset({
         ticker: selectedCoin.symbol,
         name: selectedCoin.name,
@@ -164,7 +169,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         chain: chain.trim() || null,
         subcategory: subcategory.trim() || null,
         image_url: selectedCoin.thumb || null,
-      });
+      }, adjustOpts);
 
       // If user filled in an initial position, create it with its acquisition method
       const qty = parseFloat(positionQuantity);
@@ -176,7 +181,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           quantity: qty,
           acquisition_method: acquisitionType,
           apy: apyVal > 0 ? apyVal : undefined,
-        });
+        }, adjustOpts);
       }
 
       onClose();
@@ -536,6 +541,16 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 {error}
               </p>
             )}
+
+            <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isAdjustment}
+                onChange={(e) => setIsAdjustment(e.target.checked)}
+                className="accent-blue-500"
+              />
+              Portfolio adjustment (not a real transaction)
+            </label>
 
             <button
               type="submit"

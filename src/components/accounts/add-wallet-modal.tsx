@@ -58,7 +58,7 @@ export function AddWalletModal({ open, onClose }: AddWalletModalProps) {
 
   return (
     <Modal open={open} onClose={handleClose} title="Add Self-Custody Wallet">
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name */}
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-1.5">

@@ -44,6 +44,8 @@ export function StockPositionEditor({
   // Per-row save tracking (replaces single shared `loading`)
   const [savingId, setSavingId] = useState<string | null>(null);
   const [justSavedId, setJustSavedId] = useState<string | null>(null);
+  // Optimistic override for last_was_adjustment (bridges gap until props refresh)
+  const [adjOverrides, setAdjOverrides] = useState<Record<string, boolean>>({});
 
   // Clear the "just saved" checkmark after 1.5s
   useEffect(() => {
@@ -111,6 +113,9 @@ export function StockPositionEditor({
     [edits, originals]
   );
 
+  // Per-row adjustment flags (transient, not part of position data)
+  const [adjustmentFlags, setAdjustmentFlags] = useState<Record<string, boolean>>({});
+
   // Which broker to add a new position for
   const [addingBroker, setAddingBroker] = useState("");
 
@@ -132,7 +137,7 @@ export function StockPositionEditor({
         stock_asset_id: asset.id,
         broker_id: brokerId,
         quantity: qty,
-      });
+      }, { isAdjustment: adjustmentFlags[brokerId] ?? false });
       // If zero, remove from local state
       if (qty <= 0) {
         setEdits((prev) => {
@@ -141,8 +146,12 @@ export function StockPositionEditor({
           return next;
         });
       }
+      // Optimistic badge update + reset the adj checkbox after save
+      const wasAdj = adjustmentFlags[brokerId] ?? false;
+      setAdjOverrides((prev) => ({ ...prev, [brokerId]: wasAdj }));
+      setAdjustmentFlags((prev) => ({ ...prev, [brokerId]: false }));
       setJustSavedId(brokerId);
-      toast.success("Position saved");
+      toast.success(wasAdj ? "Saved as adjustment" : "Position saved");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -154,7 +163,7 @@ export function StockPositionEditor({
     setError(null);
     setSavingId(brokerId);
     try {
-      await deleteStockPosition(positionId);
+      await deleteStockPosition(positionId, { isAdjustment: adjustmentFlags[brokerId] ?? false });
       setEdits((prev) => {
         const next = { ...prev };
         delete next[brokerId];
@@ -364,61 +373,82 @@ export function StockPositionEditor({
           return (
             <div
               key={brokerId}
-              className={`flex items-center gap-1.5 sm:gap-2 rounded-lg transition-colors ${
+              className={`space-y-1.5 rounded-lg transition-colors ${
                 justSaved
-                  ? "bg-emerald-500/5 border-l-2 border-emerald-500/60 pl-1.5"
+                  ? "bg-emerald-500/5 border-l-2 border-emerald-500/60 pl-2"
                   : dirty
-                    ? "bg-blue-500/5 border-l-2 border-blue-500/40 pl-1.5"
-                    : "pl-2"
+                    ? "bg-blue-500/5 border-l-2 border-blue-500/40 pl-2"
+                    : "pl-2.5"
               }`}
             >
-              <div className="w-20 sm:w-24 shrink-0">
-                <span className="text-sm text-zinc-300 truncate block">
+              {/* Broker name header */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-zinc-300 truncate">
                   {broker?.name ?? "Unknown"}
                 </span>
-                {dirty && !justSaved && (
-                  <span className="text-[10px] text-blue-400/70 font-medium">
-                    unsaved
-                  </span>
-                )}
-                {justSaved && (
-                  <span className="text-[10px] text-emerald-400/70 font-medium flex items-center gap-0.5">
-                    <Check className="w-3 h-3" /> saved
-                  </span>
+                {/* Stable container prevents insertBefore errors from browser extensions (Safari + Dark Reader) */}
+                <div className="flex items-center gap-1.5">
+                  {dirty && !justSaved && (
+                    <span className="text-[10px] text-blue-400/70 font-medium">
+                      unsaved
+                    </span>
+                  )}
+                  {justSaved && (
+                    <span className="text-[10px] text-emerald-400/70 font-medium flex items-center gap-0.5">
+                      <Check className="w-3 h-3" /> saved
+                    </span>
+                  )}
+                  {(adjOverrides[brokerId] ?? existingPosition?.last_was_adjustment) && !justSaved && (
+                    <span className="text-[10px] text-amber-400 font-medium">
+                      adj
+                    </span>
+                  )}
+                </div>
+                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={adjustmentFlags[brokerId] ?? false}
+                    onChange={(e) => setAdjustmentFlags((prev) => ({ ...prev, [brokerId]: e.target.checked }))}
+                    className="w-3 h-3 accent-amber-500"
+                  />
+                  Adj
+                </label>
+              </div>
+              {/* Quantity + Actions */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  value={edits[brokerId] ?? "0"}
+                  onChange={(e) => handleQuantityChange(brokerId, e.target.value)}
+                  className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  disabled={isSaving}
+                />
+                <button
+                  onClick={() => handleSave(brokerId)}
+                  disabled={isBusy}
+                  className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                  title="Save"
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                </button>
+                {existingPosition && (
+                  <button
+                    onClick={() =>
+                      handleDelete(existingPosition.id, brokerId)
+                    }
+                    disabled={isBusy}
+                    className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                    title="Remove"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 )}
               </div>
-              <input
-                type="number"
-                step="any"
-                value={edits[brokerId] ?? "0"}
-                onChange={(e) => handleQuantityChange(brokerId, e.target.value)}
-                className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                disabled={isSaving}
-              />
-              <button
-                onClick={() => handleSave(brokerId)}
-                disabled={isBusy}
-                className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
-                title="Save"
-              >
-                {isSaving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-              </button>
-              {existingPosition && (
-                <button
-                  onClick={() =>
-                    handleDelete(existingPosition.id, brokerId)
-                  }
-                  disabled={isBusy}
-                  className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
-                  title="Remove"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
             </div>
           );
         })}
