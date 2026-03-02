@@ -191,25 +191,25 @@ export async function undoActivity(
 
   // ── Paired transfer undo — reverse both legs ─────────────
   if (log.transfer_group_id) {
-    const { data: groupEntries } = await supabase
+    const { data: groupEntries, error: groupError } = await supabase
       .from("activity_log")
       .select("*")
       .eq("transfer_group_id", log.transfer_group_id)
       .is("undone_at", null)
       .order("created_at", { ascending: true });
 
+    if (groupError) {
+      return { success: false, message: `Failed to fetch transfer group: ${groupError.message}` };
+    }
     if (!groupEntries?.length) {
       return { success: false, message: "No active transfer legs found" };
     }
 
-    const errors: string[] = [];
     for (const entry of groupEntries) {
       const result = await undoSingleEntry(entry as ActivityLog, supabase, user.id);
-      if (!result.success) errors.push(result.message);
-    }
-
-    if (errors.length > 0) {
-      return { success: false, message: `Partial undo: ${errors.join("; ")}` };
+      if (!result.success) {
+        return { success: false, message: `Transfer undo failed at leg: ${result.message}` };
+      }
     }
 
     revalidateDashboard();
