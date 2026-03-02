@@ -48,6 +48,7 @@ export async function logActivity(params: {
   is_adjustment?: boolean;
   delta_usd?: number | null;
   delta_eur?: number | null;
+  transfer_group_id?: string;
 }): Promise<void> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -70,6 +71,7 @@ export async function logActivity(params: {
       is_adjustment: params.is_adjustment ?? false,
       delta_usd: params.delta_usd ?? null,
       delta_eur: params.delta_eur ?? null,
+      transfer_group_id: params.transfer_group_id ?? null,
     });
   } catch {
     // Swallow — audit logging is best-effort

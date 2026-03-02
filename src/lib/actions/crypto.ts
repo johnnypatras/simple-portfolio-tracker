@@ -237,6 +237,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   isAdjustment?: boolean;
   currentPriceUsd?: number;
   currentPriceEur?: number;
+  transferGroupId?: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -286,6 +287,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         is_adjustment: opts?.isAdjustment,
         delta_usd: deltaUsd,
         delta_eur: deltaEur,
+        transfer_group_id: opts?.transferGroupId,
       });
     }
   } else {
@@ -304,6 +306,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
           acquisition_method: input.acquisition_method ?? "bought",
           apy: input.apy ?? 0,
           last_was_adjustment: opts?.isAdjustment ?? false,
+          last_was_transfer: opts?.transferGroupId != null,
         }).eq("id", before.id)
       : await supabase.from("crypto_positions").insert({
           crypto_asset_id: input.crypto_asset_id,
@@ -312,6 +315,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
           acquisition_method: input.acquisition_method ?? "bought",
           apy: input.apy ?? 0,
           last_was_adjustment: opts?.isAdjustment ?? false,
+          last_was_transfer: opts?.transferGroupId != null,
         });
     if (error) throw new Error(error.message);
 
@@ -346,6 +350,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       is_adjustment: opts?.isAdjustment,
       delta_usd: deltaUsd,
       delta_eur: deltaEur,
+      transfer_group_id: opts?.transferGroupId,
     });
   }
 
@@ -358,6 +363,7 @@ export async function deletePosition(positionId: string, opts?: {
   isAdjustment?: boolean;
   currentPriceUsd?: number;
   currentPriceEur?: number;
+  transferGroupId?: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -398,6 +404,7 @@ export async function deletePosition(positionId: string, opts?: {
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    transfer_group_id: opts?.transferGroupId,
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");

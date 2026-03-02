@@ -31,7 +31,7 @@ export async function getBrokerDeposits(): Promise<BrokerDeposit[]> {
 
 export async function createBrokerDeposit(
   input: BrokerDepositInput,
-  opts?: { isAdjustment?: boolean }
+  opts?: { isAdjustment?: boolean; transferGroupId?: string }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -53,6 +53,7 @@ export async function createBrokerDeposit(
     amount: input.amount,
     apy: input.apy ?? 0,
     last_was_adjustment: opts?.isAdjustment ?? false,
+    last_was_transfer: opts?.transferGroupId != null,
   }).select("*").single();
 
   if (error) {
@@ -84,6 +85,7 @@ export async function createBrokerDeposit(
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    transfer_group_id: opts?.transferGroupId,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
@@ -92,7 +94,7 @@ export async function createBrokerDeposit(
 export async function updateBrokerDeposit(
   id: string,
   input: BrokerDepositInput,
-  opts?: { isAdjustment?: boolean }
+  opts?: { isAdjustment?: boolean; transferGroupId?: string }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
 
@@ -119,6 +121,7 @@ export async function updateBrokerDeposit(
       amount: input.amount,
       apy: input.apy ?? 0,
       last_was_adjustment: opts?.isAdjustment ?? false,
+      last_was_transfer: opts?.transferGroupId != null,
     })
     .eq("id", id);
 
@@ -162,6 +165,7 @@ export async function updateBrokerDeposit(
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    transfer_group_id: opts?.transferGroupId,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");

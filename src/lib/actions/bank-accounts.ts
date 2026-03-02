@@ -31,6 +31,7 @@ export async function createBankAccount(
     wallet_chain?: string | null;
     also_broker?: boolean;
     isAdjustment?: boolean;
+    transferGroupId?: string;
   }
 ) {
   const supabase = await createServerSupabaseClient();
@@ -52,6 +53,7 @@ export async function createBankAccount(
     apy: input.apy ?? 0,
     institution_id: institutionId,
     last_was_adjustment: opts?.isAdjustment ?? false,
+    last_was_transfer: opts?.transferGroupId != null,
   }).select("*").single();
 
   if (error) throw new Error(error.message);
@@ -74,6 +76,7 @@ export async function createBankAccount(
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    transfer_group_id: opts?.transferGroupId,
   });
 
   // Create sibling wallet if requested
@@ -155,6 +158,7 @@ export async function updateBankAccount(
     wallet_chain?: string | null;
     also_broker?: boolean;
     isAdjustment?: boolean;
+    transferGroupId?: string;
   }
 ) {
   const supabase = await createServerSupabaseClient();
@@ -180,6 +184,7 @@ export async function updateBankAccount(
     balance: input.balance ?? 0,
     apy: input.apy ?? 0,
     last_was_adjustment: opts?.isAdjustment ?? false,
+    last_was_transfer: opts?.transferGroupId != null,
   };
   if (input.country !== undefined) updateFields.region = input.country;
 
@@ -299,6 +304,7 @@ export async function updateBankAccount(
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    transfer_group_id: opts?.transferGroupId,
   });
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");

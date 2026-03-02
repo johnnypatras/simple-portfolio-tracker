@@ -32,7 +32,7 @@ export async function getExchangeDeposits(): Promise<ExchangeDeposit[]> {
 
 export async function createExchangeDeposit(
   input: ExchangeDepositInput,
-  opts?: { isAdjustment?: boolean }
+  opts?: { isAdjustment?: boolean; transferGroupId?: string }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -60,6 +60,7 @@ export async function createExchangeDeposit(
     amount: input.amount,
     apy: input.apy ?? 0,
     last_was_adjustment: opts?.isAdjustment ?? false,
+    last_was_transfer: opts?.transferGroupId != null,
   }).select("*").single();
 
   if (error) {
@@ -92,6 +93,7 @@ export async function createExchangeDeposit(
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    transfer_group_id: opts?.transferGroupId,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
@@ -100,7 +102,7 @@ export async function createExchangeDeposit(
 export async function updateExchangeDeposit(
   id: string,
   input: ExchangeDepositInput,
-  opts?: { isAdjustment?: boolean }
+  opts?: { isAdjustment?: boolean; transferGroupId?: string }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
 
@@ -133,6 +135,7 @@ export async function updateExchangeDeposit(
       amount: input.amount,
       apy: input.apy ?? 0,
       last_was_adjustment: opts?.isAdjustment ?? false,
+      last_was_transfer: opts?.transferGroupId != null,
     })
     .eq("id", id);
 
@@ -176,6 +179,7 @@ export async function updateExchangeDeposit(
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    transfer_group_id: opts?.transferGroupId,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");

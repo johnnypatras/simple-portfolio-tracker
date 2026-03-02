@@ -151,10 +151,17 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
   return data.id;
 }
 
-/** Update a stock asset's editable fields (category, subcategory, tags) */
+/** Update a stock asset's editable fields (name, yahoo_ticker, isin, category, subcategory, tags) */
 export async function updateStockAsset(
   id: string,
-  fields: { category?: AssetCategory; subcategory?: string | null; tags?: string[] }
+  fields: {
+    name?: string;
+    yahoo_ticker?: string | null;
+    isin?: string | null;
+    category?: AssetCategory;
+    subcategory?: string | null;
+    tags?: string[];
+  }
 ) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -163,6 +170,9 @@ export async function updateStockAsset(
   if (!user) throw new Error("Not authenticated");
 
   const updatePayload: Record<string, unknown> = {};
+  if (fields.name !== undefined) updatePayload.name = fields.name.trim();
+  if (fields.yahoo_ticker !== undefined) updatePayload.yahoo_ticker = fields.yahoo_ticker?.trim() || null;
+  if (fields.isin !== undefined) updatePayload.isin = fields.isin?.trim() || null;
   if (fields.category !== undefined) updatePayload.category = fields.category;
   if (fields.tags !== undefined) updatePayload.tags = fields.tags;
   if (fields.subcategory !== undefined) updatePayload.subcategory = fields.subcategory?.trim() || null;
@@ -183,7 +193,12 @@ export async function updateStockAsset(
     .eq("id", id)
     .eq("user_id", user.id);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "23505" && error.message?.includes("stock_assets_user_yahoo_ticker_unique")) {
+      throw new Error("Another asset already uses this Yahoo ticker");
+    }
+    throw new Error(error.message);
+  }
 
   // Capture after snapshot
   const { data: after } = await supabase
@@ -265,6 +280,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   isAdjustment?: boolean;
   currentPriceNative?: number;
   assetCurrency?: string;
+  transferGroupId?: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -317,6 +333,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         is_adjustment: opts?.isAdjustment,
         delta_usd: deltaUsd,
         delta_eur: deltaEur,
+        transfer_group_id: opts?.transferGroupId,
       });
     }
   } else {
@@ -333,12 +350,14 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       ? await supabase.from("stock_positions").update({
           quantity: input.quantity,
           last_was_adjustment: opts?.isAdjustment ?? false,
+          last_was_transfer: opts?.transferGroupId != null,
         }).eq("id", before.id)
       : await supabase.from("stock_positions").insert({
           stock_asset_id: input.stock_asset_id,
           broker_id: input.broker_id,
           quantity: input.quantity,
           last_was_adjustment: opts?.isAdjustment ?? false,
+          last_was_transfer: opts?.transferGroupId != null,
         });
     if (error) throw new Error(error.message);
 
@@ -376,6 +395,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       is_adjustment: opts?.isAdjustment,
       delta_usd: deltaUsd,
       delta_eur: deltaEur,
+      transfer_group_id: opts?.transferGroupId,
     });
   }
 
@@ -388,6 +408,7 @@ export async function deleteStockPosition(positionId: string, opts?: {
   isAdjustment?: boolean;
   currentPriceNative?: number;
   assetCurrency?: string;
+  transferGroupId?: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -431,6 +452,7 @@ export async function deleteStockPosition(positionId: string, opts?: {
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    transfer_group_id: opts?.transferGroupId,
   });
   revalidatePath("/dashboard/stocks");
   revalidatePath("/dashboard");
