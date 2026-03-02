@@ -49,18 +49,13 @@ interface TransferInput {
   mode: TransferMode;
   source: TransferSide;
   destination: TransferSide;
-  newAsset?: {
-    type: "crypto" | "stock";
-    input: CryptoAssetInput | StockAssetInput;
-  };
+  newCryptoAsset?: CryptoAssetInput;
+  newStockAsset?: StockAssetInput;
 }
 
-interface TransferResult {
-  success: boolean;
-  transferGroupId: string;
-  error?: string;
-  partialFailure?: boolean;
-}
+type TransferResult =
+  | { success: true; transferGroupId: string; partialFailure?: boolean }
+  | { success: false; error: string; transferGroupId?: string; partialFailure?: boolean };
 ```
 
 ## 3. Server Action — `executeTransfer()`

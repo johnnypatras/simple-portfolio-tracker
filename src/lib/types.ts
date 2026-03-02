@@ -536,9 +536,6 @@ export interface TransferInput {
   newStockAsset?: StockAssetInput;
 }
 
-export interface TransferResult {
-  success: boolean;
-  transferGroupId: string;
-  error?: string;
-  partialFailure?: boolean;
-}
+export type TransferResult =
+  | { success: true; transferGroupId: string; partialFailure?: boolean }
+  | { success: false; error: string; transferGroupId?: string; partialFailure?: boolean };
