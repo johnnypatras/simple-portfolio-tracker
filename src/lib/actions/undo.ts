@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActivityLog } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 
@@ -14,49 +15,24 @@ const IMMUTABLE_COLUMNS = new Set([
   "deleted_at",
 ]);
 
+/** Tables that support undo operations. */
+const ALLOWED_UNDO_TABLES = new Set([
+  "crypto_assets", "crypto_positions",
+  "stock_assets", "stock_positions",
+  "wallets", "brokers", "bank_accounts",
+  "exchange_deposits", "broker_deposits",
+  "trade_entries",
+]);
+
 /**
- * Undo a previously logged activity.
- *
- * - Undo "created"  → soft-delete the entity
- * - Undo "removed"  → restore the entity (clear deleted_at; cascade trigger restores children)
- * - Undo "updated"  → restore before_snapshot field values
+ * Undo a single activity log entry. Assumes caller has already verified
+ * authentication and that the entry has not been undone.
  */
-export async function undoActivity(
-  activityLogId: string
+async function undoSingleEntry(
+  log: ActivityLog,
+  supabase: SupabaseClient,
+  _userId: string
 ): Promise<{ success: boolean; message: string }> {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { success: false, message: "Not authenticated" };
-
-  // ── Fetch the log entry ──────────────────────────────────
-  const { data: entry, error: fetchErr } = await supabase
-    .from("activity_log")
-    .select("*")
-    .eq("id", activityLogId)
-    .single();
-
-  if (fetchErr || !entry) {
-    return { success: false, message: "Activity log entry not found" };
-  }
-
-  const log = entry as ActivityLog;
-
-  // ── Guard: allowed table names ─────────────────────────
-  const ALLOWED_UNDO_TABLES = new Set([
-    "crypto_assets", "crypto_positions",
-    "stock_assets", "stock_positions",
-    "wallets", "brokers", "bank_accounts",
-    "exchange_deposits", "broker_deposits",
-    "trade_entries",
-  ]);
-
-  // ── Guard: already undone ────────────────────────────────
-  if (log.undone_at) {
-    return { success: false, message: "This action has already been undone" };
-  }
-
   // ── Guard: missing undo metadata (pre-migration entries) ─
   if (!log.entity_id || !log.entity_table) {
     return {
@@ -165,7 +141,7 @@ export async function undoActivity(
   await supabase
     .from("activity_log")
     .update({ undone_at: new Date().toISOString() })
-    .eq("id", activityLogId);
+    .eq("id", log.id);
 
   // ── Log the undo itself (no entity_id so this entry is non-undoable) ──
   await logActivity({
@@ -175,7 +151,83 @@ export async function undoActivity(
     description: `Undid "${log.action}" on ${log.entity_name}`,
   });
 
-  // ── Revalidate all dashboard paths ───────────────────────
+  return { success: true, message: `Successfully undid "${log.action}" on ${log.entity_name}` };
+}
+
+/**
+ * Undo a previously logged activity.
+ *
+ * - If the entry has a transfer_group_id, undoes ALL legs of the transfer atomically.
+ * - Undo "created"  → soft-delete the entity
+ * - Undo "removed"  → restore the entity (clear deleted_at; cascade trigger restores children)
+ * - Undo "updated"  → restore before_snapshot field values
+ */
+export async function undoActivity(
+  activityLogId: string
+): Promise<{ success: boolean; message: string }> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, message: "Not authenticated" };
+
+  // ── Fetch the log entry ──────────────────────────────────
+  const { data: entry, error: fetchErr } = await supabase
+    .from("activity_log")
+    .select("*")
+    .eq("id", activityLogId)
+    .single();
+
+  if (fetchErr || !entry) {
+    return { success: false, message: "Activity log entry not found" };
+  }
+
+  const log = entry as ActivityLog;
+
+  // ── Guard: already undone ────────────────────────────────
+  if (log.undone_at) {
+    return { success: false, message: "This action has already been undone" };
+  }
+
+  // ── Paired transfer undo — reverse both legs ─────────────
+  if (log.transfer_group_id) {
+    const { data: groupEntries } = await supabase
+      .from("activity_log")
+      .select("*")
+      .eq("transfer_group_id", log.transfer_group_id)
+      .is("undone_at", null)
+      .order("created_at", { ascending: true });
+
+    if (!groupEntries?.length) {
+      return { success: false, message: "No active transfer legs found" };
+    }
+
+    const errors: string[] = [];
+    for (const entry of groupEntries) {
+      const result = await undoSingleEntry(entry as ActivityLog, supabase, user.id);
+      if (!result.success) errors.push(result.message);
+    }
+
+    if (errors.length > 0) {
+      return { success: false, message: `Partial undo: ${errors.join("; ")}` };
+    }
+
+    revalidateDashboard();
+    return { success: true, message: "Transfer reversed (both legs undone)" };
+  }
+
+  // ── Single-entry undo (non-transfer) ─────────────────────
+  const result = await undoSingleEntry(log, supabase, user.id);
+
+  if (result.success) {
+    revalidateDashboard();
+  }
+
+  return result;
+}
+
+/** Revalidate all dashboard paths after a successful undo. */
+function revalidateDashboard() {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard/stocks");
@@ -184,6 +236,4 @@ export async function undoActivity(
   revalidatePath("/dashboard/diary");
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/history");
-
-  return { success: true, message: `Successfully undid "${log.action}" on ${log.entity_name}` };
 }
