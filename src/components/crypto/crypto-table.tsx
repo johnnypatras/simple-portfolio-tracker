@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, Bitcoin, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Bitcoin, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
 const AddCryptoModal = dynamic(() => import("./add-crypto-modal").then(m => m.AddCryptoModal), { ssr: false });
 import { PositionEditor } from "./position-editor";
+import { TransferDialog } from "@/components/ui/transfer-dialog";
+import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -73,10 +76,12 @@ interface CryptoTableProps {
 
 export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxChangePercent = 0, fxChangeValue = 0, stablecoinChange = 0 }: CryptoTableProps) {
   const { isReadOnly } = useSharedView();
+  const router = useRouter();
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
 
   const [addOpen, setAddOpen] = useState(false);
+  const [buyOpen, setBuyOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<CryptoAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState<CryptoGroupMode>("flat");
@@ -471,15 +476,24 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxChange
               onMove={moveColumn}
               onReset={resetToDefaults}
             />
-            {/* Mobile: + Add Asset in toolbar */}
+            {/* Mobile: + Add Asset & Record Buy in toolbar */}
             {!isReadOnly && (
-              <button
-                onClick={() => setAddOpen(true)}
-                className="ml-auto md:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-                Add
-              </button>
+              <div className="ml-auto md:hidden flex items-center gap-1.5">
+                <button
+                  onClick={() => setBuyOpen(true)}
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+                >
+                  <TrendingUp className="w-3 h-3" />
+                  Buy
+                </button>
+                <button
+                  onClick={() => setAddOpen(true)}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -487,7 +501,14 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxChange
 
       {/* ── Action bar (desktop) ─────────────────────────── */}
       {!isReadOnly && (
-        <div className="hidden md:flex items-center justify-end mt-2 mb-3">
+        <div className="hidden md:flex items-center justify-end gap-2 mt-2 mb-3">
+          <button
+            onClick={() => setBuyOpen(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            Record Buy
+          </button>
           <button
             onClick={() => setAddOpen(true)}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
@@ -1287,6 +1308,12 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxChange
       {!isReadOnly && (
         <>
           <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} existingChains={existingChains} />
+          <TransferDialog
+            open={buyOpen}
+            onClose={() => setBuyOpen(false)}
+            onSuccess={() => { router.refresh(); setBuyOpen(false); }}
+            mode={"buy" as TransferMode}
+          />
           {editingAsset && (
             <PositionEditor
               open={!!editingAsset}

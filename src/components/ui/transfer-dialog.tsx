@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { ArrowDown, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { ArrowDown, Loader2, Search } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { executeTransfer } from "@/lib/actions/transfers";
@@ -23,6 +23,11 @@ import type {
   BrokerDeposit,
   CryptoAssetWithPositions,
   StockAssetWithPositions,
+  YahooSearchResult,
+  CoinGeckoSearchResult,
+  StockAssetInput,
+  CryptoAssetInput,
+  AssetCategory,
 } from "@/lib/types";
 
 // ─── Destination type tabs ──────────────────────────────────
@@ -41,6 +46,19 @@ const DEST_TABS: { value: DestType; label: string }[] = [
   { value: "crypto_position", label: "Crypto" },
   { value: "stock_position", label: "Stock" },
 ];
+
+/** Strip exchange suffix: VWCE.DE → VWCE */
+function extractBaseTicker(symbol: string): string {
+  const dot = symbol.indexOf(".");
+  return dot > 0 ? symbol.slice(0, dot) : symbol;
+}
+
+/** Infer asset category from Yahoo quoteType */
+function inferCategory(quoteType: string): AssetCategory {
+  if (quoteType === "ETF") return "etf";
+  if (quoteType === "EQUITY") return "individual_stock";
+  return "other";
+}
 
 // ─── Props ──────────────────────────────────────────────────
 
@@ -98,6 +116,29 @@ export function TransferDialog({
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Buy mode state ──
+  const [buyAssetType, setBuyAssetType] = useState<"stock" | "crypto">("stock");
+  const [buySearchQuery, setBuySearchQuery] = useState("");
+  const [buySearchResults, setBuySearchResults] = useState<(YahooSearchResult | CoinGeckoSearchResult)[]>([]);
+  const [buySearching, setBuySearching] = useState(false);
+  const buyDebounceRef = useRef<NodeJS.Timeout>(null);
+  const [buySelectedAsset, setBuySelectedAsset] = useState<YahooSearchResult | CoinGeckoSearchResult | null>(null);
+  const [buyAssetCurrency, setBuyAssetCurrency] = useState("USD");
+  const [buyLocationId, setBuyLocationId] = useState("");
+  const [buyNewLocationName, setBuyNewLocationName] = useState("");
+  const [buyCreatingNew, setBuyCreatingNew] = useState(false);
+  const [buyQuantity, setBuyQuantity] = useState("");
+  const [buyDetectingChain, setBuyDetectingChain] = useState(false);
+  const [buyDetectedChain, setBuyDetectedChain] = useState<string | null>(null);
+  const [buyDetectedSubcategory, setBuyDetectedSubcategory] = useState<string | null>(null);
+
+  // ── Cash tracking state ──
+  type CashState = "auto" | "prompt" | "skipped";
+  const [cashState, setCashState] = useState<CashState>("prompt");
+  const [cashBalance, setCashBalance] = useState("");
+  const [cashIsAdjustment, setCashIsAdjustment] = useState(true);
+  const [existingCashAmount, setExistingCashAmount] = useState<number | null>(null);
+
   // For move mode: pick destination location (same asset)
   const [moveLocationId, setMoveLocationId] = useState("");
 
@@ -151,17 +192,149 @@ export function TransferDialog({
     setMoveLocationId("");
     setEffectiveDate(new Date().toISOString().split("T")[0]);
     setError(null);
+    // Buy mode reset
+    setBuyAssetType("stock");
+    setBuySearchQuery("");
+    setBuySearchResults([]);
+    setBuySelectedAsset(null);
+    setBuyAssetCurrency("USD");
+    setBuyLocationId("");
+    setBuyNewLocationName("");
+    setBuyCreatingNew(false);
+    setBuyQuantity("");
+    setBuyDetectingChain(false);
+    setBuyDetectedChain(null);
+    setBuyDetectedSubcategory(null);
+    setCashState("prompt");
+    setCashBalance("");
+    setCashIsAdjustment(true);
+    setExistingCashAmount(null);
   }, [open, prefilled?.assetId, prefilled?.locationId]);
 
   // ── Title ──
   const title = useMemo(() => {
+    if (mode === "buy") {
+      if (prefilled?.assetTicker) return `Buy ${prefilled.assetTicker}`;
+      if (buySelectedAsset) {
+        const sym = buySelectedAsset.symbol;
+        return `Buy ${sym.toUpperCase()}`;
+      }
+      return "Record Buy";
+    }
     const name = prefilled?.assetTicker ?? "Asset";
     switch (mode) {
       case "sell": return `Sell ${name}`;
-      case "buy": return `Buy ${name}`;
       case "move": return `Move ${name}`;
     }
-  }, [mode, prefilled?.assetTicker]);
+  }, [mode, prefilled?.assetTicker, buySelectedAsset]);
+
+  // ── Buy mode: debounced asset search ──
+  useEffect(() => {
+    if (mode !== "buy" || buySearchQuery.length < 2) {
+      setBuySearchResults([]);
+      return;
+    }
+    setBuySearching(true);
+    if (buyDebounceRef.current) clearTimeout(buyDebounceRef.current);
+
+    buyDebounceRef.current = setTimeout(async () => {
+      try {
+        const endpoint = buyAssetType === "stock"
+          ? `/api/stocks/search?q=${encodeURIComponent(buySearchQuery)}`
+          : `/api/crypto/search?q=${encodeURIComponent(buySearchQuery)}`;
+        const res = await fetch(endpoint);
+        const data = await res.json();
+        setBuySearchResults(data);
+      } catch {
+        setBuySearchResults([]);
+      } finally {
+        setBuySearching(false);
+      }
+    }, 350);
+
+    return () => { if (buyDebounceRef.current) clearTimeout(buyDebounceRef.current); };
+  }, [buySearchQuery, buyAssetType, mode]);
+
+  // ── Buy mode: handle asset selection ──
+  const handleBuyAssetSelect = useCallback(async (result: YahooSearchResult | CoinGeckoSearchResult) => {
+    setBuySelectedAsset(result);
+    setBuySearchQuery("");
+    setBuySearchResults([]);
+
+    if (buyAssetType === "stock") {
+      const r = result as YahooSearchResult;
+      setBuyAssetCurrency(r.currency ?? "USD");
+    } else {
+      setBuyAssetCurrency("USD");
+      // Auto-detect chain/subcategory
+      const r = result as CoinGeckoSearchResult;
+      setBuyDetectingChain(true);
+      try {
+        const res = await fetch(`/api/crypto/detail?id=${encodeURIComponent(r.id)}`);
+        if (res.ok) {
+          const detail = await res.json();
+          setBuyDetectedChain(detail.chain ?? null);
+          setBuyDetectedSubcategory(detail.subcategory ?? null);
+        }
+      } catch { /* ignore */ }
+      setBuyDetectingChain(false);
+    }
+  }, [buyAssetType]);
+
+  // ── Buy mode: cash auto-detection ──
+  useEffect(() => {
+    if (mode !== "buy" || !buyLocationId || buyCreatingNew) {
+      setExistingCashAmount(null);
+      if (mode === "buy") setCashState("prompt");
+      return;
+    }
+    if (buyAssetType === "stock") {
+      const deposit = brokerDeposits.find(
+        (d) => d.broker_id === buyLocationId && d.currency === buyAssetCurrency
+      );
+      if (deposit) {
+        setExistingCashAmount(deposit.amount);
+        setCashState("auto");
+      } else {
+        setExistingCashAmount(null);
+        setCashState("prompt");
+      }
+    } else {
+      const deposit = exchangeDeposits.find(
+        (d) => d.wallet_id === buyLocationId && d.currency === buyAssetCurrency
+      );
+      if (deposit) {
+        setExistingCashAmount(deposit.amount);
+        setCashState("auto");
+      } else {
+        setExistingCashAmount(null);
+        setCashState("prompt");
+      }
+    }
+  }, [buyLocationId, buyAssetCurrency, buyAssetType, brokerDeposits, exchangeDeposits, mode, buyCreatingNew]);
+
+  // ── Buy mode: auto-calculated value ──
+  const buyValue = useMemo(() => {
+    if (mode !== "buy" || !buySelectedAsset) return null;
+    const qty = parseFloat(buyQuantity);
+    if (isNaN(qty) || qty <= 0) return null;
+    if (buyAssetType === "stock") {
+      const r = buySelectedAsset as YahooSearchResult;
+      if (r.price) return qty * r.price;
+    }
+    return null;
+  }, [mode, buySelectedAsset, buyQuantity, buyAssetType]);
+
+  // ── Buy mode: location options ──
+  const buyLocationOptions = useMemo(() => {
+    if (mode !== "buy") return [];
+    if (buyAssetType === "stock") {
+      return brokers.map((b) => ({ id: b.id, name: b.name }));
+    }
+    return wallets
+      .filter((w) => w.wallet_type === "custodial")
+      .map((w) => ({ id: w.id, name: w.name }));
+  }, [mode, buyAssetType, brokers, wallets]);
 
   // ── Auto-calculate destination amount ──
   const autoCalcValue = useMemo(() => {
@@ -385,15 +558,122 @@ export function TransferDialog({
   // ── Execute ──
   async function handleExecute() {
     setError(null);
-    const source = mode === "sell" || mode === "move" ? buildSource() : null;
-    const dest = buildDest();
 
-    // For buy mode, source comes from destination section (the cash side)
-    // For now, only sell and move are fully supported
     if (mode === "buy") {
-      setError("Buy mode is not yet fully implemented");
+      if (!buySelectedAsset) {
+        setError("Select an asset to buy");
+        return;
+      }
+      const qty = parseFloat(buyQuantity);
+      if (isNaN(qty) || qty <= 0) {
+        setError("Enter a valid quantity");
+        return;
+      }
+      if (!buyLocationId && !buyCreatingNew) {
+        setError("Select or create a location");
+        return;
+      }
+      if (buyCreatingNew && !buyNewLocationName.trim()) {
+        setError("Enter a name for the new institution");
+        return;
+      }
+
+      // Determine if asset is new or existing
+      let existingAssetId: string | undefined;
+      let newStockAsset: StockAssetInput | undefined;
+      let newCryptoAsset: CryptoAssetInput | undefined;
+
+      if (buyAssetType === "stock") {
+        const r = buySelectedAsset as YahooSearchResult;
+        const existing = stockAssets.find((a) => a.yahoo_ticker === r.symbol);
+        if (existing) {
+          existingAssetId = existing.id;
+        } else {
+          newStockAsset = {
+            ticker: extractBaseTicker(r.symbol),
+            name: r.longname || r.shortname,
+            yahoo_ticker: r.symbol,
+            currency: r.currency ?? "USD",
+            category: inferCategory(r.quoteType),
+          };
+        }
+      } else {
+        const r = buySelectedAsset as CoinGeckoSearchResult;
+        const existing = cryptoAssets.find((a) => a.coingecko_id === r.id);
+        if (existing) {
+          existingAssetId = existing.id;
+        } else {
+          newCryptoAsset = {
+            ticker: r.symbol.toUpperCase(),
+            name: r.name,
+            coingecko_id: r.id,
+            chain: buyDetectedChain,
+            subcategory: buyDetectedSubcategory,
+            image_url: r.large ?? r.thumb ?? null,
+          };
+        }
+      }
+
+      // Build destination
+      const destLocId = buyCreatingNew ? "PENDING" : buyLocationId;
+      const destination: TransferSide = buyAssetType === "stock"
+        ? { type: "stock_position", assetId: existingAssetId ?? "PENDING", brokerId: destLocId, quantity: qty }
+        : { type: "crypto_position", assetId: existingAssetId ?? "PENDING", walletId: destLocId, quantity: qty };
+
+      // Build source (cash side) — undefined if skipped
+      let source: TransferSide | undefined;
+      const cashAmount = cashState === "auto" && existingCashAmount !== null
+        ? buyValue ?? 0
+        : cashState === "prompt" && cashBalance
+          ? buyValue ?? 0
+          : 0;
+
+      if (cashState !== "skipped") {
+        if (buyAssetType === "stock") {
+          source = { type: "broker_deposit", brokerId: destLocId, currency: buyAssetCurrency, amount: cashAmount };
+        } else {
+          source = { type: "exchange_deposit", walletId: destLocId, currency: buyAssetCurrency, amount: cashAmount };
+        }
+      }
+
+      const transferInput: TransferInput = {
+        mode: "buy",
+        source,
+        destination,
+        newStockAsset,
+        newCryptoAsset,
+        newBroker: buyAssetType === "stock" && buyCreatingNew ? { name: buyNewLocationName.trim() } : undefined,
+        newWallet: buyAssetType === "crypto" && buyCreatingNew ? { name: buyNewLocationName.trim() } : undefined,
+        newCashDeposit: cashState === "prompt" && cashBalance
+          ? { amount: parseFloat(cashBalance), currency: buyAssetCurrency, isAdjustment: cashIsAdjustment }
+          : undefined,
+        effectiveDate: effectiveDate || undefined,
+      };
+
+      setExecuting(true);
+      try {
+        const result = await executeTransfer(transferInput);
+        if (result.success) {
+          const sym = buySelectedAsset.symbol.toUpperCase();
+          toast.success(`Recorded purchase of ${buyQuantity} ${sym}`);
+          onSuccess?.();
+          onClose();
+        } else {
+          setError(result.error);
+          if (result.partialFailure) {
+            toast.error("Partial failure - check your positions");
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Purchase failed");
+      } finally {
+        setExecuting(false);
+      }
       return;
     }
+
+    const source = mode === "sell" || mode === "move" ? buildSource() : null;
+    const dest = buildDest();
 
     if (!source) {
       setError("Invalid source configuration");
@@ -436,9 +716,20 @@ export function TransferDialog({
 
   // ── Can submit? ──
   const canSubmit = useMemo(() => {
-    if (executing || mode === "buy") return false;
+    if (executing) return false;
+    if (mode === "buy") {
+      if (!buySelectedAsset) return false;
+      const qty = parseFloat(buyQuantity);
+      if (isNaN(qty) || qty <= 0) return false;
+      if (!buyLocationId && !buyCreatingNew) return false;
+      if (buyCreatingNew && !buyNewLocationName.trim()) return false;
+      if (cashState === "prompt" && !cashBalance && existingCashAmount === null) return false;
+      return true;
+    }
     return buildSource() !== null && buildDest() !== null;
-  }, [executing, mode, buildSource, buildDest]);
+  }, [executing, mode, buySelectedAsset, buyQuantity, buyLocationId,
+      buyCreatingNew, buyNewLocationName, cashState, cashBalance, existingCashAmount,
+      buildSource, buildDest]);
 
   // ── Render ──
   return (
@@ -450,10 +741,10 @@ export function TransferDialog({
         </div>
       ) : (
         <div className="space-y-4">
-          {/* ── FROM section ── */}
+          {/* ── FROM / BUYING section ── */}
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 space-y-3">
             <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
-              From
+              {mode === "buy" ? "Buying" : "From"}
             </span>
             {(mode === "sell" || mode === "move") && prefilled && (
               <>
@@ -484,9 +775,174 @@ export function TransferDialog({
               </>
             )}
             {mode === "buy" && (
-              <p className="text-sm text-zinc-400">
-                Select the source of funds in the destination section below.
-              </p>
+              <>
+                {/* Asset type tabs */}
+                <div className="flex gap-1 mb-2">
+                  {(["stock", "crypto"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setBuyAssetType(t);
+                        setBuySelectedAsset(null);
+                        setBuySearchQuery("");
+                        setBuySearchResults([]);
+                        setBuyLocationId("");
+                        setBuyCreatingNew(false);
+                      }}
+                      className={`px-3 py-1 rounded-md text-xs transition-colors ${
+                        buyAssetType === t
+                          ? "bg-blue-600 text-white"
+                          : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      {t === "stock" ? "Stock / ETF" : "Crypto"}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Asset search / selection */}
+                {buySelectedAsset ? (
+                  <div className="flex items-center justify-between bg-zinc-800/50 rounded-lg px-3 py-2">
+                    <div>
+                      <span className="text-sm text-zinc-100 font-medium">
+                        {buySelectedAsset.symbol.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-zinc-500 ml-2">
+                        {"shortname" in buySelectedAsset ? buySelectedAsset.shortname : buySelectedAsset.name}
+                      </span>
+                      {buyAssetCurrency && (
+                        <span className="text-xs text-zinc-600 ml-2">{buyAssetCurrency}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBuySelectedAsset(null);
+                        setBuySearchQuery("");
+                        setBuyLocationId("");
+                        setBuyCreatingNew(false);
+                      }}
+                      className="text-xs text-zinc-500 hover:text-zinc-300"
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">
+                      <Search className="w-3.5 h-3.5 text-zinc-500 mr-2 flex-shrink-0" />
+                      <input
+                        type="text"
+                        value={buySearchQuery}
+                        onChange={(e) => setBuySearchQuery(e.target.value)}
+                        placeholder={buyAssetType === "stock" ? "Search stocks or ETFs..." : "Search crypto..."}
+                        className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 focus:outline-none"
+                      />
+                      {buySearching && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-500" />}
+                    </div>
+                    {buySearchResults.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {buySearchResults.map((r, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => handleBuyAssetSelect(r)}
+                            className="w-full text-left px-3 py-2 hover:bg-zinc-800 transition-colors"
+                          >
+                            <span className="text-sm text-zinc-100">
+                              {r.symbol.toUpperCase()}
+                            </span>
+                            <span className="text-xs text-zinc-500 ml-2">
+                              {"shortname" in r ? r.shortname : r.name}
+                            </span>
+                            {"exchDisp" in r && (
+                              <span className="text-xs text-zinc-600 ml-1">({(r as YahooSearchResult).exchDisp})</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {buyDetectingChain && (
+                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Detecting chain...
+                  </div>
+                )}
+
+                {/* Location picker */}
+                {buySelectedAsset && (
+                  <>
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">
+                        {buyAssetType === "stock" ? "Broker" : "Exchange / Wallet"}
+                      </label>
+                      {buyCreatingNew ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={buyNewLocationName}
+                            onChange={(e) => setBuyNewLocationName(e.target.value)}
+                            placeholder={buyAssetType === "stock" ? "New broker name" : "New exchange name"}
+                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBuyCreatingNew(false);
+                              setBuyNewLocationName("");
+                            }}
+                            className="text-xs text-zinc-500 hover:text-zinc-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={buyLocationId}
+                            onChange={(e) => setBuyLocationId(e.target.value)}
+                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                          >
+                            <option value="">Select...</option>
+                            {buyLocationOptions.map((loc) => (
+                              <option key={loc.id} value={loc.id}>{loc.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setBuyCreatingNew(true)}
+                            className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap"
+                          >
+                            + New
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quantity */}
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={buyQuantity}
+                        onChange={(e) => setBuyQuantity(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      />
+                      {buyValue !== null && (
+                        <div className="text-xs text-zinc-600 mt-1">
+                          ~{buyAssetCurrency} {buyValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
             )}
           </div>
 
@@ -503,14 +959,13 @@ export function TransferDialog({
             <div className="h-px flex-1 bg-zinc-800" />
           </div>
 
-          {/* ── TO section ── */}
+          {/* ── TO / PAYING WITH section ── */}
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 space-y-3">
-            <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
-              To
-            </span>
-
             {mode === "move" ? (
               <>
+                <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
+                  To
+                </span>
                 <div className="text-sm text-zinc-300">
                   {prefilled?.assetTicker} (same asset, different location)
                 </div>
@@ -532,8 +987,81 @@ export function TransferDialog({
                   </select>
                 </div>
               </>
+            ) : mode === "buy" ? (
+              <>
+                <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
+                  Paying With
+                </span>
+
+                {cashState === "skipped" ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-600">Cash not tracked</span>
+                    <button
+                      type="button"
+                      onClick={() => setCashState("prompt")}
+                      className="text-xs text-blue-400 hover:text-blue-300"
+                    >
+                      Track cash
+                    </button>
+                  </div>
+                ) : cashState === "auto" && existingCashAmount !== null ? (
+                  <div className="space-y-1">
+                    <div className="text-sm text-zinc-300">
+                      {buyAssetCurrency} at {buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "\u2014"}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      Balance: {buyAssetCurrency} {existingCashAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      {buyValue !== null && (
+                        <span> → {buyAssetCurrency} {(existingCashAmount - buyValue).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-amber-400">
+                      No {buyAssetCurrency} cash tracked at {buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "this institution"}.
+                    </p>
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">
+                        Current {buyAssetCurrency} balance
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={cashBalance}
+                        onChange={(e) => setCashBalance(e.target.value)}
+                        placeholder="e.g. 5000"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={cashIsAdjustment}
+                        onChange={(e) => setCashIsAdjustment(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <label className="text-[10px] text-zinc-400" title="Not a real transaction — portfolio balance correction">
+                        Portfolio adjustment (existing money, not a new deposit)
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCashState("skipped")}
+                      className="text-xs text-zinc-500 hover:text-zinc-300"
+                    >
+                      Skip cash tracking
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <>
+                <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
+                  To
+                </span>
+
                 {/* Destination type tabs */}
                 <div className="flex flex-wrap gap-1">
                   {DEST_TABS.map((tab) => (
@@ -616,6 +1144,46 @@ export function TransferDialog({
             )}
           </div>
 
+          {/* ── Buy Summary ── */}
+          {mode === "buy" && buySelectedAsset && parseFloat(buyQuantity) > 0 && (buyLocationId || buyCreatingNew) && (
+            <div className="bg-zinc-900/80 border border-zinc-700 rounded-lg p-3 space-y-1 text-xs">
+              <div className="text-zinc-500 uppercase tracking-wider font-medium text-[10px] mb-1">Summary</div>
+              <div className="text-zinc-200">
+                Buy {buyQuantity} × {buySelectedAsset.symbol.toUpperCase()}
+                {" at "}{buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name}
+                {buyValue !== null && <span className="text-zinc-400"> ({buyAssetCurrency} {buyValue.toLocaleString(undefined, { maximumFractionDigits: 2 })})</span>}
+              </div>
+              {cashState === "auto" && existingCashAmount !== null && buyValue !== null && (
+                <div className="text-zinc-400">
+                  Cash: {buyAssetCurrency} {existingCashAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} → {buyAssetCurrency} {(existingCashAmount - buyValue).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </div>
+              )}
+              {cashState === "prompt" && cashBalance && (
+                <div className="text-zinc-400">
+                  Cash: {buyAssetCurrency} {parseFloat(cashBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })} → {buyAssetCurrency} {(parseFloat(cashBalance) - (buyValue ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  {cashIsAdjustment && <span className="text-amber-400 ml-1">(Adj.)</span>}
+                </div>
+              )}
+              {cashState === "skipped" && (
+                <div className="text-zinc-600">Cash: not tracked</div>
+              )}
+              {(() => {
+                const creating: string[] = [];
+                if (buyCreatingNew) creating.push(buyAssetType === "stock" ? `${buyNewLocationName} (broker)` : `${buyNewLocationName} (exchange)`);
+                if (buyAssetType === "stock" && !stockAssets.find((a) => a.yahoo_ticker === (buySelectedAsset as YahooSearchResult).symbol)) {
+                  creating.push(`${(buySelectedAsset as YahooSearchResult).symbol} (asset)`);
+                }
+                if (buyAssetType === "crypto" && !cryptoAssets.find((a) => a.coingecko_id === (buySelectedAsset as CoinGeckoSearchResult).id)) {
+                  creating.push(`${(buySelectedAsset as CoinGeckoSearchResult).symbol.toUpperCase()} (asset)`);
+                }
+                if (cashState === "prompt" && cashBalance) creating.push(`${buyAssetCurrency} deposit`);
+                return creating.length > 0 ? (
+                  <div className="text-blue-400">Creating: {creating.join(", ")}</div>
+                ) : null;
+              })()}
+            </div>
+          )}
+
           {/* ── Date picker ── */}
           <div>
             <label className="block text-xs text-zinc-500 mb-1">Date</label>
@@ -660,7 +1228,7 @@ export function TransferDialog({
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
             >
               {executing && <Loader2 className="w-4 h-4 animate-spin" />}
-              Execute Transfer
+              {mode === "buy" ? "Record Purchase" : "Execute Transfer"}
             </button>
           </div>
         </div>

@@ -31,7 +31,7 @@ export async function createBroker(
     wallet_chain?: string | null;
     also_bank?: boolean;
   }
-) {
+): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -130,6 +130,8 @@ export async function createBroker(
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
+
+  return created!.id;
 }
 
 export async function updateBroker(

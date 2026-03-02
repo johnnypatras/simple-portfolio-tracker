@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
 const AddStockModal = dynamic(() => import("./add-stock-modal").then(m => m.AddStockModal), { ssr: false });
 import { StockPositionEditor } from "./stock-position-editor";
+import { TransferDialog } from "@/components/ui/transfer-dialog";
+import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -79,7 +82,9 @@ interface StockTableProps {
 
 export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxChangePercent = 0, fxChangeValue = 0, dividends }: StockTableProps) {
   const { isReadOnly } = useSharedView();
+  const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
+  const [buyOpen, setBuyOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<StockAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState<StockGroupMode>("flat");
@@ -500,15 +505,24 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               onMove={moveColumn}
               onReset={resetToDefaults}
             />
-            {/* Mobile: + Add Asset in toolbar */}
+            {/* Mobile: + Add Asset & Record Buy in toolbar */}
             {!isReadOnly && (
-              <button
-                onClick={() => setAddOpen(true)}
-                className="ml-auto md:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-                Add
-              </button>
+              <div className="ml-auto md:hidden flex items-center gap-1.5">
+                <button
+                  onClick={() => setBuyOpen(true)}
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+                >
+                  <TrendingUp className="w-3 h-3" />
+                  Buy
+                </button>
+                <button
+                  onClick={() => setAddOpen(true)}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -516,7 +530,14 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
 
       {/* ── Action bar (desktop) ─────────────────────────── */}
       {!isReadOnly && (
-        <div className="hidden md:flex items-center justify-end mt-2 mb-3">
+        <div className="hidden md:flex items-center justify-end gap-2 mt-2 mb-3">
+          <button
+            onClick={() => setBuyOpen(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            Record Buy
+          </button>
           <button
             onClick={() => setAddOpen(true)}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
@@ -1226,6 +1247,12 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
       {!isReadOnly && (
         <>
           <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
+          <TransferDialog
+            open={buyOpen}
+            onClose={() => setBuyOpen(false)}
+            onSuccess={() => { router.refresh(); setBuyOpen(false); }}
+            mode={"buy" as TransferMode}
+          />
           {editingAsset && (
             <StockPositionEditor
               open={!!editingAsset}

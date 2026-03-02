@@ -25,7 +25,7 @@ export async function getWallets() {
 export async function createWallet(
   input: WalletInput,
   opts?: { also_broker?: boolean; also_bank?: boolean }
-) {
+): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -128,6 +128,8 @@ export async function createWallet(
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
+
+  return created!.id;
 }
 
 /**

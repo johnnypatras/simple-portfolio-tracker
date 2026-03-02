@@ -16,6 +16,8 @@ import {
   updateBrokerDeposit,
 } from "@/lib/actions/broker-deposits";
 import { updateBankAccount } from "@/lib/actions/bank-accounts";
+import { createBroker } from "@/lib/actions/brokers";
+import { createWallet } from "@/lib/actions/wallets";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import type {
@@ -56,12 +58,67 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
-  const transferGroupId = crypto.randomUUID();
-
   // Use a local destination variable to avoid mutating input
   let destination: TransferSide = input.destination;
 
   try {
+    // ── Step 0: Create inline entities for buy mode ──────
+    // Use a mutable copy of input so we can patch source IDs
+    let currentSource = input.source;
+
+    if (input.newBroker) {
+      const brokerId = await createBroker({ name: input.newBroker.name });
+      if (destination.type === "stock_position") {
+        destination = { ...destination, brokerId };
+      }
+      if (currentSource?.type === "broker_deposit") {
+        currentSource = { ...currentSource, brokerId };
+      }
+    }
+
+    if (input.newWallet) {
+      const walletId = await createWallet({
+        name: input.newWallet.name,
+        wallet_type: "custodial",
+      });
+      if (destination.type === "crypto_position") {
+        destination = { ...destination, walletId };
+      }
+      if (currentSource?.type === "exchange_deposit") {
+        currentSource = { ...currentSource, walletId };
+      }
+    }
+
+    if (input.newCashDeposit && currentSource) {
+      if (currentSource.type === "broker_deposit") {
+        await createBrokerDeposit(
+          {
+            broker_id: currentSource.brokerId,
+            currency: input.newCashDeposit.currency,
+            amount: input.newCashDeposit.amount,
+          },
+          {
+            isAdjustment: input.newCashDeposit.isAdjustment,
+            effectiveDate: input.effectiveDate,
+          }
+        );
+      } else if (currentSource.type === "exchange_deposit") {
+        await createExchangeDeposit(
+          {
+            wallet_id: currentSource.walletId,
+            currency: input.newCashDeposit.currency,
+            amount: input.newCashDeposit.amount,
+          },
+          {
+            isAdjustment: input.newCashDeposit.isAdjustment,
+            effectiveDate: input.effectiveDate,
+          }
+        );
+      }
+    }
+
+    const transferGroupId = currentSource ? crypto.randomUUID() : "";
+
     // ── Step 1: Create new assets if needed ─────────────────
     if (input.newCryptoAsset) {
       if (destination.type !== "crypto_position") {
@@ -78,42 +135,49 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       destination = { ...destination, assetId: newAssetId };
     }
 
-    // ── Step 2: Fetch current state of source entity ────────
-    const originalState = await fetchSourceState(supabase, input.source);
+    // ── Steps 2–5: Source leg (skip for single-legged buy) ──
+    let originalState: SourceOriginalState | null = null;
+    let prices: TransferPrices = { source: {}, destination: {} };
 
-    // ── Step 3: Validate sufficient balance ─────────────────
-    validateSufficientBalance(input.source, originalState);
-
-    // ── Step 4: Fetch current prices for delta calculation ──
-    const prices = await fetchPrices(supabase, input.source, destination);
-
-    // ── Step 5: Execute source leg (reduce) ─────────────────
-    await executeSourceLeg(input.source, originalState, transferGroupId, prices.source, input.effectiveDate);
+    if (currentSource) {
+      originalState = await fetchSourceState(supabase, currentSource);
+      validateSufficientBalance(currentSource, originalState);
+      prices = await fetchPrices(supabase, currentSource, destination);
+      await executeSourceLeg(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
+    }
 
     // ── Step 6: Execute destination leg (increase) with retry + rollback
     try {
-      await executeDestLeg(supabase, destination, transferGroupId, prices.destination, input.effectiveDate);
+      await executeDestLeg(supabase, destination, transferGroupId || undefined, prices.destination, input.effectiveDate);
     } catch (destErr) {
-      // Retry once
-      try {
-        await executeDestLeg(supabase, destination, transferGroupId, prices.destination, input.effectiveDate);
-      } catch (retryErr) {
-        // Rollback source: restore to original state
+      if (currentSource && originalState) {
+        // Retry once
         try {
-          await rollbackSource(input.source, originalState, transferGroupId, prices.source, input.effectiveDate);
-        } catch (rollbackErr) {
+          await executeDestLeg(supabase, destination, transferGroupId, prices.destination, input.effectiveDate);
+        } catch (retryErr) {
+          // Rollback source: restore to original state
+          try {
+            await rollbackSource(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
+          } catch (rollbackErr) {
+            return {
+              success: false,
+              error: `Transfer failed and rollback failed. Source was modified. Original: ${JSON.stringify(originalState)}. Rollback error: ${rollbackErr instanceof Error ? rollbackErr.message : "unknown"}. Check positions.`,
+              transferGroupId,
+              partialFailure: true,
+            };
+          }
+          const finalErr = retryErr instanceof Error ? retryErr.message : destErr instanceof Error ? destErr.message : "Destination leg failed";
           return {
             success: false,
-            error: `Transfer failed and rollback failed. Source was modified. Original: ${JSON.stringify(originalState)}. Rollback error: ${rollbackErr instanceof Error ? rollbackErr.message : "unknown"}. Check positions.`,
+            error: finalErr,
             transferGroupId,
-            partialFailure: true,
           };
         }
-        const finalErr = retryErr instanceof Error ? retryErr.message : destErr instanceof Error ? destErr.message : "Destination leg failed";
+      } else {
+        // Single-legged buy: no rollback needed
         return {
           success: false,
-          error: finalErr,
-          transferGroupId,
+          error: destErr instanceof Error ? destErr.message : "Failed to create position",
         };
       }
     }
@@ -127,7 +191,6 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     return {
       success: false,
       error: err instanceof Error ? err.message : "Transfer failed",
-      transferGroupId,
     };
   }
 }
@@ -404,7 +467,7 @@ async function executeSourceLeg(
 async function executeDestLeg(
   supabase: SupabaseClient,
   destination: TransferSide,
-  transferGroupId: string,
+  transferGroupId: string | undefined,
   prices: SidePrices,
   effectiveDate?: string
 ): Promise<void> {

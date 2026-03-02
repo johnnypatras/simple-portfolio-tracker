@@ -530,10 +530,13 @@ export type TransferSide =
 
 export interface TransferInput {
   mode: TransferMode;
-  source: TransferSide;
+  source?: TransferSide;
   destination: TransferSide;
   newCryptoAsset?: CryptoAssetInput;
   newStockAsset?: StockAssetInput;
+  newBroker?: { name: string };
+  newWallet?: { name: string };
+  newCashDeposit?: { amount: number; currency: string; isAdjustment: boolean };
   /** ISO date string (YYYY-MM-DD) for backdated transfers. Defaults to today. */
   effectiveDate?: string;
 }
