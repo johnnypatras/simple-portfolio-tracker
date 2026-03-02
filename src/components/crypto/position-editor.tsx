@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Save, Trash2, Loader2, Check, ArrowRightLeft, TrendingDown, TrendingUp } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
@@ -35,6 +36,7 @@ export function PositionEditor({
   existingChains,
   prices,
 }: PositionEditorProps) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   // Transfer dialog state
@@ -590,7 +592,7 @@ export function PositionEditor({
           <TransferDialog
             open={transferOpen}
             onClose={() => { setTransferOpen(false); setMoveSourceWalletId(null); }}
-            onSuccess={onClose}
+            onSuccess={() => { router.refresh(); onClose(); }}
             mode={transferMode}
             initialSource={transferMode !== "buy" ? {
               type: "crypto_position",

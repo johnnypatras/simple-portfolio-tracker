@@ -31,6 +31,7 @@ import { BankAccountModal } from "@/components/cash/bank-account-modal";
 import { ExchangeDepositModal } from "@/components/cash/exchange-deposit-modal";
 import { BrokerDepositModal } from "@/components/cash/broker-deposit-modal";
 import { Modal } from "@/components/ui/modal";
+import { useRouter } from "next/navigation";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
 import { deleteStockAsset } from "@/lib/actions/stocks";
@@ -165,6 +166,7 @@ export function AccountsView({
   const [showAllInstitutions, setShowAllInstitutions] = useState(false);
 
   // Transfer
+  const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
 
   const { isReadOnly } = useSharedView();
@@ -1217,6 +1219,7 @@ export function AccountsView({
           <TransferDialog
             open={transferOpen}
             onClose={() => setTransferOpen(false)}
+            onSuccess={() => { router.refresh(); setTransferOpen(false); }}
             mode={"sell" as TransferMode}
           />
 
