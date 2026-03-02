@@ -498,7 +498,12 @@ export function StockPositionEditor({
                       <Check className="w-3 h-3" /> saved
                     </span>
                   )}
-                  {(adjOverrides[brokerId] ?? existingPosition?.last_was_adjustment) && !justSaved && (
+                  {existingPosition?.last_was_transfer && !justSaved && (
+                    <span className="text-[10px] text-teal-400 font-medium" title="Last change was a sell/buy/move transfer">
+                      Xfer
+                    </span>
+                  )}
+                  {!existingPosition?.last_was_transfer && (adjOverrides[brokerId] ?? existingPosition?.last_was_adjustment) && !justSaved && (
                     <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">
                       Adj.
                     </span>

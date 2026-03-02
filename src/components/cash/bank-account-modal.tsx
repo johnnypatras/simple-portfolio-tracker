@@ -96,7 +96,13 @@ export function BankAccountModal({
       title={editing ? "Edit Bank Account" : "Add Bank Account"}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {editing?.last_was_adjustment && (
+        {editing?.last_was_transfer && (
+          <div className="flex items-center gap-1.5 -mt-2 mb-1">
+            <span className="text-[10px] text-teal-400 font-medium" title="Last change was a sell/buy/move transfer">Xfer</span>
+            <span className="text-[10px] text-zinc-600">Last changed via transfer</span>
+          </div>
+        )}
+        {!editing?.last_was_transfer && editing?.last_was_adjustment && (
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
             <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">Adj.</span>
             <span className="text-[10px] text-zinc-600">Last saved as portfolio adjustment</span>
