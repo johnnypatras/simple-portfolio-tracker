@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  ArrowRightLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, fmtCurrencyCompact, fmtPct, changeColorClass } from "@/lib/format";
@@ -30,6 +31,7 @@ import { BankAccountModal } from "@/components/cash/bank-account-modal";
 import { ExchangeDepositModal } from "@/components/cash/exchange-deposit-modal";
 import { BrokerDepositModal } from "@/components/cash/broker-deposit-modal";
 import { Modal } from "@/components/ui/modal";
+import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
 import { deleteStockAsset } from "@/lib/actions/stocks";
 import { deleteBankAccount } from "@/lib/actions/bank-accounts";
@@ -47,6 +49,7 @@ import type {
   CoinGeckoPriceData,
   YahooStockPriceData,
   YahooDividendMap,
+  TransferMode,
 } from "@/lib/types";
 import { useSharedView } from "@/components/shared-view-context";
 
@@ -160,6 +163,10 @@ export function AccountsView({
   const [editingBrokerDeposit, setEditingBrokerDeposit] = useState<BrokerDeposit | null>(null);
   const [showAddBrokerDeposit, setShowAddBrokerDeposit] = useState<string | null>(null);
   const [showAllInstitutions, setShowAllInstitutions] = useState(false);
+
+  // Transfer
+  const [transferOpen, setTransferOpen] = useState(false);
+
   const { isReadOnly } = useSharedView();
 
   // Delete confirmation
@@ -645,6 +652,21 @@ export function AccountsView({
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pl-4">
+                  {/* Transfer — hover-reveal */}
+                  {!isReadOnly && !isEmpty && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTransferOpen(true);
+                      }}
+                      className={`p-1.5 rounded-lg text-zinc-600 hover:text-blue-400 hover:bg-zinc-800 transition-colors ${
+                        isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                      }`}
+                      title="Transfer"
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   {/* Edit institution — hover-reveal */}
                   {!isReadOnly && !isSelfCustody && (
                     <button
@@ -1190,6 +1212,13 @@ export function AccountsView({
               brokers={showAddBrokerDeposit ? brokersForInstitution(showAddBrokerDeposit) : brokers}
             />
           )}
+
+          {/* Transfer dialog */}
+          <TransferDialog
+            open={transferOpen}
+            onClose={() => setTransferOpen(false)}
+            mode={"sell" as TransferMode}
+          />
 
           {/* Delete confirmation */}
           {deleteTarget && (
