@@ -110,10 +110,6 @@ Data portability and account security features.
 - Clear all data functionality (purges all portfolio tables)
 - Forgot/reset password flow with email verification and secure token handling
 
----
-
-## Upcoming Phases
-
 ### Phase 18 — Multi-User & User Management ✅
 Full multi-user isolation with admin controls and invite system.
 - Supabase Auth with sign-up, login, forgot/reset password, MFA (TOTP)
@@ -124,16 +120,30 @@ Full multi-user isolation with admin controls and invite system.
 - Admin panel: approve/reject/suspend users, manage invite codes
 - Admin role enforcement with service-role client for privileged operations
 
-### Phase 19 — Collaborative Portfolios 🔲
-Invite others to view or contribute to your portfolio.
-- Role-based permissions (viewer, editor) on shared portfolios
-- Collaborative editing with conflict resolution
-- Shared portfolio notifications
+### Phase 19 — Automated Snapshots & Price API Optimization ✅
+Automated daily portfolio snapshots and batch price fetching.
+- pg_cron + pg_net daily cron job (23:55 UTC) triggering Edge Function
+- `daily-snapshot` Supabase Edge Function with service-role auth and CRON_SECRET bearer token
+- Yahoo Finance v7 batch API — single request for all user tickers with crumb+cookie auth
+- v8/chart fallback for tickers missing from v7 batch (chunked in groups of 20)
+- On-demand snapshot deduplication (cron won't overwrite a more complete earlier snapshot)
+
+### Phase 20 — Portfolio Adjustments & Chart Accuracy ✅
+Adjustment-aware portfolio chart that compensates for data entry artifacts.
+- Adjustment flagging (`is_adjustment`) on all CRUD operations with checkbox in create/edit/delete UIs
+- `delta_usd` / `delta_eur` columns on `activity_log` — write-time cached value deltas
+- Historical FX rates via Frankfurter date endpoint for accurate delta computation
+- Adjustment-aware chart with "Adj" toggle (defaults ON) — formula: `value + (finalCumDelta - cumDeltaAtDate)`
+- S&P benchmark seeding from adjusted display-currency value for pixel-perfect starting alignment
+- Cascade delete logging — parent deletes (asset/wallet/broker/institution) individually log child entity removals
+- Retroactive toggle: compute deltas from before/after snapshots with historical prices (CoinGecko/Yahoo)
+- Activity log CSV export includes delta columns
 
 ---
 
 ## Future Ideas (Unscoped)
 
+- **Collaborative Portfolios** — Invite others to view or contribute to your portfolio with role-based permissions
 - **Alerts & Notifications** — Price targets, portfolio threshold alerts
 - **Asset Search** — Search functionality per asset showing location (wallets/brokers), quantities per category, etc.
 - **Donate Button** — Donate/tip button with full backend infrastructure (payment processing, thank-you flow, etc.)
@@ -142,4 +152,4 @@ Invite others to view or contribute to your portfolio.
 
 ---
 
-*Last updated after: Phase 18 — Multi-User & User Management*
+*Last updated after: Phase 20 — Portfolio Adjustments & Chart Accuracy*

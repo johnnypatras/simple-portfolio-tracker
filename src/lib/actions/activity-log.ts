@@ -121,7 +121,9 @@ async function computeDeltaFromSnapshots(
   action: string,
   date: string,
   before: Record<string, unknown> | null,
-  after: Record<string, unknown> | null
+  after: Record<string, unknown> | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabaseOverride?: any
 ): Promise<{ usd: number; eur: number }> {
   // Cash entities — delta comes from amount/balance fields
   if (
@@ -163,7 +165,7 @@ async function computeDeltaFromSnapshots(
         (before?.crypto_asset_id as string);
       if (!assetId) return { usd: 0, eur: 0 };
 
-      const supabase = await createServerSupabaseClient();
+      const supabase = supabaseOverride ?? (await createServerSupabaseClient());
       const { data: asset } = await supabase
         .from("crypto_assets")
         .select("coingecko_id")
@@ -202,7 +204,7 @@ async function computeDeltaFromSnapshots(
         (before?.stock_asset_id as string);
       if (!assetId) return { usd: 0, eur: 0 };
 
-      const supabase = await createServerSupabaseClient();
+      const supabase = supabaseOverride ?? (await createServerSupabaseClient());
       const { data: asset } = await supabase
         .from("stock_assets")
         .select("yahoo_ticker, currency")
@@ -334,17 +336,30 @@ export async function getAdjustmentDeltas(
 // Computes deltas for all adjustment rows that lack them.
 
 export async function backfillAdjustmentDeltas(): Promise<number> {
-  const supabase = await createServerSupabaseClient();
+  // Use admin client to bypass RLS — backfill needs to process all users' rows
+  const supabase = createAdminClient();
 
   const { data: rows, error } = await supabase
     .from("activity_log")
     .select("*")
     .eq("is_adjustment", true)
     .is("delta_usd", null)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(10);
 
   if (error) throw new Error(error.message);
   if (!rows?.length) return 0;
+
+  // Verify caller is admin before processing cross-user data
+  const authClient = await createServerSupabaseClient();
+  const { data: { user } } = await authClient.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { data: profile } = await authClient
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin") throw new Error("Admin access required");
 
   let count = 0;
   for (const row of rows) {
@@ -354,7 +369,8 @@ export async function backfillAdjustmentDeltas(): Promise<number> {
         row.action,
         row.created_at,
         row.before_snapshot as Record<string, unknown> | null,
-        row.after_snapshot as Record<string, unknown> | null
+        row.after_snapshot as Record<string, unknown> | null,
+        supabase // pass admin client for cross-user asset lookups
       );
       const deltaUsd = Math.round(deltas.usd * 100) / 100;
       const deltaEur = Math.round(deltas.eur * 100) / 100;
@@ -364,8 +380,11 @@ export async function backfillAdjustmentDeltas(): Promise<number> {
         .update({ delta_usd: deltaUsd, delta_eur: deltaEur })
         .eq("id", row.id);
       count++;
-    } catch {
-      // Skip rows that fail — best-effort backfill
+    } catch (err) {
+      console.error(
+        `Backfill failed for ${row.entity_type}/${row.action}:`,
+        err instanceof Error ? err.message : err
+      );
     }
   }
 

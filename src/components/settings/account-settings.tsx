@@ -23,7 +23,6 @@ export function AccountSettings({ profile }: { profile: Profile }) {
   const router = useRouter();
   const [clearing, setClearing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
 
   // Change email
