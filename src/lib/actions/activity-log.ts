@@ -49,6 +49,7 @@ export async function logActivity(params: {
   delta_usd?: number | null;
   delta_eur?: number | null;
   transfer_group_id?: string;
+  created_at?: string;
 }): Promise<void> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -72,6 +73,7 @@ export async function logActivity(params: {
       delta_usd: params.delta_usd ?? null,
       delta_eur: params.delta_eur ?? null,
       transfer_group_id: params.transfer_group_id ?? null,
+      ...(params.created_at ? { created_at: params.created_at } : {}),
     });
   } catch {
     // Swallow — audit logging is best-effort

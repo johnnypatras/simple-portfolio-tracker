@@ -32,6 +32,7 @@ export async function createBankAccount(
     also_broker?: boolean;
     isAdjustment?: boolean;
     transferGroupId?: string;
+    effectiveDate?: string;
   }
 ) {
   const supabase = await createServerSupabaseClient();
@@ -77,6 +78,7 @@ export async function createBankAccount(
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
     transfer_group_id: opts?.transferGroupId,
+    created_at: opts?.effectiveDate,
   });
 
   // Create sibling wallet if requested
@@ -159,6 +161,7 @@ export async function updateBankAccount(
     also_broker?: boolean;
     isAdjustment?: boolean;
     transferGroupId?: string;
+    effectiveDate?: string;
   }
 ) {
   const supabase = await createServerSupabaseClient();
@@ -305,6 +308,7 @@ export async function updateBankAccount(
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
     transfer_group_id: opts?.transferGroupId,
+    created_at: opts?.effectiveDate,
   });
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");

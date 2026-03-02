@@ -281,6 +281,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   currentPriceNative?: number;
   assetCurrency?: string;
   transferGroupId?: string;
+  effectiveDate?: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -334,6 +335,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         delta_usd: deltaUsd,
         delta_eur: deltaEur,
         transfer_group_id: opts?.transferGroupId,
+        created_at: opts?.effectiveDate,
       });
     }
   } else {
@@ -396,6 +398,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       delta_usd: deltaUsd,
       delta_eur: deltaEur,
       transfer_group_id: opts?.transferGroupId,
+      created_at: opts?.effectiveDate,
     });
   }
 
@@ -409,6 +412,7 @@ export async function deleteStockPosition(positionId: string, opts?: {
   currentPriceNative?: number;
   assetCurrency?: string;
   transferGroupId?: string;
+  effectiveDate?: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -453,6 +457,7 @@ export async function deleteStockPosition(positionId: string, opts?: {
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
     transfer_group_id: opts?.transferGroupId,
+    created_at: opts?.effectiveDate,
   });
   revalidatePath("/dashboard/stocks");
   revalidatePath("/dashboard");

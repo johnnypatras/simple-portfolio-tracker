@@ -88,19 +88,19 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     const prices = await fetchPrices(supabase, input.source, destination);
 
     // ── Step 5: Execute source leg (reduce) ─────────────────
-    await executeSourceLeg(input.source, originalState, transferGroupId, prices.source);
+    await executeSourceLeg(input.source, originalState, transferGroupId, prices.source, input.effectiveDate);
 
     // ── Step 6: Execute destination leg (increase) with retry + rollback
     try {
-      await executeDestLeg(supabase, destination, transferGroupId, prices.destination);
+      await executeDestLeg(supabase, destination, transferGroupId, prices.destination, input.effectiveDate);
     } catch (destErr) {
       // Retry once
       try {
-        await executeDestLeg(supabase, destination, transferGroupId, prices.destination);
+        await executeDestLeg(supabase, destination, transferGroupId, prices.destination, input.effectiveDate);
       } catch (retryErr) {
         // Rollback source: restore to original state
         try {
-          await rollbackSource(input.source, originalState, transferGroupId, prices.source);
+          await rollbackSource(input.source, originalState, transferGroupId, prices.source, input.effectiveDate);
         } catch (rollbackErr) {
           return {
             success: false,
@@ -311,7 +311,8 @@ async function executeSourceLeg(
   source: TransferSide,
   originalState: SourceOriginalState,
   transferGroupId: string,
-  prices: SidePrices
+  prices: SidePrices,
+  effectiveDate?: string
 ): Promise<void> {
   switch (source.type) {
     case "crypto_position": {
@@ -328,6 +329,7 @@ async function executeSourceLeg(
           transferGroupId,
           currentPriceUsd: prices.priceUsd,
           currentPriceEur: prices.priceEur,
+          effectiveDate,
         }
       );
       break;
@@ -346,6 +348,7 @@ async function executeSourceLeg(
           transferGroupId,
           currentPriceNative: prices.priceNative,
           assetCurrency: prices.currency,
+          effectiveDate,
         }
       );
       break;
@@ -360,7 +363,7 @@ async function executeSourceLeg(
           currency: source.currency,
           amount: newAmount,
         },
-        { isAdjustment: true, transferGroupId }
+        { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
     }
@@ -374,7 +377,7 @@ async function executeSourceLeg(
           currency: source.currency,
           amount: newAmount,
         },
-        { isAdjustment: true, transferGroupId }
+        { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
     }
@@ -389,7 +392,7 @@ async function executeSourceLeg(
           currency: originalState.currency,
           balance: newBalance,
         },
-        { isAdjustment: true, transferGroupId }
+        { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
     }
@@ -402,7 +405,8 @@ async function executeDestLeg(
   supabase: SupabaseClient,
   destination: TransferSide,
   transferGroupId: string,
-  prices: SidePrices
+  prices: SidePrices,
+  effectiveDate?: string
 ): Promise<void> {
   switch (destination.type) {
     case "crypto_position": {
@@ -426,6 +430,7 @@ async function executeDestLeg(
           transferGroupId,
           currentPriceUsd: prices.priceUsd,
           currentPriceEur: prices.priceEur,
+          effectiveDate,
         }
       );
       break;
@@ -450,6 +455,7 @@ async function executeDestLeg(
           transferGroupId,
           currentPriceNative: prices.priceNative,
           assetCurrency: prices.currency,
+          effectiveDate,
         }
       );
       break;
@@ -471,7 +477,7 @@ async function executeDestLeg(
             currency: destination.currency,
             amount: Number(existing.amount) + destination.amount,
           },
-          { isAdjustment: true, transferGroupId }
+          { isAdjustment: true, transferGroupId, effectiveDate }
         );
       } else {
         await createExchangeDeposit(
@@ -480,7 +486,7 @@ async function executeDestLeg(
             currency: destination.currency,
             amount: destination.amount,
           },
-          { isAdjustment: true, transferGroupId }
+          { isAdjustment: true, transferGroupId, effectiveDate }
         );
       }
       break;
@@ -502,7 +508,7 @@ async function executeDestLeg(
             currency: destination.currency,
             amount: Number(existing.amount) + destination.amount,
           },
-          { isAdjustment: true, transferGroupId }
+          { isAdjustment: true, transferGroupId, effectiveDate }
         );
       } else {
         await createBrokerDeposit(
@@ -511,7 +517,7 @@ async function executeDestLeg(
             currency: destination.currency,
             amount: destination.amount,
           },
-          { isAdjustment: true, transferGroupId }
+          { isAdjustment: true, transferGroupId, effectiveDate }
         );
       }
       break;
@@ -532,7 +538,7 @@ async function executeDestLeg(
           currency: existing.currency,
           balance: Number(existing.balance) + destination.amount,
         },
-        { isAdjustment: true, transferGroupId }
+        { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
     }
@@ -545,7 +551,8 @@ async function rollbackSource(
   source: TransferSide,
   originalState: SourceOriginalState,
   transferGroupId: string,
-  prices: SidePrices
+  prices: SidePrices,
+  effectiveDate?: string
 ): Promise<void> {
   switch (source.type) {
     case "crypto_position": {
@@ -561,6 +568,7 @@ async function rollbackSource(
           transferGroupId,
           currentPriceUsd: prices.priceUsd,
           currentPriceEur: prices.priceEur,
+          effectiveDate,
         }
       );
       break;
@@ -578,6 +586,7 @@ async function rollbackSource(
           transferGroupId,
           currentPriceNative: prices.priceNative,
           assetCurrency: prices.currency,
+          effectiveDate,
         }
       );
       break;
@@ -591,7 +600,7 @@ async function rollbackSource(
           currency: source.currency,
           amount: originalState.amount,
         },
-        { isAdjustment: true, transferGroupId }
+        { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
     }
@@ -604,7 +613,7 @@ async function rollbackSource(
           currency: source.currency,
           amount: originalState.amount,
         },
-        { isAdjustment: true, transferGroupId }
+        { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
     }
@@ -618,7 +627,7 @@ async function rollbackSource(
           currency: originalState.currency,
           balance: originalState.balance,
         },
-        { isAdjustment: true, transferGroupId }
+        { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
     }

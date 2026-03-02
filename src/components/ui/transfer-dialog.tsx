@@ -94,6 +94,7 @@ export function TransferDialog({
   const [destCurrency, setDestCurrency] = useState("EUR");
   const [destAmount, setDestAmount] = useState("");
   const [destAmountManual, setDestAmountManual] = useState(false);
+  const [effectiveDate, setEffectiveDate] = useState("");
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -148,6 +149,7 @@ export function TransferDialog({
     setDestAmount("");
     setDestAmountManual(false);
     setMoveLocationId("");
+    setEffectiveDate(new Date().toISOString().split("T")[0]);
     setError(null);
   }, [open, prefilled?.assetId, prefilled?.locationId]);
 
@@ -408,6 +410,7 @@ export function TransferDialog({
         mode,
         source,
         destination: dest,
+        effectiveDate: effectiveDate || undefined,
       };
       const result = await executeTransfer(input);
       if (result.success) {
@@ -611,6 +614,18 @@ export function TransferDialog({
                 </div>
               </>
             )}
+          </div>
+
+          {/* ── Date picker ── */}
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Date</label>
+            <input
+              type="date"
+              value={effectiveDate}
+              max={new Date().toISOString().split("T")[0]}
+              onChange={(e) => setEffectiveDate(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            />
           </div>
 
           {/* ── Fee indicator ── */}

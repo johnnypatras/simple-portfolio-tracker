@@ -238,6 +238,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   currentPriceUsd?: number;
   currentPriceEur?: number;
   transferGroupId?: string;
+  effectiveDate?: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -288,6 +289,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         delta_usd: deltaUsd,
         delta_eur: deltaEur,
         transfer_group_id: opts?.transferGroupId,
+        created_at: opts?.effectiveDate,
       });
     }
   } else {
@@ -351,6 +353,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       delta_usd: deltaUsd,
       delta_eur: deltaEur,
       transfer_group_id: opts?.transferGroupId,
+      created_at: opts?.effectiveDate,
     });
   }
 
@@ -364,6 +367,7 @@ export async function deletePosition(positionId: string, opts?: {
   currentPriceUsd?: number;
   currentPriceEur?: number;
   transferGroupId?: string;
+  effectiveDate?: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -405,6 +409,7 @@ export async function deletePosition(positionId: string, opts?: {
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
     transfer_group_id: opts?.transferGroupId,
+    created_at: opts?.effectiveDate,
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");

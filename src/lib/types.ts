@@ -534,6 +534,8 @@ export interface TransferInput {
   destination: TransferSide;
   newCryptoAsset?: CryptoAssetInput;
   newStockAsset?: StockAssetInput;
+  /** ISO date string (YYYY-MM-DD) for backdated transfers. Defaults to today. */
+  effectiveDate?: string;
 }
 
 export type TransferResult =
