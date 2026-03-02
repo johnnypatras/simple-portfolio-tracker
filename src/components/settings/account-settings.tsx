@@ -16,16 +16,14 @@ import {
   Lock,
   Eye,
   EyeOff,
-  SlidersHorizontal,
 } from "lucide-react";
-import { backfillAdjustmentDeltas } from "@/lib/actions/activity-log";
 import type { Profile } from "@/lib/types";
 
 export function AccountSettings({ profile }: { profile: Profile }) {
   const router = useRouter();
   const [clearing, setClearing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [backfilling, setBackfilling] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   // Change email
@@ -103,20 +101,6 @@ export function AccountSettings({ profile }: { profile: Profile }) {
       setError(err instanceof Error ? err.message : "Failed to clear data");
     } finally {
       setClearing(false);
-    }
-  }
-
-  async function handleBackfill() {
-    setError(null);
-    setBackfilling(true);
-    try {
-      const count = await backfillAdjustmentDeltas();
-      alert(`Backfilled ${count} adjustment row${count === 1 ? "" : "s"}`);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Backfill failed");
-    } finally {
-      setBackfilling(false);
     }
   }
 
@@ -263,30 +247,6 @@ export function AccountSettings({ profile }: { profile: Profile }) {
           {error}
         </p>
       )}
-
-      {/* Maintenance */}
-      <div className="border border-zinc-800/50 rounded-lg p-4 max-w-md">
-        <div className="flex items-center gap-2 mb-4">
-          <SlidersHorizontal className="w-4 h-4 text-amber-400" />
-          <h3 className="text-sm font-medium text-amber-400">Maintenance</h3>
-        </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-zinc-300">Backfill adjustment deltas</p>
-            <p className="text-xs text-zinc-500">
-              Compute USD/EUR deltas for existing adjustment rows
-            </p>
-          </div>
-          <button
-            onClick={handleBackfill}
-            disabled={backfilling}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-400 hover:text-amber-300 border border-amber-500/30 hover:border-amber-500/50 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-            {backfilling ? "Backfilling..." : "Backfill"}
-          </button>
-        </div>
-      </div>
 
       {/* Danger zone */}
       <div className="border border-red-500/20 rounded-lg p-4 max-w-md">
