@@ -66,6 +66,15 @@ export async function updateSession(request: NextRequest) {
       .single();
 
     const isPending = profile?.status === "pending";
+    const isSuspended = profile?.status === "suspended";
+
+    // Suspended users are logged out and sent to login
+    if (isSuspended) {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
 
     // Pending users can only see /pending — redirect everywhere else
     if (isPending && !isPendingPage) {

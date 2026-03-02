@@ -49,7 +49,6 @@ import type {
   BrokerDeposit,
   CoinGeckoPriceData,
   YahooStockPriceData,
-  YahooDividendMap,
   TransferMode,
 } from "@/lib/types";
 import { useSharedView } from "@/components/shared-view-context";
@@ -121,7 +120,6 @@ interface AccountsViewProps {
   cryptoPrices: CoinGeckoPriceData;
   stockPrices: YahooStockPriceData;
   fxRates: FXRates;
-  dividends: YahooDividendMap;
   primaryCurrency: string;
 }
 

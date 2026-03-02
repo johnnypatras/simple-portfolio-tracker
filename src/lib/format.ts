@@ -31,11 +31,13 @@ export function fmtCurrencyCompact(value: number, currency: string, decimals = 0
 
 /** Signed percentage: +2.4% or -1.3% */
 export function fmtPct(value: number, decimals = 1): string {
+  if (!isFinite(value)) return "—";
   return `${value >= 0 ? "+" : ""}${value.toFixed(decimals)}%`;
 }
 
 /** Plain percentage without sign: 2.4% */
 export function fmtPctPlain(value: number, decimals = 0): string {
+  if (!isFinite(value)) return "—";
   return `${value.toFixed(decimals)}%`;
 }
 

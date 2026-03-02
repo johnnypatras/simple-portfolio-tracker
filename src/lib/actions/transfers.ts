@@ -117,7 +117,8 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       }
     }
 
-    const transferGroupId = currentSource ? crypto.randomUUID() : "";
+    // Generate a transfer group ID only for two-legged transfers
+    const transferGroupId: string | undefined = currentSource ? crypto.randomUUID() : undefined;
 
     // ── Step 1: Create new assets if needed ─────────────────
     if (input.newCryptoAsset) {
@@ -143,36 +144,30 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       originalState = await fetchSourceState(supabase, currentSource);
       validateSufficientBalance(currentSource, originalState);
       prices = await fetchPrices(supabase, currentSource, destination);
-      await executeSourceLeg(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
+      await executeSourceLeg(currentSource, originalState, transferGroupId!, prices.source, input.effectiveDate);
     }
 
-    // ── Step 6: Execute destination leg (increase) with retry + rollback
+    // ── Step 6: Execute destination leg (increase) with rollback on failure
     try {
-      await executeDestLeg(supabase, destination, transferGroupId || undefined, prices.destination, input.effectiveDate);
+      await executeDestLeg(supabase, destination, transferGroupId, prices.destination, input.effectiveDate);
     } catch (destErr) {
       if (currentSource && originalState) {
-        // Retry once
+        // Rollback source: restore to original state
         try {
-          await executeDestLeg(supabase, destination, transferGroupId, prices.destination, input.effectiveDate);
-        } catch (retryErr) {
-          // Rollback source: restore to original state
-          try {
-            await rollbackSource(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
-          } catch (rollbackErr) {
-            return {
-              success: false,
-              error: `Transfer failed and rollback failed. Source was modified. Original: ${JSON.stringify(originalState)}. Rollback error: ${rollbackErr instanceof Error ? rollbackErr.message : "unknown"}. Check positions.`,
-              transferGroupId,
-              partialFailure: true,
-            };
-          }
-          const finalErr = retryErr instanceof Error ? retryErr.message : destErr instanceof Error ? destErr.message : "Destination leg failed";
+          await rollbackSource(currentSource, originalState, transferGroupId!, prices.source, input.effectiveDate);
+        } catch (rollbackErr) {
           return {
             success: false,
-            error: finalErr,
+            error: `Transfer failed and rollback failed. Source was modified. Original: ${JSON.stringify(originalState)}. Rollback error: ${rollbackErr instanceof Error ? rollbackErr.message : "unknown"}. Check positions.`,
             transferGroupId,
+            partialFailure: true,
           };
         }
+        return {
+          success: false,
+          error: destErr instanceof Error ? destErr.message : "Destination leg failed",
+          transferGroupId,
+        };
       } else {
         // Single-legged buy: no rollback needed
         return {
@@ -186,7 +181,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     revalidatePath("/dashboard/accounts");
     revalidatePath("/dashboard");
 
-    return { success: true, transferGroupId };
+    return { success: true, transferGroupId: transferGroupId ?? "" };
   } catch (err) {
     return {
       success: false,

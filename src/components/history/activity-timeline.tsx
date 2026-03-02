@@ -77,6 +77,12 @@ const ACTION_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "undone", label: "Undone" },
 ];
 
+// Entity types that affect cash flow derivation
+const CASH_FLOW_ENTITIES: EntityType[] = [
+  "exchange_deposit", "broker_deposit", "bank_account",
+  "crypto_position", "stock_position",
+];
+
 // ─── Icon / color helpers ───────────────────────────────
 
 function getEntityIcon(type: EntityType) {
@@ -264,18 +270,14 @@ export function ActivityTimeline({
       const a = document.createElement("a");
       a.href = url;
       a.download = `activity-history-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
       toast.error("Failed to export CSV");
     }
   }
-
-  // Entity types that affect cash flow derivation
-  const CASH_FLOW_ENTITIES: EntityType[] = [
-    "exchange_deposit", "broker_deposit", "bank_account",
-    "crypto_position", "stock_position",
-  ];
 
   async function handleToggleAdjustment(logId: string, isAdjustment: boolean) {
     try {

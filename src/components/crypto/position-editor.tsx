@@ -73,6 +73,24 @@ export function PositionEditor({
   const subcategoryChanged = (subcategory.trim() || null) !== (asset.subcategory ?? null);
   const metaChanged = chainChanged || subcategoryChanged;
 
+  // Reset all local state when asset prop changes (user opens different asset)
+  useEffect(() => {
+    setChain(asset.chain ?? "");
+    setSubcategory(asset.subcategory ?? "");
+    // Reset position edits and adjustment state
+    const map: Record<string, PositionEdit> = {};
+    asset.positions.forEach((p) => {
+      map[p.wallet_id] = {
+        quantity: p.quantity.toString(),
+        acquisition: p.acquisition_method ?? "bought",
+        apy: (p.apy ?? 0).toString(),
+        isAdjustment: false,
+      };
+    });
+    setEdits(map);
+    setAdjOverrides({});
+  }, [asset.id, asset.chain, asset.subcategory, asset.positions]);
+
   async function handleMetaSave() {
     setMetaSaving(true);
     setError(null);
@@ -82,6 +100,7 @@ export function PositionEditor({
         ...(subcategoryChanged ? { subcategory: subcategory.trim() || null } : {}),
       });
       toast.success("Asset updated");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
     } finally {

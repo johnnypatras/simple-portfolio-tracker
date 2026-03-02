@@ -8,7 +8,7 @@ import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
+import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { AccountsView } from "@/components/accounts/accounts-view";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -51,11 +51,10 @@ export default async function AccountsPage() {
   ];
 
   // ── Round 2: Price fetches that depend on Round 1 data ──
-  const [cryptoPrices, stockPrices, fxRates, dividends] = await Promise.all([
+  const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
     getPrices(coinIds),
     getStockPrices(yahooTickers),
     getFXRates(primaryCurrency, allCurrencies),
-    getDividendYields(yahooTickers),
   ]);
 
   return (
@@ -81,7 +80,6 @@ export default async function AccountsPage() {
         cryptoPrices={cryptoPrices}
         stockPrices={stockPrices}
         fxRates={fxRates}
-        dividends={dividends}
         primaryCurrency={primaryCurrency}
       />
     </div>

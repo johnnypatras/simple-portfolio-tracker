@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { RotateCcw } from "lucide-react";
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import { fmtCurrency, changeColorClass } from "@/lib/format";
@@ -222,11 +222,11 @@ export function WhatIfCalculator({
 }: WhatIfCalculatorProps) {
   const defaultTotal = viewerSummary.totalValue;
   // Keep exact percentages from the summary so default "What If" = "Current"
-  const defaultAlloc: Allocation = {
+  const defaultAlloc = useMemo<Allocation>(() => ({
     crypto: viewerSummary.allocation.crypto,
     stocks: viewerSummary.allocation.stocks,
     cash: viewerSummary.allocation.cash,
-  };
+  }), [viewerSummary.allocation.crypto, viewerSummary.allocation.stocks, viewerSummary.allocation.cash]);
 
   const [total, setTotal] = useState(defaultTotal);
   const [alloc, setAlloc] = useState<Allocation>(defaultAlloc);
@@ -241,8 +241,7 @@ export function WhatIfCalculator({
   const reset = useCallback(() => {
     setTotal(defaultTotal);
     setAlloc(defaultAlloc);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultTotal]);
+  }, [defaultTotal, defaultAlloc]);
 
   const matchOwnerTotal = useCallback(() => {
     setTotal(ownerSummary.totalValue);

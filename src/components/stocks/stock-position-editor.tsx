@@ -87,7 +87,13 @@ export function StockPositionEditor({
     setSubcategory(asset.subcategory ?? "");
     setTags(asset.tags ?? []);
     setTagInput("");
-  }, [asset.id, asset.name, asset.yahoo_ticker, asset.isin, asset.category, asset.subcategory, asset.tags]);
+    // Reset position edits and adjustment state
+    const map: Record<string, string> = {};
+    asset.positions.forEach((p) => { map[p.broker_id] = p.quantity.toString(); });
+    setEdits(map);
+    setAdjustmentFlags({});
+    setAdjOverrides({});
+  }, [asset.id, asset.name, asset.yahoo_ticker, asset.isin, asset.category, asset.subcategory, asset.tags, asset.positions]);
 
   const nameChanged = localName.trim() !== asset.name;
   const yahooTickerChanged = (localYahooTicker.trim() || null) !== (asset.yahoo_ticker ?? null);
@@ -110,6 +116,7 @@ export function StockPositionEditor({
         ...(tagsChanged ? { tags } : {}),
       });
       toast.success("Asset updated");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
     } finally {

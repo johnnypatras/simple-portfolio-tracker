@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireScope } from "../scope-gate";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
+import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { AccountsView } from "@/components/accounts/accounts-view";
 
@@ -35,11 +35,10 @@ export default async function SharedAccountsPage({
     ]),
   ];
 
-  const [cryptoPrices, stockPrices, fxRates, dividends] = await Promise.all([
+  const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
     getPrices(coinIds),
     getStockPrices(yahooTickers),
     getFXRates(primaryCurrency, allCurrencies),
-    getDividendYields(yahooTickers),
   ]);
 
   return (
@@ -62,7 +61,6 @@ export default async function SharedAccountsPage({
         cryptoPrices={cryptoPrices}
         stockPrices={stockPrices}
         fxRates={fxRates}
-        dividends={dividends}
         primaryCurrency={primaryCurrency}
       />
     </div>

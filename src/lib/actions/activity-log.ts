@@ -340,6 +340,17 @@ export async function getAdjustmentDeltas(
 // Computes deltas for all adjustment rows that lack them.
 
 export async function backfillAdjustmentDeltas(): Promise<number> {
+  // Verify caller is admin before accessing cross-user data
+  const authClient = await createServerSupabaseClient();
+  const { data: { user } } = await authClient.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { data: profile } = await authClient
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin") throw new Error("Admin access required");
+
   // Use admin client to bypass RLS — backfill needs to process all users' rows
   const supabase = createAdminClient();
 
@@ -353,17 +364,6 @@ export async function backfillAdjustmentDeltas(): Promise<number> {
 
   if (error) throw new Error(error.message);
   if (!rows?.length) return 0;
-
-  // Verify caller is admin before processing cross-user data
-  const authClient = await createServerSupabaseClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  const { data: profile } = await authClient
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (profile?.role !== "admin") throw new Error("Admin access required");
 
   let count = 0;
   for (const row of rows) {
