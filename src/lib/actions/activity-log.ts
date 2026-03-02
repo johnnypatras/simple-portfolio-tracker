@@ -305,9 +305,19 @@ export async function getAdjustmentDeltas(
     ? createAdminClient()
     : await createServerSupabaseClient();
 
+  // Fetch stablecoin position IDs so we can classify them as cash (matching snapshot logic)
+  // Snapshots count stablecoins in cash_value_usd, not crypto_value_usd
+  const { data: stablecoinPositions } = await supabase
+    .from("crypto_positions")
+    .select("id, crypto_assets!inner(subcategory)")
+    .ilike("crypto_assets.subcategory", "stablecoin");
+  const stablecoinPosIds = new Set(
+    (stablecoinPositions ?? []).map((p) => p.id as string)
+  );
+
   let query = supabase
     .from("activity_log")
-    .select("created_at, delta_usd, delta_eur, entity_type")
+    .select("created_at, delta_usd, delta_eur, entity_type, entity_id, entity_table")
     .eq("is_adjustment", true)
     .is("undone_at", null)
     .not("delta_usd", "is", null)
@@ -324,8 +334,15 @@ export async function getAdjustmentDeltas(
   if (!data?.length) return [];
 
   // Entity-type to asset-class mapping
-  const getAssetClass = (entityType: string): "crypto" | "stocks" | "cash" | null => {
-    if (entityType === "crypto_position") return "crypto";
+  // Stablecoin crypto_positions are reclassified as cash to match snapshot aggregation
+  const getAssetClass = (entityType: string, entityId: string | null, entityTable: string | null): "crypto" | "stocks" | "cash" | null => {
+    if (entityType === "crypto_position") {
+      // Stablecoins are counted as cash in snapshots (subcategory = 'stablecoin')
+      if (entityTable === "crypto_positions" && entityId && stablecoinPosIds.has(entityId)) {
+        return "cash";
+      }
+      return "crypto";
+    }
     if (entityType === "stock_position") return "stocks";
     if (entityType === "bank_account" || entityType === "exchange_deposit" || entityType === "broker_deposit") return "cash";
     return null;
@@ -350,7 +367,7 @@ export async function getAdjustmentDeltas(
     cumUsd += dUsd;
     cumEur += dEur;
 
-    const assetClass = getAssetClass(row.entity_type as string);
+    const assetClass = getAssetClass(row.entity_type as string, row.entity_id as string | null, row.entity_table as string | null);
     if (assetClass === "crypto") { cryptoUsd += dUsd; cryptoEur += dEur; }
     else if (assetClass === "stocks") { stocksUsd += dUsd; stocksEur += dEur; }
     else if (assetClass === "cash") { cashUsd += dUsd; cashEur += dEur; }

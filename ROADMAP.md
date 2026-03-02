@@ -160,6 +160,15 @@ Guided purchase wizard that creates missing entities inline — no pre-setup nee
 - "Record Buy" entry point buttons on stock and crypto dashboard tables
 - `source` optional on `TransferInput`; `createBroker`/`createWallet` return created ID for patching
 
+### Phase 23 — Chart View Modes ✅
+Per-asset-class chart views with mode-specific S&P benchmark and adjustment deltas.
+- View mode cycling: Total → Investments → Crypto → Stocks → Cash (cycle button with `BarChart3` icon)
+- Slice values extracted from snapshot columns (`crypto_value_usd`, `stocks_value_usd`, `cash_value_usd`)
+- Per-asset-class adjustment deltas: `entity_type` mapped to crypto/stocks/cash for mode-specific adjustments
+- FX conversion via snapshot's implicit historical rate (`total_value_eur / total_value_usd`)
+- S&P per mode: ratio-based scaling using `slice_usd / total_usd` at each cash flow date
+- Editable stock asset fields (name, yahoo_ticker, ISIN) in position editor — fix broken tickers without recreating
+
 ---
 
 ## Future Ideas (Unscoped)
@@ -173,4 +182,4 @@ Guided purchase wizard that creates missing entities inline — no pre-setup nee
 
 ---
 
-*Last updated after: Phase 22 — Buy Mode*
+*Last updated after: Phase 23 — Chart View Modes*
