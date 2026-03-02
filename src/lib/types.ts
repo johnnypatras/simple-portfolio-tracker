@@ -60,6 +60,7 @@ export interface BankAccount {
   apy: number;
   institution_id: string | null;
   last_was_adjustment?: boolean;
+  last_was_transfer?: boolean;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -233,6 +234,7 @@ export interface ExchangeDeposit {
   amount: number;
   apy: number;
   last_was_adjustment?: boolean;
+  last_was_transfer?: boolean;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -256,6 +258,7 @@ export interface BrokerDeposit {
   amount: number;
   apy: number;
   last_was_adjustment?: boolean;
+  last_was_transfer?: boolean;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -311,6 +314,7 @@ export interface CryptoPosition {
   acquisition_method: string;
   apy: number;
   last_was_adjustment?: boolean;
+  last_was_transfer?: boolean;
   updated_at: string;
   deleted_at?: string | null;
 }
@@ -362,6 +366,7 @@ export interface StockPosition {
   broker_id: string;
   quantity: number;
   last_was_adjustment?: boolean;
+  last_was_transfer?: boolean;
   updated_at: string;
   deleted_at?: string | null;
 }
@@ -508,5 +513,32 @@ export interface ActivityLog {
   is_adjustment: boolean;
   delta_usd: number | null;
   delta_eur: number | null;
+  transfer_group_id: string | null;
   created_at: string;
+}
+
+// ─── Portfolio Transfers ────────────────────────────────
+
+export type TransferMode = "sell" | "buy" | "move";
+
+export type TransferSide =
+  | { type: "crypto_position"; assetId: string; walletId: string; quantity: number }
+  | { type: "stock_position";  assetId: string; brokerId: string; quantity: number }
+  | { type: "exchange_deposit"; walletId: string; currency: string; amount: number }
+  | { type: "broker_deposit";   brokerId: string; currency: string; amount: number }
+  | { type: "bank_account";     accountId: string; amount: number };
+
+export interface TransferInput {
+  mode: TransferMode;
+  source: TransferSide;
+  destination: TransferSide;
+  newCryptoAsset?: CryptoAssetInput;
+  newStockAsset?: StockAssetInput;
+}
+
+export interface TransferResult {
+  success: boolean;
+  transferGroupId: string;
+  error?: string;
+  partialFailure?: boolean;
 }
