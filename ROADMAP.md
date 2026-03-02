@@ -139,6 +139,27 @@ Adjustment-aware portfolio chart that compensates for data entry artifacts.
 - Retroactive toggle: compute deltas from before/after snapshots with historical prices (CoinGecko/Yahoo)
 - Activity log CSV export includes delta columns
 
+### Phase 21 — Portfolio Transfers ✅
+Two-legged transfer system for recording sells, buys, and moves between portfolio entities.
+- `transfer_group_id` UUID linking source (reduce) and destination (increase) activity log entries
+- Both legs flagged as `is_adjustment=true` — S&P benchmark ignores internal moves
+- Fees captured implicitly (source delta ≠ destination delta → net = fee)
+- `last_was_transfer` column on 5 entity tables for Xfer badge (teal, precedence over Adj. amber)
+- Sell: position → cash; Move: position → position (different location); Buy: stub for Phase 22
+- Paired undo via `transfer_group_id` — undoing one leg reverts both
+- `effectiveDate` parameter for backdated transfers (historical price lookups automatically use the date)
+
+### Phase 22 — Buy Mode ✅
+Guided purchase wizard that creates missing entities inline — no pre-setup needed.
+- Progressive buy form in TransferDialog: asset search → institution picker → cash tracking → summary
+- Asset search via Yahoo Finance (stocks/ETFs) and CoinGecko (crypto) with debounced API calls
+- Inline institution creation: create broker or exchange wallet by name during the buy flow
+- Cash tracking: auto-detect existing deposits, prompt to declare balance (with adjustment flag), or skip
+- Skip cash = single-legged position creation (identical to "Add Asset" flow, no `transfer_group_id`)
+- Crypto auto-detection: background `/api/crypto/detail` call for chain and subcategory
+- "Record Buy" entry point buttons on stock and crypto dashboard tables
+- `source` optional on `TransferInput`; `createBroker`/`createWallet` return created ID for patching
+
 ---
 
 ## Future Ideas (Unscoped)
@@ -152,4 +173,4 @@ Adjustment-aware portfolio chart that compensates for data entry artifacts.
 
 ---
 
-*Last updated after: Phase 20 — Portfolio Adjustments & Chart Accuracy*
+*Last updated after: Phase 22 — Buy Mode*

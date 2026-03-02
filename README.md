@@ -44,6 +44,15 @@ Built with Next.js, Supabase, and Tailwind CSS. Deployed on Vercel with automate
 - Add/remove roles without recreating entities
 - Institution-level grouping across asset classes
 
+### Transfers & Buy Mode
+- **Sell** — reduce a position, increase cash at the same institution
+- **Buy** — guided wizard: search for an asset, pick or create an institution, optionally track cash
+- **Move** — relocate a position between brokers/wallets (same asset, different location)
+- **Inline entity creation** — create a new broker, exchange, or asset directly inside the buy flow
+- **Cash tracking** — auto-detects existing deposits; prompts to declare balance or skip
+- **Backdating** — pick a past date for any transfer; prices and FX rates use the historical date
+- **Implicit fees** — if the cash paid differs from the position value, the delta is shown as a fee
+
 ### Activity & History
 - **Activity log** — full audit trail of every portfolio change with before/after snapshots
 - **Undo** — revert any logged change (soft-delete with `undone_at` timestamp)
@@ -89,6 +98,50 @@ When portfolio corrections are flagged as adjustments (e.g., importing pre-exist
 
 For the full algorithm deep-dive, see [NOTES-benchmark-algorithm.md](./NOTES-benchmark-algorithm.md).
 
+## How Buying, Selling & Transfers Work
+
+The portfolio tracker doesn't have explicit "deposit" or "withdrawal" buttons. Instead, money movements are modeled as **transfers between entities** — and the system figures out the rest.
+
+### The Two Sides of Every Transaction
+
+Every financial action has two sides. When you buy stock, cash leaves your brokerage account and shares arrive. When you sell crypto, coins leave your wallet and cash arrives at your exchange. The tracker models this as a **two-legged transfer**: one side decreases, the other increases.
+
+```
+SELL 10 shares of VWCE at DEGIRO
+  Source:      VWCE @ DEGIRO     → quantity decreases by 10
+  Destination: EUR cash @ DEGIRO → balance increases by €1,200
+  Fee:         (if cash received ≠ calculated value, difference = implicit fee)
+```
+
+Both legs are linked by a shared `transfer_group_id`, so undoing one automatically reverts both.
+
+### Deposits & Withdrawals — No Separate Buttons Needed
+
+There are no dedicated deposit/withdrawal forms. These happen naturally through transfers:
+
+| Action | How to record it |
+|--------|-----------------|
+| **Deposit cash at broker** | Sell → source: bank account, destination: broker cash |
+| **Withdraw to bank** | Sell → source: broker/exchange cash, destination: bank account |
+| **Buy stock** | Buy → cash decreases at broker, stock position increases |
+| **Sell crypto** | Sell → crypto position decreases, exchange cash increases |
+| **Move between wallets** | Move → same asset, different location |
+
+### The Buy Wizard — Start from Nothing
+
+The **Record Buy** button opens a guided flow designed for the common case: you just bought something and want to record it.
+
+1. **Search** for the asset (Yahoo Finance for stocks, CoinGecko for crypto)
+2. **Pick a location** — select an existing broker/exchange, or type a name to create one on the spot
+3. **Cash tracking** — if you have cash tracked at that institution, it auto-deducts. If not, you can declare your current balance (as a portfolio adjustment or real deposit), or skip cash tracking entirely
+4. **Review & submit** — summary shows what will be created and modified
+
+If you skip cash tracking, the buy is recorded as a simple position addition — identical to clicking "Add Asset" directly.
+
+### Portfolio Adjustments vs. Real Transactions
+
+When importing existing holdings or correcting data, you can flag entries as **portfolio adjustments**. The S&P 500 benchmark ignores adjustments — they represent money that was already invested, not new capital entering the portfolio. All internal transfers (buy/sell/move) are automatically flagged as adjustments since they don't change total portfolio value.
+
 ## Tech Stack
 
 | Layer | Tech |
@@ -125,7 +178,7 @@ npm install
 
 1. Create a new project at [supabase.com](https://supabase.com)
 2. Go to the **SQL Editor** in your Supabase dashboard
-3. Run each migration file from `supabase/migrations/` **in numerical order** (001 through 044)
+3. Run each migration file from `supabase/migrations/` **in numerical order** (001 through 045)
 
 ### 3. Configure environment variables
 
@@ -197,7 +250,7 @@ src/
 │   ├── types.ts                #   TypeScript type definitions
 │   └── format.ts               #   Currency & number formatting
 supabase/
-├── migrations/                 # 44 SQL migrations (schema, RLS, triggers, cron)
+├── migrations/                 # 45 SQL migrations (schema, RLS, triggers, cron)
 └── functions/                  # Edge Functions (daily-snapshot)
 ```
 
