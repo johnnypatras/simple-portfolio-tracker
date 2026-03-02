@@ -311,7 +311,8 @@ export async function getAdjustmentDeltas(
     .eq("is_adjustment", true)
     .is("undone_at", null)
     .not("delta_usd", "is", null)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(10000);
 
   if (userId) {
     query = query.eq("user_id", userId);

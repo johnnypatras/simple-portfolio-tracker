@@ -67,7 +67,9 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
     .eq("is_adjustment", false)
     .is("undone_at", null);
   if (userId) query = query.eq("user_id", userId);
-  const { data: allLogs, error } = await query.order("created_at", { ascending: true });
+  const { data: allLogs, error } = await query
+    .order("created_at", { ascending: true })
+    .limit(10000);
 
   if (error || !allLogs || allLogs.length === 0) return [];
 
