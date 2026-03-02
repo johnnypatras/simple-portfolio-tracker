@@ -126,6 +126,16 @@ export default async function SharedOverviewPage({
           sp500History={sp500TRHistory}
           cashFlows={cashFlows}
           adjustmentDeltas={adjustmentDeltas}
+          liveSlices={{
+            crypto: summary.cryptoValue,
+            stocks: summary.stocksValue,
+            cash: summary.cashValue,
+          }}
+          liveSlicesUsd={{
+            crypto: summary.cryptoValueUsd,
+            stocks: summary.stocksValueUsd,
+            cash: summary.cashValueUsd,
+          }}
         />
       </div>
     </div>

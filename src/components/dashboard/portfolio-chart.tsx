@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Layers, TrendingUp, Info, SlidersHorizontal } from "lucide-react";
+import { Layers, TrendingUp, Info, SlidersHorizontal, BarChart3 } from "lucide-react";
 import type { PortfolioSnapshot } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/actions/benchmark";
 import type { AdjustmentDelta } from "@/lib/actions/activity-log";
@@ -24,6 +24,8 @@ interface PortfolioChartProps {
   sp500History?: { date: string; close: number }[];
   cashFlows?: CashFlowEvent[];
   adjustmentDeltas?: AdjustmentDelta[];
+  liveSlices?: { crypto: number; stocks: number; cash: number };
+  liveSlicesUsd?: { crypto: number; stocks: number; cash: number };
 }
 
 // Module-level constant: today's date string (stable for the lifetime of the page)
@@ -40,6 +42,24 @@ const PERIODS = [
   { label: "All", days: Infinity },
 ] as const;
 
+const VIEW_MODES = ["total", "investments", "crypto", "stocks", "cash"] as const;
+type ChartViewMode = (typeof VIEW_MODES)[number];
+
+const VIEW_MODE_LABELS: Record<ChartViewMode, string> = {
+  total: "Total",
+  investments: "Investments",
+  crypto: "Crypto",
+  stocks: "Stocks",
+  cash: "Cash",
+};
+
+const CHART_TITLES: Record<ChartViewMode, string> = {
+  total: "Portfolio Value",
+  investments: "Investments Value",
+  crypto: "Crypto Value",
+  stocks: "Stocks Value",
+  cash: "Cash Value",
+};
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -54,11 +74,14 @@ export function PortfolioChart({
   sp500History = [],
   cashFlows = [],
   adjustmentDeltas = [],
+  liveSlices,
+  liveSlicesUsd,
 }: PortfolioChartProps) {
   const [periodIdx, setPeriodIdx] = useState(3); // default to 30D
   const [showAllocation, setShowAllocation] = useState(false);
   const [showBenchmark, setShowBenchmark] = useState(false);
   const [showAdjusted, setShowAdjusted] = useState(true); // default ON
+  const [viewMode, setViewMode] = useState<ChartViewMode>("total");
   const period = PERIODS[periodIdx];
 
   const hasDeltas = adjustmentDeltas.length > 0;
@@ -80,15 +103,17 @@ export function PortfolioChart({
       : snapshots;
 
     const points = filtered.map((s) => {
-      // Allocation % from snapshot data (always USD-based for consistency)
-      const totalUsd = s.total_value_usd || 1; // avoid division by zero
+      const totalUsd = s.total_value_usd || 1;
       return {
         date: s.snapshot_date,
         value: s[valueKey] ?? 0,
-        valueUsd: s.total_value_usd ?? 0, // always track USD for S&P benchmark FX conversion
+        valueUsd: s.total_value_usd ?? 0,
         cryptoPct: (s.crypto_value_usd / totalUsd) * 100,
         stocksPct: (s.stocks_value_usd / totalUsd) * 100,
         cashPct: (s.cash_value_usd / totalUsd) * 100,
+        cryptoUsd: s.crypto_value_usd ?? 0,
+        stocksUsd: s.stocks_value_usd ?? 0,
+        cashUsd: s.cash_value_usd ?? 0,
       };
     });
 
@@ -103,25 +128,58 @@ export function PortfolioChart({
         cryptoPct: lastPoint?.cryptoPct ?? 0,
         stocksPct: lastPoint?.stocksPct ?? 0,
         cashPct: lastPoint?.cashPct ?? 0,
+        cryptoUsd: liveSlicesUsd?.crypto ?? lastPoint?.cryptoUsd ?? 0,
+        stocksUsd: liveSlicesUsd?.stocks ?? lastPoint?.stocksUsd ?? 0,
+        cashUsd: liveSlicesUsd?.cash ?? lastPoint?.cashUsd ?? 0,
       });
     } else {
-      // Update today's point with live value (fresher than snapshot)
-      points[points.length - 1].value = liveValue;
-      points[points.length - 1].valueUsd = liveValueUsd;
+      const tp = points[points.length - 1];
+      tp.value = liveValue;
+      tp.valueUsd = liveValueUsd;
+      if (liveSlicesUsd) {
+        tp.cryptoUsd = liveSlicesUsd.crypto;
+        tp.stocksUsd = liveSlicesUsd.stocks;
+        tp.cashUsd = liveSlicesUsd.cash;
+      }
     }
 
-    // ── Adjustment delta lookup ──
-    // For each chart point, find the most recent cumulative delta on or before
-    // that date. Then compute: adjustedValue = value + (finalCumDelta - cumDelta).
-    // This "fills the gap" — early snapshots that are missing not-yet-imported
-    // holdings get the missing value added back, flattening the import ramp.
+    // ── Slice value extraction per view mode ──
+    const getSliceValueUsd = (p: typeof points[number]): number => {
+      if (viewMode === "total") return p.valueUsd;
+      if (viewMode === "investments") return p.cryptoUsd + p.stocksUsd;
+      if (viewMode === "crypto") return p.cryptoUsd;
+      if (viewMode === "stocks") return p.stocksUsd;
+      return p.cashUsd;
+    };
+
+    const toDisplayFromUsd = (usd: number, p: { value: number; valueUsd: number }): number => {
+      if (primaryCurrency === "USD") return usd;
+      if (p.valueUsd === 0) return usd;
+      return usd * (p.value / p.valueUsd);
+    };
+
+    const getSliceValue = (p: typeof points[number]): number => {
+      if (viewMode === "total") return p.value;
+      return toDisplayFromUsd(getSliceValueUsd(p), p);
+    };
+
+    // ── Adjustment delta lookup (per view mode) ──
+    const getDeltaPair = (d: AdjustmentDelta): { cumUsd: number; cumEur: number } => {
+      if (viewMode === "total") return { cumUsd: d.cumulative_usd, cumEur: d.cumulative_eur };
+      if (viewMode === "investments") return {
+        cumUsd: d.crypto_cumulative_usd + d.stocks_cumulative_usd,
+        cumEur: d.crypto_cumulative_eur + d.stocks_cumulative_eur,
+      };
+      if (viewMode === "crypto") return { cumUsd: d.crypto_cumulative_usd, cumEur: d.crypto_cumulative_eur };
+      if (viewMode === "stocks") return { cumUsd: d.stocks_cumulative_usd, cumEur: d.stocks_cumulative_eur };
+      return { cumUsd: d.cash_cumulative_usd, cumEur: d.cash_cumulative_eur };
+    };
+
     const deltaLookup = adjustmentDeltas.map((d) => ({
       date: d.date,
-      cumUsd: d.cumulative_usd,
-      cumEur: d.cumulative_eur,
+      ...getDeltaPair(d),
     }));
 
-    // Final cumulative delta = total of all adjustments ever recorded
     const finalCumDelta =
       deltaLookup.length > 0
         ? deltaLookup[deltaLookup.length - 1]
@@ -140,6 +198,29 @@ export function PortfolioChart({
         }
       }
       return result;
+    };
+
+    // ── Snapshot ratio lookup for S&P scaling ──
+    const snapshotRatios = viewMode === "total"
+      ? null
+      : filtered.map((s) => {
+          const totalUsd = s.total_value_usd || 1;
+          let sliceUsd: number;
+          if (viewMode === "investments") sliceUsd = (s.crypto_value_usd ?? 0) + (s.stocks_value_usd ?? 0);
+          else if (viewMode === "crypto") sliceUsd = s.crypto_value_usd ?? 0;
+          else if (viewMode === "stocks") sliceUsd = s.stocks_value_usd ?? 0;
+          else sliceUsd = s.cash_value_usd ?? 0;
+          return { date: s.snapshot_date, ratio: sliceUsd / totalUsd };
+        });
+
+    const getSliceRatio = (date: string): number => {
+      if (!snapshotRatios || snapshotRatios.length === 0) return 1;
+      let ratio = snapshotRatios[0].ratio;
+      for (const sr of snapshotRatios) {
+        if (sr.date <= date) ratio = sr.ratio;
+        else break;
+      }
+      return ratio;
     };
 
     // ── Cash-flow-adjusted S&P 500 benchmark ──
@@ -184,7 +265,8 @@ export function PortfolioChart({
       for (const cf of cashFlows) {
         const price = getSp500Price(cf.date);
         if (price && price > 0) {
-          sp500Units += cf.amount_usd / price;
+          const scaledAmount = cf.amount_usd * getSliceRatio(cf.date);
+          sp500Units += scaledAmount / price;
         }
         if (cf.date < chartStart) {
           preChartUnits = sp500Units;
@@ -201,9 +283,8 @@ export function PortfolioChart({
         const sp500StartPrice = getSp500Price(firstPoint.date);
         if (sp500StartPrice && sp500StartPrice > 0) {
           const firstDelta = getCumulativeDelta(firstPoint.date);
-          // Compute adjusted value in the display currency first, then convert
-          // back to USD. This avoids FX mismatch: each delta was converted at
-          // its own historical rate, so cumUsd × snapshotFX ≠ cumEur.
+          const firstSliceVal = getSliceValue(firstPoint);
+          const firstSliceUsd = getSliceValueUsd(firstPoint);
           const firstDeltaDisp =
             primaryCurrency === "EUR" ? firstDelta.eur : firstDelta.usd;
           const finalDeltaDisp =
@@ -211,10 +292,10 @@ export function PortfolioChart({
               ? finalCumDelta.cumEur
               : finalCumDelta.cumUsd;
           const adjustedFirstDisp =
-            firstPoint.value + (finalDeltaDisp - firstDeltaDisp);
+            firstSliceVal + (finalDeltaDisp - firstDeltaDisp);
           const adjustedFirstUsd =
-            firstPoint.valueUsd > 0
-              ? adjustedFirstDisp * (firstPoint.valueUsd / firstPoint.value)
+            firstSliceUsd > 0 && firstSliceVal > 0
+              ? adjustedFirstDisp * (firstSliceUsd / firstSliceVal)
               : adjustedFirstDisp;
           const neededUnits = adjustedFirstUsd / sp500StartPrice;
           if (neededUnits > preChartUnits) {
@@ -239,29 +320,30 @@ export function PortfolioChart({
           ? toDisplayCurrency(sp500ValueUsd, p)
           : undefined;
 
-        // Compute adjusted value: fill in the "gap" of not-yet-imported value
+        const sliceVal = getSliceValue(p);
         const delta = getCumulativeDelta(p.date);
         const deltaDisplay =
           primaryCurrency === "EUR" ? delta.eur : delta.usd;
         const finalDeltaDisplay =
           primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
-        const adjustedValue = p.value + (finalDeltaDisplay - deltaDisplay);
+        const adjustedValue = sliceVal + (finalDeltaDisplay - deltaDisplay);
 
-        return { ...p, sp500Value, adjustedValue, rawValue: p.value };
+        return { ...p, value: sliceVal, sp500Value, adjustedValue, rawValue: sliceVal };
       });
     } else {
       // ── Fallback: naive normalization ──
       // Use adjusted start value so S&P matches portfolio after adjustment compensation
+      const firstSliceVal = points[0] ? getSliceValue(points[0]) : 0;
       const firstDeltaFb = getCumulativeDelta(chartStart);
       const finalDeltaFb =
         primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
       const firstDeltaFbDisplay =
         primaryCurrency === "EUR" ? firstDeltaFb.eur : firstDeltaFb.usd;
-      const portfolioStart =
-        (points[0]?.value ?? 0) + (finalDeltaFb - firstDeltaFbDisplay);
+      const portfolioStart = firstSliceVal + (finalDeltaFb - firstDeltaFbDisplay);
       const sp500Start = getSp500Price(chartStart);
 
       enriched = points.map((p) => {
+        const sliceVal = getSliceValue(p);
         let sp500Value: number | undefined;
         if (sp500Start && portfolioStart > 0) {
           const close = getSp500Price(p.date);
@@ -275,20 +357,20 @@ export function PortfolioChart({
           primaryCurrency === "EUR" ? delta.eur : delta.usd;
         const finalDeltaDisplay =
           primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
-        const adjustedValue = p.value + (finalDeltaDisplay - deltaDisplay);
+        const adjustedValue = sliceVal + (finalDeltaDisplay - deltaDisplay);
 
-        return { ...p, sp500Value, adjustedValue, rawValue: p.value };
+        return { ...p, value: sliceVal, sp500Value, adjustedValue, rawValue: sliceVal };
       });
     }
 
     return enriched;
-  }, [snapshots, liveValue, liveValueUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, adjustmentDeltas]);
+  }, [snapshots, liveValue, liveValueUsd, liveSlices, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, adjustmentDeltas, viewMode]);
 
   if (data.length < 2) {
     return (
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-          <h3 className="text-sm font-medium text-zinc-400">Portfolio Value</h3>
+          <h3 className="text-sm font-medium text-zinc-400">{CHART_TITLES[viewMode]}</h3>
           <PeriodSelector
             periods={PERIODS}
             activeIdx={periodIdx}
@@ -321,7 +403,22 @@ export function PortfolioChart({
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="flex items-center gap-3">
-          <h3 className="text-sm font-medium text-zinc-400">Portfolio Value</h3>
+          <h3 className="text-sm font-medium text-zinc-400">{CHART_TITLES[viewMode]}</h3>
+          <button
+            onClick={() => {
+              const nextIdx = (VIEW_MODES.indexOf(viewMode) + 1) % VIEW_MODES.length;
+              setViewMode(VIEW_MODES[nextIdx]);
+            }}
+            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+              viewMode !== "total"
+                ? "bg-blue-500/20 text-blue-400"
+                : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+            }`}
+            title="Cycle view: Total → Investments → Crypto → Stocks → Cash"
+          >
+            <BarChart3 className="w-3 h-3" />
+            <span>{viewMode === "total" ? "View" : VIEW_MODE_LABELS[viewMode]}</span>
+          </button>
           {hasDeltas && (
             <button
               onClick={() => setShowAdjusted(!showAdjusted)}
@@ -434,6 +531,9 @@ export function PortfolioChart({
                       {formatDate(point.date)}
                     </p>
                     <p className="text-sm font-medium text-zinc-100">
+                      {viewMode !== "total" && (
+                        <span className="text-zinc-500 mr-1">{VIEW_MODE_LABELS[viewMode]}</span>
+                      )}
                       {fmtCurrencyCompact(displayValue, primaryCurrency)}
                     </p>
                     {hasDeltas && showAdjusted && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
