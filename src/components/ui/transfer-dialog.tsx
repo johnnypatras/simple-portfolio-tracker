@@ -61,6 +61,7 @@ interface InitialSide {
 interface TransferDialogProps {
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   mode: TransferMode;
   initialSource?: InitialSide;
   initialDestination?: InitialSide;
@@ -71,6 +72,7 @@ interface TransferDialogProps {
 export function TransferDialog({
   open,
   onClose,
+  onSuccess,
   mode,
   initialSource,
   initialDestination,
@@ -128,7 +130,10 @@ export function TransferDialog({
       setStockAssets(sa ?? []);
       setDataLoading(false);
     }).catch(() => {
-      if (!cancelled) setDataLoading(false);
+      if (!cancelled) {
+        setDataLoading(false);
+        setError("Failed to load data. Please close and try again.");
+      }
     });
     return () => { cancelled = true; };
   }, [open]);
@@ -144,7 +149,7 @@ export function TransferDialog({
     setDestAmountManual(false);
     setMoveLocationId("");
     setError(null);
-  }, [open, prefilled?.currentQty]);
+  }, [open, prefilled?.assetId, prefilled?.locationId]);
 
   // ── Title ──
   const title = useMemo(() => {
@@ -157,44 +162,46 @@ export function TransferDialog({
   }, [mode, prefilled?.assetTicker]);
 
   // ── Auto-calculate destination amount ──
-  const autoCalcDest = useCallback(() => {
+  const autoCalcValue = useMemo(() => {
     if (!prefilled?.currentPrice) return null;
     const qty = parseFloat(sourceQty);
     if (isNaN(qty) || qty <= 0) return null;
 
     if (mode === "move") return qty;
 
-    // Asset -> Cash
+    // Asset -> Cash: pick price matching destination currency
     if (
       mode === "sell" &&
       (destType === "broker_deposit" || destType === "exchange_deposit" || destType === "bank_account")
     ) {
-      return qty * prefilled.currentPrice;
+      const priceForDest =
+        destCurrency === "USD" ? (prefilled.currentPriceUsd ?? prefilled.currentPrice) :
+        destCurrency === "EUR" ? (prefilled.currentPriceEur ?? prefilled.currentPrice) :
+        prefilled.currentPrice;
+      return qty * (priceForDest ?? 0);
     }
 
     return null;
-  }, [sourceQty, prefilled?.currentPrice, mode, destType]);
+  }, [sourceQty, prefilled?.currentPrice, prefilled?.currentPriceUsd, prefilled?.currentPriceEur, mode, destType, destCurrency]);
 
   // Update destination amount when auto-calc changes (only if not manually edited)
   useEffect(() => {
     if (destAmountManual) return;
-    const calc = autoCalcDest();
-    if (calc !== null) {
-      setDestAmount(calc.toFixed(2));
+    if (autoCalcValue !== null) {
+      setDestAmount(autoCalcValue.toFixed(2));
     }
-  }, [autoCalcDest, destAmountManual]);
+  }, [autoCalcValue, destAmountManual]);
 
   // ── Fee indicator ──
   const feeAmount = useMemo(() => {
     if (!destAmountManual) return null;
-    const calc = autoCalcDest();
-    if (calc === null) return null;
+    if (autoCalcValue === null) return null;
     const manual = parseFloat(destAmount);
     if (isNaN(manual)) return null;
-    const diff = manual - calc;
+    const diff = manual - autoCalcValue;
     if (Math.abs(diff) < 0.01) return null;
     return diff;
-  }, [destAmountManual, autoCalcDest, destAmount]);
+  }, [destAmountManual, autoCalcValue, destAmount]);
 
   // ── Build TransferSide for source ──
   const buildSource = useCallback((): TransferSide | null => {
@@ -409,6 +416,7 @@ export function TransferDialog({
             ? `Moved ${prefilled?.assetTicker ?? "asset"} successfully`
             : `Transfer completed successfully`
         );
+        onSuccess?.();
         onClose();
       } else {
         setError(result.error);
@@ -422,6 +430,12 @@ export function TransferDialog({
       setExecuting(false);
     }
   }
+
+  // ── Can submit? ──
+  const canSubmit = useMemo(() => {
+    if (executing || mode === "buy") return false;
+    return buildSource() !== null && buildDest() !== null;
+  }, [executing, mode, buildSource, buildDest]);
 
   // ── Render ──
   return (
@@ -477,7 +491,7 @@ export function TransferDialog({
           <div className="flex items-center justify-center gap-2">
             <div className="h-px flex-1 bg-zinc-800" />
             <ArrowDown className="w-4 h-4 text-zinc-500" />
-            {autoCalcDest() !== null && mode !== "move" && (
+            {autoCalcValue !== null && mode !== "move" && (
               <span className="text-xs text-zinc-400">
                 ~{parseFloat(destAmount || "0").toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 {" "}{destType === "bank_account" ? "" : destCurrency}
@@ -627,7 +641,7 @@ export function TransferDialog({
             <button
               type="button"
               onClick={handleExecute}
-              disabled={executing}
+              disabled={!canSubmit}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
             >
               {executing && <Loader2 className="w-4 h-4 animate-spin" />}
