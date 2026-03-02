@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { Plus, Save, Trash2, Loader2, Check } from "lucide-react";
+import { Plus, Save, Trash2, Loader2, Check, ArrowRightLeft, TrendingDown, TrendingUp } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { toast } from "sonner";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
-import type { CryptoAssetWithPositions, Wallet } from "@/lib/types";
+import type { CryptoAssetWithPositions, Wallet, TransferMode } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
 
 interface PositionEditorProps {
@@ -35,6 +36,11 @@ export function PositionEditor({
   prices,
 }: PositionEditorProps) {
   const [error, setError] = useState<string | null>(null);
+
+  // Transfer dialog state
+  const [transferMode, setTransferMode] = useState<TransferMode | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [moveSourceWalletId, setMoveSourceWalletId] = useState<string | null>(null);
 
   // Per-row save tracking (replaces single shared `loading`)
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -361,6 +367,26 @@ export function PositionEditor({
           </div>
         </div>
 
+        {/* Sell / Buy actions */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => { setTransferMode("sell"); setTransferOpen(true); }}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-400 hover:text-red-400 hover:bg-zinc-800/50 transition-colors"
+            title="Sell this asset"
+          >
+            <TrendingDown className="w-3 h-3" /> Sell
+          </button>
+          <button
+            type="button"
+            onClick={() => { setTransferMode("buy"); setTransferOpen(true); }}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/50 transition-colors"
+            title="Buy more of this asset"
+          >
+            <TrendingUp className="w-3 h-3" /> Buy
+          </button>
+        </div>
+
         <div className="border-t border-zinc-800/50" />
 
         <p className="text-xs text-zinc-500">Positions by wallet / exchange</p>
@@ -481,16 +507,31 @@ export function PositionEditor({
                   )}
                 </button>
                 {existingPosition && (
-                  <button
-                    onClick={() =>
-                      handleDelete(existingPosition.id, walletId)
-                    }
-                    disabled={isBusy}
-                    className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
-                    title="Remove"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMoveSourceWalletId(walletId);
+                        setTransferMode("move");
+                        setTransferOpen(true);
+                      }}
+                      disabled={isBusy}
+                      className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
+                      title="Move to another wallet"
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleDelete(existingPosition.id, walletId)
+                      }
+                      disabled={isBusy}
+                      className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -536,6 +577,48 @@ export function PositionEditor({
           </p>
         )}
       </div>
+
+      {transferOpen && transferMode && (() => {
+        const priceData = prices?.[asset.coingecko_id];
+
+        // For sell/move, determine which wallet is the source
+        const sourceWalletId = transferMode === "move" ? moveSourceWalletId : asset.positions[0]?.wallet_id;
+        const sourcePosition = asset.positions.find((p) => p.wallet_id === sourceWalletId);
+        const sourceWallet = wallets.find((w) => w.id === sourceWalletId);
+
+        return (
+          <TransferDialog
+            open={transferOpen}
+            onClose={() => { setTransferOpen(false); setMoveSourceWalletId(null); }}
+            onSuccess={onClose}
+            mode={transferMode}
+            initialSource={transferMode !== "buy" ? {
+              type: "crypto_position",
+              assetId: asset.id,
+              assetName: asset.name,
+              assetTicker: asset.ticker,
+              locationId: sourceWalletId ?? "",
+              locationName: sourceWallet?.name ?? "Unknown",
+              currentQty: sourcePosition?.quantity ?? 0,
+              currency: "USD",
+              currentPriceUsd: priceData?.usd,
+              currentPriceEur: priceData?.eur,
+            } : undefined}
+            initialDestination={transferMode === "buy" ? {
+              type: "crypto_position",
+              assetId: asset.id,
+              assetName: asset.name,
+              assetTicker: asset.ticker,
+              locationId: asset.positions[0]?.wallet_id ?? "",
+              locationName: wallets.find((w) => w.id === asset.positions[0]?.wallet_id)?.name ?? "Unknown",
+              currentQty: 0,
+              currency: "USD",
+              currentPriceUsd: priceData?.usd,
+              currentPriceEur: priceData?.eur,
+            } : undefined}
+          />
+        );
+      })()}
     </Modal>
   );
 }
