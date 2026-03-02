@@ -290,19 +290,24 @@ export interface AdjustmentDelta {
   date: string;
   cumulative_usd: number;
   cumulative_eur: number;
+  crypto_cumulative_usd: number;
+  crypto_cumulative_eur: number;
+  stocks_cumulative_usd: number;
+  stocks_cumulative_eur: number;
+  cash_cumulative_usd: number;
+  cash_cumulative_eur: number;
 }
 
 export async function getAdjustmentDeltas(
   userId?: string
 ): Promise<AdjustmentDelta[]> {
-  // Use admin client when userId provided (share page), otherwise authenticated
   const supabase = userId
     ? createAdminClient()
     : await createServerSupabaseClient();
 
   let query = supabase
     .from("activity_log")
-    .select("created_at, delta_usd, delta_eur")
+    .select("created_at, delta_usd, delta_eur, entity_type")
     .eq("is_adjustment", true)
     .is("undone_at", null)
     .not("delta_usd", "is", null)
@@ -317,22 +322,57 @@ export async function getAdjustmentDeltas(
 
   if (!data?.length) return [];
 
-  // Build cumulative sums by date
-  const byDate = new Map<string, { usd: number; eur: number }>();
-  let cumUsd = 0;
-  let cumEur = 0;
+  // Entity-type to asset-class mapping
+  const getAssetClass = (entityType: string): "crypto" | "stocks" | "cash" | null => {
+    if (entityType === "crypto_position") return "crypto";
+    if (entityType === "stock_position") return "stocks";
+    if (entityType === "bank_account" || entityType === "exchange_deposit" || entityType === "broker_deposit") return "cash";
+    return null;
+  };
+
+  // Build cumulative sums by date — total + per asset class
+  const byDate = new Map<string, {
+    usd: number; eur: number;
+    cryptoUsd: number; cryptoEur: number;
+    stocksUsd: number; stocksEur: number;
+    cashUsd: number; cashEur: number;
+  }>();
+
+  let cumUsd = 0, cumEur = 0;
+  let cryptoUsd = 0, cryptoEur = 0;
+  let stocksUsd = 0, stocksEur = 0;
+  let cashUsd = 0, cashEur = 0;
 
   for (const row of data) {
-    cumUsd += (row.delta_usd as number) ?? 0;
-    cumEur += (row.delta_eur as number) ?? 0;
+    const dUsd = (row.delta_usd as number) ?? 0;
+    const dEur = (row.delta_eur as number) ?? 0;
+    cumUsd += dUsd;
+    cumEur += dEur;
+
+    const assetClass = getAssetClass(row.entity_type as string);
+    if (assetClass === "crypto") { cryptoUsd += dUsd; cryptoEur += dEur; }
+    else if (assetClass === "stocks") { stocksUsd += dUsd; stocksEur += dEur; }
+    else if (assetClass === "cash") { cashUsd += dUsd; cashEur += dEur; }
+
     const date = (row.created_at as string).split("T")[0];
-    byDate.set(date, { usd: cumUsd, eur: cumEur });
+    byDate.set(date, {
+      usd: cumUsd, eur: cumEur,
+      cryptoUsd, cryptoEur,
+      stocksUsd, stocksEur,
+      cashUsd, cashEur,
+    });
   }
 
-  return Array.from(byDate.entries()).map(([date, { usd, eur }]) => ({
+  return Array.from(byDate.entries()).map(([date, v]) => ({
     date,
-    cumulative_usd: usd,
-    cumulative_eur: eur,
+    cumulative_usd: v.usd,
+    cumulative_eur: v.eur,
+    crypto_cumulative_usd: v.cryptoUsd,
+    crypto_cumulative_eur: v.cryptoEur,
+    stocks_cumulative_usd: v.stocksUsd,
+    stocks_cumulative_eur: v.stocksEur,
+    cash_cumulative_usd: v.cashUsd,
+    cash_cumulative_eur: v.cashEur,
   }));
 }
 
