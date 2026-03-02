@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { upsertPosition, createCryptoAsset } from "@/lib/actions/crypto";
 import {
@@ -24,6 +23,7 @@ import type {
   TransferResult,
   TransferSide,
 } from "@/lib/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // ─── Types for internal state tracking ───────────────────────
 
@@ -35,12 +35,17 @@ type SourceOriginalState =
   | { type: "broker_deposit"; id: string; amount: number }
   | { type: "bank_account"; id: string; balance: number; name: string; bank_name: string; currency: string };
 
-/** Prices fetched for delta calculation */
+/** Per-side prices for delta calculation */
+interface SidePrices {
+  priceUsd?: number;
+  priceEur?: number;
+  priceNative?: number;
+  currency?: string;
+}
+
 interface TransferPrices {
-  cryptoPriceUsd?: number;
-  cryptoPriceEur?: number;
-  stockPriceNative?: number;
-  stockCurrency?: string;
+  source: SidePrices;
+  destination: SidePrices;
 }
 
 // ─── Main Transfer Action ────────────────────────────────────
@@ -52,45 +57,50 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   if (!user) return { success: false, error: "Not authenticated" };
 
   const transferGroupId = crypto.randomUUID();
-  const admin = createAdminClient();
+
+  // Use a local destination variable to avoid mutating input
+  let destination: TransferSide = input.destination;
 
   try {
     // ── Step 1: Create new assets if needed ─────────────────
     if (input.newCryptoAsset) {
-      if (input.destination.type !== "crypto_position") {
+      if (destination.type !== "crypto_position") {
         return { success: false, error: "newCryptoAsset provided but destination is not crypto_position" };
       }
       const newAssetId = await createCryptoAsset(input.newCryptoAsset);
-      (input.destination as { assetId: string }).assetId = newAssetId;
+      destination = { ...destination, assetId: newAssetId };
     }
     if (input.newStockAsset) {
-      if (input.destination.type !== "stock_position") {
+      if (destination.type !== "stock_position") {
         return { success: false, error: "newStockAsset provided but destination is not stock_position" };
       }
       const newAssetId = await createStockAsset(input.newStockAsset);
-      (input.destination as { assetId: string }).assetId = newAssetId;
+      destination = { ...destination, assetId: newAssetId };
     }
 
     // ── Step 2: Fetch current state of source entity ────────
-    const originalState = await fetchSourceState(admin, user.id, input.source);
+    const originalState = await fetchSourceState(supabase, input.source);
 
-    // ── Step 3: Fetch current prices for delta calculation ──
-    const prices = await fetchPrices(admin, user.id, input.source, input.destination);
+    // ── Step 3: Validate sufficient balance ─────────────────
+    validateSufficientBalance(input.source, originalState);
 
-    // ── Step 4: Execute source leg (reduce) ─────────────────
-    await executeSourceLeg(admin, user.id, input.source, originalState, transferGroupId, prices);
+    // ── Step 4: Fetch current prices for delta calculation ──
+    const prices = await fetchPrices(supabase, input.source, destination);
 
-    // ── Step 5: Execute destination leg (increase) with retry + rollback
+    // ── Step 5: Execute source leg (reduce) ─────────────────
+    await executeSourceLeg(input.source, originalState, transferGroupId, prices.source);
+
+    // ── Step 6: Execute destination leg (increase) with retry + rollback
     try {
-      await executeDestLeg(admin, user.id, input.destination, transferGroupId, prices);
+      await executeDestLeg(supabase, destination, transferGroupId, prices.destination);
     } catch (destErr) {
       // Retry once
       try {
-        await executeDestLeg(admin, user.id, input.destination, transferGroupId, prices);
+        await executeDestLeg(supabase, destination, transferGroupId, prices.destination);
       } catch (retryErr) {
         // Rollback source: restore to original state
         try {
-          await rollbackSource(admin, user.id, input.source, originalState, transferGroupId, prices);
+          await rollbackSource(input.source, originalState, transferGroupId, prices.source);
         } catch (rollbackErr) {
           return {
             success: false,
@@ -108,7 +118,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       }
     }
 
-    // ── Step 6: Revalidate and return ───────────────────────
+    // ── Step 7: Revalidate and return ───────────────────────
     revalidatePath("/dashboard/accounts");
     revalidatePath("/dashboard");
 
@@ -122,67 +132,97 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   }
 }
 
+// ─── Validate Sufficient Balance ─────────────────────────────
+
+function validateSufficientBalance(source: TransferSide, state: SourceOriginalState): void {
+  switch (source.type) {
+    case "crypto_position":
+      if (state.type === "crypto_position" && source.quantity > state.quantity) {
+        throw new Error(`Insufficient crypto balance: have ${state.quantity}, need ${source.quantity}`);
+      }
+      break;
+    case "stock_position":
+      if (state.type === "stock_position" && source.quantity > state.quantity) {
+        throw new Error(`Insufficient stock balance: have ${state.quantity}, need ${source.quantity}`);
+      }
+      break;
+    case "exchange_deposit":
+      if (state.type === "exchange_deposit" && source.amount > state.amount) {
+        throw new Error(`Insufficient exchange deposit: have ${state.amount}, need ${source.amount}`);
+      }
+      break;
+    case "broker_deposit":
+      if (state.type === "broker_deposit" && source.amount > state.amount) {
+        throw new Error(`Insufficient broker deposit: have ${state.amount}, need ${source.amount}`);
+      }
+      break;
+    case "bank_account":
+      if (state.type === "bank_account" && source.amount > state.balance) {
+        throw new Error(`Insufficient bank balance: have ${state.balance}, need ${source.amount}`);
+      }
+      break;
+  }
+}
+
 // ─── Fetch Source State ──────────────────────────────────────
 
 async function fetchSourceState(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
+  supabase: SupabaseClient,
   source: TransferSide
 ): Promise<SourceOriginalState> {
   switch (source.type) {
     case "crypto_position": {
-      const { data } = await admin
+      const { data, error } = await supabase
         .from("crypto_positions")
-        .select("quantity, crypto_asset_id, wallet_id")
+        .select("quantity")
         .eq("crypto_asset_id", source.assetId)
         .eq("wallet_id", source.walletId)
         .is("deleted_at", null)
         .single();
-      if (!data) throw new Error("Source crypto position not found");
+      if (error || !data) throw new Error(`Source crypto position not found: ${error?.message ?? "no data"}`);
       return { type: "crypto_position", quantity: Number(data.quantity) };
     }
     case "stock_position": {
-      const { data } = await admin
+      const { data, error } = await supabase
         .from("stock_positions")
-        .select("quantity, stock_asset_id, broker_id")
+        .select("quantity")
         .eq("stock_asset_id", source.assetId)
         .eq("broker_id", source.brokerId)
         .is("deleted_at", null)
         .single();
-      if (!data) throw new Error("Source stock position not found");
+      if (error || !data) throw new Error(`Source stock position not found: ${error?.message ?? "no data"}`);
       return { type: "stock_position", quantity: Number(data.quantity) };
     }
     case "exchange_deposit": {
-      const { data } = await admin
+      const { data, error } = await supabase
         .from("exchange_deposits")
         .select("id, amount")
         .eq("wallet_id", source.walletId)
         .eq("currency", source.currency)
         .is("deleted_at", null)
         .single();
-      if (!data) throw new Error("Source exchange deposit not found");
+      if (error || !data) throw new Error(`Source exchange deposit not found: ${error?.message ?? "no data"}`);
       return { type: "exchange_deposit", id: data.id, amount: Number(data.amount) };
     }
     case "broker_deposit": {
-      const { data } = await admin
+      const { data, error } = await supabase
         .from("broker_deposits")
         .select("id, amount")
         .eq("broker_id", source.brokerId)
         .eq("currency", source.currency)
         .is("deleted_at", null)
         .single();
-      if (!data) throw new Error("Source broker deposit not found");
+      if (error || !data) throw new Error(`Source broker deposit not found: ${error?.message ?? "no data"}`);
       return { type: "broker_deposit", id: data.id, amount: Number(data.amount) };
     }
     case "bank_account": {
-      const { data } = await admin
+      const { data, error } = await supabase
         .from("bank_accounts")
         .select("id, balance, name, bank_name, currency")
         .eq("id", source.accountId)
-        .eq("user_id", userId)
         .is("deleted_at", null)
         .single();
-      if (!data) throw new Error("Source bank account not found");
+      if (error || !data) throw new Error(`Source bank account not found: ${error?.message ?? "no data"}`);
       return {
         type: "bank_account",
         id: data.id,
@@ -198,61 +238,51 @@ async function fetchSourceState(
 // ─── Fetch Prices ────────────────────────────────────────────
 
 async function fetchPrices(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
+  supabase: SupabaseClient,
   source: TransferSide,
   destination: TransferSide
 ): Promise<TransferPrices> {
-  const prices: TransferPrices = {};
+  const prices: TransferPrices = { source: {}, destination: {} };
 
-  // Collect all crypto asset IDs we need prices for
-  const cryptoAssetIds: string[] = [];
-  if (source.type === "crypto_position") cryptoAssetIds.push(source.assetId);
-  if (destination.type === "crypto_position") cryptoAssetIds.push(destination.assetId);
+  // ── Crypto prices ──
+  const cryptoSides: { side: "source" | "destination"; assetId: string }[] = [];
+  if (source.type === "crypto_position") cryptoSides.push({ side: "source", assetId: source.assetId });
+  if (destination.type === "crypto_position") cryptoSides.push({ side: "destination", assetId: destination.assetId });
 
-  if (cryptoAssetIds.length > 0) {
-    // Look up coingecko_ids from crypto_assets table
-    const { data: assets } = await admin
+  if (cryptoSides.length > 0) {
+    const assetIds = [...new Set(cryptoSides.map((s) => s.assetId))];
+    const { data: assets } = await supabase
       .from("crypto_assets")
       .select("id, coingecko_id")
-      .in("id", cryptoAssetIds)
+      .in("id", assetIds)
       .is("deleted_at", null);
 
     if (assets && assets.length > 0) {
       const coinIds = assets.map((a) => a.coingecko_id).filter(Boolean);
       if (coinIds.length > 0) {
         const priceData = await getPrices(coinIds);
-        // Use the source crypto price if available, else destination
-        const sourceAsset = assets.find(
-          (a) => source.type === "crypto_position" && a.id === source.assetId
-        );
-        if (sourceAsset && priceData[sourceAsset.coingecko_id]) {
-          prices.cryptoPriceUsd = priceData[sourceAsset.coingecko_id].usd;
-          prices.cryptoPriceEur = priceData[sourceAsset.coingecko_id].eur;
-        } else {
-          // Fall back to destination crypto price
-          const destAsset = assets.find(
-            (a) => destination.type === "crypto_position" && a.id === destination.assetId
-          );
-          if (destAsset && priceData[destAsset.coingecko_id]) {
-            prices.cryptoPriceUsd = priceData[destAsset.coingecko_id].usd;
-            prices.cryptoPriceEur = priceData[destAsset.coingecko_id].eur;
+        for (const { side, assetId } of cryptoSides) {
+          const asset = assets.find((a) => a.id === assetId);
+          if (asset && priceData[asset.coingecko_id]) {
+            prices[side].priceUsd = priceData[asset.coingecko_id].usd;
+            prices[side].priceEur = priceData[asset.coingecko_id].eur;
           }
         }
       }
     }
   }
 
-  // Collect all stock asset IDs we need prices for
-  const stockAssetIds: string[] = [];
-  if (source.type === "stock_position") stockAssetIds.push(source.assetId);
-  if (destination.type === "stock_position") stockAssetIds.push(destination.assetId);
+  // ── Stock prices ──
+  const stockSides: { side: "source" | "destination"; assetId: string }[] = [];
+  if (source.type === "stock_position") stockSides.push({ side: "source", assetId: source.assetId });
+  if (destination.type === "stock_position") stockSides.push({ side: "destination", assetId: destination.assetId });
 
-  if (stockAssetIds.length > 0) {
-    const { data: assets } = await admin
+  if (stockSides.length > 0) {
+    const assetIds = [...new Set(stockSides.map((s) => s.assetId))];
+    const { data: assets } = await supabase
       .from("stock_assets")
       .select("id, yahoo_ticker, currency")
-      .in("id", stockAssetIds)
+      .in("id", assetIds)
       .is("deleted_at", null);
 
     if (assets && assets.length > 0) {
@@ -261,20 +291,11 @@ async function fetchPrices(
         .filter((t): t is string => !!t);
       if (tickers.length > 0) {
         const priceData = await getStockPrices(tickers);
-        // Use source stock's price if available, else destination's
-        const sourceAsset = assets.find(
-          (a) => source.type === "stock_position" && a.id === source.assetId
-        );
-        if (sourceAsset?.yahoo_ticker && priceData[sourceAsset.yahoo_ticker]) {
-          prices.stockPriceNative = priceData[sourceAsset.yahoo_ticker].price;
-          prices.stockCurrency = priceData[sourceAsset.yahoo_ticker].currency;
-        } else {
-          const destAsset = assets.find(
-            (a) => destination.type === "stock_position" && a.id === destination.assetId
-          );
-          if (destAsset?.yahoo_ticker && priceData[destAsset.yahoo_ticker]) {
-            prices.stockPriceNative = priceData[destAsset.yahoo_ticker].price;
-            prices.stockCurrency = priceData[destAsset.yahoo_ticker].currency;
+        for (const { side, assetId } of stockSides) {
+          const asset = assets.find((a) => a.id === assetId);
+          if (asset?.yahoo_ticker && priceData[asset.yahoo_ticker]) {
+            prices[side].priceNative = priceData[asset.yahoo_ticker].price;
+            prices[side].currency = priceData[asset.yahoo_ticker].currency;
           }
         }
       }
@@ -287,12 +308,10 @@ async function fetchPrices(
 // ─── Execute Source Leg ──────────────────────────────────────
 
 async function executeSourceLeg(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
   source: TransferSide,
   originalState: SourceOriginalState,
   transferGroupId: string,
-  prices: TransferPrices
+  prices: SidePrices
 ): Promise<void> {
   switch (source.type) {
     case "crypto_position": {
@@ -307,8 +326,8 @@ async function executeSourceLeg(
         {
           isAdjustment: true,
           transferGroupId,
-          currentPriceUsd: prices.cryptoPriceUsd,
-          currentPriceEur: prices.cryptoPriceEur,
+          currentPriceUsd: prices.priceUsd,
+          currentPriceEur: prices.priceEur,
         }
       );
       break;
@@ -325,8 +344,8 @@ async function executeSourceLeg(
         {
           isAdjustment: true,
           transferGroupId,
-          currentPriceNative: prices.stockPriceNative,
-          assetCurrency: prices.stockCurrency,
+          currentPriceNative: prices.priceNative,
+          assetCurrency: prices.currency,
         }
       );
       break;
@@ -380,17 +399,15 @@ async function executeSourceLeg(
 // ─── Execute Destination Leg ─────────────────────────────────
 
 async function executeDestLeg(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
+  supabase: SupabaseClient,
   destination: TransferSide,
   transferGroupId: string,
-  prices: TransferPrices
+  prices: SidePrices
 ): Promise<void> {
   switch (destination.type) {
     case "crypto_position": {
-      // upsertPosition handles create-or-update automatically
-      // First fetch current qty (may be 0 if new position)
-      const { data: existing } = await admin
+      // Fetch current qty (may be 0 if new position)
+      const { data: existing } = await supabase
         .from("crypto_positions")
         .select("quantity")
         .eq("crypto_asset_id", destination.assetId)
@@ -407,15 +424,14 @@ async function executeDestLeg(
         {
           isAdjustment: true,
           transferGroupId,
-          currentPriceUsd: prices.cryptoPriceUsd,
-          currentPriceEur: prices.cryptoPriceEur,
+          currentPriceUsd: prices.priceUsd,
+          currentPriceEur: prices.priceEur,
         }
       );
       break;
     }
     case "stock_position": {
-      // upsertStockPosition handles create-or-update automatically
-      const { data: existing } = await admin
+      const { data: existing } = await supabase
         .from("stock_positions")
         .select("quantity")
         .eq("stock_asset_id", destination.assetId)
@@ -432,15 +448,14 @@ async function executeDestLeg(
         {
           isAdjustment: true,
           transferGroupId,
-          currentPriceNative: prices.stockPriceNative,
-          assetCurrency: prices.stockCurrency,
+          currentPriceNative: prices.priceNative,
+          assetCurrency: prices.currency,
         }
       );
       break;
     }
     case "exchange_deposit": {
-      // Check if destination exchange deposit exists
-      const { data: existing } = await admin
+      const { data: existing } = await supabase
         .from("exchange_deposits")
         .select("id, amount")
         .eq("wallet_id", destination.walletId)
@@ -471,8 +486,7 @@ async function executeDestLeg(
       break;
     }
     case "broker_deposit": {
-      // Check if destination broker deposit exists
-      const { data: existing } = await admin
+      const { data: existing } = await supabase
         .from("broker_deposits")
         .select("id, amount")
         .eq("broker_id", destination.brokerId)
@@ -503,15 +517,13 @@ async function executeDestLeg(
       break;
     }
     case "bank_account": {
-      // Bank accounts always exist (we just update the balance)
-      const { data: existing } = await admin
+      const { data: existing, error } = await supabase
         .from("bank_accounts")
         .select("id, balance, name, bank_name, currency")
         .eq("id", destination.accountId)
-        .eq("user_id", userId)
         .is("deleted_at", null)
         .single();
-      if (!existing) throw new Error("Destination bank account not found");
+      if (error || !existing) throw new Error("Destination bank account not found");
       await updateBankAccount(
         destination.accountId,
         {
@@ -530,12 +542,10 @@ async function executeDestLeg(
 // ─── Rollback Source ─────────────────────────────────────────
 
 async function rollbackSource(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
   source: TransferSide,
   originalState: SourceOriginalState,
   transferGroupId: string,
-  prices: TransferPrices
+  prices: SidePrices
 ): Promise<void> {
   switch (source.type) {
     case "crypto_position": {
@@ -549,8 +559,8 @@ async function rollbackSource(
         {
           isAdjustment: true,
           transferGroupId,
-          currentPriceUsd: prices.cryptoPriceUsd,
-          currentPriceEur: prices.cryptoPriceEur,
+          currentPriceUsd: prices.priceUsd,
+          currentPriceEur: prices.priceEur,
         }
       );
       break;
@@ -566,8 +576,8 @@ async function rollbackSource(
         {
           isAdjustment: true,
           transferGroupId,
-          currentPriceNative: prices.stockPriceNative,
-          assetCurrency: prices.stockCurrency,
+          currentPriceNative: prices.priceNative,
+          assetCurrency: prices.currency,
         }
       );
       break;
