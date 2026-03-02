@@ -5,7 +5,7 @@
 
 export type FXRates = Record<string, number>;
 
-const API_URL = "https://api.frankfurter.dev/v1/latest";
+const API_BASE = "https://api.frankfurter.dev/v1";
 
 /**
  * Fetch exchange rates from Frankfurter (European Central Bank data).
@@ -14,10 +14,12 @@ const API_URL = "https://api.frankfurter.dev/v1/latest";
  *   getFXRates("USD", ["EUR", "GBP"]) → { EUR: 0.92, GBP: 0.79, USD: 1 }
  *
  * The base currency is always included with rate 1.
+ * Pass `date` (YYYY-MM-DD) for historical rates; omit for latest.
  */
 export async function getFXRates(
   base: string,
-  targets: string[]
+  targets: string[],
+  date?: string
 ): Promise<FXRates> {
   // Filter out the base currency and deduplicate
   const symbols = [...new Set(targets.filter((t) => t !== base))];
@@ -26,8 +28,11 @@ export async function getFXRates(
   if (symbols.length === 0) return { [base]: 1 };
 
   try {
-    const url = `${API_URL}?base=${base}&symbols=${symbols.join(",")}`;
-    const res = await fetch(url, { next: { revalidate: 900 } }); // 15-min cache
+    const endpoint = date ? `${API_BASE}/${date}` : `${API_BASE}/latest`;
+    const url = `${endpoint}?base=${base}&symbols=${symbols.join(",")}`;
+    // Historical rates are immutable — cache forever; latest rates refresh every 15 min
+    const cacheOpts = date ? { cache: "force-cache" as const } : { next: { revalidate: 900 } };
+    const res = await fetch(url, cacheOpts);
 
     if (!res.ok) {
       console.error("[fx] Frankfurter API error:", res.status);

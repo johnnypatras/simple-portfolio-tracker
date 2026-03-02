@@ -169,6 +169,7 @@ export function AccountsView({
     label: string;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteAdjustment, setDeleteAdjustment] = useState(false);
 
   // Active row (expand-to-edit: click a row to reveal actions)
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
@@ -219,16 +220,18 @@ export function AccountsView({
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const deleteFns: Record<string, (id: string) => Promise<unknown>> = {
+      const adjOpts = deleteAdjustment ? { isAdjustment: true } : undefined;
+      const deleteFns: Record<string, (id: string, opts?: { isAdjustment?: boolean }) => Promise<unknown>> = {
         crypto: deleteCryptoAsset,
         stock: deleteStockAsset,
         bank: deleteBankAccount,
         exchange_deposit: deleteExchangeDeposit,
         broker_deposit: deleteBrokerDeposit,
       };
-      await deleteFns[deleteTarget.type](deleteTarget.id);
+      await deleteFns[deleteTarget.type](deleteTarget.id, adjOpts);
       toast.success(`Deleted ${deleteTarget.label}`);
       setDeleteTarget(null);
+      setDeleteAdjustment(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -1192,7 +1195,7 @@ export function AccountsView({
           {deleteTarget && (
             <Modal
               open
-              onClose={() => setDeleteTarget(null)}
+              onClose={() => { setDeleteTarget(null); setDeleteAdjustment(false); }}
               title="Confirm Delete"
             >
               <div className="space-y-4">
@@ -1200,9 +1203,21 @@ export function AccountsView({
                   Are you sure you want to delete <span className="font-medium text-zinc-100">{deleteTarget.label}</span>?
                   This action cannot be undone.
                 </p>
+                <label
+                  className="flex items-center gap-1 text-[10px] text-amber-400 font-medium cursor-pointer"
+                  title="Not a real transaction — portfolio balance correction"
+                >
+                  <input
+                    type="checkbox"
+                    checked={deleteAdjustment}
+                    onChange={(e) => setDeleteAdjustment(e.target.checked)}
+                    className="accent-amber-500"
+                  />
+                  Portfolio adjustment
+                </label>
                 <div className="flex justify-end gap-2">
                   <button
-                    onClick={() => setDeleteTarget(null)}
+                    onClick={() => { setDeleteTarget(null); setDeleteAdjustment(false); }}
                     className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
                   >
                     Cancel

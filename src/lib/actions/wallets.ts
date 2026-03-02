@@ -307,8 +307,36 @@ export async function updateWallet(
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
 }
 
-export async function deleteWallet(id: string) {
+export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }) {
   const supabase = await createServerSupabaseClient();
+
+  // Delete child crypto positions individually so each gets an activity_log entry
+  const { deletePosition } = await import("@/lib/actions/crypto");
+  const { data: cryptoPositions } = await supabase
+    .from("crypto_positions")
+    .select("id")
+    .eq("wallet_id", id)
+    .is("deleted_at", null);
+
+  if (cryptoPositions?.length) {
+    for (const pos of cryptoPositions) {
+      await deletePosition(pos.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
+    }
+  }
+
+  // Delete child exchange deposits individually so each gets an activity_log entry
+  const { deleteExchangeDeposit } = await import("@/lib/actions/exchange-deposits");
+  const { data: exchDeposits } = await supabase
+    .from("exchange_deposits")
+    .select("id")
+    .eq("wallet_id", id)
+    .is("deleted_at", null);
+
+  if (exchDeposits?.length) {
+    for (const dep of exchDeposits) {
+      await deleteExchangeDeposit(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
+    }
+  }
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase

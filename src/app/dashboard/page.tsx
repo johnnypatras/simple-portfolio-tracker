@@ -7,6 +7,7 @@ import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockAndIndexPrices, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
+import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { getFXRates } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
@@ -33,6 +34,7 @@ export default async function DashboardPage() {
     chartSnapshots, snap7d, snap30d, snap1y,
     sp500TRHistory,
     cashFlows,
+    adjustmentDeltas,
   ] = await Promise.all([
     getProfile(),
     getCryptoAssetsWithPositions(),
@@ -46,6 +48,7 @@ export default async function DashboardPage() {
     getSnapshotAt(365),          // for 1y change
     fetchIndexHistory("^SP500TR", 365), // S&P 500 Total Return (benchmark line)
     deriveCashFlows(),
+    getAdjustmentDeltas(),
   ]);
 
   const primaryCurrency = profile.primary_currency;
@@ -168,6 +171,7 @@ export default async function DashboardPage() {
           primaryCurrency={primaryCurrency}
           sp500History={sp500TRHistory}
           cashFlows={cashFlows}
+          adjustmentDeltas={adjustmentDeltas}
         />
       </div>
     </div>

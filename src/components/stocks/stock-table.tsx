@@ -1234,6 +1234,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               brokers={brokers}
               existingSubcategories={existingSubcategories}
               existingTags={existingTags}
+              prices={prices}
             />
           )}
         </>

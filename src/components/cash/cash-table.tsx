@@ -220,9 +220,9 @@ export function CashTable({
     setBankModalOpen(true);
   }, [setBankModalOpen]);
 
-  const handleDeleteBank = useCallback(async (id: string) => {
+  const handleDeleteBank = useCallback(async (id: string, opts?: { isAdjustment: boolean }) => {
     try {
-      await deleteBankAccount(id);
+      await deleteBankAccount(id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
       toast.success("Bank account deleted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete");
@@ -238,9 +238,9 @@ export function CashTable({
     setExchModalOpen(true);
   }, [setExchModalOpen]);
 
-  const handleDeleteExchange = useCallback(async (id: string) => {
+  const handleDeleteExchange = useCallback(async (id: string, opts?: { isAdjustment: boolean }) => {
     try {
-      await deleteExchangeDeposit(id);
+      await deleteExchangeDeposit(id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
       toast.success("Fiat deposit deleted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete");
@@ -256,9 +256,9 @@ export function CashTable({
     setBrokerDepModalOpen(true);
   }, [setBrokerDepModalOpen]);
 
-  const handleDeleteBrokerDeposit = useCallback(async (id: string) => {
+  const handleDeleteBrokerDeposit = useCallback(async (id: string, opts?: { isAdjustment: boolean }) => {
     try {
-      await deleteBrokerDeposit(id);
+      await deleteBrokerDeposit(id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
       toast.success("Fiat deposit deleted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete");
@@ -563,7 +563,7 @@ export function CashTable({
                                     {!isReadOnly && (
                                       <>
                                         <button onClick={() => openEditBank(acct)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                        <ConfirmButton onConfirm={() => handleDeleteBank(acct.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                        <ConfirmButton showAdjustmentCheckbox onConfirm={(opts) => handleDeleteBank(acct.id, opts)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                       </>
                                     )}
                                   </div>
@@ -628,7 +628,7 @@ export function CashTable({
                                     {!isReadOnly && (
                                       <>
                                         <button onClick={() => openEditExchange(dep)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                        <ConfirmButton onConfirm={() => handleDeleteExchange(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                        <ConfirmButton showAdjustmentCheckbox onConfirm={(opts) => handleDeleteExchange(dep.id, opts)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                       </>
                                     )}
                                   </div>
@@ -693,7 +693,7 @@ export function CashTable({
                                     {!isReadOnly && (
                                       <>
                                         <button onClick={() => openEditBrokerDeposit(dep)} className="p-1 text-zinc-500 hover:text-blue-400"><Pencil className="w-3 h-3" /></button>
-                                        <ConfirmButton onConfirm={() => handleDeleteBrokerDeposit(dep.id)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                        <ConfirmButton showAdjustmentCheckbox onConfirm={(opts) => handleDeleteBrokerDeposit(dep.id, opts)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                       </>
                                     )}
                                   </div>
@@ -840,7 +840,7 @@ export function CashTable({
                         </tr>
                         {groupExpanded && row.type === "bank-group" &&
                           row.data.accounts.map((acct) => (
-                            <ExpandedBankRow key={acct.id} account={acct} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditBank(acct)} onDelete={() => handleDeleteBank(acct.id)} />
+                            <ExpandedBankRow key={acct.id} account={acct} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditBank(acct)} onDelete={(opts) => handleDeleteBank(acct.id, opts)} />
                           ))}
                       </Fragment>
                     );
@@ -904,7 +904,7 @@ export function CashTable({
                         </tr>
                         {groupExpanded && row.type === "exchange-group" &&
                           row.data.deposits.map((dep) => (
-                            <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditExchange(dep)} onDelete={() => handleDeleteExchange(dep.id)} />
+                            <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditExchange(dep)} onDelete={(opts) => handleDeleteExchange(dep.id, opts)} />
                           ))}
                       </Fragment>
                     );
@@ -968,7 +968,7 @@ export function CashTable({
                         </tr>
                         {groupExpanded && row.type === "broker-group" &&
                           row.data.deposits.map((dep) => (
-                            <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditBrokerDeposit(dep)} onDelete={() => handleDeleteBrokerDeposit(dep.id)} />
+                            <ExpandedExchangeRow key={dep.id} deposit={dep} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditBrokerDeposit(dep)} onDelete={(opts) => handleDeleteBrokerDeposit(dep.id, opts)} />
                           ))}
                       </Fragment>
                     );
@@ -1146,7 +1146,7 @@ function ExpandedBankRow({
   orderedColumns: ColumnDef<CashRow>[];
   ctx: RenderContext;
   onEdit: () => void;
-  onDelete: () => void;
+  onDelete: (opts?: { isAdjustment: boolean }) => void;
 }) {
   const { isReadOnly } = useSharedView();
   const valueInBase = convertToBase(
@@ -1230,6 +1230,7 @@ function ExpandedBankRow({
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <ConfirmButton
+                    showAdjustmentCheckbox
                     onConfirm={onDelete}
                     className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                   >
@@ -1261,7 +1262,7 @@ function ExpandedExchangeRow({
   orderedColumns: ColumnDef<CashRow>[];
   ctx: RenderContext;
   onEdit: () => void;
-  onDelete: () => void;
+  onDelete: (opts?: { isAdjustment: boolean }) => void;
 }) {
   const { isReadOnly } = useSharedView();
   const valueInBase = convertToBase(
@@ -1340,6 +1341,7 @@ function ExpandedExchangeRow({
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <ConfirmButton
+                    showAdjustmentCheckbox
                     onConfirm={onDelete}
                     className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                   >

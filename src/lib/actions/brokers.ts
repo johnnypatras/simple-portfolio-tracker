@@ -266,8 +266,36 @@ export async function updateBroker(
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
 }
 
-export async function deleteBroker(id: string) {
+export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }) {
   const supabase = await createServerSupabaseClient();
+
+  // Delete child stock positions individually so each gets an activity_log entry
+  const { deleteStockPosition } = await import("@/lib/actions/stocks");
+  const { data: stockPositions } = await supabase
+    .from("stock_positions")
+    .select("id")
+    .eq("broker_id", id)
+    .is("deleted_at", null);
+
+  if (stockPositions?.length) {
+    for (const pos of stockPositions) {
+      await deleteStockPosition(pos.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
+    }
+  }
+
+  // Delete child broker deposits individually so each gets an activity_log entry
+  const { deleteBrokerDeposit } = await import("@/lib/actions/broker-deposits");
+  const { data: brokerDeps } = await supabase
+    .from("broker_deposits")
+    .select("id")
+    .eq("broker_id", id)
+    .is("deleted_at", null);
+
+  if (brokerDeps?.length) {
+    for (const dep of brokerDeps) {
+      await deleteBrokerDeposit(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
+    }
+  }
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase

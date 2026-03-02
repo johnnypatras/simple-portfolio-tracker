@@ -4,6 +4,7 @@ import { getPrices } from "@/lib/prices/coingecko";
 import { getStockAndIndexPrices, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
 import { getFXRates } from "@/lib/prices/fx";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
+import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
@@ -51,7 +52,7 @@ export default async function SharedOverviewPage({
   // Fetch prices + market data + benchmark (stocks + indices in one batch)
   const [
     cryptoPrices, { stockPrices, indexPrices }, fxRates, dividends,
-    sp500TRHistory, cashFlows,
+    sp500TRHistory, cashFlows, adjustmentDeltas,
   ] = await Promise.all([
     getPrices(coinIds),
     getStockAndIndexPrices(yahooTickers),
@@ -59,6 +60,7 @@ export default async function SharedOverviewPage({
     getDividendYields(yahooTickers),
     fetchIndexHistory("^SP500TR", 365),
     deriveCashFlows(data.share.owner_id),
+    getAdjustmentDeltas(data.share.owner_id),
   ]);
 
   const sp500Data = indexPrices["^GSPC"] ?? null;
@@ -123,6 +125,7 @@ export default async function SharedOverviewPage({
           primaryCurrency={primaryCurrency}
           sp500History={sp500TRHistory}
           cashFlows={cashFlows}
+          adjustmentDeltas={adjustmentDeltas}
         />
       </div>
     </div>

@@ -62,6 +62,10 @@ export function EditInstitutionModal({
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingInstitution, setDeletingInstitution] = useState(false);
 
+  // Adjustment checkboxes for delete/role-removal
+  const [deleteAdjustment, setDeleteAdjustment] = useState(false);
+  const [removeRoleAdjustment, setRemoveRoleAdjustment] = useState(false);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -102,7 +106,7 @@ export function EditInstitutionModal({
   async function handleRemoveRole(role: "wallet" | "broker" | "bank") {
     setRemovingRole(true);
     try {
-      await removeInstitutionRole(institution.id, role);
+      await removeInstitutionRole(institution.id, role, removeRoleAdjustment ? { isAdjustment: true } : undefined);
       toast.success(`${roleLabel(role)} role removed`);
       router.refresh();
       onClose();
@@ -111,13 +115,14 @@ export function EditInstitutionModal({
     } finally {
       setRemovingRole(false);
       setConfirmRemoveRole(null);
+      setRemoveRoleAdjustment(false);
     }
   }
 
   async function handleDeleteInstitution() {
     setDeletingInstitution(true);
     try {
-      await deleteInstitution(institution.id);
+      await deleteInstitution(institution.id, deleteAdjustment ? { isAdjustment: true } : undefined);
       toast.success(`"${institution.name}" deleted`);
       router.refresh();
       onClose();
@@ -139,8 +144,10 @@ export function EditInstitutionModal({
     setSelectedChains(existingWallet ? parseWalletChains(existingWallet.chain) : []);
     setError(null);
     setConfirmRemoveRole(null);
+    setRemoveRoleAdjustment(false);
     setShowDeleteConfirm(false);
     setDeleteConfirmText("");
+    setDeleteAdjustment(false);
     onClose();
   }
 
@@ -187,6 +194,18 @@ export function EditInstitutionModal({
                     : "This will delete all bank accounts linked to this institution."}
                 {" "}If no other roles remain, the institution will also be removed.
               </p>
+              <label
+                className="flex items-center gap-1 text-[10px] text-amber-400 font-medium cursor-pointer"
+                title="Not a real transaction — portfolio balance correction"
+              >
+                <input
+                  type="checkbox"
+                  checked={removeRoleAdjustment}
+                  onChange={(e) => setRemoveRoleAdjustment(e.target.checked)}
+                  className="accent-amber-500"
+                />
+                Portfolio adjustment
+              </label>
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"
@@ -198,7 +217,7 @@ export function EditInstitutionModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfirmRemoveRole(null)}
+                  onClick={() => { setConfirmRemoveRole(null); setRemoveRoleAdjustment(false); }}
                   className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   Cancel
@@ -445,6 +464,18 @@ export function EditInstitutionModal({
                   className="w-full px-3 py-2 bg-zinc-950 border border-red-500/30 rounded-lg text-sm text-zinc-100 placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-500/40"
                 />
               </div>
+              <label
+                className="flex items-center gap-1 text-[10px] text-amber-400 font-medium cursor-pointer"
+                title="Not a real transaction — portfolio balance correction"
+              >
+                <input
+                  type="checkbox"
+                  checked={deleteAdjustment}
+                  onChange={(e) => setDeleteAdjustment(e.target.checked)}
+                  className="accent-amber-500"
+                />
+                Portfolio adjustment
+              </label>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -459,6 +490,7 @@ export function EditInstitutionModal({
                   onClick={() => {
                     setShowDeleteConfirm(false);
                     setDeleteConfirmText("");
+                    setDeleteAdjustment(false);
                   }}
                   className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
                 >

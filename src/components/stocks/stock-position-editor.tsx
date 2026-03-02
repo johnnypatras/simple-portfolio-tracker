@@ -29,6 +29,7 @@ interface StockPositionEditorProps {
   brokers: Broker[];
   existingSubcategories: string[];
   existingTags: string[];
+  prices?: Record<string, { price: number; currency: string }>;
 }
 
 export function StockPositionEditor({
@@ -38,6 +39,7 @@ export function StockPositionEditor({
   brokers,
   existingSubcategories,
   existingTags,
+  prices,
 }: StockPositionEditorProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -132,12 +134,18 @@ export function StockPositionEditor({
     setSavingId(brokerId);
 
     const qty = parseFloat(edits[brokerId] ?? "0");
+    const yahooTicker = asset.yahoo_ticker;
+    const priceData = yahooTicker ? prices?.[yahooTicker] : undefined;
     try {
       await upsertStockPosition({
         stock_asset_id: asset.id,
         broker_id: brokerId,
         quantity: qty,
-      }, { isAdjustment: adjustmentFlags[brokerId] ?? false });
+      }, {
+        isAdjustment: adjustmentFlags[brokerId] ?? false,
+        currentPriceNative: priceData?.price,
+        assetCurrency: priceData?.currency ?? asset.currency,
+      });
       // If zero, remove from local state
       if (qty <= 0) {
         setEdits((prev) => {
@@ -162,8 +170,14 @@ export function StockPositionEditor({
   async function handleDelete(positionId: string, brokerId: string) {
     setError(null);
     setSavingId(brokerId);
+    const yahooTicker = asset.yahoo_ticker;
+    const priceData = yahooTicker ? prices?.[yahooTicker] : undefined;
     try {
-      await deleteStockPosition(positionId, { isAdjustment: adjustmentFlags[brokerId] ?? false });
+      await deleteStockPosition(positionId, {
+        isAdjustment: adjustmentFlags[brokerId] ?? false,
+        currentPriceNative: priceData?.price,
+        assetCurrency: priceData?.currency ?? asset.currency,
+      });
       setEdits((prev) => {
         const next = { ...prev };
         delete next[brokerId];

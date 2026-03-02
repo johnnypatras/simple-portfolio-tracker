@@ -180,13 +180,26 @@ export async function updateCryptoAsset(
   revalidatePath("/dashboard");
 }
 
-/** Soft-delete a crypto asset (cascade trigger handles positions + goal_prices) */
-export async function deleteCryptoAsset(id: string) {
+/** Soft-delete a crypto asset — individually deletes child positions first for activity logging */
+export async function deleteCryptoAsset(id: string, opts?: { isAdjustment?: boolean }) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  // Delete child positions individually so each gets an activity_log entry
+  const { data: positions } = await supabase
+    .from("crypto_positions")
+    .select("id")
+    .eq("crypto_asset_id", id)
+    .is("deleted_at", null);
+
+  if (positions?.length) {
+    for (const pos of positions) {
+      await deletePosition(pos.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
+    }
+  }
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase
@@ -220,7 +233,11 @@ export async function deleteCryptoAsset(id: string) {
 }
 
 /** Upsert a position (set quantity for a crypto asset in a specific wallet) */
-export async function upsertPosition(input: CryptoPositionInput, opts?: { isAdjustment?: boolean }) {
+export async function upsertPosition(input: CryptoPositionInput, opts?: {
+  isAdjustment?: boolean;
+  currentPriceUsd?: number;
+  currentPriceEur?: number;
+}) {
   const supabase = await createServerSupabaseClient();
 
   // Fetch asset ticker for logging
@@ -248,6 +265,15 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: { isAdju
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", existing.id);
       if (error) throw new Error(error.message);
+
+      let deltaUsd: number | null = null;
+      let deltaEur: number | null = null;
+      if (opts?.isAdjustment && (opts.currentPriceUsd || opts.currentPriceEur)) {
+        const qty = (existing.quantity as number) ?? 0;
+        deltaUsd = -(qty * (opts.currentPriceUsd ?? 0));
+        deltaEur = -(qty * (opts.currentPriceEur ?? 0));
+      }
+
       await logActivity({
         action: "removed",
         entity_type: "crypto_position",
@@ -258,6 +284,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: { isAdju
         before_snapshot: existing,
         after_snapshot: null,
         is_adjustment: opts?.isAdjustment,
+        delta_usd: deltaUsd,
+        delta_eur: deltaEur,
       });
     }
   } else {
@@ -296,6 +324,16 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: { isAdju
       .is("deleted_at", null)
       .single();
 
+    let deltaUsd: number | null = null;
+    let deltaEur: number | null = null;
+    if (opts?.isAdjustment && (opts.currentPriceUsd || opts.currentPriceEur)) {
+      const beforeQty = (before?.quantity as number) ?? 0;
+      const afterQty = input.quantity;
+      const qtyDelta = afterQty - beforeQty;
+      deltaUsd = qtyDelta * (opts.currentPriceUsd ?? 0);
+      deltaEur = qtyDelta * (opts.currentPriceEur ?? 0);
+    }
+
     await logActivity({
       action: before ? "updated" : "created",
       entity_type: "crypto_position",
@@ -306,6 +344,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: { isAdju
       before_snapshot: before,
       after_snapshot: after,
       is_adjustment: opts?.isAdjustment,
+      delta_usd: deltaUsd,
+      delta_eur: deltaEur,
     });
   }
 
@@ -314,7 +354,11 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: { isAdju
 }
 
 /** Soft-delete a specific position */
-export async function deletePosition(positionId: string, opts?: { isAdjustment?: boolean }) {
+export async function deletePosition(positionId: string, opts?: {
+  isAdjustment?: boolean;
+  currentPriceUsd?: number;
+  currentPriceEur?: number;
+}) {
   const supabase = await createServerSupabaseClient();
 
   // Capture full snapshot before soft-delete
@@ -333,6 +377,15 @@ export async function deletePosition(positionId: string, opts?: { isAdjustment?:
     .eq("id", positionId);
 
   if (error) throw new Error(error.message);
+
+  let deltaUsd: number | null = null;
+  let deltaEur: number | null = null;
+  if (opts?.isAdjustment && snapshot) {
+    const qty = (snapshot.quantity as number) ?? 0;
+    deltaUsd = -(qty * (opts.currentPriceUsd ?? 0));
+    deltaEur = -(qty * (opts.currentPriceEur ?? 0));
+  }
+
   await logActivity({
     action: "removed",
     entity_type: "crypto_position",
@@ -343,6 +396,8 @@ export async function deletePosition(positionId: string, opts?: { isAdjustment?:
     before_snapshot: snapshot,
     after_snapshot: null,
     is_adjustment: opts?.isAdjustment,
+    delta_usd: deltaUsd,
+    delta_eur: deltaEur,
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");

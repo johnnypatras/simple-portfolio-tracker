@@ -181,7 +181,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           quantity: qty,
           acquisition_method: acquisitionType,
           apy: apyVal > 0 ? apyVal : undefined,
-        }, adjustOpts);
+        }, {
+          ...adjustOpts,
+          currentPriceUsd: selectedCoin.price_usd,
+          // EUR not available from search, will be derived server-side via FX if needed for backfill
+        });
       }
 
       onClose();

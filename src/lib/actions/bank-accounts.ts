@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { BankAccountInput, WalletType, PrivacyLabel } from "@/lib/types";
 import { DEFAULT_COUNTRY } from "@/lib/constants";
-import { logActivity } from "@/lib/actions/activity-log";
+import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import {
   findOrCreateInstitution,
   renameInstitution,
@@ -55,6 +55,13 @@ export async function createBankAccount(
   }).select("*").single();
 
   if (error) throw new Error(error.message);
+  let deltaUsd: number | null = null;
+  let deltaEur: number | null = null;
+  if (opts?.isAdjustment && created) {
+    const converted = await toUsdAndEur(created.balance ?? 0, created.currency ?? "EUR");
+    deltaUsd = Math.round(converted.usd * 100) / 100;
+    deltaEur = Math.round(converted.eur * 100) / 100;
+  }
   await logActivity({
     action: "created",
     entity_type: "bank_account",
@@ -65,6 +72,8 @@ export async function createBankAccount(
     before_snapshot: null,
     after_snapshot: created,
     is_adjustment: opts?.isAdjustment,
+    delta_usd: deltaUsd,
+    delta_eur: deltaEur,
   });
 
   // Create sibling wallet if requested
@@ -268,6 +277,16 @@ export async function updateBankAccount(
     .is("deleted_at", null)
     .single();
 
+  let deltaUsd: number | null = null;
+  let deltaEur: number | null = null;
+  if (opts?.isAdjustment) {
+    const beforeBal = (before?.balance as number) ?? 0;
+    const afterBal = (after?.balance as number) ?? 0;
+    const currency = (after?.currency as string) ?? (before?.currency as string) ?? "EUR";
+    const converted = await toUsdAndEur(afterBal - beforeBal, currency);
+    deltaUsd = Math.round(converted.usd * 100) / 100;
+    deltaEur = Math.round(converted.eur * 100) / 100;
+  }
   await logActivity({
     action: "updated",
     entity_type: "bank_account",
@@ -278,6 +297,8 @@ export async function updateBankAccount(
     before_snapshot: before,
     after_snapshot: after,
     is_adjustment: opts?.isAdjustment,
+    delta_usd: deltaUsd,
+    delta_eur: deltaEur,
   });
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
@@ -305,6 +326,13 @@ export async function deleteBankAccount(id: string, opts?: { isAdjustment?: bool
   const label = snapshot
     ? `${snapshot.name} (${snapshot.bank_name})`
     : "Unknown";
+  let deltaUsd: number | null = null;
+  let deltaEur: number | null = null;
+  if (opts?.isAdjustment && snapshot) {
+    const converted = await toUsdAndEur(-(snapshot.balance ?? 0), snapshot.currency ?? "EUR");
+    deltaUsd = Math.round(converted.usd * 100) / 100;
+    deltaEur = Math.round(converted.eur * 100) / 100;
+  }
   await logActivity({
     action: "removed",
     entity_type: "bank_account",
@@ -315,6 +343,8 @@ export async function deleteBankAccount(id: string, opts?: { isAdjustment?: bool
     before_snapshot: snapshot,
     after_snapshot: null,
     is_adjustment: opts?.isAdjustment,
+    delta_usd: deltaUsd,
+    delta_eur: deltaEur,
   });
 
   revalidatePath("/dashboard/settings");

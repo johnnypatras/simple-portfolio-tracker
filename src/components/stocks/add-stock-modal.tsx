@@ -203,7 +203,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
           stock_asset_id: assetId,
           broker_id: positionBrokerId,
           quantity: qty,
-        }, adjustOpts);
+        }, {
+          ...adjustOpts,
+          currentPriceNative: selected?.price,
+          assetCurrency: selected?.currency,
+        });
       }
 
       onClose();

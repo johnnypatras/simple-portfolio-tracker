@@ -15,6 +15,7 @@ interface PositionEditorProps {
   wallets: Wallet[];
   existingSubcategories: string[];
   existingChains: string[];
+  prices?: Record<string, { usd: number; eur: number }>;
 }
 
 interface PositionEdit {
@@ -31,6 +32,7 @@ export function PositionEditor({
   wallets,
   existingSubcategories,
   existingChains,
+  prices,
 }: PositionEditorProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -172,6 +174,7 @@ export function PositionEditor({
     const qty = parseFloat(edit?.quantity ?? "0");
     const method = edit?.acquisition ?? "bought";
     const apy = parseFloat(edit?.apy ?? "0");
+    const priceData = prices?.[asset.coingecko_id];
     try {
       await upsertPosition({
         crypto_asset_id: asset.id,
@@ -179,7 +182,11 @@ export function PositionEditor({
         quantity: qty,
         acquisition_method: method,
         apy: apy || undefined,
-      }, { isAdjustment: edit.isAdjustment });
+      }, {
+        isAdjustment: edit.isAdjustment,
+        currentPriceUsd: priceData?.usd,
+        currentPriceEur: priceData?.eur,
+      });
       // If zero, remove from local state
       if (qty <= 0) {
         setEdits((prev) => {
@@ -206,8 +213,13 @@ export function PositionEditor({
   async function handleDelete(positionId: string, walletId: string) {
     setError(null);
     setSavingId(walletId);
+    const priceData = prices?.[asset.coingecko_id];
     try {
-      await deletePosition(positionId, { isAdjustment: edits[walletId]?.isAdjustment });
+      await deletePosition(positionId, {
+        isAdjustment: edits[walletId]?.isAdjustment,
+        currentPriceUsd: priceData?.usd,
+        currentPriceEur: priceData?.eur,
+      });
       setEdits((prev) => {
         const next = { ...prev };
         delete next[walletId];

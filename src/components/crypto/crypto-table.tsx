@@ -1295,6 +1295,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxChange
               wallets={wallets}
               existingSubcategories={existingSubcategories}
               existingChains={existingChains}
+              prices={prices}
             />
           )}
         </>

@@ -268,7 +268,8 @@ export async function updateInstitutionRoles(
  */
 export async function removeInstitutionRole(
   institutionId: string,
-  role: "wallet" | "broker" | "bank"
+  role: "wallet" | "broker" | "bank",
+  opts?: { isAdjustment?: boolean }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -286,7 +287,7 @@ export async function removeInstitutionRole(
     if (wallets?.length) {
       const { deleteWallet } = await import("@/lib/actions/wallets");
       for (const w of wallets) {
-        await deleteWallet(w.id);
+        await deleteWallet(w.id, opts);
       }
     }
   } else if (role === "broker") {
@@ -299,7 +300,7 @@ export async function removeInstitutionRole(
     if (brokers?.length) {
       const { deleteBroker } = await import("@/lib/actions/brokers");
       for (const b of brokers) {
-        await deleteBroker(b.id);
+        await deleteBroker(b.id, opts);
       }
     }
   } else if (role === "bank") {
@@ -312,7 +313,7 @@ export async function removeInstitutionRole(
     if (banks?.length) {
       const { deleteBankAccount } = await import("@/lib/actions/bank-accounts");
       for (const ba of banks) {
-        await deleteBankAccount(ba.id);
+        await deleteBankAccount(ba.id, opts);
       }
     }
   }
@@ -325,7 +326,7 @@ export async function removeInstitutionRole(
 /**
  * Delete an institution and all its children (cascade trigger handles soft-deletes).
  */
-export async function deleteInstitution(institutionId: string): Promise<void> {
+export async function deleteInstitution(institutionId: string, opts?: { isAdjustment?: boolean }): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -340,6 +341,22 @@ export async function deleteInstitution(institutionId: string): Promise<void> {
     .is("deleted_at", null)
     .single();
   if (!inst) throw new Error("Institution not found");
+
+  // Explicitly delete children before soft-deleting institution so each gets logged
+  const { data: instWallets } = await supabase
+    .from("wallets").select("id").eq("institution_id", institutionId).is("deleted_at", null);
+  const { data: instBrokers } = await supabase
+    .from("brokers").select("id").eq("institution_id", institutionId).is("deleted_at", null);
+  const { data: instBanks } = await supabase
+    .from("bank_accounts").select("id").eq("institution_id", institutionId).is("deleted_at", null);
+
+  const { deleteWallet } = await import("@/lib/actions/wallets");
+  const { deleteBroker } = await import("@/lib/actions/brokers");
+  const { deleteBankAccount } = await import("@/lib/actions/bank-accounts");
+
+  for (const w of instWallets ?? []) await deleteWallet(w.id, opts);
+  for (const b of instBrokers ?? []) await deleteBroker(b.id, opts);
+  for (const ba of instBanks ?? []) await deleteBankAccount(ba.id, opts);
 
   const { error } = await supabase
     .from("institutions")

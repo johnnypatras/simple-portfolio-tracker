@@ -10,9 +10,10 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Layers, TrendingUp, Info } from "lucide-react";
+import { Layers, TrendingUp, Info, SlidersHorizontal } from "lucide-react";
 import type { PortfolioSnapshot } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/actions/benchmark";
+import type { AdjustmentDelta } from "@/lib/actions/activity-log";
 import { fmtCurrencyCompact } from "@/lib/format";
 
 interface PortfolioChartProps {
@@ -22,6 +23,7 @@ interface PortfolioChartProps {
   primaryCurrency: string;
   sp500History?: { date: string; close: number }[];
   cashFlows?: CashFlowEvent[];
+  adjustmentDeltas?: AdjustmentDelta[];
 }
 
 // Module-level constant: today's date string (stable for the lifetime of the page)
@@ -51,11 +53,15 @@ export function PortfolioChart({
   primaryCurrency,
   sp500History = [],
   cashFlows = [],
+  adjustmentDeltas = [],
 }: PortfolioChartProps) {
   const [periodIdx, setPeriodIdx] = useState(3); // default to 30D
   const [showAllocation, setShowAllocation] = useState(false);
   const [showBenchmark, setShowBenchmark] = useState(false);
+  const [showAdjusted, setShowAdjusted] = useState(true); // default ON
   const period = PERIODS[periodIdx];
+
+  const hasDeltas = adjustmentDeltas.length > 0;
 
   const valueKey =
     primaryCurrency === "EUR" ? "total_value_eur" : "total_value_usd";
@@ -104,15 +110,39 @@ export function PortfolioChart({
       points[points.length - 1].valueUsd = liveValueUsd;
     }
 
+    // ── Adjustment delta lookup ──
+    // For each chart point, find the most recent cumulative delta on or before
+    // that date. Then compute: adjustedValue = value + (finalCumDelta - cumDelta).
+    // This "fills the gap" — early snapshots that are missing not-yet-imported
+    // holdings get the missing value added back, flattening the import ramp.
+    const deltaLookup = adjustmentDeltas.map((d) => ({
+      date: d.date,
+      cumUsd: d.cumulative_usd,
+      cumEur: d.cumulative_eur,
+    }));
+
+    // Final cumulative delta = total of all adjustments ever recorded
+    const finalCumDelta =
+      deltaLookup.length > 0
+        ? deltaLookup[deltaLookup.length - 1]
+        : { cumUsd: 0, cumEur: 0 };
+
+    const getCumulativeDelta = (
+      date: string
+    ): { usd: number; eur: number } => {
+      if (deltaLookup.length === 0) return { usd: 0, eur: 0 };
+      let result = { usd: 0, eur: 0 };
+      for (const d of deltaLookup) {
+        if (d.date <= date) {
+          result = { usd: d.cumUsd, eur: d.cumEur };
+        } else {
+          break;
+        }
+      }
+      return result;
+    };
+
     // ── Cash-flow-adjusted S&P 500 benchmark ──
-    // Instead of naive normalization, we simulate: "What if every dollar
-    // deposited/withdrawn had gone into the S&P 500 instead?"
-    //
-    // Algorithm: track hypothetical S&P 500 "units" purchased with each
-    // cash flow. On any day, hypothetical value = units × S&P price.
-    //
-    // If no cash flow data exists, fall back to naive normalization
-    // (both lines start at the same value on day 1).
     const sp500Map = new Map(sp500History.map((p) => [p.date, p.close]));
 
     // Helper: get S&P price for a date, falling back to nearest earlier date
@@ -129,8 +159,6 @@ export function PortfolioChart({
     const hasCashFlows = cashFlows.length > 0;
     const chartStart = points[0]?.date ?? "";
 
-    let enriched: (typeof points[number] & { sp500Value?: number })[];
-
     // Helper: convert a USD amount to display currency using the snapshot's
     // implicit FX rate. When primaryCurrency is USD, this is a no-op.
     const toDisplayCurrency = (usdAmount: number, point: { value: number; valueUsd: number }): number | undefined => {
@@ -139,20 +167,20 @@ export function PortfolioChart({
       return usdAmount * (point.value / point.valueUsd);
     };
 
+    type ChartPoint = typeof points[number] & {
+      sp500Value?: number;
+      adjustedValue?: number;
+      rawValue?: number;
+    };
+
+    let enriched: ChartPoint[];
+
     if (hasCashFlows) {
       // ── Cash-flow-adjusted mode ──
-      // Don't use the first snapshot value as "initial investment" — the
-      // activity log already captures all deposits/positions as cash flows.
-      // Using both would double-count.
-      // Instead, start with 0 units and let cash flows alone determine
-      // how many hypothetical S&P 500 units the user would hold.
       let sp500Units = 0;
-
-      // Track pre-chart units separately, and in-chart flows by date
       let preChartUnits = 0;
       const unitsByDate = new Map<string, number>();
 
-      // Replay cash flows in chronological order
       for (const cf of cashFlows) {
         const price = getSp500Price(cf.date);
         if (price && price > 0) {
@@ -165,25 +193,72 @@ export function PortfolioChart({
         }
       }
 
-      // Compute hypothetical value for each chart point
+      // Seed S&P units so the benchmark starts at the adjusted portfolio value.
+      // Import entries excluded from cashFlows (is_adjustment=true) still represent
+      // real invested capital. Without seeding, the S&P line starts too low.
+      const firstPoint = points[0];
+      if (firstPoint) {
+        const sp500StartPrice = getSp500Price(firstPoint.date);
+        if (sp500StartPrice && sp500StartPrice > 0) {
+          const firstDelta = getCumulativeDelta(firstPoint.date);
+          // Compute adjusted value in the display currency first, then convert
+          // back to USD. This avoids FX mismatch: each delta was converted at
+          // its own historical rate, so cumUsd × snapshotFX ≠ cumEur.
+          const firstDeltaDisp =
+            primaryCurrency === "EUR" ? firstDelta.eur : firstDelta.usd;
+          const finalDeltaDisp =
+            primaryCurrency === "EUR"
+              ? finalCumDelta.cumEur
+              : finalCumDelta.cumUsd;
+          const adjustedFirstDisp =
+            firstPoint.value + (finalDeltaDisp - firstDeltaDisp);
+          const adjustedFirstUsd =
+            firstPoint.valueUsd > 0
+              ? adjustedFirstDisp * (firstPoint.valueUsd / firstPoint.value)
+              : adjustedFirstDisp;
+          const neededUnits = adjustedFirstUsd / sp500StartPrice;
+          if (neededUnits > preChartUnits) {
+            const seedDelta = neededUnits - preChartUnits;
+            sp500Units += seedDelta;
+            preChartUnits = neededUnits;
+            for (const [date, units] of unitsByDate) {
+              unitsByDate.set(date, units + seedDelta);
+            }
+          }
+        }
+      }
+
       let currentUnits = preChartUnits;
       enriched = points.map((p) => {
-        // Update units if a cash flow happened on this date
         if (unitsByDate.has(p.date)) {
           currentUnits = unitsByDate.get(p.date)!;
         }
         const price = getSp500Price(p.date);
-        // sp500 price × units = USD value → convert to display currency
         const sp500ValueUsd = price != null ? currentUnits * price : undefined;
         const sp500Value = sp500ValueUsd != null
           ? toDisplayCurrency(sp500ValueUsd, p)
           : undefined;
-        return { ...p, sp500Value };
+
+        // Compute adjusted value: fill in the "gap" of not-yet-imported value
+        const delta = getCumulativeDelta(p.date);
+        const deltaDisplay =
+          primaryCurrency === "EUR" ? delta.eur : delta.usd;
+        const finalDeltaDisplay =
+          primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
+        const adjustedValue = p.value + (finalDeltaDisplay - deltaDisplay);
+
+        return { ...p, sp500Value, adjustedValue, rawValue: p.value };
       });
     } else {
       // ── Fallback: naive normalization ──
-      // Both lines start at the same dollar value on day 1.
-      const portfolioStart = points[0]?.value ?? 0;
+      // Use adjusted start value so S&P matches portfolio after adjustment compensation
+      const firstDeltaFb = getCumulativeDelta(chartStart);
+      const finalDeltaFb =
+        primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
+      const firstDeltaFbDisplay =
+        primaryCurrency === "EUR" ? firstDeltaFb.eur : firstDeltaFb.usd;
+      const portfolioStart =
+        (points[0]?.value ?? 0) + (finalDeltaFb - firstDeltaFbDisplay);
       const sp500Start = getSp500Price(chartStart);
 
       enriched = points.map((p) => {
@@ -194,12 +269,20 @@ export function PortfolioChart({
             sp500Value = (portfolioStart / sp500Start) * close;
           }
         }
-        return { ...p, sp500Value };
+
+        const delta = getCumulativeDelta(p.date);
+        const deltaDisplay =
+          primaryCurrency === "EUR" ? delta.eur : delta.usd;
+        const finalDeltaDisplay =
+          primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
+        const adjustedValue = p.value + (finalDeltaDisplay - deltaDisplay);
+
+        return { ...p, sp500Value, adjustedValue, rawValue: p.value };
       });
     }
 
     return enriched;
-  }, [snapshots, liveValue, liveValueUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows]);
+  }, [snapshots, liveValue, liveValueUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, adjustmentDeltas]);
 
   if (data.length < 2) {
     return (
@@ -221,9 +304,12 @@ export function PortfolioChart({
     );
   }
 
-  const allValues = data.flatMap((d) =>
-    showBenchmark && d.sp500Value != null ? [d.value, d.sp500Value] : [d.value]
-  );
+  // Use the active dataKey for y-axis domain
+  const activeValueKey = hasDeltas && showAdjusted ? "adjustedValue" : "value";
+  const allValues = data.flatMap((d) => {
+    const v = (d as Record<string, unknown>)[activeValueKey] as number ?? d.value;
+    return showBenchmark && d.sp500Value != null ? [v, d.sp500Value] : [v];
+  });
   const minValue = Math.min(...allValues);
   const maxValue = Math.max(...allValues);
   const yDomain = [
@@ -236,6 +322,20 @@ export function PortfolioChart({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-sm font-medium text-zinc-400">Portfolio Value</h3>
+          {hasDeltas && (
+            <button
+              onClick={() => setShowAdjusted(!showAdjusted)}
+              className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                showAdjusted
+                  ? "bg-amber-500/20 text-amber-400"
+                  : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+              }`}
+              title="Toggle adjustment compensation — hides artificial jumps from portfolio corrections"
+            >
+              <SlidersHorizontal className="w-3 h-3" />
+              <span>Adj</span>
+            </button>
+          )}
           <button
             onClick={() => setShowAllocation(!showAllocation)}
             className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
@@ -317,19 +417,30 @@ export function PortfolioChart({
                 const point = payload[0].payload as {
                   date: string;
                   value: number;
+                  adjustedValue?: number;
+                  rawValue?: number;
                   sp500Value?: number;
                   cryptoPct: number;
                   stocksPct: number;
                   cashPct: number;
                 };
+                const displayValue =
+                  hasDeltas && showAdjusted
+                    ? (point.adjustedValue ?? point.value)
+                    : point.value;
                 return (
                   <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 shadow-lg">
                     <p className="text-xs text-zinc-400">
                       {formatDate(point.date)}
                     </p>
                     <p className="text-sm font-medium text-zinc-100">
-                      {fmtCurrencyCompact(point.value, primaryCurrency)}
+                      {fmtCurrencyCompact(displayValue, primaryCurrency)}
                     </p>
+                    {hasDeltas && showAdjusted && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
+                      <p className="text-[10px] text-zinc-600 mt-0.5">
+                        Raw: {fmtCurrencyCompact(point.rawValue, primaryCurrency)}
+                      </p>
+                    )}
                     {showBenchmark && point.sp500Value != null && (
                       <p className="text-xs text-zinc-500 mt-0.5">
                         S&P 500 TR {fmtCurrencyCompact(point.sp500Value, primaryCurrency)}
@@ -355,7 +466,7 @@ export function PortfolioChart({
             <Area
               yAxisId="value"
               type="monotone"
-              dataKey="value"
+              dataKey={hasDeltas && showAdjusted ? "adjustedValue" : "value"}
               stroke="var(--chart-stroke)"
               strokeWidth={2}
               fill="url(#areaGradient)"

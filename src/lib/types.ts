@@ -506,5 +506,7 @@ export interface ActivityLog {
   after_snapshot: Record<string, unknown> | null;
   undone_at: string | null;
   is_adjustment: boolean;
+  delta_usd: number | null;
+  delta_eur: number | null;
   created_at: string;
 }
