@@ -399,7 +399,7 @@ export function ActivityTimeline({
                               </span>
                             )}
                             {log.transfer_group_id && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-teal-500/15 text-teal-400" title="Last change was a sell/buy/move transfer">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-teal-500/15 text-teal-400" title="Part of a sell/buy/move transfer">
                                 Xfer
                               </span>
                             )}
