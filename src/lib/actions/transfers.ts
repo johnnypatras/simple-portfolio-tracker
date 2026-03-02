@@ -57,18 +57,18 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   try {
     // ── Step 1: Create new assets if needed ─────────────────
     if (input.newCryptoAsset) {
-      const newAssetId = await createCryptoAsset(input.newCryptoAsset);
-      // Patch destination with the newly created asset ID
-      if (input.destination.type === "crypto_position") {
-        (input.destination as { assetId: string }).assetId = newAssetId;
+      if (input.destination.type !== "crypto_position") {
+        return { success: false, error: "newCryptoAsset provided but destination is not crypto_position" };
       }
+      const newAssetId = await createCryptoAsset(input.newCryptoAsset);
+      (input.destination as { assetId: string }).assetId = newAssetId;
     }
     if (input.newStockAsset) {
-      const newAssetId = await createStockAsset(input.newStockAsset);
-      // Patch destination with the newly created asset ID
-      if (input.destination.type === "stock_position") {
-        (input.destination as { assetId: string }).assetId = newAssetId;
+      if (input.destination.type !== "stock_position") {
+        return { success: false, error: "newStockAsset provided but destination is not stock_position" };
       }
+      const newAssetId = await createStockAsset(input.newStockAsset);
+      (input.destination as { assetId: string }).assetId = newAssetId;
     }
 
     // ── Step 2: Fetch current state of source entity ────────
@@ -87,7 +87,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       // Retry once
       try {
         await executeDestLeg(admin, user.id, input.destination, transferGroupId, prices);
-      } catch {
+      } catch (retryErr) {
         // Rollback source: restore to original state
         try {
           await rollbackSource(admin, user.id, input.source, originalState, transferGroupId, prices);
@@ -99,9 +99,10 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
             partialFailure: true,
           };
         }
+        const finalErr = retryErr instanceof Error ? retryErr.message : destErr instanceof Error ? destErr.message : "Destination leg failed";
         return {
           success: false,
-          error: destErr instanceof Error ? destErr.message : "Destination leg failed",
+          error: finalErr,
           transferGroupId,
         };
       }
