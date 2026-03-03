@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
 import { Plus, Landmark, Wallet as WalletIcon, Briefcase, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmButton } from "@/components/ui/confirm-button";
@@ -96,6 +96,25 @@ export function CashTable({
   fxValueChange24h = 0,
 }: CashTableProps) {
   const { isReadOnly } = useSharedView();
+  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+
+  const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpenTooltip((prev) => (prev === id ? null : id));
+  }, []);
+
+  useEffect(() => {
+    if (!openTooltip) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) {
+        setOpenTooltip(null);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [openTooltip]);
 
   // ── Compute totals ──────────────────────────────────────
   const bankTotal = bankAccounts.reduce(
@@ -386,7 +405,11 @@ export function CashTable({
             {formatCurrency(totalCash, primaryCurrency)}
           </p>
           {cashChangePercent !== 0 && (
-            <span className={`relative group/tip cursor-pointer text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            <span
+              ref={openTooltip === "summary" ? tooltipRef : undefined}
+              onClick={(e) => toggleTooltip("summary", e)}
+              className={`relative group/tip cursor-pointer text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}
+            >
               {isReadOnly ? (
                 <>
                   {cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(1)}%
@@ -404,6 +427,7 @@ export function CashTable({
                 deposits={0}
                 startValue={totalCash - cashChangeValue}
                 cur={primaryCurrency}
+                open={openTooltip === "summary"}
               />
             </span>
           )}

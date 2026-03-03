@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -90,6 +90,25 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedTickerGroups, setExpandedTickerGroups] = useState<Set<string>>(new Set());
+  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+
+  const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpenTooltip((prev) => (prev === id ? null : id));
+  }, []);
+
+  useEffect(() => {
+    if (!openTooltip) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) {
+        setOpenTooltip(null);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [openTooltip]);
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -374,7 +393,11 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
           {weighted24hChange !== 0 && (() => {
             const delta = totalPortfolioValue - totalPortfolioValue / (1 + weighted24hChange / 100);
             return (
-              <span className={`relative group/tip cursor-pointer text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              <span
+                ref={openTooltip === "summary" ? tooltipRef : undefined}
+                onClick={(e) => toggleTooltip("summary", e)}
+                className={`relative group/tip cursor-pointer text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}
+              >
                 {isReadOnly ? (
                   <>
                     {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(1)}%
@@ -392,6 +415,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                   deposits={0}
                   startValue={totalPortfolioValue - delta}
                   cur={primaryCurrency}
+                  open={openTooltip === "summary"}
                 />
               </span>
             );
