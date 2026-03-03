@@ -56,7 +56,7 @@ export default async function DashboardPage() {
   // Build ticker/coin ID lists for price fetching
   // Always include "bitcoin" for BTC market price on dashboard
   const coinIds = [
-    ...new Set(["bitcoin", "ethereum", ...cryptoAssets.map((a) => a.coingecko_id)]),
+    ...new Set(["bitcoin", "ethereum", "solana", ...cryptoAssets.map((a) => a.coingecko_id)]),
   ];
   const yahooTickers = stockAssets
     .map((a) => a.yahoo_ticker || a.ticker)
@@ -89,6 +89,11 @@ export default async function DashboardPage() {
   const nasdaqData = indexPrices["^IXIC"] ?? null;
   const dowData = indexPrices["^DJI"] ?? null;
   const eurUsdData = indexPrices["EURUSD=X"] ?? null;
+  const stoxx50Data = indexPrices["^STOXX50E"] ?? null;
+  const silverData = indexPrices["SI=F"] ?? null;
+  const oilData = indexPrices["BZ=F"] ?? null;
+  const treasury10yData = indexPrices["^TNX"] ?? null;
+  const vixData = indexPrices["^VIX"] ?? null;
 
   // ── Aggregate into portfolio summary ──────────────────
   const summary = aggregatePortfolio({
@@ -127,6 +132,18 @@ export default async function DashboardPage() {
     dowPrice: dowData?.price ?? 0,
     dowChange24h: dowData?.change24h ?? 0,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    solPriceUsd: cryptoPrices["solana"]?.usd ?? 0,
+    solChange24h: cryptoPrices["solana"]?.usd_24h_change ?? 0,
+    stoxx50Price: stoxx50Data?.price ?? 0,
+    stoxx50Change24h: stoxx50Data?.change24h ?? 0,
+    silverPrice: silverData?.price ?? 0,
+    silverChange24h: silverData?.change24h ?? 0,
+    oilPrice: oilData?.price ?? 0,
+    oilChange24h: oilData?.change24h ?? 0,
+    treasury10yPrice: treasury10yData?.price ?? 0,
+    treasury10yChange24h: treasury10yData?.change24h ?? 0,
+    vixPrice: vixData?.price ?? 0,
+    vixChange24h: vixData?.change24h ?? 0,
     dividends,
   });
 

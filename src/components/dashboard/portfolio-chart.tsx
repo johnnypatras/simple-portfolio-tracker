@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Layers, TrendingUp, Info, SlidersHorizontal, BarChart3 } from "lucide-react";
+import { Layers, TrendingUp, Info, BarChart3 } from "lucide-react";
 import type { PortfolioSnapshot } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/actions/benchmark";
 import type { AdjustmentDelta } from "@/lib/actions/activity-log";
@@ -61,6 +61,30 @@ const CHART_TITLES: Record<ChartViewMode, string> = {
   cash: "Cash Value",
 };
 
+const VIEW_MODE_COLORS: Record<ChartViewMode, string> = {
+  total: "var(--chart-stroke)",
+  investments: "#8b5cf6",
+  crypto: "#f97316",
+  stocks: "#06b6d4",
+  cash: "#10b981",
+};
+
+const VIEW_MODE_BUTTON_CLASSES: Record<ChartViewMode, string> = {
+  total: "",
+  investments: "bg-violet-500/20 text-violet-400",
+  crypto: "bg-orange-500/20 text-orange-400",
+  stocks: "bg-cyan-500/20 text-cyan-400",
+  cash: "bg-emerald-500/20 text-emerald-400",
+};
+
+const VIEW_MODE_GRADIENTS: Record<ChartViewMode, string> = {
+  total: "url(#areaGradient)",
+  investments: "url(#investmentsModeGrad)",
+  crypto: "url(#cryptoModeGrad)",
+  stocks: "url(#stocksModeGrad)",
+  cash: "url(#cashModeGrad)",
+};
+
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -79,8 +103,7 @@ export function PortfolioChart({
 }: PortfolioChartProps) {
   const [periodIdx, setPeriodIdx] = useState(3); // default to 30D
   const [showAllocation, setShowAllocation] = useState(false);
-  const [showBenchmark, setShowBenchmark] = useState(false);
-  const [showAdjusted, setShowAdjusted] = useState(true); // default ON
+  const [showBenchmark, setShowBenchmark] = useState(true);
   const [viewMode, setViewMode] = useState<ChartViewMode>("total");
   const period = PERIODS[periodIdx];
 
@@ -387,80 +410,87 @@ export function PortfolioChart({
   }
 
   // Use the active dataKey for y-axis domain
-  const activeValueKey = hasDeltas && showAdjusted ? "adjustedValue" : "value";
-  const allValues = data.flatMap((d) => {
-    const v = (d as Record<string, unknown>)[activeValueKey] as number ?? d.value;
-    return showBenchmark && d.sp500Value != null ? [v, d.sp500Value] : [v];
-  });
-  const minValue = Math.min(...allValues);
-  const maxValue = Math.max(...allValues);
-  const yDomain = [
-    Math.floor(minValue * 0.95),
-    Math.ceil(maxValue * 1.05),
-  ];
+  const yDomain = useMemo(() => {
+    const key = hasDeltas ? "adjustedValue" : "value";
+    const allValues = data.flatMap((d) => {
+      const v = (d as Record<string, unknown>)[key] as number ?? d.value;
+      return showBenchmark && d.sp500Value != null ? [v, d.sp500Value] : [v];
+    });
+    const minValue = Math.min(...allValues);
+    const maxValue = Math.max(...allValues);
+    return [Math.floor(minValue * 0.99), Math.ceil(maxValue * 1.01)] as const;
+  }, [data, hasDeltas, showBenchmark]);
+
+  // Compute allocation area fields relative to yDomain baseline.
+  // Uses overlapping (non-stacked) areas: each fills from yDomain[0] to its value.
+  // Render order: crypto (behind) → stocks → cash (front) creates visual bands.
+  const chartData = useMemo(() => {
+    const base = yDomain[0];
+    return data.map((p) => {
+      const dv = hasDeltas ? (p.adjustedValue ?? p.value) : p.value;
+      const range = Math.max(dv - base, 0);
+      return {
+        ...p,
+        allocCrypto: dv,
+        allocStocks: base + range * (p.cashPct + p.stocksPct) / 100,
+        allocCash: base + range * p.cashPct / 100,
+      };
+    });
+  }, [data, yDomain, hasDeltas]);
+
+  // Are we showing stacked allocation areas? Only in total view with allocation ON
+  const showStackedAlloc = showAllocation && viewMode === "total";
 
   return (
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="flex items-center gap-3">
-          <h3 className="text-sm font-medium text-zinc-400">{CHART_TITLES[viewMode]}</h3>
-          <button
-            onClick={() => {
-              const nextIdx = (VIEW_MODES.indexOf(viewMode) + 1) % VIEW_MODES.length;
-              setViewMode(VIEW_MODES[nextIdx]);
-            }}
-            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
-              viewMode !== "total"
-                ? "bg-blue-500/20 text-blue-400"
-                : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
-            }`}
-            title="Cycle view: Total → Investments → Crypto → Stocks → Cash"
-          >
-            <BarChart3 className="w-3 h-3" />
-            <span>{viewMode === "total" ? "View" : VIEW_MODE_LABELS[viewMode]}</span>
-          </button>
-          {hasDeltas && (
+          <h3 className="text-sm font-medium text-zinc-400 min-w-[9rem]">{CHART_TITLES[viewMode]}</h3>
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowAdjusted(!showAdjusted)}
-              className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
-                showAdjusted
-                  ? "bg-amber-500/20 text-amber-400"
+              onClick={() => {
+                const nextIdx = (VIEW_MODES.indexOf(viewMode) + 1) % VIEW_MODES.length;
+                setViewMode(VIEW_MODES[nextIdx]);
+              }}
+              className={`flex items-center justify-center gap-1 min-w-[6rem] px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                viewMode !== "total"
+                  ? VIEW_MODE_BUTTON_CLASSES[viewMode]
                   : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
               }`}
-              title="Toggle adjustment compensation — hides artificial jumps from portfolio corrections"
+              title="Cycle view: Total → Investments → Crypto → Stocks → Cash"
             >
-              <SlidersHorizontal className="w-3 h-3" />
-              <span>Adj</span>
+              <BarChart3 className="w-3 h-3 shrink-0" />
+              <span>{VIEW_MODE_LABELS[viewMode]}</span>
             </button>
-          )}
-          <button
-            onClick={() => setShowAllocation(!showAllocation)}
-            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
-              showAllocation
-                ? "bg-zinc-700 text-zinc-200"
-                : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
-            }`}
-            title="Toggle allocation overlay"
-          >
-            <Layers className="w-3 h-3" />
-            <span>Allocation</span>
-          </button>
-          {sp500History.length > 0 && (
             <button
-              onClick={() => setShowBenchmark(!showBenchmark)}
+              onClick={() => setShowAllocation(!showAllocation)}
               className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
-                showBenchmark
+                showAllocation
                   ? "bg-zinc-700 text-zinc-200"
                   : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
               }`}
-              title={cashFlows.length > 0
-                ? "S&P 500 TR benchmark (adjusted for cash flows from activity history)"
-                : "S&P 500 TR benchmark (naive — no activity history available)"}
+              title="Toggle allocation overlay"
             >
-              <TrendingUp className="w-3 h-3" />
-              <span>S&P 500</span>
+              <Layers className="w-3 h-3" />
+              <span>Allocation</span>
             </button>
-          )}
+            {sp500History.length > 0 && (
+              <button
+                onClick={() => setShowBenchmark(!showBenchmark)}
+                className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                  showBenchmark
+                    ? "bg-zinc-700 text-zinc-200"
+                    : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                }`}
+                title={cashFlows.length > 0
+                  ? "S&P 500 TR benchmark (adjusted for cash flows from activity history)"
+                  : "S&P 500 TR benchmark (naive — no activity history available)"}
+              >
+                <TrendingUp className="w-3 h-3" />
+                <span>S&P 500</span>
+              </button>
+            )}
+          </div>
         </div>
         <PeriodSelector
           periods={PERIODS}
@@ -470,11 +500,27 @@ export function PortfolioChart({
       </div>
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data}>
+          <ComposedChart data={chartData}>
             <defs>
               <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--chart-stroke)" stopOpacity={0.3} />
                 <stop offset="100%" stopColor="var(--chart-stroke)" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="investmentsModeGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="cryptoModeGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f97316" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#f97316" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="stocksModeGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#06b6d4" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="cashModeGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
@@ -496,18 +542,6 @@ export function PortfolioChart({
               tickLine={false}
               width={70}
             />
-            {showAllocation && (
-              <YAxis
-                yAxisId="pct"
-                orientation="right"
-                domain={[0, 100]}
-                tickFormatter={(v: number) => `${v}%`}
-                tick={{ fill: "var(--chart-tick)", fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-                width={40}
-              />
-            )}
             <Tooltip
               content={({ active, payload }) => {
                 if (!active || !payload?.[0]) return null;
@@ -522,7 +556,7 @@ export function PortfolioChart({
                   cashPct: number;
                 };
                 const displayValue =
-                  hasDeltas && showAdjusted
+                  hasDeltas
                     ? (point.adjustedValue ?? point.value)
                     : point.value;
                 return (
@@ -536,7 +570,7 @@ export function PortfolioChart({
                       )}
                       {fmtCurrencyCompact(displayValue, primaryCurrency)}
                     </p>
-                    {hasDeltas && showAdjusted && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
+                    {hasDeltas && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
                       <p className="text-[10px] text-zinc-600 mt-0.5">
                         Raw: {fmtCurrencyCompact(point.rawValue, primaryCurrency)}
                       </p>
@@ -551,7 +585,7 @@ export function PortfolioChart({
                         <span className="text-orange-400">
                           Crypto {point.cryptoPct.toFixed(0)}%
                         </span>
-                        <span className="text-blue-400">
+                        <span className="text-cyan-400">
                           Stocks {point.stocksPct.toFixed(0)}%
                         </span>
                         <span className="text-emerald-400">
@@ -563,13 +597,49 @@ export function PortfolioChart({
                 );
               }}
             />
+            {showStackedAlloc && (
+              <>
+                {/* Overlapping allocation areas: crypto (behind) → stocks → cash (front) */}
+                {/* Each fills from yDomain[0] baseline to its computed Y position */}
+                <Area
+                  yAxisId="value"
+                  type="monotone"
+                  dataKey="allocCrypto"
+                  fill="#f97316"
+                  fillOpacity={0.15}
+                  stroke="none"
+                  baseValue={yDomain[0]}
+                  isAnimationActive={false}
+                />
+                <Area
+                  yAxisId="value"
+                  type="monotone"
+                  dataKey="allocStocks"
+                  fill="#06b6d4"
+                  fillOpacity={0.15}
+                  stroke="none"
+                  baseValue={yDomain[0]}
+                  isAnimationActive={false}
+                />
+                <Area
+                  yAxisId="value"
+                  type="monotone"
+                  dataKey="allocCash"
+                  fill="#10b981"
+                  fillOpacity={0.15}
+                  stroke="none"
+                  baseValue={yDomain[0]}
+                  isAnimationActive={false}
+                />
+              </>
+            )}
             <Area
               yAxisId="value"
               type="monotone"
-              dataKey={hasDeltas && showAdjusted ? "adjustedValue" : "value"}
-              stroke="var(--chart-stroke)"
+              dataKey={hasDeltas ? "adjustedValue" : "value"}
+              stroke={VIEW_MODE_COLORS[viewMode]}
               strokeWidth={2}
-              fill="url(#areaGradient)"
+              fill={showStackedAlloc ? "none" : VIEW_MODE_GRADIENTS[viewMode]}
             />
             {showBenchmark && (
               <Line
@@ -582,37 +652,6 @@ export function PortfolioChart({
                 dot={false}
                 connectNulls
               />
-            )}
-            {showAllocation && (
-              <>
-                <Line
-                  yAxisId="pct"
-                  type="monotone"
-                  dataKey="cryptoPct"
-                  stroke="#f97316"
-                  strokeWidth={1.5}
-                  dot={false}
-                  strokeDasharray="4 2"
-                />
-                <Line
-                  yAxisId="pct"
-                  type="monotone"
-                  dataKey="stocksPct"
-                  stroke="#3b82f6"
-                  strokeWidth={1.5}
-                  dot={false}
-                  strokeDasharray="4 2"
-                />
-                <Line
-                  yAxisId="pct"
-                  type="monotone"
-                  dataKey="cashPct"
-                  stroke="#10b981"
-                  strokeWidth={1.5}
-                  dot={false}
-                  strokeDasharray="4 2"
-                />
-              </>
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -627,7 +666,7 @@ export function PortfolioChart({
               </span>
               <span className="relative group">
                 <Info className="w-3 h-3 text-zinc-600 cursor-help" />
-                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-56 px-2.5 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-[10px] leading-relaxed text-zinc-300 shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
+                <span className="absolute bottom-full right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mb-1.5 w-56 max-w-[calc(100vw-3rem)] px-2.5 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-[10px] leading-relaxed text-zinc-300 shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
                   {cashFlows.length > 0
                     ? "\"What if I\u2019d put every dollar into the S&P 500 instead?\" Each deposit, purchase, and withdrawal is replayed at the S&P price on that day. Accuracy improves over time as more changes are tracked."
                     : "Simple comparison \u2014 both lines start at the same value. Does not account for the timing of deposits or withdrawals, so differences may be misleading."
@@ -636,11 +675,11 @@ export function PortfolioChart({
               </span>
             </>
           )}
-          {showAllocation && (
+          {showAllocation && viewMode === "total" && (
             <>
-              <LegendItem color="bg-orange-500" label="Crypto %" />
-              <LegendItem color="bg-blue-500" label="Stocks %" />
-              <LegendItem color="bg-emerald-500" label="Cash %" />
+              <LegendItem color="bg-orange-500" label="Crypto" />
+              <LegendItem color="bg-cyan-500" label="Stocks" />
+              <LegendItem color="bg-emerald-500" label="Cash" />
             </>
           )}
         </div>

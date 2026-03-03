@@ -7,9 +7,13 @@ import { fetchCoinHistory } from "@/lib/prices/coingecko";
 
 // ─── Cash Flow Event ─────────────────────────────────────
 
+export type AssetClass = "crypto" | "stocks" | "cash";
+
 export interface CashFlowEvent {
   date: string;       // YYYY-MM-DD
   amount_usd: number; // positive = deposit, negative = withdrawal
+  asset_class?: AssetClass;
+  entity_name?: string;
 }
 
 // ─── Price history helpers ───────────────────────────────
@@ -58,7 +62,7 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
   // ── Step 1: Fetch activity log entries with non-null snapshots ──
   let query = supabase
     .from("activity_log")
-    .select("action, entity_type, before_snapshot, after_snapshot, created_at")
+    .select("action, entity_type, entity_name, before_snapshot, after_snapshot, created_at")
     .in("entity_type", [
       "exchange_deposit", "broker_deposit", "bank_account",
       "crypto_position", "stock_position",
@@ -106,8 +110,8 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
   const needsEurUsd = cashCurrencies.has("EUR");
   const [cryptoAssetsResult, stockAssetsResult, eurUsdHistory] = await Promise.all([
     cryptoAssetIds.size > 0
-      ? supabase.from("crypto_assets").select("id, coingecko_id").in("id", [...cryptoAssetIds])
-      : Promise.resolve({ data: [] as { id: string; coingecko_id: string }[] }),
+      ? supabase.from("crypto_assets").select("id, coingecko_id, subcategory").in("id", [...cryptoAssetIds])
+      : Promise.resolve({ data: [] as { id: string; coingecko_id: string; subcategory: string | null }[] }),
     stockAssetIds.size > 0
       ? supabase.from("stock_assets").select("id, yahoo_ticker, ticker, currency").in("id", [...stockAssetIds])
       : Promise.resolve({ data: [] as { id: string; yahoo_ticker: string | null; ticker: string; currency: string }[] }),
@@ -117,8 +121,10 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
   ]);
 
   const cryptoAssetMap = new Map<string, string>();
+  const stablecoinAssetIds = new Set<string>();
   for (const a of cryptoAssetsResult.data ?? []) {
     if (a.coingecko_id) cryptoAssetMap.set(a.id, a.coingecko_id);
+    if (a.subcategory?.toLowerCase() === "stablecoin") stablecoinAssetIds.add(a.id);
   }
 
   const stockAssetMap = new Map<string, { ticker: string; currency: string }>();
@@ -195,8 +201,10 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
     const before = row.before_snapshot as Record<string, unknown> | null;
     const after = row.after_snapshot as Record<string, unknown> | null;
     let deltaUsd = 0;
+    let assetClass: AssetClass | undefined;
 
     if (row.entity_type === "exchange_deposit" || row.entity_type === "broker_deposit") {
+      assetClass = "cash";
       const bAmt = (before?.amount as number) ?? 0;
       const aAmt = (after?.amount as number) ?? 0;
       const bCur = before?.currency as string | undefined;
@@ -205,6 +213,7 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
       else if (row.action === "updated") deltaUsd = toUsd(aAmt, aCur, date) - toUsd(bAmt, bCur, date);
       else if (row.action === "removed") deltaUsd = -toUsd(bAmt, bCur, date);
     } else if (row.entity_type === "bank_account") {
+      assetClass = "cash";
       const bBal = (before?.balance as number) ?? 0;
       const aBal = (after?.balance as number) ?? 0;
       const bCur = before?.currency as string | undefined;
@@ -213,9 +222,10 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
       else if (row.action === "updated") deltaUsd = toUsd(aBal, aCur, date) - toUsd(bBal, bCur, date);
       else if (row.action === "removed") deltaUsd = -toUsd(bBal, bCur, date);
     } else if (row.entity_type === "crypto_position") {
+      const assetId = (after?.crypto_asset_id ?? before?.crypto_asset_id) as string | undefined;
+      assetClass = assetId && stablecoinAssetIds.has(assetId) ? "cash" : "crypto";
       const bQty = (before?.quantity as number) ?? 0;
       const aQty = (after?.quantity as number) ?? 0;
-      const assetId = (after?.crypto_asset_id ?? before?.crypto_asset_id) as string | undefined;
       const coinId = assetId ? cryptoAssetMap.get(assetId) : undefined;
       const priceMap = coinId ? cryptoPrices.get(coinId) : undefined;
       const price = priceMap ? getPrice(priceMap, date) : undefined;
@@ -225,6 +235,7 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
         else if (row.action === "removed") deltaUsd = -(bQty * price);
       }
     } else if (row.entity_type === "stock_position") {
+      assetClass = "stocks";
       const bQty = (before?.quantity as number) ?? 0;
       const aQty = (after?.quantity as number) ?? 0;
       const assetId = (after?.stock_asset_id ?? before?.stock_asset_id) as string | undefined;
@@ -241,7 +252,7 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
     }
 
     if (Math.abs(deltaUsd) > 0.01) {
-      events.push({ date, amount_usd: deltaUsd });
+      events.push({ date, amount_usd: deltaUsd, asset_class: assetClass, entity_name: row.entity_name ?? undefined });
     }
   }
 

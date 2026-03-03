@@ -236,7 +236,10 @@ export async function getStockPrices(
 
 // ─── Index & Combined Batch ─────────────────────────────────
 
-const INDEX_SYMBOLS = ["^GSPC", "GC=F", "^IXIC", "^DJI", "EURUSD=X"] as const;
+const INDEX_SYMBOLS = [
+  "^GSPC", "GC=F", "^IXIC", "^DJI", "EURUSD=X",
+  "^STOXX50E", "SI=F", "BZ=F", "^TNX", "^VIX",
+] as const;
 
 export type IndexPrices = {
   [symbol: string]: QuoteResult;
@@ -244,7 +247,8 @@ export type IndexPrices = {
 
 /**
  * Fetch all market index/indicator quotes in a single batch.
- * Returns: ^GSPC (S&P 500), GC=F (Gold), ^IXIC (Nasdaq), ^DJI (Dow), EURUSD=X.
+ * Returns: ^GSPC (S&P 500), GC=F (Gold), ^IXIC (Nasdaq), ^DJI (Dow), EURUSD=X,
+ * ^STOXX50E (Euro Stoxx 50), SI=F (Silver), BZ=F (Brent Oil), ^TNX (10Y Treasury), ^VIX.
  */
 export async function getIndexPrices(): Promise<IndexPrices> {
   const batch = await fetchQuotesBatch([...INDEX_SYMBOLS]);
