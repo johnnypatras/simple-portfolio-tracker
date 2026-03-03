@@ -60,9 +60,8 @@ export default async function SharedStocksPage({
         prices={prices}
         primaryCurrency={cur}
         fxRates={fxRates}
-        fxChangePercent={summary.stocksFxChange24hPercent}
-        fxChangeValue={summary.stocksFxValueChange24h}
         dividends={dividends}
+        fxValueChange24h={summary.stocksFxValueChange24h}
       />
     </div>
   );

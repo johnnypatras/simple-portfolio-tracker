@@ -75,9 +75,7 @@ export default async function SharedCashPage({
         stablecoinPrices={stablecoinPrices}
         cashChangePercent={summary.change24hPercent}
         cashChangeValue={summary.cashTotalValueChange24h}
-        fxChangePercent={summary.cashTotalFxChange24hPercent}
-        fxChangeValue={summary.cashTotalFxValueChange24h}
-        stablecoinChange={summary.stablecoinValueChange24h}
+        fxValueChange24h={summary.cashTotalFxValueChange24h}
       />
     </div>
   );

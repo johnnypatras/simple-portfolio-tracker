@@ -24,6 +24,7 @@ import type { PortfolioSnapshot } from "@/lib/types";
 import type { AssetClass, CashFlowEvent } from "@/lib/actions/benchmark";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
 import { useSharedView } from "@/components/shared-view-context";
+import { ChangeTooltip } from "@/components/ui/change-tooltip";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -590,56 +591,53 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getCryptoChangeForPeriod(changePeriod);
             return (
-              <div className="flex items-start justify-between mt-2">
-                <div>
-                  <div className="flex items-baseline gap-3">
-                    <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                      {fmtCurrency(cryptoValue, cur, 0)}
-                    </p>
-                    {c.available ? (
-                      <span
-                        ref={openTooltip === "crypto" ? tooltipRef : undefined}
-                        onClick={(e) => toggleTooltip("crypto", e)}
-                        className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
-                      >
-                        {c.valueChange !== 0 ? (
-                          <>
-                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                            <span className="ml-1">({fmtPct(c.percent)})</span>
-                          </>
-                        ) : (
-                          fmtPct(c.percent)
-                        )}
-                        {(() => {
-                          const dep = getDepositsForPeriod(changePeriod, "crypto");
-                          return (
-                            <ChangeTooltip
-                              valueChange={c.valueChange}
-                              fxValueChange={c.fxValueChange}
-                              deposits={dep.total}
-                              depositBreakdown={dep.breakdown}
-                              startValue={cryptoValue - c.valueChange}
-                              cur={cur}
-                              open={openTooltip === "crypto"}
-                            />
-                          );
-                        })()}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-zinc-600">—</span>
-                    )}
-                  </div>
-                  {summary.stablecoinValue > 0 && (
-                    <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                      excl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
-                    </p>
+              <>
+                <div className="flex items-baseline gap-3 mt-2">
+                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                    {fmtCurrency(cryptoValue, cur, 0)}
+                  </p>
+                  {c.available ? (
+                    <span
+                      ref={openTooltip === "crypto" ? tooltipRef : undefined}
+                      onClick={(e) => toggleTooltip("crypto", e)}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                    >
+                      {c.valueChange !== 0 ? (
+                        <>
+                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                          <span className="ml-1">({fmtPct(c.percent)})</span>
+                        </>
+                      ) : (
+                        fmtPct(c.percent)
+                      )}
+                      {(() => {
+                        const dep = getDepositsForPeriod(changePeriod, "crypto");
+                        return (
+                          <ChangeTooltip
+                            valueChange={c.valueChange}
+                            fxValueChange={c.fxValueChange}
+                            deposits={dep.total}
+                            depositBreakdown={dep.breakdown}
+                            startValue={cryptoValue - c.valueChange}
+                            cur={cur}
+                            open={openTooltip === "crypto"}
+                          />
+                        );
+                      })()}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-zinc-600">—</span>
                   )}
                 </div>
-                <div className="text-xs text-zinc-500 text-right space-y-0.5 shrink-0 ml-3 pt-2">
-                  <p>{insights.cryptoAssetCount} asset{insights.cryptoAssetCount !== 1 ? "s" : ""}</p>
-                  <p>{insights.cryptoPositionCount} position{insights.cryptoPositionCount !== 1 ? "s" : ""}</p>
-                </div>
-              </div>
+                {summary.stablecoinValue > 0 && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                    excl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
+                  </p>
+                )}
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  {insights.cryptoAssetCount} asset{insights.cryptoAssetCount !== 1 ? "s" : ""} · {insights.cryptoPositionCount} position{insights.cryptoPositionCount !== 1 ? "s" : ""}
+                </p>
+              </>
             );
           })()}
         </Link>
@@ -754,71 +752,68 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getStockChangeForPeriod(changePeriod);
             return (
-              <div className="flex items-start justify-between mt-2">
-                <div>
-                  <div className="flex items-baseline gap-3">
-                    <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                      {fmtCurrency(stocksValue, cur, 0)}
+              <>
+                <div className="flex items-baseline gap-3 mt-2">
+                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                    {fmtCurrency(stocksValue, cur, 0)}
+                  </p>
+                  {c.available ? (
+                    <span
+                      ref={openTooltip === "equities" ? tooltipRef : undefined}
+                      onClick={(e) => toggleTooltip("equities", e)}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                    >
+                      {c.valueChange !== 0 ? (
+                        <>
+                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                          <span className="ml-1">({fmtPct(c.percent)})</span>
+                        </>
+                      ) : (
+                        fmtPct(c.percent)
+                      )}
+                      {(() => {
+                        const dep = getDepositsForPeriod(changePeriod, "stocks");
+                        return (
+                          <ChangeTooltip
+                            valueChange={c.valueChange}
+                            fxValueChange={c.fxValueChange}
+                            deposits={dep.total}
+                            depositBreakdown={dep.breakdown}
+                            startValue={stocksValue - c.valueChange}
+                            cur={cur}
+                            open={openTooltip === "equities"}
+                          />
+                        );
+                      })()}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-zinc-600">—</span>
+                  )}
+                </div>
+                {insights.stocksWeightedYield > 0 && (() => {
+                  const yearly = insights.stocksDividendIncomeYearly;
+                  const periodIncome =
+                    changePeriod === "24h" ? yearly / 365 :
+                    changePeriod === "7d" ? yearly / 365 * 7 :
+                    changePeriod === "30d" ? yearly / 12 :
+                    yearly;
+                  const periodLabel =
+                    changePeriod === "24h" ? "/day" :
+                    changePeriod === "7d" ? "/7d" :
+                    changePeriod === "30d" ? "/mo" :
+                    "/yr";
+                  return (
+                    <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
+                      ~{insights.stocksWeightedYield.toFixed(2)}% yield{periodIncome > 0 && (
+                        <> · +{fmtCurrencyCompact(periodIncome, cur, 2)}{periodLabel}</>
+                      )}
                     </p>
-                    {c.available ? (
-                      <span
-                        ref={openTooltip === "equities" ? tooltipRef : undefined}
-                        onClick={(e) => toggleTooltip("equities", e)}
-                        className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
-                      >
-                        {c.valueChange !== 0 ? (
-                          <>
-                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                            <span className="ml-1">({fmtPct(c.percent)})</span>
-                          </>
-                        ) : (
-                          fmtPct(c.percent)
-                        )}
-                        {(() => {
-                          const dep = getDepositsForPeriod(changePeriod, "stocks");
-                          return (
-                            <ChangeTooltip
-                              valueChange={c.valueChange}
-                              fxValueChange={c.fxValueChange}
-                              deposits={dep.total}
-                              depositBreakdown={dep.breakdown}
-                              startValue={stocksValue - c.valueChange}
-                              cur={cur}
-                              open={openTooltip === "equities"}
-                            />
-                          );
-                        })()}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-zinc-600">—</span>
-                    )}
-                  </div>
-                  {insights.stocksWeightedYield > 0 && (() => {
-                    const yearly = insights.stocksDividendIncomeYearly;
-                    const periodIncome =
-                      changePeriod === "24h" ? yearly / 365 :
-                      changePeriod === "7d" ? yearly / 365 * 7 :
-                      changePeriod === "30d" ? yearly / 12 :
-                      yearly;
-                    const periodLabel =
-                      changePeriod === "24h" ? "/day" :
-                      changePeriod === "7d" ? "/7d" :
-                      changePeriod === "30d" ? "/mo" :
-                      "/yr";
-                    return (
-                      <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
-                        ~{insights.stocksWeightedYield.toFixed(2)}% yield{periodIncome > 0 && (
-                          <> · +{fmtCurrencyCompact(periodIncome, cur, 2)}{periodLabel}</>
-                        )}
-                      </p>
-                    );
-                  })()}
-                </div>
-                <div className="text-xs text-zinc-500 text-right space-y-0.5 shrink-0 ml-3 pt-2">
-                  <p>{insights.stockAssetCount} asset{insights.stockAssetCount !== 1 ? "s" : ""}</p>
-                  <p>{insights.stockPositionCount} position{insights.stockPositionCount !== 1 ? "s" : ""}</p>
-                </div>
-              </div>
+                  );
+                })()}
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  {insights.stockAssetCount} asset{insights.stockAssetCount !== 1 ? "s" : ""} · {insights.stockPositionCount} position{insights.stockPositionCount !== 1 ? "s" : ""}
+                </p>
+              </>
             );
           })()}
         </Link>
@@ -943,80 +938,78 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getCashChangeForPeriod(changePeriod);
             return (
-              <div className="flex items-start justify-between mt-2">
-                <div>
-                  <div className="flex items-baseline gap-3">
-                    <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                      {fmtCurrency(cashValue, cur, 0)}
-                    </p>
-                    {c.available ? (
-                      <span
-                        ref={openTooltip === "cash" ? tooltipRef : undefined}
-                        onClick={(e) => toggleTooltip("cash", e)}
-                        className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
-                      >
-                        {c.valueChange !== 0 ? (
-                          <>
-                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                            <span className="ml-1">({fmtPct(c.percent)})</span>
-                          </>
-                        ) : (
-                          fmtPct(c.percent)
-                        )}
-                        {(() => {
-                          const dep = getDepositsForPeriod(changePeriod, "cash");
-                          return (
-                            <ChangeTooltip
-                              valueChange={c.valueChange}
-                              fxValueChange={c.fxValueChange}
-                              deposits={dep.total}
-                              depositBreakdown={dep.breakdown}
-                              startValue={cashValue - c.valueChange}
-                              cur={cur}
-                              open={openTooltip === "cash"}
-                            />
-                          );
-                        })()}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-zinc-600">—</span>
-                    )}
-                  </div>
-                  {insights.weightedAvgApy > 0 && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-xs tabular-nums text-emerald-500">
-                        {insights.weightedAvgApy.toFixed(2)}% APY
-                      </span>
-                      <span className="text-[11px] text-emerald-500/70 tabular-nums">
-                        · +{fmtCurrencyCompact(apyIncomeMap[apyPeriod], cur, 2)}/{apyPeriod === "daily" ? "day" : apyPeriod === "monthly" ? "mo" : "yr"}
-                      </span>
-                      <div className="flex gap-0.5 ml-auto">
-                        {APY_PERIODS.map((p) => (
-                          <button
-                            key={p}
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setApyPeriod(p); }}
-                            className={`px-1 py-0.5 text-[9px] rounded transition-colors ${
-                              p === apyPeriod
-                                ? "bg-emerald-600/30 text-emerald-400"
-                                : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
-                            }`}
-                          >
-                            {p === "daily" ? "day" : p === "monthly" ? "mo" : "yr"}
-                          </button>
-                        ))}
-                      </div>
+              <>
+                <div className="flex items-baseline gap-3 mt-2">
+                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                    {fmtCurrency(cashValue, cur, 0)}
+                  </p>
+                  {c.available ? (
+                    <span
+                      ref={openTooltip === "cash" ? tooltipRef : undefined}
+                      onClick={(e) => toggleTooltip("cash", e)}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                    >
+                      {c.valueChange !== 0 ? (
+                        <>
+                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                          <span className="ml-1">({fmtPct(c.percent)})</span>
+                        </>
+                      ) : (
+                        fmtPct(c.percent)
+                      )}
+                      {(() => {
+                        const dep = getDepositsForPeriod(changePeriod, "cash");
+                        return (
+                          <ChangeTooltip
+                            valueChange={c.valueChange}
+                            fxValueChange={c.fxValueChange}
+                            deposits={dep.total}
+                            depositBreakdown={dep.breakdown}
+                            startValue={cashValue - c.valueChange}
+                            cur={cur}
+                            open={openTooltip === "cash"}
+                          />
+                        );
+                      })()}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-zinc-600">—</span>
+                  )}
+                </div>
+                {insights.weightedAvgApy > 0 && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-xs tabular-nums text-emerald-500">
+                      {insights.weightedAvgApy.toFixed(2)}% APY
+                    </span>
+                    <span className="text-[11px] text-emerald-500/70 tabular-nums">
+                      · +{fmtCurrencyCompact(apyIncomeMap[apyPeriod], cur, 2)}/{apyPeriod === "daily" ? "day" : apyPeriod === "monthly" ? "mo" : "yr"}
+                    </span>
+                    <div className="flex gap-0.5 ml-auto">
+                      {APY_PERIODS.map((p) => (
+                        <button
+                          key={p}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setApyPeriod(p); }}
+                          className={`px-1 py-0.5 text-[9px] rounded transition-colors ${
+                            p === apyPeriod
+                              ? "bg-emerald-600/30 text-emerald-400"
+                              : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                          }`}
+                        >
+                          {p === "daily" ? "day" : p === "monthly" ? "mo" : "yr"}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                  {summary.stablecoinValue > 0 && (
-                    <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                      incl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
-                    </p>
-                  )}
-                </div>
-                <div className="text-xs text-zinc-500 text-right shrink-0 ml-3 pt-2">
-                  <p>{insights.cashAccountCount} account{insights.cashAccountCount !== 1 ? "s" : ""}</p>
-                </div>
-              </div>
+                  </div>
+                )}
+                {summary.stablecoinValue > 0 && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                    incl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
+                  </p>
+                )}
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  {insights.cashAccountCount} account{insights.cashAccountCount !== 1 ? "s" : ""}
+                </p>
+              </>
             );
           })()}
         </Link>
@@ -1162,76 +1155,6 @@ const SEGMENT_SHADES: Record<string, string[]> = {
 function segmentColor(parentColor: string, index: number): string {
   const shades = SEGMENT_SHADES[parentColor] ?? [parentColor];
   return shades[index % shades.length];
-}
-
-// ─── Change Tooltip ─────────────────────────────────────
-
-/** Single row inside the 3-column grid: label | value | pct */
-function TooltipRow({
-  label, value, cur, colored, bold, pct, indent,
-}: {
-  label: string; value: number; cur: string; colored?: boolean; bold?: boolean;
-  pct?: number; indent?: boolean;
-}) {
-  const formatted = `${value > 0 ? "+" : ""}${fmtCurrencyCompact(value, cur)}`;
-  const colorCls = colored ? changeColorClass(value) : indent ? "text-zinc-500" : "text-zinc-300";
-  const hasPct = pct != null && isFinite(pct) && Math.abs(pct) >= 0.05;
-  return (
-    <>
-      <span className={`${indent ? "pl-3 text-zinc-500" : "text-zinc-400"} ${bold ? "font-medium" : ""} whitespace-nowrap`}>{label}</span>
-      <span className={`${colorCls} ${bold ? "font-medium" : ""} tabular-nums whitespace-nowrap text-right`}>{formatted}</span>
-      <span className={`text-zinc-500 tabular-nums whitespace-nowrap ${bold ? "font-medium" : ""}`}>
-        {hasPct ? `(${fmtPct(pct!)})` : ""}
-      </span>
-    </>
-  );
-}
-
-function ChangeTooltip({
-  valueChange, fxValueChange, deposits, depositBreakdown, startValue, cur, open,
-}: {
-  valueChange: number; fxValueChange: number; deposits: number;
-  depositBreakdown?: { name: string; value: number }[];
-  startValue?: number; cur: string; open?: boolean;
-}) {
-  const hasFx = Math.abs(fxValueChange) >= 0.5;
-  const hasDeposits = Math.abs(deposits) >= 0.5;
-
-  // Nothing to decompose — suppress tooltip
-  if (!hasFx && !hasDeposits) return null;
-
-  const assetPrices = valueChange - fxValueChange - deposits;
-  const marketChange = valueChange - deposits; // prices + FX combined
-  const fxLabel = cur === "EUR" ? "EUR/USD" : "USD/EUR";
-  const base = startValue && startValue > 0 ? startValue : undefined;
-
-  return (
-    <div className={`absolute right-0 sm:right-auto sm:left-0 top-full mt-1 z-50 ${open ? "block" : "hidden group-hover/tip:block"}`}>
-      <div className="bg-zinc-800/95 backdrop-blur border border-zinc-700 rounded-lg shadow-xl px-2.5 py-2 text-[10px] tabular-nums grid grid-cols-[auto_auto_auto] gap-x-2.5 gap-y-0.5 w-max max-w-[min(320px,calc(100vw-3rem))]">
-        {/* Market row: price + FX performance, excluding deposits — only when deposits exist */}
-        {hasDeposits && (
-          <>
-            <TooltipRow label="Market" value={marketChange} cur={cur} colored bold pct={base ? (marketChange / base) * 100 : undefined} />
-            <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />
-          </>
-        )}
-        {/* Prices + FX decomposition — show Prices only when FX exists (otherwise Market = Prices) */}
-        {(hasFx || !hasDeposits) && <TooltipRow label="Prices" value={assetPrices} cur={cur} colored pct={base ? (assetPrices / base) * 100 : undefined} />}
-        {hasFx && <TooltipRow label={fxLabel} value={fxValueChange} cur={cur} colored pct={base ? (fxValueChange / base) * 100 : undefined} />}
-        {hasDeposits && (
-          <>
-            <TooltipRow label={deposits > 0 ? "Deposits" : "Withdrawals"} value={deposits} cur={cur} pct={base ? (deposits / base) * 100 : undefined} />
-            {depositBreakdown && depositBreakdown.length > 1 && depositBreakdown.map((e) => (
-              <TooltipRow key={e.name} label={e.name} value={e.value} cur={cur} indent />
-            ))}
-          </>
-        )}
-        {/* Separator + Total row */}
-        <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />
-        <TooltipRow label="Total" value={valueChange} cur={cur} colored bold pct={base ? (valueChange / base) * 100 : undefined} />
-      </div>
-    </div>
-  );
 }
 
 // ─── Allocation bar ─────────────────────────────────────

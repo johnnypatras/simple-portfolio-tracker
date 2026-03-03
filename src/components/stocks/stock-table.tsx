@@ -11,6 +11,7 @@ import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
+import { ChangeTooltip } from "@/components/ui/change-tooltip";
 import { convertToBase } from "@/lib/prices/fx";
 import { toast } from "sonner";
 import { deleteStockAsset } from "@/lib/actions/stocks";
@@ -72,15 +73,12 @@ interface StockTableProps {
   prices: YahooStockPriceData;
   primaryCurrency: string;
   fxRates: FXRates;
-  /** FX-only 24h change % (e.g. EUR/USD impact on stock values) */
-  fxChangePercent?: number;
-  /** FX-only 24h absolute change in primary currency */
-  fxChangeValue?: number;
+  fxValueChange24h?: number;
   /** Trailing 12-month dividend data per Yahoo ticker */
   dividends?: YahooDividendMap;
 }
 
-export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxChangePercent = 0, fxChangeValue = 0, dividends }: StockTableProps) {
+export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, dividends }: StockTableProps) {
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
@@ -366,187 +364,154 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
     <div>
       {/* ── Summary header ─────────────────────────────────── */}
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-4 md:p-5">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-0 md:gap-4">
-          {/* Info: total + stats */}
-          <div className="flex items-center justify-between md:justify-start md:gap-6 flex-1 min-w-0">
-            <div>
-              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                Total Equities
-              </p>
-              <p className="text-3xl font-semibold text-zinc-100 mt-1 tabular-nums">
-                {formatCurrency(totalPortfolioValue, primaryCurrency)}
-              </p>
-              {weighted24hChange !== 0 && (() => {
-                const delta = totalPortfolioValue - totalPortfolioValue / (1 + weighted24hChange / 100);
-                return (
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(2)}%
-                    </span>
-                    <span className={`text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      ({delta >= 0 ? "+" : ""}{formatCurrency(delta, primaryCurrency)})
-                    </span>
-                    <span className="text-xs text-zinc-600">24h</span>
-                  </div>
-                );
-              })()}
-              {fxChangePercent !== 0 && (
-                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                  incl. {fxChangePercent >= 0 ? "+" : ""}{fxChangePercent.toFixed(2)}% ({fxChangeValue > 0 ? "+" : ""}{formatCurrency(fxChangeValue, primaryCurrency)}) EUR/USD
-                </p>
-              )}
-              {weightedYield > 0 && (
-                <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
-                  ~{weightedYield.toFixed(2)}% yield{annualDividendIncome > 0 && (
-                    <> · +{formatCurrency(annualDividendIncome, primaryCurrency)}/yr</>
-                  )}
-                </p>
-              )}
-            </div>
-            <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
-              <p>
-                {assets.length} asset{assets.length !== 1 ? "s" : ""}
-              </p>
-              <p>
-                {totalPositions} position{totalPositions !== 1 ? "s" : ""}
-              </p>
-            </div>
-          </div>
-          {/* Toolbar: action buttons */}
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-zinc-800/30 md:mt-0 md:pt-0 md:border-t-0">
-            {assets.length > 0 && (
-              <>
-                <button
-                  onClick={() => {
-                    const idx = GROUP_MODE_CYCLE.indexOf(groupMode);
-                    const next = GROUP_MODE_CYCLE[(idx + 1) % GROUP_MODE_CYCLE.length];
-                    setGroupMode(next);
-                    setExpanded(new Set());
-                    setExpandedTickerGroups(new Set());
-                    if (next === "flat") {
-                      setExpandedGroups(new Set());
-                    } else {
-                      const groupKeys =
-                        next === "type" ? buildStockGroupRows(rows).map(g => g.category)
-                        : next === "broker" ? buildStockBrokerGroups(rows).map(g => g.brokerName)
-                        : next === "currency" ? buildStockCurrencyGroups(rows).map(g => g.currency)
-                        : buildStockSubcategoryGroups(rows).map(g => g.subcategory);
-                      setExpandedGroups(new Set(groupKeys));
-                    }
-                  }}
-                  className={`p-1.5 rounded-lg transition-colors min-w-[4.5rem] flex items-center justify-center gap-1 ${
-                    isGrouped
-                      ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
-                  }`}
-                  title={GROUP_MODE_LABELS[GROUP_MODE_CYCLE[(GROUP_MODE_CYCLE.indexOf(groupMode) + 1) % GROUP_MODE_CYCLE.length]]}
-                >
-                  {isGrouped ? (
-                    <List className="w-4 h-4 shrink-0" />
-                  ) : (
-                    <Layers className="w-4 h-4 shrink-0" />
-                  )}
-                  {isGrouped && (
-                    <span className="text-[10px] font-medium">
-                      {groupMode === "type" ? "Type" : groupMode === "broker" ? "Broker" : groupMode === "currency" ? "Currency" : "Subtype"}
-                    </span>
-                  )}
-                </button>
-                {/* Mobile sort cycle (no column headers on mobile) */}
-                {assets.length > 1 && (
-                  <button
-                    onClick={handleCycleSort}
-                    className="md:hidden p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                    title={`Sort: ${SORT_OPTIONS.find((o) => o.key === sortKey)?.label}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <ArrowUpDown className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-medium">
-                        {SORT_OPTIONS.find((o) => o.key === sortKey)?.label}
-                      </span>
-                      {sortDir === "desc" ? (
-                        <ArrowDown className="w-3 h-3" />
-                      ) : (
-                        <ArrowUp className="w-3 h-3" />
-                      )}
-                    </div>
-                  </button>
-                )}
-                {/* Reset sort (all sizes) */}
-                {!isDefaultSort && (
-                  <button
-                    onClick={handleResetSort}
-                    className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-colors"
-                    title="Reset sort"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <button
-                  onClick={toggleExpandAll}
-                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                  title={
-                    isGrouped
-                      ? allGroupAssetsExpanded ? "Collapse all" : "Expand all"
-                      : allExpanded ? "Collapse all" : "Expand all"
-                  }
-                >
-                  {(isGrouped ? allGroupAssetsExpanded : allExpanded) ? (
-                    <ChevronsDownUp className="w-4 h-4" />
-                  ) : (
-                    <ChevronsUpDown className="w-4 h-4" />
-                  )}
-                </button>
-              </>
-            )}
-            <ColumnSettingsPopover
-              columns={configurableColumns}
-              onToggle={toggleColumn}
-              onMove={moveColumn}
-              onReset={resetToDefaults}
-            />
-            {/* Mobile: + Add Asset & Record Buy in toolbar */}
-            {!isReadOnly && (
-              <div className="ml-auto md:hidden flex items-center gap-1.5">
-                <button
-                  onClick={() => setBuyOpen(true)}
-                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
-                >
-                  <TrendingUp className="w-3 h-3" />
-                  Buy
-                </button>
-                <button
-                  onClick={() => setAddOpen(true)}
-                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-                >
-                  <Plus className="w-3 h-3" />
-                  Add
-                </button>
-              </div>
-            )}
-          </div>
+        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+          Total Equities
+        </p>
+        <div className="flex items-baseline gap-3 mt-1">
+          <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+            {formatCurrency(totalPortfolioValue, primaryCurrency)}
+          </p>
+          {weighted24hChange !== 0 && (() => {
+            const delta = totalPortfolioValue - totalPortfolioValue / (1 + weighted24hChange / 100);
+            return (
+              <span className={`relative group/tip cursor-pointer text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {delta >= 0 ? "+" : ""}{formatCurrency(delta, primaryCurrency)}
+                <span className="ml-1">({weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(1)}%)</span>
+                <ChangeTooltip
+                  valueChange={delta}
+                  fxValueChange={fxValueChange24h}
+                  deposits={0}
+                  startValue={totalPortfolioValue - delta}
+                  cur={primaryCurrency}
+                />
+              </span>
+            );
+          })()}
         </div>
+        {weightedYield > 0 && (
+          <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
+            ~{weightedYield.toFixed(2)}% yield{annualDividendIncome > 0 && (
+              <> · +{formatCurrency(annualDividendIncome, primaryCurrency)}/yr</>
+            )}
+          </p>
+        )}
+        <p className="text-[11px] text-zinc-500 mt-0.5">
+          {assets.length} asset{assets.length !== 1 ? "s" : ""} · {totalPositions} position{totalPositions !== 1 ? "s" : ""}
+        </p>
       </div>
 
-      {/* ── Action bar (desktop) ─────────────────────────── */}
-      {!isReadOnly && (
-        <div className="hidden md:flex items-center justify-end gap-2 mt-2 mb-3">
-          <button
-            onClick={() => setBuyOpen(true)}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            Record Buy
-          </button>
-          <button
-            onClick={() => setAddOpen(true)}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Asset
-          </button>
-        </div>
-      )}
+      {/* ── Toolbar ──────────────────────────────────────── */}
+      <div className="flex items-center flex-wrap gap-2 mt-2 mb-3">
+        {assets.length > 0 && (
+          <>
+            <button
+              onClick={() => {
+                const idx = GROUP_MODE_CYCLE.indexOf(groupMode);
+                const next = GROUP_MODE_CYCLE[(idx + 1) % GROUP_MODE_CYCLE.length];
+                setGroupMode(next);
+                setExpanded(new Set());
+                setExpandedTickerGroups(new Set());
+                if (next === "flat") {
+                  setExpandedGroups(new Set());
+                } else {
+                  const groupKeys =
+                    next === "type" ? buildStockGroupRows(rows).map(g => g.category)
+                    : next === "broker" ? buildStockBrokerGroups(rows).map(g => g.brokerName)
+                    : next === "currency" ? buildStockCurrencyGroups(rows).map(g => g.currency)
+                    : buildStockSubcategoryGroups(rows).map(g => g.subcategory);
+                  setExpandedGroups(new Set(groupKeys));
+                }
+              }}
+              className={`p-1.5 rounded-lg transition-colors min-w-[4.5rem] flex items-center justify-center gap-1 ${
+                isGrouped
+                  ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
+                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+              }`}
+              title={GROUP_MODE_LABELS[GROUP_MODE_CYCLE[(GROUP_MODE_CYCLE.indexOf(groupMode) + 1) % GROUP_MODE_CYCLE.length]]}
+            >
+              {isGrouped ? (
+                <List className="w-4 h-4 shrink-0" />
+              ) : (
+                <Layers className="w-4 h-4 shrink-0" />
+              )}
+              {isGrouped && (
+                <span className="text-[10px] font-medium">
+                  {groupMode === "type" ? "Type" : groupMode === "broker" ? "Broker" : groupMode === "currency" ? "Currency" : "Subtype"}
+                </span>
+              )}
+            </button>
+            {/* Mobile sort cycle (no column headers on mobile) */}
+            {assets.length > 1 && (
+              <button
+                onClick={handleCycleSort}
+                className="md:hidden p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                title={`Sort: ${SORT_OPTIONS.find((o) => o.key === sortKey)?.label}`}
+              >
+                <div className="flex items-center gap-1">
+                  <ArrowUpDown className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-medium">
+                    {SORT_OPTIONS.find((o) => o.key === sortKey)?.label}
+                  </span>
+                  {sortDir === "desc" ? (
+                    <ArrowDown className="w-3 h-3" />
+                  ) : (
+                    <ArrowUp className="w-3 h-3" />
+                  )}
+                </div>
+              </button>
+            )}
+            {/* Reset sort (all sizes) */}
+            {!isDefaultSort && (
+              <button
+                onClick={handleResetSort}
+                className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-colors"
+                title="Reset sort"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button
+              onClick={toggleExpandAll}
+              className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              title={
+                isGrouped
+                  ? allGroupAssetsExpanded ? "Collapse all" : "Expand all"
+                  : allExpanded ? "Collapse all" : "Expand all"
+              }
+            >
+              {(isGrouped ? allGroupAssetsExpanded : allExpanded) ? (
+                <ChevronsDownUp className="w-4 h-4" />
+              ) : (
+                <ChevronsUpDown className="w-4 h-4" />
+              )}
+            </button>
+          </>
+        )}
+        <ColumnSettingsPopover
+          columns={configurableColumns}
+          onToggle={toggleColumn}
+          onMove={moveColumn}
+          onReset={resetToDefaults}
+        />
+        {!isReadOnly && (
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => setBuyOpen(true)}
+              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+            >
+              <TrendingUp className="w-3 h-3" />
+              Buy
+            </button>
+            <button
+              onClick={() => setAddOpen(true)}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              Add
+            </button>
+          </div>
+        )}
+      </div>
 
       {assets.length === 0 ? (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-8 text-center">

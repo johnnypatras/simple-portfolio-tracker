@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
+import { ChangeTooltip } from "@/components/ui/change-tooltip";
 import { toast } from "sonner";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
@@ -77,12 +78,7 @@ interface CashTableProps {
   cashChangePercent?: number;
   /** Total cash 24h absolute change in primary currency */
   cashChangeValue?: number;
-  /** FX-only 24h change % (e.g. EUR/USD impact on cash value) */
-  fxChangePercent?: number;
-  /** FX-only 24h absolute change in primary currency */
-  fxChangeValue?: number;
-  /** Stablecoin 24h absolute change in primary currency */
-  stablecoinChange?: number;
+  fxValueChange24h?: number;
 }
 
 export function CashTable({
@@ -97,9 +93,7 @@ export function CashTable({
   stablecoinPrices,
   cashChangePercent = 0,
   cashChangeValue = 0,
-  fxChangePercent = 0,
-  fxChangeValue = 0,
-  stablecoinChange = 0,
+  fxValueChange24h = 0,
 }: CashTableProps) {
   const { isReadOnly } = useSharedView();
 
@@ -384,112 +378,79 @@ export function CashTable({
     <div>
       {/* ── Summary header ─────────────────────────────────── */}
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-4 md:p-5">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-0 md:gap-4">
-          {/* Info: total + stats */}
-          <div className="flex items-center justify-between md:justify-start md:gap-6 flex-1 min-w-0">
-            <div>
-              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                Total Banks &amp; Deposits
-              </p>
-              <p className="text-3xl font-semibold text-zinc-100 mt-1 tabular-nums">
-                {formatCurrency(totalCash, primaryCurrency)}
-              </p>
-              {cashChangePercent !== 0 && (
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(2)}%
-                  </span>
-                  <span className={`text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    ({cashChangeValue >= 0 ? "+" : ""}{formatCurrency(cashChangeValue, primaryCurrency)})
-                  </span>
-                  <span className="text-xs text-zinc-600">24h</span>
-                </div>
-              )}
-              {weightedApy > 0 && (
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs tabular-nums text-emerald-400">
-                    ~{weightedApy.toFixed(2)}% APY · +{formatCurrency(totalCash * weightedApy / 100, primaryCurrency)}/yr
-                  </span>
-                </div>
-              )}
-              {fxChangePercent !== 0 && (
-                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                  incl. {fxChangePercent >= 0 ? "+" : ""}{fxChangePercent.toFixed(2)}% ({fxChangeValue > 0 ? "+" : ""}{formatCurrency(fxChangeValue, primaryCurrency)}) EUR/USD
-                </p>
-              )}
-              {stablecoinTotal > 0 && (
-                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                  incl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins
-                  {stablecoinChange !== 0 && (
-                    <span> ({stablecoinChange > 0 ? "+" : ""}{formatCurrency(stablecoinChange, primaryCurrency)})</span>
-                  )}
-                </p>
-              )}
-            </div>
-            <div className="text-right md:text-left text-xs text-zinc-500 space-y-0.5">
-              <p>
-                {bankAccounts.length} bank account
-                {bankAccounts.length !== 1 ? "s" : ""}
-              </p>
-              {exchangeDeposits.length > 0 && (
-                <p>
-                  {exchangeDeposits.length} fiat deposit{exchangeDeposits.length !== 1 ? "s" : ""} (exchanges)
-                </p>
-              )}
-              {brokerDeposits.length > 0 && (
-                <p>
-                  {brokerDeposits.length} fiat deposit{brokerDeposits.length !== 1 ? "s" : ""} (brokers)
-                </p>
-              )}
-            </div>
-          </div>
-          {/* Toolbar: action buttons */}
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-zinc-800/30 md:mt-0 md:pt-0 md:border-t-0">
-            {allGroupIds.length > 0 && (
-              <button
-                onClick={toggleExpandAll}
-                className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                title={allExpanded ? "Collapse all" : "Expand all"}
-              >
-                {allExpanded ? (
-                  <ChevronsDownUp className="w-4 h-4" />
-                ) : (
-                  <ChevronsUpDown className="w-4 h-4" />
-                )}
-              </button>
-            )}
-            <ColumnSettingsPopover
-              columns={configurableColumns}
-              onToggle={toggleColumn}
-              onMove={moveColumn}
-              onReset={resetToDefaults}
-            />
-            {/* Mobile: + Add Asset in toolbar */}
-            {!isReadOnly && (
-              <button
-                onClick={() => setAddChooserOpen(true)}
-                className="ml-auto md:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-                Add
-              </button>
-            )}
-          </div>
+        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+          Total Banks &amp; Deposits
+        </p>
+        <div className="flex items-baseline gap-3 mt-1">
+          <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+            {formatCurrency(totalCash, primaryCurrency)}
+          </p>
+          {cashChangePercent !== 0 && (
+            <span className={`relative group/tip cursor-pointer text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {cashChangeValue >= 0 ? "+" : ""}{formatCurrency(cashChangeValue, primaryCurrency)}
+              <span className="ml-1">({cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(1)}%)</span>
+              <ChangeTooltip
+                valueChange={cashChangeValue}
+                fxValueChange={fxValueChange24h}
+                deposits={0}
+                startValue={totalCash - cashChangeValue}
+                cur={primaryCurrency}
+              />
+            </span>
+          )}
         </div>
+        {weightedApy > 0 && (
+          <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
+            ~{weightedApy.toFixed(2)}% APY · +{formatCurrency(totalCash * weightedApy / 100, primaryCurrency)}/yr
+          </p>
+        )}
+        {stablecoinTotal > 0 && (
+          <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+            incl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins
+          </p>
+        )}
+        <p className="text-[11px] text-zinc-500 mt-0.5">
+          {bankAccounts.length} bank account{bankAccounts.length !== 1 ? "s" : ""}
+          {exchangeDeposits.length > 0 && (
+            <> · {exchangeDeposits.length} exchange deposit{exchangeDeposits.length !== 1 ? "s" : ""}</>
+          )}
+          {brokerDeposits.length > 0 && (
+            <> · {brokerDeposits.length} broker deposit{brokerDeposits.length !== 1 ? "s" : ""}</>
+          )}
+        </p>
       </div>
 
-      {/* ── Action bar (desktop) ─────────────────────────── */}
-      {!isReadOnly && (
-        <div className="hidden md:flex items-center justify-end mt-2 mb-3">
+      {/* ── Toolbar ──────────────────────────────────────── */}
+      <div className="flex items-center flex-wrap gap-2 mt-2 mb-3">
+        {allGroupIds.length > 0 && (
+          <button
+            onClick={toggleExpandAll}
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+            title={allExpanded ? "Collapse all" : "Expand all"}
+          >
+            {allExpanded ? (
+              <ChevronsDownUp className="w-4 h-4" />
+            ) : (
+              <ChevronsUpDown className="w-4 h-4" />
+            )}
+          </button>
+        )}
+        <ColumnSettingsPopover
+          columns={configurableColumns}
+          onToggle={toggleColumn}
+          onMove={moveColumn}
+          onReset={resetToDefaults}
+        />
+        {!isReadOnly && (
           <button
             onClick={() => setAddChooserOpen(true)}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+            className="ml-auto flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
           >
-            <Plus className="w-3.5 h-3.5" />
-            Add Asset
+            <Plus className="w-3 h-3" />
+            Add
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ── Single unified table ─────────────────────────────── */}
       {!hasAnyRows ? (
