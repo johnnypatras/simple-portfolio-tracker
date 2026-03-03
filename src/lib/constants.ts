@@ -13,6 +13,9 @@ export const DEFAULT_COUNTRY = "GR";
 /** Default wallet type for new wallets */
 export const DEFAULT_WALLET_TYPE = "custodial" as const;
 
+/** Fetch all snapshots (pass to getSnapshots for export/full-history) */
+export const ALL_SNAPSHOTS_DAYS = 99999;
+
 /** Snapshot comparison period labels for portfolio cards */
 export const PERIOD_LABELS = {
   "24h": "vs yesterday",

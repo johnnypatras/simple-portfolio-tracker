@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { Profile, Currency } from "@/lib/types";
+import type { Profile, BaseCurrency } from "@/lib/types";
 
 /** Fetch the current user's profile. */
 export async function getProfile(): Promise<Profile> {
@@ -27,7 +27,7 @@ export async function updateProfile(input: {
   first_name?: string | null;
   last_name?: string | null;
   display_name?: string | null;
-  primary_currency?: Currency;
+  primary_currency?: BaseCurrency;
   theme?: string | null;
 }): Promise<void> {
   const supabase = await createServerSupabaseClient();

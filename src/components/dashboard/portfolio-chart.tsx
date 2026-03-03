@@ -101,7 +101,6 @@ export function PortfolioChart({
   sp500History = [],
   cashFlows = [],
   adjustmentDeltas = [],
-  liveSlices,
   liveSlicesUsd,
   defaultReturnMode = false,
 }: PortfolioChartProps) {
@@ -392,30 +391,11 @@ export function PortfolioChart({
     }
 
     return enriched;
-  }, [snapshots, liveValue, liveValueUsd, liveSlices, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, adjustmentDeltas, viewMode]);
-
-  if (data.length < 2) {
-    return (
-      <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-          <h3 className="text-sm font-medium text-zinc-400">{CHART_TITLES[viewMode]}</h3>
-          <PeriodSelector
-            periods={PERIODS}
-            activeIdx={periodIdx}
-            onChange={setPeriodIdx}
-          />
-        </div>
-        <div className="h-48 flex items-center justify-center">
-          <p className="text-sm text-zinc-600">
-            Chart will appear after a few days of data
-          </p>
-        </div>
-      </div>
-    );
-  }
+  }, [snapshots, liveValue, liveValueUsd, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, adjustmentDeltas, viewMode]);
 
   // Use the active dataKey for y-axis domain
   const yDomain = useMemo(() => {
+    if (data.length === 0) return [0, 100] as const;
     const key = hasDeltas ? "adjustedValue" : "value";
     const allValues = data.flatMap((d) => {
       const v = (d as Record<string, unknown>)[key] as number ?? d.value;
@@ -500,6 +480,27 @@ export function PortfolioChart({
 
   // Are we showing stacked allocation areas? Only in total view with allocation ON, not in % return mode
   const showStackedAlloc = showAllocation && viewMode === "total" && !returnMode;
+
+  // Early return for insufficient data — placed after all hooks to satisfy rules-of-hooks
+  if (data.length < 2) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+          <h3 className="text-sm font-medium text-zinc-400">{CHART_TITLES[viewMode]}</h3>
+          <PeriodSelector
+            periods={PERIODS}
+            activeIdx={periodIdx}
+            onChange={setPeriodIdx}
+          />
+        </div>
+        <div className="h-48 flex items-center justify-center">
+          <p className="text-sm text-zinc-600">
+            Chart will appear after a few days of data
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">

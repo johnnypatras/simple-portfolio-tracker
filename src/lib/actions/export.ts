@@ -13,6 +13,7 @@ import { getSnapshots } from "@/lib/actions/snapshots";
 import { getProfile } from "@/lib/actions/profile";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { toCsv } from "@/lib/csv";
+import { ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
 import { getMyShares, type ShareLink } from "@/lib/actions/shares";
 import type {
   Wallet,
@@ -87,7 +88,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     getExchangeDeposits(),
     getBrokerDeposits(),
     getTradeEntries(),
-    getSnapshots(99999),
+    getSnapshots(ALL_SNAPSHOTS_DAYS),
     getMyShares(),
     supabase
       .from("diary_entries")
@@ -278,7 +279,7 @@ export async function exportTradesCsv(): Promise<string> {
 // ─── CSV: Portfolio Snapshots ───────────────────────────
 
 export async function exportSnapshotsCsv(): Promise<string> {
-  const snapshots = await getSnapshots(99999);
+  const snapshots = await getSnapshots(ALL_SNAPSHOTS_DAYS);
 
   const headers = [
     "Date", "Total USD", "Total EUR",

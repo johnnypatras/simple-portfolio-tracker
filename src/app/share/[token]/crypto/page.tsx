@@ -52,6 +52,7 @@ export default async function SharedCryptoPage({
         prices={prices}
         wallets={wallets}
         primaryCurrency={cur}
+        fxRates={fxRates}
         fxValueChange24h={summary.cryptoFxValueChange24h}
       />
     </div>

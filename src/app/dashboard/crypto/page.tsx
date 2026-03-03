@@ -58,6 +58,7 @@ export default async function CryptoPage() {
         prices={prices}
         wallets={wallets}
         primaryCurrency={cur}
+        fxRates={fxRates}
         fxValueChange24h={summary.cryptoFxValueChange24h}
       />
     </div>

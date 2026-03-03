@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   Wallet,
@@ -23,6 +23,7 @@ import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
 import type { AssetClass, CashFlowEvent } from "@/lib/actions/benchmark";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
+import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { useSharedView } from "@/components/shared-view-context";
 import { ChangeTooltip } from "@/components/ui/change-tooltip";
 
@@ -99,27 +100,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
   const [apyPeriod, setApyPeriod] = useState<ApyPeriod>("monthly");
   const [fxFlipped, setFxFlipped] = useState(false);
   const [exposureInBase, setExposureInBase] = useState(false);
-  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
-  const tooltipRef = useRef<HTMLSpanElement>(null);
+  const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
   const { shareToken, isReadOnly } = useSharedView();
   const basePath = shareToken ? `/share/${shareToken}` : "/dashboard";
-
-  const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpenTooltip((prev) => (prev === id ? null : id));
-  }, []);
-
-  useEffect(() => {
-    if (!openTooltip) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) {
-        setOpenTooltip(null);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [openTooltip]);
 
   const {
     totalValue,

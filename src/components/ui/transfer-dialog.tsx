@@ -144,6 +144,9 @@ export function TransferDialog({
 
   // ── Pre-filled side ──
   const prefilled = mode === "buy" ? initialDestination : initialSource;
+  // Ref for currentQty: read during form reset without subscribing to changes
+  const currentQtyRef = useRef(prefilled?.currentQty);
+  currentQtyRef.current = prefilled?.currentQty;
   const prefilledLabel = prefilled
     ? `${prefilled.assetTicker} on ${prefilled.locationName}`
     : "";
@@ -183,7 +186,7 @@ export function TransferDialog({
   // ── Reset form when dialog opens ──
   useEffect(() => {
     if (!open) return;
-    setSourceQty(prefilled?.currentQty?.toString() ?? "");
+    setSourceQty(currentQtyRef.current?.toString() ?? "");
     setDestType("broker_deposit");
     setDestLocationId("");
     setDestCurrency("EUR");
@@ -209,6 +212,7 @@ export function TransferDialog({
     setCashBalance("");
     setCashIsAdjustment(true);
     setExistingCashAmount(null);
+     
   }, [open, prefilled?.assetId, prefilled?.locationId]);
 
   // ── Title ──
@@ -843,7 +847,7 @@ export function TransferDialog({
                     </div>
                     {buySearchResults.length > 0 && (
                       <div className="absolute z-10 mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {buySearchResults.map((r, i) => (
+                        {buySearchResults.map((r) => (
                           <button
                             key={r.symbol}
                             type="button"

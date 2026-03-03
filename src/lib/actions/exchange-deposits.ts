@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ExchangeDeposit, ExchangeDepositInput } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
-import { validateAmount, validateCurrency } from "@/lib/validation";
+import { validateAmount, validateCurrency, validateUUID } from "@/lib/validation";
 
 export async function getExchangeDeposits(): Promise<ExchangeDeposit[]> {
   const supabase = await createServerSupabaseClient();
@@ -42,6 +42,7 @@ export async function createExchangeDeposit(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateUUID(input.wallet_id, "Wallet ID");
   validateCurrency(input.currency);
   validateAmount(input.amount, "Deposit amount");
 
@@ -118,6 +119,8 @@ export async function updateExchangeDeposit(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateUUID(id, "Exchange deposit ID");
+  validateUUID(input.wallet_id, "Wallet ID");
   validateCurrency(input.currency);
   validateAmount(input.amount, "Deposit amount");
 
@@ -209,6 +212,8 @@ export async function deleteExchangeDeposit(id: string, opts?: { isAdjustment?: 
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  validateUUID(id, "Exchange deposit ID");
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase

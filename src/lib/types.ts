@@ -6,8 +6,6 @@ export type PrivacyLabel = "anon" | "doxxed";
 export type BaseCurrency = "USD" | "EUR";
 /** Any ISO 4217 currency code */
 export type CurrencyType = string;
-/** @deprecated Use BaseCurrency for profile currency, CurrencyType for general */
-export type Currency = BaseCurrency;
 
 // ─── User Profile ───────────────────────────────────────
 

@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { updateProfile } from "@/lib/actions/profile";
 import { ThemeSelector } from "@/components/settings/theme-selector";
-import type { Profile, Currency } from "@/lib/types";
+import type { Profile, BaseCurrency } from "@/lib/types";
 
-const currencies: { value: Currency; label: string }[] = [
+const currencies: { value: BaseCurrency; label: string }[] = [
   { value: "EUR", label: "EUR (€) — Euro" },
   { value: "USD", label: "USD ($) — US Dollar" },
 ];
@@ -14,7 +14,7 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
   const [firstName, setFirstName] = useState(profile.first_name ?? "");
   const [lastName, setLastName] = useState(profile.last_name ?? "");
   const [displayName, setDisplayName] = useState(profile.display_name ?? "");
-  const [currency, setCurrency] = useState<Currency>(profile.primary_currency);
+  const [currency, setCurrency] = useState<BaseCurrency>(profile.primary_currency);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +106,7 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
           </label>
           <select
             value={currency}
-            onChange={(e) => setCurrency(e.target.value as Currency)}
+            onChange={(e) => setCurrency(e.target.value as BaseCurrency)}
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
           >
             {currencies.map((c) => (

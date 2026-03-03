@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { Plus, Landmark, Wallet as WalletIcon, Briefcase, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
+import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { ChangeTooltip } from "@/components/ui/change-tooltip";
 import { toast } from "sonner";
 import { convertToBase } from "@/lib/prices/fx";
@@ -96,25 +97,7 @@ export function CashTable({
   fxValueChange24h = 0,
 }: CashTableProps) {
   const { isReadOnly } = useSharedView();
-  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
-  const tooltipRef = useRef<HTMLSpanElement>(null);
-
-  const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpenTooltip((prev) => (prev === id ? null : id));
-  }, []);
-
-  useEffect(() => {
-    if (!openTooltip) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) {
-        setOpenTooltip(null);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [openTooltip]);
+  const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
 
   // ── Compute totals ──────────────────────────────────────
   const bankTotal = bankAccounts.reduce(

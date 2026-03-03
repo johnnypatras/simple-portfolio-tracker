@@ -3,6 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { PortfolioBackup } from "@/lib/actions/export";
+import {
+  validateAmount,
+  validateQuantity,
+  validateCurrency,
+  validateName,
+} from "@/lib/validation";
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -114,6 +120,58 @@ export async function validateBackup(
     }
   }
 
+  // ── Value validation ──────────────────────────────────
+  // Shape is correct — now validate field values to catch bad data
+  // before any mutations. Each validator throws, so wrap per-item.
+  try {
+    for (const [i, inst] of (d.institutions as Record<string, unknown>[]).entries()) {
+      validateName(String(inst.name), 100, `institutions[${i}].name`);
+    }
+    for (const [i, w] of (d.wallets as Record<string, unknown>[]).entries()) {
+      validateName(String(w.name), 100, `wallets[${i}].name`);
+    }
+    for (const [i, b] of (d.brokers as Record<string, unknown>[]).entries()) {
+      validateName(String(b.name), 100, `brokers[${i}].name`);
+    }
+    for (const [i, ba] of (d.bankAccounts as Record<string, unknown>[]).entries()) {
+      validateName(String(ba.name), 100, `bankAccounts[${i}].name`);
+      validateCurrency(String(ba.currency));
+      validateAmount(Number(ba.balance), `bankAccounts[${i}].balance`);
+    }
+    for (const [i, dep] of (d.exchangeDeposits as Record<string, unknown>[]).entries()) {
+      validateCurrency(String(dep.currency));
+      validateAmount(Number(dep.amount), `exchangeDeposits[${i}].amount`);
+    }
+    for (const [i, dep] of (d.brokerDeposits as Record<string, unknown>[]).entries()) {
+      validateCurrency(String(dep.currency));
+      validateAmount(Number(dep.amount), `brokerDeposits[${i}].amount`);
+    }
+    for (const [i, t] of (d.tradeEntries as Record<string, unknown>[]).entries()) {
+      validateQuantity(Number(t.quantity), `tradeEntries[${i}].quantity`);
+      validateAmount(Number(t.price), `tradeEntries[${i}].price`);
+    }
+    // Crypto/stock positions are nested — validate quantities
+    for (const [i, asset] of (d.cryptoAssets as Record<string, unknown>[]).entries()) {
+      const positions = (asset as Record<string, unknown>).positions;
+      if (Array.isArray(positions)) {
+        for (const [j, pos] of (positions as Record<string, unknown>[]).entries()) {
+          validateQuantity(Number(pos.quantity), `cryptoAssets[${i}].positions[${j}].quantity`);
+        }
+      }
+    }
+    for (const [i, asset] of (d.stockAssets as Record<string, unknown>[]).entries()) {
+      const positions = (asset as Record<string, unknown>).positions;
+      if (Array.isArray(positions)) {
+        for (const [j, pos] of (positions as Record<string, unknown>[]).entries()) {
+          validateQuantity(Number(pos.quantity), `stockAssets[${i}].positions[${j}].quantity`);
+        }
+      }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Validation error";
+    return { ok: false, error: `Invalid data: ${msg}` };
+  }
+
   return { ok: true, preview: data as PortfolioBackup };
 }
 
@@ -207,21 +265,21 @@ export async function importFromJson(
   }
 
   // ── 2. Wallets ────────────────────────────────────────
+  const existingWalletMap = new Map<string, string>();
+  if (!isReplace) {
+    const { data: existingWallets } = await supabase
+      .from("wallets")
+      .select("id, name, wallet_type")
+      .eq("user_id", uid)
+      .is("deleted_at", null);
+    for (const w of existingWallets ?? []) {
+      existingWalletMap.set(`${w.name}|${w.wallet_type}`, w.id);
+    }
+  }
+
   for (const w of data.wallets) {
     const mappedInstId = w.institution_id ? instMap.get(w.institution_id) ?? null : null;
-    let existingId: string | null = null;
-
-    if (!isReplace) {
-      const { data: existing } = await supabase
-        .from("wallets")
-        .select("id")
-        .eq("user_id", uid)
-        .eq("name", w.name)
-        .eq("wallet_type", w.wallet_type)
-        .is("deleted_at", null)
-        .limit(1);
-      if (existing && existing.length > 0) existingId = existing[0].id;
-    }
+    const existingId = isReplace ? null : (existingWalletMap.get(`${w.name}|${w.wallet_type}`) ?? null);
 
     if (existingId) {
       walletMap.set(w.id, existingId);
@@ -283,23 +341,23 @@ export async function importFromJson(
 
   // ── 4. Bank Accounts (batch insert) ───────────────────
   {
+    const existingBankMap = new Map<string, boolean>();
+    if (!isReplace) {
+      const { data: existingBanks } = await supabase
+        .from("bank_accounts")
+        .select("name, currency")
+        .eq("user_id", uid)
+        .is("deleted_at", null);
+      for (const ba of existingBanks ?? []) {
+        existingBankMap.set(`${ba.name}|${ba.currency}`, true);
+      }
+    }
+
     const newRows: Record<string, unknown>[] = [];
 
     for (const ba of data.bankAccounts) {
       const mappedInstId = ba.institution_id ? instMap.get(ba.institution_id) ?? null : null;
-      let found = false;
-
-      if (!isReplace) {
-        const { data: existing } = await supabase
-          .from("bank_accounts")
-          .select("id")
-          .eq("user_id", uid)
-          .eq("name", ba.name)
-          .eq("currency", ba.currency)
-          .is("deleted_at", null)
-          .limit(1);
-        if (existing && existing.length > 0) found = true;
-      }
+      const found = !isReplace && existingBankMap.has(`${ba.name}|${ba.currency}`);
 
       if (found) {
         skipped.bankAccounts++;
@@ -327,6 +385,18 @@ export async function importFromJson(
   }
 
   // ── 5. Crypto Assets + Positions ──────────────────────
+  // Pre-fetch existing positions to avoid N+1 queries in merge mode
+  const existingCryptoPosSet = new Set<string>();
+  if (!isReplace) {
+    const { data: existingCryptoPos } = await supabase
+      .from("crypto_positions")
+      .select("crypto_asset_id, wallet_id")
+      .is("deleted_at", null);
+    for (const p of existingCryptoPos ?? []) {
+      existingCryptoPosSet.add(`${p.crypto_asset_id}|${p.wallet_id}`);
+    }
+  }
+
   const existingCryptoMap = new Map<string, string>();
   if (!isReplace) {
     const { data: existingCrypto } = await supabase
@@ -373,16 +443,7 @@ export async function importFromJson(
       const mappedWalletId = walletMap.get(pos.wallet_id);
       if (!mappedWalletId) continue;
 
-      if (!isReplace) {
-        const { data: existingPos } = await supabase
-          .from("crypto_positions")
-          .select("id")
-          .eq("crypto_asset_id", newAssetId)
-          .eq("wallet_id", mappedWalletId)
-          .is("deleted_at", null)
-          .limit(1);
-        if (existingPos && existingPos.length > 0) continue;
-      }
+      if (!isReplace && existingCryptoPosSet.has(`${newAssetId}|${mappedWalletId}`)) continue;
 
       posRows.push({
         crypto_asset_id: newAssetId,
@@ -425,30 +486,36 @@ export async function importFromJson(
   }
 
   // ── 6. Stock Assets + Positions ───────────────────────
+  // Pre-fetch existing stock assets and positions to avoid N+1 queries
+  const existingStockByYahoo = new Map<string, string>();
+  const existingStockByTicker = new Map<string, string>();
+  const existingStockPosSet = new Set<string>();
+  if (!isReplace) {
+    const { data: existingStocks } = await supabase
+      .from("stock_assets")
+      .select("id, ticker, yahoo_ticker")
+      .eq("user_id", uid)
+      .is("deleted_at", null);
+    for (const s of existingStocks ?? []) {
+      if (s.yahoo_ticker) existingStockByYahoo.set(s.yahoo_ticker, s.id);
+      else existingStockByTicker.set(s.ticker, s.id);
+    }
+    const { data: existingStockPos } = await supabase
+      .from("stock_positions")
+      .select("stock_asset_id, broker_id")
+      .is("deleted_at", null);
+    for (const p of existingStockPos ?? []) {
+      existingStockPosSet.add(`${p.stock_asset_id}|${p.broker_id}`);
+    }
+  }
+
   for (const asset of data.stockAssets) {
     let existingId: string | null = null;
 
     if (!isReplace) {
-      if (asset.yahoo_ticker) {
-        const { data: existing } = await supabase
-          .from("stock_assets")
-          .select("id")
-          .eq("user_id", uid)
-          .eq("yahoo_ticker", asset.yahoo_ticker)
-          .is("deleted_at", null)
-          .limit(1);
-        if (existing && existing.length > 0) existingId = existing[0].id;
-      } else {
-        const { data: existing } = await supabase
-          .from("stock_assets")
-          .select("id")
-          .eq("user_id", uid)
-          .eq("ticker", asset.ticker)
-          .is("yahoo_ticker", null)
-          .is("deleted_at", null)
-          .limit(1);
-        if (existing && existing.length > 0) existingId = existing[0].id;
-      }
+      existingId = asset.yahoo_ticker
+        ? (existingStockByYahoo.get(asset.yahoo_ticker) ?? null)
+        : (existingStockByTicker.get(asset.ticker) ?? null);
     }
 
     let newAssetId: string;
@@ -484,16 +551,7 @@ export async function importFromJson(
       const mappedBrokerId = brokerMap.get(pos.broker_id);
       if (!mappedBrokerId) continue;
 
-      if (!isReplace) {
-        const { data: existingPos } = await supabase
-          .from("stock_positions")
-          .select("id")
-          .eq("stock_asset_id", newAssetId)
-          .eq("broker_id", mappedBrokerId)
-          .is("deleted_at", null)
-          .limit(1);
-        if (existingPos && existingPos.length > 0) continue;
-      }
+      if (!isReplace && existingStockPosSet.has(`${newAssetId}|${mappedBrokerId}`)) continue;
 
       posRows.push({
         stock_asset_id: newAssetId,
@@ -513,24 +571,24 @@ export async function importFromJson(
 
   // ── 7. Exchange Deposits (batch insert) ────────────────
   {
+    const existingExDepSet = new Set<string>();
+    if (!isReplace) {
+      const { data: existingExDeps } = await supabase
+        .from("exchange_deposits")
+        .select("wallet_id, currency")
+        .eq("user_id", uid)
+        .is("deleted_at", null);
+      for (const d of existingExDeps ?? []) {
+        existingExDepSet.add(`${d.wallet_id}|${d.currency}`);
+      }
+    }
+
     const newRows: Record<string, unknown>[] = [];
 
     for (const dep of data.exchangeDeposits) {
       const mappedWalletId = walletMap.get(dep.wallet_id);
       if (!mappedWalletId) continue;
-      let found = false;
-
-      if (!isReplace) {
-        const { data: existing } = await supabase
-          .from("exchange_deposits")
-          .select("id")
-          .eq("user_id", uid)
-          .eq("wallet_id", mappedWalletId)
-          .eq("currency", dep.currency)
-          .is("deleted_at", null)
-          .limit(1);
-        if (existing && existing.length > 0) found = true;
-      }
+      const found = !isReplace && existingExDepSet.has(`${mappedWalletId}|${dep.currency}`);
 
       if (found) {
         skipped.exchangeDeposits++;
@@ -556,24 +614,24 @@ export async function importFromJson(
 
   // ── 8. Broker Deposits (batch insert) ──────────────────
   {
+    const existingBrDepSet = new Set<string>();
+    if (!isReplace) {
+      const { data: existingBrDeps } = await supabase
+        .from("broker_deposits")
+        .select("broker_id, currency")
+        .eq("user_id", uid)
+        .is("deleted_at", null);
+      for (const d of existingBrDeps ?? []) {
+        existingBrDepSet.add(`${d.broker_id}|${d.currency}`);
+      }
+    }
+
     const newRows: Record<string, unknown>[] = [];
 
     for (const dep of data.brokerDeposits) {
       const mappedBrokerId = brokerMap.get(dep.broker_id);
       if (!mappedBrokerId) continue;
-      let found = false;
-
-      if (!isReplace) {
-        const { data: existing } = await supabase
-          .from("broker_deposits")
-          .select("id")
-          .eq("user_id", uid)
-          .eq("broker_id", mappedBrokerId)
-          .eq("currency", dep.currency)
-          .is("deleted_at", null)
-          .limit(1);
-        if (existing && existing.length > 0) found = true;
-      }
+      const found = !isReplace && existingBrDepSet.has(`${mappedBrokerId}|${dep.currency}`);
 
       if (found) {
         skipped.brokerDeposits++;
@@ -656,18 +714,23 @@ export async function importFromJson(
       content: d.content,
     }));
     const { error } = await supabase.from("diary_entries").insert(rows);
-    if (!error) counts.diaryEntries = rows.length;
+    if (error) {
+      console.error("[import] Diary entries failed:", error.message);
+    } else {
+      counts.diaryEntries = rows.length;
+    }
   }
 
   // ── 12. Profile (v2) ──────────────────────────────────
   if (data.profile) {
-    await supabase
+    const { error } = await supabase
       .from("profiles")
       .update({
         display_name: data.profile.display_name,
         theme: data.profile.theme,
       })
       .eq("id", uid);
+    if (error) console.error("[import] Profile update failed:", error.message);
   }
 
   // activityLog and portfolioShares are export-only (archival) — not imported

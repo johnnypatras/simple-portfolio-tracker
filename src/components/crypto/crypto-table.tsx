@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Bitcoin, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -11,6 +11,7 @@ import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
+import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { ChangeTooltip } from "@/components/ui/change-tooltip";
 import { toast } from "sonner";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
@@ -67,10 +68,11 @@ interface CryptoTableProps {
   prices: CoinGeckoPriceData;
   wallets: Wallet[];
   primaryCurrency: string;
+  fxRates: Record<string, number>;
   fxValueChange24h?: number;
 }
 
-export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxValueChange24h = 0 }: CryptoTableProps) {
+export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates, fxValueChange24h = 0 }: CryptoTableProps) {
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
@@ -84,25 +86,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxValueC
   const [sortKey, setSortKey] = useState<CryptoSortKey>(DEFAULT_SORT_KEY);
   const [sortDir, setSortDir] = useState<SortDirection>(DEFAULT_SORT_DIR);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
-  const tooltipRef = useRef<HTMLSpanElement>(null);
-
-  const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpenTooltip((prev) => (prev === id ? null : id));
-  }, []);
-
-  useEffect(() => {
-    if (!openTooltip) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) {
-        setOpenTooltip(null);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [openTooltip]);
+  const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
 
   const handleSort = useCallback((key: CryptoSortKey) => {
     if (sortKey === key) {
@@ -340,7 +324,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxValueC
     resetToDefaults,
   } = useColumnConfig("colConfig:crypto", columns, 5);
 
-  const ctx: RenderContext = { primaryCurrency, fxRates: {} };
+  const ctx: RenderContext = { primaryCurrency, fxRates };
 
   const totalPositions = useMemo(
     () => assets.reduce((sum, a) => sum + a.positions.length, 0),
@@ -513,7 +497,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxValueC
       </div>
 
       {assets.length === 0 ? (
-        <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-8 text-center">
+        <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
           <Bitcoin className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
           <p className="text-sm text-zinc-500">No crypto assets yet</p>
           <p className="text-xs text-zinc-600 mt-1">
@@ -1613,6 +1597,7 @@ function MobileCryptoCard({
       <button
         onClick={() => toggleExpand(row.asset.id)}
         className="w-full px-4 py-3 flex items-center justify-between overflow-hidden"
+        aria-label={`${rowExpanded ? "Collapse" : "Expand"} ${row.asset.name}`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
           {row.asset.image_url ? (

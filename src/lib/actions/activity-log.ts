@@ -4,6 +4,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getFXRates } from "@/lib/prices/fx";
 import { toCsv } from "@/lib/csv";
+import { validateUUID } from "@/lib/validation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 
 // ─── FX conversion helper ───────────────────────────────
@@ -129,8 +131,7 @@ async function computeDeltaFromSnapshots(
   date: string,
   before: Record<string, unknown> | null,
   after: Record<string, unknown> | null,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabaseOverride?: any
+  supabaseOverride?: SupabaseClient
 ): Promise<{ usd: number; eur: number }> {
   // Cash entities — delta comes from amount/balance fields
   if (
@@ -261,6 +262,7 @@ export async function toggleActivityAdjustment(
   logId: string,
   isAdjustment: boolean
 ): Promise<void> {
+  validateUUID(logId, "Activity log ID");
   const supabase = await createServerSupabaseClient();
 
   let deltaUsd: number | null = null;

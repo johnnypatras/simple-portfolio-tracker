@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -11,6 +11,7 @@ import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
+import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { ChangeTooltip } from "@/components/ui/change-tooltip";
 import { convertToBase } from "@/lib/prices/fx";
 import { toast } from "sonner";
@@ -90,25 +91,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedTickerGroups, setExpandedTickerGroups] = useState<Set<string>>(new Set());
-  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
-  const tooltipRef = useRef<HTMLSpanElement>(null);
-
-  const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpenTooltip((prev) => (prev === id ? null : id));
-  }, []);
-
-  useEffect(() => {
-    if (!openTooltip) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) {
-        setOpenTooltip(null);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [openTooltip]);
+  const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -547,7 +530,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
       </div>
 
       {assets.length === 0 ? (
-        <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-8 text-center">
+        <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
           <TrendingUp className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
           <p className="text-sm text-zinc-500">No stocks or ETFs yet</p>
           <p className="text-xs text-zinc-600 mt-1">
@@ -1306,6 +1289,7 @@ function MobileStockCard({
       <button
         onClick={() => toggleExpand(row.asset.id)}
         className="w-full px-4 py-3 flex items-center justify-between overflow-hidden"
+        aria-label={`${isExpanded ? "Collapse" : "Expand"} ${row.asset.name}`}
       >
         <div className="text-left min-w-0">
           {isVariant ? (
@@ -1351,7 +1335,7 @@ function MobileStockCard({
             </div>
             <div>
               <span className="text-zinc-500">Shares</span>
-              <p className="text-zinc-500 tabular-nums">
+              <p className="text-zinc-300 tabular-nums">
                 {displayQty > 0 ? formatQuantity(displayQty, 4) : "—"}
               </p>
             </div>

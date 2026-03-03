@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { BrokerDeposit, BrokerDepositInput } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
-import { validateAmount, validateCurrency } from "@/lib/validation";
+import { validateAmount, validateCurrency, validateUUID } from "@/lib/validation";
 
 export async function getBrokerDeposits(): Promise<BrokerDeposit[]> {
   const supabase = await createServerSupabaseClient();
@@ -41,6 +41,7 @@ export async function createBrokerDeposit(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateUUID(input.broker_id, "Broker ID");
   validateCurrency(input.currency);
   validateAmount(input.amount, "Deposit amount");
 
@@ -110,6 +111,8 @@ export async function updateBrokerDeposit(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateUUID(id, "Broker deposit ID");
+  validateUUID(input.broker_id, "Broker ID");
   validateCurrency(input.currency);
   validateAmount(input.amount, "Deposit amount");
 
@@ -196,6 +199,8 @@ export async function deleteBrokerDeposit(id: string, opts?: { isAdjustment?: bo
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  validateUUID(id, "Broker deposit ID");
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase

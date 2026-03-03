@@ -3,9 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateProfile } from "@/lib/actions/profile";
-import type { Currency } from "@/lib/types";
+import type { BaseCurrency } from "@/lib/types";
 
-const options: { value: Currency; symbol: string }[] = [
+const options: { value: BaseCurrency; symbol: string }[] = [
   { value: "EUR", symbol: "€" },
   { value: "USD", symbol: "$" },
 ];
@@ -13,13 +13,13 @@ const options: { value: Currency; symbol: string }[] = [
 export function CurrencyToggle({
   initialCurrency,
 }: {
-  initialCurrency: Currency;
+  initialCurrency: BaseCurrency;
 }) {
-  const [active, setActive] = useState<Currency>(initialCurrency);
+  const [active, setActive] = useState<BaseCurrency>(initialCurrency);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  function handleSwitch(next: Currency) {
+  function handleSwitch(next: BaseCurrency) {
     if (next === active) return;
     setActive(next); // optimistic UI update
 

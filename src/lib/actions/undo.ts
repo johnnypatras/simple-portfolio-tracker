@@ -31,7 +31,6 @@ const ALLOWED_UNDO_TABLES = new Set([
 async function undoSingleEntry(
   log: ActivityLog,
   supabase: SupabaseClient,
-  _userId: string
 ): Promise<{ success: boolean; message: string }> {
   // ── Guard: missing undo metadata (pre-migration entries) ─
   if (!log.entity_id || !log.entity_table) {
@@ -206,7 +205,7 @@ export async function undoActivity(
     }
 
     for (const entry of groupEntries) {
-      const result = await undoSingleEntry(entry as ActivityLog, supabase, user.id);
+      const result = await undoSingleEntry(entry as ActivityLog, supabase);
       if (!result.success) {
         return { success: false, message: `Transfer undo failed at leg: ${result.message}` };
       }
@@ -217,7 +216,7 @@ export async function undoActivity(
   }
 
   // ── Single-entry undo (non-transfer) ─────────────────────
-  const result = await undoSingleEntry(log, supabase, user.id);
+  const result = await undoSingleEntry(log, supabase);
 
   if (result.success) {
     revalidateDashboard();
