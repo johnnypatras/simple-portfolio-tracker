@@ -576,4 +576,10 @@ export interface HoldingItem {
   change24h?: number;
   icon?: string | null;
   detailPath: string;
+  /** Total quantity held (crypto/stock only) */
+  quantity?: number;
+  /** Price per unit in primary currency (crypto/stock only) */
+  pricePerUnit?: number;
+  /** Native currency of the asset (e.g., "USD", "EUR") */
+  currency?: string;
 }

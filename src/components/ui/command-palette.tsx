@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { Command } from "cmdk";
 import { useRouter } from "next/navigation";
@@ -19,6 +19,8 @@ import {
   ArrowRightLeft,
   Download,
   Loader2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type { HoldingItem } from "@/lib/types";
 
@@ -66,6 +68,20 @@ function formatChange(change?: number): string | null {
   if (change === undefined || change === null) return null;
   const sign = change >= 0 ? "+" : "";
   return `${sign}${change.toFixed(1)}%`;
+}
+
+function formatQuantity(qty: number): string {
+  if (qty >= 1) return qty.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  return qty.toLocaleString(undefined, { maximumFractionDigits: 8 });
+}
+
+function formatPrice(value: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: value < 1 ? 6 : 2,
+  }).format(value);
 }
 
 // ─── External search hook ─────────────────────────────────
@@ -150,8 +166,19 @@ export function CommandPalette({
   const overlayRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
 
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
   const { results: externalResults, loading: externalLoading } =
     useExternalSearch(search, !isReadOnly);
+
+  // Build set of owned tickers for "Owned" badge on external results
+  const ownedTickers = useMemo(() => {
+    const set = new Set<string>();
+    for (const h of holdings) {
+      if (h.ticker) set.add(h.ticker.toUpperCase());
+    }
+    return set;
+  }, [holdings]);
 
   // Lock body scroll
   useEffect(() => {
@@ -230,53 +257,98 @@ export function CommandPalette({
             {/* ── Your Holdings ── */}
             {holdings.length > 0 && (
               <Command.Group heading="Your Holdings">
-                {holdings.map((h) => (
-                  <Command.Item
-                    key={`${h.type}-${h.id}`}
-                    value={`${h.name} ${h.ticker ?? ""}`}
-                    onSelect={() => go(h.detailPath)}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer data-[selected=true]:bg-zinc-800 text-zinc-300 data-[selected=true]:text-zinc-100"
-                  >
-                    {h.icon ? (
-                      <Image
-                        src={h.icon}
-                        alt=""
-                        width={20}
-                        height={20}
-                        unoptimized
-                        className="w-5 h-5 rounded-full shrink-0"
-                      />
-                    ) : (
-                      <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0 flex items-center justify-center text-[10px] text-zinc-500 font-medium">
-                        {(h.ticker ?? h.name)[0]}
+                {holdings.map((h) => {
+                  const itemKey = `${h.type}-${h.id}`;
+                  const isExpanded = previewId === itemKey;
+                  const hasDetail = h.quantity !== undefined && h.pricePerUnit !== undefined;
+                  return (
+                    <Command.Item
+                      key={itemKey}
+                      value={`${h.name} ${h.ticker ?? ""}`}
+                      onSelect={() => go(h.detailPath)}
+                      className="flex flex-col px-3 py-2 rounded-lg text-sm cursor-pointer data-[selected=true]:bg-zinc-800 text-zinc-300 data-[selected=true]:text-zinc-100"
+                    >
+                      <div className="flex items-center gap-3 w-full">
+                        {h.icon ? (
+                          <Image
+                            src={h.icon}
+                            alt=""
+                            width={20}
+                            height={20}
+                            unoptimized
+                            className="w-5 h-5 rounded-full shrink-0"
+                          />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0 flex items-center justify-center text-[10px] text-zinc-500 font-medium">
+                            {(h.ticker ?? h.name)[0]}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <span className="truncate">{h.name}</span>
+                          {h.ticker && (
+                            <span className="ml-1.5 text-xs text-zinc-500">
+                              {h.ticker}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="text-right tabular-nums">
+                            <span className="text-xs text-zinc-400">
+                              {formatValue(h.value, primaryCurrency)}
+                            </span>
+                            {formatChange(h.change24h) && (
+                              <span
+                                className={`ml-1.5 text-[10px] ${
+                                  (h.change24h ?? 0) >= 0
+                                    ? "text-emerald-400"
+                                    : "text-red-400"
+                                }`}
+                              >
+                                {formatChange(h.change24h)}
+                              </span>
+                            )}
+                          </div>
+                          {hasDetail && (
+                            <button
+                              type="button"
+                              className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-500 hover:text-zinc-300 transition-colors"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setPreviewId(isExpanded ? null : itemKey);
+                              }}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <span className="truncate">{h.name}</span>
-                      {h.ticker && (
-                        <span className="ml-1.5 text-xs text-zinc-500">
-                          {h.ticker}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0 tabular-nums">
-                      <span className="text-xs text-zinc-400">
-                        {formatValue(h.value, primaryCurrency)}
-                      </span>
-                      {formatChange(h.change24h) && (
-                        <span
-                          className={`ml-1.5 text-[10px] ${
-                            (h.change24h ?? 0) >= 0
-                              ? "text-emerald-400"
-                              : "text-red-400"
-                          }`}
+                      {isExpanded && hasDetail && (
+                        <div
+                          className="mt-1.5 ml-8 text-[11px] text-zinc-500 space-y-0.5"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          {formatChange(h.change24h)}
-                        </span>
+                          <div className="flex justify-between">
+                            <span>Quantity</span>
+                            <span className="tabular-nums">{formatQuantity(h.quantity!)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Price</span>
+                            <span className="tabular-nums">{formatPrice(h.pricePerUnit!, primaryCurrency)}</span>
+                          </div>
+                          <div className="flex justify-between border-t border-zinc-800/50 pt-0.5">
+                            <span className="text-zinc-400">Total</span>
+                            <span className="tabular-nums text-zinc-400">{formatValue(h.value, primaryCurrency)}</span>
+                          </div>
+                        </div>
                       )}
-                    </div>
-                  </Command.Item>
-                ))}
+                    </Command.Item>
+                  );
+                })}
               </Command.Group>
             )}
 
@@ -331,41 +403,49 @@ export function CommandPalette({
                 )}
                 {externalResults.length > 0 && (
                   <Command.Group heading="Add New Asset" forceMount>
-                    {externalResults.map((r) => (
-                      <Command.Item
-                        key={`ext-${r.type}-${r.id}`}
-                        value={`${r.name} ${r.ticker}`}
-                        onSelect={() => go(r.detailPath)}
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer data-[selected=true]:bg-zinc-800 text-zinc-300 data-[selected=true]:text-zinc-100"
-                        forceMount
-                      >
-                        {r.icon ? (
-                          <Image
-                            src={r.icon}
-                            alt=""
-                            width={20}
-                            height={20}
-                            unoptimized
-                            className="w-5 h-5 rounded-full shrink-0"
-                          />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0 flex items-center justify-center text-[10px] text-zinc-500 font-medium">
-                            {r.ticker[0]}
+                    {externalResults.map((r) => {
+                      const isOwned = ownedTickers.has(r.ticker.toUpperCase());
+                      return (
+                        <Command.Item
+                          key={`ext-${r.type}-${r.id}`}
+                          value={`${r.name} ${r.ticker}`}
+                          onSelect={() => go(r.detailPath)}
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer data-[selected=true]:bg-zinc-800 text-zinc-300 data-[selected=true]:text-zinc-100"
+                          forceMount
+                        >
+                          {r.icon ? (
+                            <Image
+                              src={r.icon}
+                              alt=""
+                              width={20}
+                              height={20}
+                              unoptimized
+                              className="w-5 h-5 rounded-full shrink-0"
+                            />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0 flex items-center justify-center text-[10px] text-zinc-500 font-medium">
+                              {r.ticker[0]}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <span className="truncate">{r.name}</span>
+                            <span className="ml-1.5 text-xs text-zinc-500">
+                              {r.ticker}
+                            </span>
+                            {isOwned && (
+                              <span className="ml-1.5 text-[10px] text-teal-400 font-medium">
+                                Owned
+                              </span>
+                            )}
                           </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <span className="truncate">{r.name}</span>
-                          <span className="ml-1.5 text-xs text-zinc-500">
-                            {r.ticker}
-                          </span>
-                        </div>
-                        {r.price !== undefined && (
-                          <span className="text-xs text-zinc-400 tabular-nums shrink-0">
-                            ${r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                          </span>
-                        )}
-                      </Command.Item>
-                    ))}
+                          {r.price !== undefined && (
+                            <span className="text-xs text-zinc-400 tabular-nums shrink-0">
+                              ${r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </Command.Item>
+                      );
+                    })}
                   </Command.Group>
                 )}
               </>

@@ -55,31 +55,40 @@ export async function GET() {
     ...cryptoAssets.map((a) => {
       const price = cryptoPrices[a.coingecko_id];
       const totalQty = a.positions.reduce((s, p) => s + p.quantity, 0);
-      const valueUsd = (price?.usd ?? 0) * totalQty;
+      const priceUsd = price?.usd ?? 0;
+      const fxMul = fxRates["USD"] ?? 1;
       return {
         id: a.id,
         type: "crypto" as const,
         name: a.name,
         ticker: a.ticker.toUpperCase(),
-        value: valueUsd * (fxRates["USD"] ?? 1),
+        value: priceUsd * totalQty * fxMul,
         change24h: price?.usd_24h_change,
         icon: a.image_url,
         detailPath: "/dashboard/crypto",
+        quantity: totalQty,
+        pricePerUnit: priceUsd * fxMul,
+        currency: "USD",
       };
     }),
     ...stockAssets.map((a) => {
       const tick = a.yahoo_ticker || a.ticker;
       const price = stockPrices[tick];
       const totalQty = a.positions.reduce((s, p) => s + p.quantity, 0);
-      const valueNative = (price?.price ?? 0) * totalQty;
+      const nativeCurrency = price?.currency ?? a.currency;
+      const priceNative = price?.price ?? 0;
+      const fxMul = fxRates[nativeCurrency] ?? 1;
       return {
         id: a.id,
         type: "stock" as const,
         name: a.name,
         ticker: a.ticker,
-        value: valueNative * (fxRates[price?.currency ?? a.currency] ?? 1),
+        value: priceNative * totalQty * fxMul,
         change24h: price?.change24h,
         detailPath: "/dashboard/stocks",
+        quantity: totalQty,
+        pricePerUnit: priceNative * fxMul,
+        currency: nativeCurrency,
       };
     }),
     ...bankAccounts.map((a) => ({
