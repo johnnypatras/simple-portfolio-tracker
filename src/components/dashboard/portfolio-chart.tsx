@@ -9,8 +9,9 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
-import { Layers, TrendingUp, Info, BarChart3 } from "lucide-react";
+import { Layers, TrendingUp, Info, BarChart3, Percent } from "lucide-react";
 import type { PortfolioSnapshot } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/actions/benchmark";
 import type { AdjustmentDelta } from "@/lib/actions/activity-log";
@@ -26,6 +27,8 @@ interface PortfolioChartProps {
   adjustmentDeltas?: AdjustmentDelta[];
   liveSlices?: { crypto: number; stocks: number; cash: number };
   liveSlicesUsd?: { crypto: number; stocks: number; cash: number };
+  /** When true, chart defaults to cumulative % return mode */
+  defaultReturnMode?: boolean;
 }
 
 // Module-level constant: today's date string (stable for the lifetime of the page)
@@ -100,11 +103,13 @@ export function PortfolioChart({
   adjustmentDeltas = [],
   liveSlices,
   liveSlicesUsd,
+  defaultReturnMode = false,
 }: PortfolioChartProps) {
   const [periodIdx, setPeriodIdx] = useState(3); // default to 30D
   const [showAllocation, setShowAllocation] = useState(false);
   const [showBenchmark, setShowBenchmark] = useState(true);
   const [viewMode, setViewMode] = useState<ChartViewMode>("total");
+  const [returnMode, setReturnMode] = useState(defaultReturnMode);
   const period = PERIODS[periodIdx];
 
   const hasDeltas = adjustmentDeltas.length > 0;
@@ -438,14 +443,71 @@ export function PortfolioChart({
     });
   }, [data, yDomain, hasDeltas]);
 
-  // Are we showing stacked allocation areas? Only in total view with allocation ON
-  const showStackedAlloc = showAllocation && viewMode === "total";
+  // ── % Return mode transformation ──
+  // Converts absolute values to cumulative % return from the first visible point.
+  // Both portfolio and S&P start at 0% and diverge, making comparison instant.
+  const { finalData, finalYDomain } = useMemo(() => {
+    if (!returnMode) return { finalData: chartData, finalYDomain: yDomain };
+
+    const first = chartData[0];
+    if (!first) return { finalData: chartData, finalYDomain: yDomain };
+
+    const baseVal = hasDeltas ? (first.adjustedValue ?? first.value) : first.value;
+    const baseSp500 = first.sp500Value;
+
+    const toPct = (v: number, base: number) =>
+      base > 0 ? ((v - base) / base) * 100 : 0;
+
+    const transformed = chartData.map((p) => {
+      const val = hasDeltas ? (p.adjustedValue ?? p.value) : p.value;
+      const pctReturn = toPct(val, baseVal);
+      const sp500Pct =
+        baseSp500 != null && baseSp500 > 0 && p.sp500Value != null
+          ? toPct(p.sp500Value, baseSp500)
+          : undefined;
+
+      return {
+        ...p,
+        value: pctReturn,
+        adjustedValue: pctReturn,
+        rawValue:
+          p.rawValue != null && baseVal > 0
+            ? toPct(p.rawValue, baseVal)
+            : undefined,
+        sp500Value: sp500Pct,
+        // Allocation areas not meaningful as percentages
+        allocCrypto: 0,
+        allocStocks: 0,
+        allocCash: 0,
+      };
+    });
+
+    const allVals = transformed.flatMap((d) => {
+      const v = d.value;
+      return showBenchmark && d.sp500Value != null ? [v, d.sp500Value] : [v];
+    });
+    const minVal = Math.min(...allVals);
+    const maxVal = Math.max(...allVals);
+    // Add padding: at least ±1% so the 0% line isn't at the edge
+    return {
+      finalData: transformed,
+      finalYDomain: [
+        Math.floor(Math.min(minVal - 1, -1)),
+        Math.ceil(Math.max(maxVal + 1, 1)),
+      ] as const,
+    };
+  }, [chartData, yDomain, returnMode, hasDeltas, showBenchmark]);
+
+  // Are we showing stacked allocation areas? Only in total view with allocation ON, not in % return mode
+  const showStackedAlloc = showAllocation && viewMode === "total" && !returnMode;
 
   return (
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="flex items-center gap-3">
-          <h3 className="text-sm font-medium text-zinc-400 min-w-[9rem]">{CHART_TITLES[viewMode]}</h3>
+          <h3 className="text-sm font-medium text-zinc-400 min-w-[9rem]">
+            {returnMode ? `${VIEW_MODE_LABELS[viewMode]} Return` : CHART_TITLES[viewMode]}
+          </h3>
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -464,12 +526,15 @@ export function PortfolioChart({
             </button>
             <button
               onClick={() => setShowAllocation(!showAllocation)}
+              disabled={returnMode}
               className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
-                showAllocation
-                  ? "bg-zinc-700 text-zinc-200"
-                  : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                returnMode
+                  ? "text-zinc-700 cursor-not-allowed"
+                  : showAllocation
+                    ? "bg-zinc-700 text-zinc-200"
+                    : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
               }`}
-              title="Toggle allocation overlay"
+              title={returnMode ? "Allocation overlay not available in % return mode" : "Toggle allocation overlay"}
             >
               <Layers className="w-3 h-3" />
               <span>Allocation</span>
@@ -490,6 +555,18 @@ export function PortfolioChart({
                 <span>S&P 500</span>
               </button>
             )}
+            <button
+              onClick={() => setReturnMode(!returnMode)}
+              className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                returnMode
+                  ? "bg-zinc-700 text-zinc-200"
+                  : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+              }`}
+              title="Toggle cumulative % return view"
+            >
+              <Percent className="w-3 h-3" />
+              <span>Return</span>
+            </button>
           </div>
         </div>
         <PeriodSelector
@@ -500,7 +577,7 @@ export function PortfolioChart({
       </div>
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData}>
+          <ComposedChart data={finalData}>
             <defs>
               <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--chart-stroke)" stopOpacity={0.3} />
@@ -533,9 +610,11 @@ export function PortfolioChart({
             />
             <YAxis
               yAxisId="value"
-              domain={yDomain}
+              domain={finalYDomain}
               tickFormatter={(v: number) =>
-                fmtCurrencyCompact(v, primaryCurrency)
+                returnMode
+                  ? `${v >= 0 ? "+" : ""}${v.toFixed(0)}%`
+                  : fmtCurrencyCompact(v, primaryCurrency)
               }
               tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
               axisLine={false}
@@ -559,6 +638,10 @@ export function PortfolioChart({
                   hasDeltas
                     ? (point.adjustedValue ?? point.value)
                     : point.value;
+                const fmtVal = (v: number) =>
+                  returnMode
+                    ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`
+                    : fmtCurrencyCompact(v, primaryCurrency);
                 return (
                   <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 shadow-lg">
                     <p className="text-xs text-zinc-400">
@@ -568,16 +651,16 @@ export function PortfolioChart({
                       {viewMode !== "total" && (
                         <span className="text-zinc-500 mr-1">{VIEW_MODE_LABELS[viewMode]}</span>
                       )}
-                      {fmtCurrencyCompact(displayValue, primaryCurrency)}
+                      {fmtVal(displayValue)}
                     </p>
-                    {hasDeltas && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
+                    {!returnMode && hasDeltas && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
                       <p className="text-[10px] text-zinc-600 mt-0.5">
                         Raw: {fmtCurrencyCompact(point.rawValue, primaryCurrency)}
                       </p>
                     )}
                     {showBenchmark && point.sp500Value != null && (
                       <p className="text-xs text-zinc-500 mt-0.5">
-                        S&P 500 TR {fmtCurrencyCompact(point.sp500Value, primaryCurrency)}
+                        S&P 500 TR {fmtVal(point.sp500Value)}
                       </p>
                     )}
                     {showAllocation && (
@@ -632,6 +715,15 @@ export function PortfolioChart({
                   isAnimationActive={false}
                 />
               </>
+            )}
+            {returnMode && (
+              <ReferenceLine
+                yAxisId="value"
+                y={0}
+                stroke="#52525b"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
             )}
             <Area
               yAxisId="value"

@@ -387,8 +387,17 @@ export function CashTable({
           </p>
           {cashChangePercent !== 0 && (
             <span className={`relative group/tip cursor-pointer text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-              {cashChangeValue >= 0 ? "+" : ""}{formatCurrency(cashChangeValue, primaryCurrency)}
-              <span className="ml-1">({cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(1)}%)</span>
+              {isReadOnly ? (
+                <>
+                  {cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(1)}%
+                  <span className="ml-1">({cashChangeValue >= 0 ? "+" : ""}{formatCurrency(cashChangeValue, primaryCurrency)})</span>
+                </>
+              ) : (
+                <>
+                  {cashChangeValue >= 0 ? "+" : ""}{formatCurrency(cashChangeValue, primaryCurrency)}
+                  <span className="ml-1">({cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(1)}%)</span>
+                </>
+              )}
               <ChangeTooltip
                 valueChange={cashChangeValue}
                 fxValueChange={fxValueChange24h}

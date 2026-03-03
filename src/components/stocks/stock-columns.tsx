@@ -1,4 +1,4 @@
-import { Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Pencil, Trash2, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef } from "@/lib/column-config";
@@ -23,6 +23,8 @@ export interface StockRow {
   dividendYield: number;   // trailing 12-month yield % (0 if none)
   annualDividend: number;  // annual dividend per share (native currency)
   dividendCount: number;   // payments/year (4 = quarterly, 2 = semi-annual)
+  /** True when Yahoo returned no price data (delisted, OTC, etc.) */
+  priceUnavailable: boolean;
 }
 
 // ── Type display maps ────────────────────────────────────────
@@ -85,6 +87,7 @@ export function buildStockRows(
     const priceData = prices[key] ?? null;
     const pricePerShare = priceData?.price ?? 0;
     const change24h = priceData?.change24h ?? 0;
+    const priceUnavailable = priceData === null;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const valueNative = totalQty * pricePerShare;
     const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
@@ -97,6 +100,7 @@ export function buildStockRows(
     return {
       id: asset.id, asset, pricePerShare, change24h, totalQty,
       valueNative, valueBase, dividendYield, annualDividend, dividendCount,
+      priceUnavailable,
     };
   });
 
@@ -630,7 +634,13 @@ export function getStockColumns(handlers: {
             </span>
           </div>
         ) : (
-          <span className="text-xs text-zinc-600">No data</span>
+          <span
+            className="inline-flex items-center gap-1 text-xs text-amber-500/80"
+            title="Price unavailable — ticker may be delisted or not supported by Yahoo Finance"
+          >
+            <AlertTriangle className="w-3 h-3" />
+            Unavailable
+          </span>
         ),
     },
     {
@@ -654,10 +664,12 @@ export function getStockColumns(handlers: {
       renderHeader: (ctx) =>
         `Value (${ctx.primaryCurrency})`,
       renderCell: (row, ctx) => (
-        <span className="text-sm font-semibold text-zinc-100 tabular-nums">
-          {row.valueBase > 0
-            ? formatCurrency(row.valueBase, ctx.primaryCurrency)
-            : "—"}
+        <span className={`text-sm tabular-nums ${row.priceUnavailable ? "text-zinc-600" : "font-semibold text-zinc-100"}`}>
+          {row.priceUnavailable
+            ? "—"
+            : row.valueBase > 0
+              ? formatCurrency(row.valueBase, ctx.primaryCurrency)
+              : "—"}
         </span>
       ),
     },

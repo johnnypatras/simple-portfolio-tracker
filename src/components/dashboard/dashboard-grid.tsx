@@ -101,7 +101,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
   const [exposureInBase, setExposureInBase] = useState(false);
   const [openTooltip, setOpenTooltip] = useState<string | null>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
-  const { shareToken } = useSharedView();
+  const { shareToken, isReadOnly } = useSharedView();
   const basePath = shareToken ? `/share/${shareToken}` : "/dashboard";
 
   const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
@@ -371,12 +371,21 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     className={`relative group/tip cursor-pointer text-sm font-medium tabular-nums whitespace-nowrap ${changeColorClass(c.percent)}`}
                   >
                     {c.valueChange !== 0 ? (
-                      <>
-                        {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                        <span className="ml-1 font-normal">
-                          ({fmtPct(c.percent)})
-                        </span>
-                      </>
+                      isReadOnly ? (
+                        <>
+                          {fmtPct(c.percent)}
+                          <span className="ml-1 font-normal">
+                            ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                          <span className="ml-1 font-normal">
+                            ({fmtPct(c.percent)})
+                          </span>
+                        </>
+                      )
                     ) : (
                       fmtPct(c.percent)
                     )}
@@ -603,10 +612,17 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
-                        <>
-                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                          <span className="ml-1">({fmtPct(c.percent)})</span>
-                        </>
+                        isReadOnly ? (
+                          <>
+                            {fmtPct(c.percent)}
+                            <span className="ml-1">({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})</span>
+                          </>
+                        ) : (
+                          <>
+                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                            <span className="ml-1">({fmtPct(c.percent)})</span>
+                          </>
+                        )
                       ) : (
                         fmtPct(c.percent)
                       )}
@@ -764,10 +780,17 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
-                        <>
-                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                          <span className="ml-1">({fmtPct(c.percent)})</span>
-                        </>
+                        isReadOnly ? (
+                          <>
+                            {fmtPct(c.percent)}
+                            <span className="ml-1">({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})</span>
+                          </>
+                        ) : (
+                          <>
+                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                            <span className="ml-1">({fmtPct(c.percent)})</span>
+                          </>
+                        )
                       ) : (
                         fmtPct(c.percent)
                       )}
@@ -950,10 +973,17 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
-                        <>
-                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                          <span className="ml-1">({fmtPct(c.percent)})</span>
-                        </>
+                        isReadOnly ? (
+                          <>
+                            {fmtPct(c.percent)}
+                            <span className="ml-1">({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})</span>
+                          </>
+                        ) : (
+                          <>
+                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                            <span className="ml-1">({fmtPct(c.percent)})</span>
+                          </>
+                        )
                       ) : (
                         fmtPct(c.percent)
                       )}

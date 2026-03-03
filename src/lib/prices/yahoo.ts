@@ -319,7 +319,7 @@ async function fetchSinglePrice(ticker: string): Promise<{
     });
 
     if (!res.ok) {
-      console.error(`[yahoo] Price fetch failed for ${ticker}:`, res.status);
+      console.warn(`[yahoo] No data for ${ticker} (${res.status}${res.status === 404 ? " — may be delisted" : ""})`);
       return null;
     }
 

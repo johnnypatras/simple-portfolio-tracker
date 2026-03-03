@@ -157,6 +157,7 @@ export default async function SharedOverviewPage({
             stocks: summary.stocksValueUsd,
             cash: summary.cashValueUsd,
           }}
+          defaultReturnMode
         />
       </div>
     </div>

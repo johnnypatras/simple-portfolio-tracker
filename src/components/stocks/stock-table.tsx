@@ -375,8 +375,17 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
             const delta = totalPortfolioValue - totalPortfolioValue / (1 + weighted24hChange / 100);
             return (
               <span className={`relative group/tip cursor-pointer text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {delta >= 0 ? "+" : ""}{formatCurrency(delta, primaryCurrency)}
-                <span className="ml-1">({weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(1)}%)</span>
+                {isReadOnly ? (
+                  <>
+                    {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(1)}%
+                    <span className="ml-1">({delta >= 0 ? "+" : ""}{formatCurrency(delta, primaryCurrency)})</span>
+                  </>
+                ) : (
+                  <>
+                    {delta >= 0 ? "+" : ""}{formatCurrency(delta, primaryCurrency)}
+                    <span className="ml-1">({weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(1)}%)</span>
+                  </>
+                )}
                 <ChangeTooltip
                   valueChange={delta}
                   fxValueChange={fxValueChange24h}
