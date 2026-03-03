@@ -11,6 +11,9 @@ import { getInstitutionsWithRoles } from "@/lib/actions/institutions";
 import { getTradeEntries } from "@/lib/actions/trades";
 import { getSnapshots } from "@/lib/actions/snapshots";
 import { getProfile } from "@/lib/actions/profile";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { toCsv } from "@/lib/csv";
+import { getMyShares, type ShareLink } from "@/lib/actions/shares";
 import type {
   Wallet,
   Broker,
@@ -22,25 +25,10 @@ import type {
   BrokerDeposit,
   TradeEntry,
   PortfolioSnapshot,
+  DiaryEntry,
+  GoalPrice,
+  ActivityLog,
 } from "@/lib/types";
-
-// ─── CSV helper ─────────────────────────────────────────
-
-function escapeCsv(s: string | number | null | undefined): string {
-  if (s == null) return "";
-  const str = String(s);
-  return str.includes(",") || str.includes('"') || str.includes("\n")
-    ? `"${str.replace(/"/g, '""')}"`
-    : str;
-}
-
-function toCsv(headers: string[], rows: (string | number | null | undefined)[][]): string {
-  const lines = [headers.join(",")];
-  for (const row of rows) {
-    lines.push(row.map(escapeCsv).join(","));
-  }
-  return lines.join("\n");
-}
 
 // ─── Full JSON backup ───────────────────────────────────
 
@@ -48,6 +36,7 @@ export interface PortfolioBackup {
   version: number;
   exportedAt: string;
   primaryCurrency: string;
+  // ── v1 entities ──
   institutions: InstitutionWithRoles[];
   wallets: Wallet[];
   brokers: Broker[];
@@ -58,9 +47,20 @@ export interface PortfolioBackup {
   brokerDeposits: BrokerDeposit[];
   tradeEntries: TradeEntry[];
   snapshots: PortfolioSnapshot[];
+  // ── v2 additions (optional for backward compat) ──
+  diaryEntries?: DiaryEntry[];
+  goalPrices?: GoalPrice[];
+  activityLog?: ActivityLog[];           // export-only (archival)
+  portfolioShares?: ShareLink[];         // export-only (archival)
+  profile?: { display_name: string | null; theme: string | null };
 }
 
 export async function exportFullJson(): Promise<PortfolioBackup> {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const uid = user.id;
+
   const [
     profile,
     institutions,
@@ -73,6 +73,9 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     brokerDeposits,
     tradeEntries,
     snapshots,
+    shares,
+    { data: diaryRows },
+    { data: activityRows },
   ] = await Promise.all([
     getProfile(),
     getInstitutionsWithRoles(),
@@ -84,11 +87,36 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     getExchangeDeposits(),
     getBrokerDeposits(),
     getTradeEntries(),
-    getSnapshots(99999), // all snapshots
+    getSnapshots(99999),
+    getMyShares(),
+    supabase
+      .from("diary_entries")
+      .select("id, entry_date, content, created_at, updated_at")
+      .eq("user_id", uid)
+      .is("deleted_at", null)
+      .order("entry_date", { ascending: true }),
+    supabase
+      .from("activity_log")
+      .select("*")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false })
+      .limit(10000),
   ]);
 
+  // goal_prices linked through crypto_assets (no direct user_id) — query via asset IDs
+  let goalPrices: GoalPrice[] = [];
+  const cryptoIds = cryptoAssets.map((a) => a.id);
+  if (cryptoIds.length > 0) {
+    const { data: gp } = await supabase
+      .from("goal_prices")
+      .select("id, crypto_asset_id, target_price, weight, label")
+      .in("crypto_asset_id", cryptoIds)
+      .is("deleted_at", null);
+    goalPrices = (gp ?? []) as GoalPrice[];
+  }
+
   return {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     primaryCurrency: profile.primary_currency,
     institutions,
@@ -101,6 +129,14 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     brokerDeposits,
     tradeEntries,
     snapshots,
+    diaryEntries: (diaryRows ?? []) as DiaryEntry[],
+    goalPrices,
+    activityLog: (activityRows ?? []) as ActivityLog[],
+    portfolioShares: shares,
+    profile: {
+      display_name: profile.display_name,
+      theme: profile.theme,
+    },
   };
 }
 
@@ -111,7 +147,8 @@ export async function exportCryptoCsv(): Promise<string> {
 
   const headers = [
     "Ticker", "Name", "CoinGecko ID", "Chain", "Subcategory",
-    "Wallet", "Wallet Type", "Quantity", "Acquisition Method", "APY %", "Adjustment",
+    "Wallet", "Wallet Type", "Quantity", "Acquisition Method", "APY %",
+    "Adjustment", "Transfer",
     "Asset Created", "Position Updated",
   ];
 
@@ -130,6 +167,7 @@ export async function exportCryptoCsv(): Promise<string> {
         pos.acquisition_method,
         pos.apy,
         pos.last_was_adjustment ? "Yes" : "No",
+        pos.last_was_transfer ? "Yes" : "No",
         asset.created_at,
         pos.updated_at,
       ]);
@@ -147,7 +185,7 @@ export async function exportStocksCsv(): Promise<string> {
   const headers = [
     "Ticker", "Name", "ISIN", "Yahoo Ticker", "Category",
     "Currency", "Subcategory", "Tags",
-    "Broker", "Quantity", "Adjustment",
+    "Broker", "Quantity", "Adjustment", "Transfer",
     "Asset Created", "Position Updated",
   ];
 
@@ -166,6 +204,7 @@ export async function exportStocksCsv(): Promise<string> {
         pos.broker_name,
         pos.quantity,
         pos.last_was_adjustment ? "Yes" : "No",
+        pos.last_was_transfer ? "Yes" : "No",
         asset.created_at,
         pos.updated_at,
       ]);
@@ -185,20 +224,21 @@ export async function exportCashCsv(): Promise<string> {
   ]);
 
   const headers = [
-    "Type", "Account Name", "Institution", "Currency", "Amount", "APY %", "Region", "Adjustment",
+    "Type", "Account Name", "Institution", "Currency", "Amount", "APY %",
+    "Region", "Adjustment", "Transfer",
     "Created", "Updated",
   ];
 
   const rows: (string | number | null)[][] = [];
 
   for (const b of banks) {
-    rows.push(["Bank Account", b.name, b.bank_name, b.currency, b.balance, b.apy, b.region, b.last_was_adjustment ? "Yes" : "No", b.created_at, b.updated_at]);
+    rows.push(["Bank Account", b.name, b.bank_name, b.currency, b.balance, b.apy, b.region, b.last_was_adjustment ? "Yes" : "No", b.last_was_transfer ? "Yes" : "No", b.created_at, b.updated_at]);
   }
   for (const d of exDeps) {
-    rows.push(["Fiat Deposit (Exchange)", null, d.wallet_name, d.currency, d.amount, d.apy, null, d.last_was_adjustment ? "Yes" : "No", d.created_at, d.updated_at]);
+    rows.push(["Fiat Deposit (Exchange)", null, d.wallet_name, d.currency, d.amount, d.apy, null, d.last_was_adjustment ? "Yes" : "No", d.last_was_transfer ? "Yes" : "No", d.created_at, d.updated_at]);
   }
   for (const d of brDeps) {
-    rows.push(["Fiat Deposit (Broker)", null, d.broker_name, d.currency, d.amount, d.apy, null, d.last_was_adjustment ? "Yes" : "No", d.created_at, d.updated_at]);
+    rows.push(["Fiat Deposit (Broker)", null, d.broker_name, d.currency, d.amount, d.apy, null, d.last_was_adjustment ? "Yes" : "No", d.last_was_transfer ? "Yes" : "No", d.created_at, d.updated_at]);
   }
 
   return toCsv(headers, rows);

@@ -26,6 +26,7 @@ export async function getExchangeDeposits(): Promise<ExchangeDeposit[]> {
     amount: row.amount,
     apy: row.apy,
     last_was_adjustment: row.last_was_adjustment ?? false,
+    last_was_transfer: row.last_was_transfer ?? false,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }));

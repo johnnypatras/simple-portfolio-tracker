@@ -479,6 +479,27 @@ export interface TradeEntryInput {
   notes?: string;
 }
 
+// ─── Diary Entries ─────────────────────────────────────
+
+export interface DiaryEntry {
+  id: string;
+  user_id: string;
+  entry_date: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Goal Prices ───────────────────────────────────────
+
+export interface GoalPrice {
+  id: string;
+  crypto_asset_id: string;
+  target_price: number;
+  weight: number;
+  label: string | null;
+}
+
 // ─── Activity Log / Audit Trail ────────────────────────
 
 export type ActionType = "created" | "updated" | "removed" | "undone";

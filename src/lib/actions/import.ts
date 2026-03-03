@@ -21,6 +21,8 @@ export interface ImportResult {
     brokerDeposits: number;
     tradeEntries: number;
     snapshots: number;
+    diaryEntries: number;
+    goalPrices: number;
   };
   skipped: {
     institutions: number;
@@ -56,7 +58,8 @@ export async function validateBackup(
 
   const d = data as Record<string, unknown>;
 
-  if (d.version !== 1) {
+  // Accept v1 and v2
+  if (d.version !== 1 && d.version !== 2) {
     return { ok: false, error: `Unsupported backup version: ${d.version}` };
   }
 
@@ -94,6 +97,23 @@ export async function validateBackup(
     }
   }
 
+  // v2 optional arrays — validate shape only when present
+  const v2ShapeRules: Record<string, string[]> = {
+    diaryEntries: ["entry_date", "content"],
+    goalPrices: ["crypto_asset_id", "target_price"],
+  };
+
+  for (const [key, fields] of Object.entries(v2ShapeRules)) {
+    if (Array.isArray(d[key])) {
+      const arr = d[key] as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        if (!hasRequiredFields(arr[i], fields)) {
+          return { ok: false, error: `${key}[${i}] is missing required fields: ${fields.join(", ")}` };
+        }
+      }
+    }
+  }
+
   return { ok: true, preview: data as PortfolioBackup };
 }
 
@@ -113,7 +133,6 @@ export async function importFromJson(
   const isReplace = mode === "replace";
 
   // ── Re-validate before destructive operations ──
-  // Ensures a malformed file can't wipe data and then fail midway.
   if (isReplace) {
     const check = await validateBackup(data);
     if (!check.ok) return { ok: false, error: check.error };
@@ -123,10 +142,9 @@ export async function importFromJson(
   // Children before parents. crypto_positions, stock_positions, and
   // goal_prices don't have user_id — they're cascade-deleted when their
   // parent asset tables are deleted (ON DELETE CASCADE FKs).
-  // diary_entries and activity_log are NOT deleted — they're not in the
-  // backup and would be permanently lost.
   if (isReplace) {
     const tables = [
+      "diary_entries",
       "portfolio_snapshots", "trade_entries",
       "exchange_deposits", "broker_deposits",
       "crypto_assets", "stock_assets",
@@ -149,6 +167,7 @@ export async function importFromJson(
     institutions: 0, wallets: 0, brokers: 0, bankAccounts: 0,
     cryptoAssets: 0, cryptoPositions: 0, stockAssets: 0, stockPositions: 0,
     exchangeDeposits: 0, brokerDeposits: 0, tradeEntries: 0, snapshots: 0,
+    diaryEntries: 0, goalPrices: 0,
   };
   const skipped = {
     institutions: 0, wallets: 0, brokers: 0, bankAccounts: 0,
@@ -157,7 +176,6 @@ export async function importFromJson(
   };
 
   // ── 1. Institutions ───────────────────────────────────
-  // Pre-fetch all existing institutions for merge-mode dedup (1 query instead of N)
   const existingInstMap = new Map<string, string>();
   if (!isReplace) {
     const { data: existingInsts } = await supabase
@@ -228,7 +246,6 @@ export async function importFromJson(
   }
 
   // ── 3. Brokers ────────────────────────────────────────
-  // Pre-fetch all existing brokers for merge-mode dedup (1 query instead of N)
   const existingBrokerMap = new Map<string, string>();
   if (!isReplace) {
     const { data: existingBrokers } = await supabase
@@ -264,29 +281,30 @@ export async function importFromJson(
     }
   }
 
-  // ── 4. Bank Accounts ──────────────────────────────────
-  for (const ba of data.bankAccounts) {
-    const mappedInstId = ba.institution_id ? instMap.get(ba.institution_id) ?? null : null;
-    let found = false;
+  // ── 4. Bank Accounts (batch insert) ───────────────────
+  {
+    const newRows: Record<string, unknown>[] = [];
 
-    if (!isReplace) {
-      const { data: existing } = await supabase
-        .from("bank_accounts")
-        .select("id")
-        .eq("user_id", uid)
-        .eq("name", ba.name)
-        .eq("currency", ba.currency)
-        .is("deleted_at", null)
-        .limit(1);
-      if (existing && existing.length > 0) found = true;
-    }
+    for (const ba of data.bankAccounts) {
+      const mappedInstId = ba.institution_id ? instMap.get(ba.institution_id) ?? null : null;
+      let found = false;
 
-    if (found) {
-      skipped.bankAccounts++;
-    } else {
-      const { error } = await supabase
-        .from("bank_accounts")
-        .insert({
+      if (!isReplace) {
+        const { data: existing } = await supabase
+          .from("bank_accounts")
+          .select("id")
+          .eq("user_id", uid)
+          .eq("name", ba.name)
+          .eq("currency", ba.currency)
+          .is("deleted_at", null)
+          .limit(1);
+        if (existing && existing.length > 0) found = true;
+      }
+
+      if (found) {
+        skipped.bankAccounts++;
+      } else {
+        newRows.push({
           user_id: uid,
           name: ba.name,
           bank_name: ba.bank_name,
@@ -296,14 +314,19 @@ export async function importFromJson(
           apy: ba.apy,
           institution_id: mappedInstId,
           last_was_adjustment: ba.last_was_adjustment ?? false,
+          last_was_transfer: ba.last_was_transfer ?? false,
         });
-      if (error) return { ok: false, error: `Bank account "${ba.name}": ${error.message}` };
-      counts.bankAccounts++;
+      }
+    }
+
+    if (newRows.length > 0) {
+      const { error } = await supabase.from("bank_accounts").insert(newRows);
+      if (error) return { ok: false, error: `Bank accounts batch: ${error.message}` };
+      counts.bankAccounts = newRows.length;
     }
   }
 
   // ── 5. Crypto Assets + Positions ──────────────────────
-  // Pre-fetch all existing crypto assets for merge-mode dedup (1 query instead of N)
   const existingCryptoMap = new Map<string, string>();
   if (!isReplace) {
     const { data: existingCrypto } = await supabase
@@ -344,10 +367,11 @@ export async function importFromJson(
       counts.cryptoAssets++;
     }
 
-    // Import positions for this asset
+    // Batch positions per asset
+    const posRows: Record<string, unknown>[] = [];
     for (const pos of asset.positions) {
       const mappedWalletId = walletMap.get(pos.wallet_id);
-      if (!mappedWalletId) continue; // wallet wasn't imported/found
+      if (!mappedWalletId) continue;
 
       if (!isReplace) {
         const { data: existingPos } = await supabase
@@ -357,21 +381,46 @@ export async function importFromJson(
           .eq("wallet_id", mappedWalletId)
           .is("deleted_at", null)
           .limit(1);
-        if (existingPos && existingPos.length > 0) continue; // skip duplicate
+        if (existingPos && existingPos.length > 0) continue;
       }
 
+      posRows.push({
+        crypto_asset_id: newAssetId,
+        wallet_id: mappedWalletId,
+        quantity: pos.quantity,
+        acquisition_method: pos.acquisition_method ?? "bought",
+        apy: pos.apy ?? 0,
+        last_was_adjustment: pos.last_was_adjustment ?? false,
+        last_was_transfer: pos.last_was_transfer ?? false,
+      });
+    }
+
+    if (posRows.length > 0) {
+      const { error } = await supabase.from("crypto_positions").insert(posRows);
+      if (error) return { ok: false, error: `Crypto positions for ${asset.ticker}: ${error.message}` };
+      counts.cryptoPositions += posRows.length;
+    }
+  }
+
+  // ── 5b. Goal Prices ───────────────────────────────────
+  if (data.goalPrices?.length) {
+    for (const gp of data.goalPrices) {
+      const mappedAssetId = cryptoAssetMap.get(gp.crypto_asset_id);
+      if (!mappedAssetId) continue;
+
       const { error } = await supabase
-        .from("crypto_positions")
-        .insert({
-          crypto_asset_id: newAssetId,
-          wallet_id: mappedWalletId,
-          quantity: pos.quantity,
-          acquisition_method: pos.acquisition_method ?? "bought",
-          apy: pos.apy ?? 0,
-          last_was_adjustment: pos.last_was_adjustment ?? false,
-        });
-      if (error) return { ok: false, error: `Crypto position ${asset.ticker}/${pos.wallet_name}: ${error.message}` };
-      counts.cryptoPositions++;
+        .from("goal_prices")
+        .upsert(
+          {
+            crypto_asset_id: mappedAssetId,
+            target_price: gp.target_price,
+            weight: gp.weight ?? 0.25,
+            label: gp.label ?? null,
+          },
+          { onConflict: "crypto_asset_id,label" }
+        );
+      if (error) continue; // best-effort — don't fail import for goal prices
+      counts.goalPrices++;
     }
   }
 
@@ -379,7 +428,6 @@ export async function importFromJson(
   for (const asset of data.stockAssets) {
     let existingId: string | null = null;
 
-    // Dedup by yahoo_ticker (when available) or ticker — matches DB unique indexes
     if (!isReplace) {
       if (asset.yahoo_ticker) {
         const { data: existing } = await supabase
@@ -430,10 +478,11 @@ export async function importFromJson(
       counts.stockAssets++;
     }
 
-    // Import positions for this asset
+    // Batch positions per asset
+    const posRows: Record<string, unknown>[] = [];
     for (const pos of asset.positions) {
       const mappedBrokerId = brokerMap.get(pos.broker_id);
-      if (!mappedBrokerId) continue; // broker wasn't imported/found
+      if (!mappedBrokerId) continue;
 
       if (!isReplace) {
         const { data: existingPos } = await supabase
@@ -443,138 +492,185 @@ export async function importFromJson(
           .eq("broker_id", mappedBrokerId)
           .is("deleted_at", null)
           .limit(1);
-        if (existingPos && existingPos.length > 0) continue; // skip duplicate
+        if (existingPos && existingPos.length > 0) continue;
       }
 
-      const { error } = await supabase
-        .from("stock_positions")
-        .insert({
-          stock_asset_id: newAssetId,
-          broker_id: mappedBrokerId,
-          quantity: pos.quantity,
-          last_was_adjustment: pos.last_was_adjustment ?? false,
-        });
-      if (error) return { ok: false, error: `Stock position ${asset.ticker}/${pos.broker_name}: ${error.message}` };
-      counts.stockPositions++;
+      posRows.push({
+        stock_asset_id: newAssetId,
+        broker_id: mappedBrokerId,
+        quantity: pos.quantity,
+        last_was_adjustment: pos.last_was_adjustment ?? false,
+        last_was_transfer: pos.last_was_transfer ?? false,
+      });
+    }
+
+    if (posRows.length > 0) {
+      const { error } = await supabase.from("stock_positions").insert(posRows);
+      if (error) return { ok: false, error: `Stock positions for ${asset.ticker}: ${error.message}` };
+      counts.stockPositions += posRows.length;
     }
   }
 
-  // ── 7. Exchange Deposits ──────────────────────────────
-  for (const dep of data.exchangeDeposits) {
-    const mappedWalletId = walletMap.get(dep.wallet_id);
-    if (!mappedWalletId) continue;
-    let found = false;
+  // ── 7. Exchange Deposits (batch insert) ────────────────
+  {
+    const newRows: Record<string, unknown>[] = [];
 
-    if (!isReplace) {
-      const { data: existing } = await supabase
-        .from("exchange_deposits")
-        .select("id")
-        .eq("user_id", uid)
-        .eq("wallet_id", mappedWalletId)
-        .eq("currency", dep.currency)
-        .is("deleted_at", null)
-        .limit(1);
-      if (existing && existing.length > 0) found = true;
-    }
+    for (const dep of data.exchangeDeposits) {
+      const mappedWalletId = walletMap.get(dep.wallet_id);
+      if (!mappedWalletId) continue;
+      let found = false;
 
-    if (found) {
-      skipped.exchangeDeposits++;
-    } else {
-      const { error } = await supabase
-        .from("exchange_deposits")
-        .insert({
+      if (!isReplace) {
+        const { data: existing } = await supabase
+          .from("exchange_deposits")
+          .select("id")
+          .eq("user_id", uid)
+          .eq("wallet_id", mappedWalletId)
+          .eq("currency", dep.currency)
+          .is("deleted_at", null)
+          .limit(1);
+        if (existing && existing.length > 0) found = true;
+      }
+
+      if (found) {
+        skipped.exchangeDeposits++;
+      } else {
+        newRows.push({
           user_id: uid,
           wallet_id: mappedWalletId,
           currency: dep.currency,
           amount: dep.amount,
           apy: dep.apy ?? 0,
           last_was_adjustment: dep.last_was_adjustment ?? false,
+          last_was_transfer: dep.last_was_transfer ?? false,
         });
-      if (error) return { ok: false, error: `Exchange deposit ${dep.wallet_name}/${dep.currency}: ${error.message}` };
-      counts.exchangeDeposits++;
+      }
+    }
+
+    if (newRows.length > 0) {
+      const { error } = await supabase.from("exchange_deposits").insert(newRows);
+      if (error) return { ok: false, error: `Exchange deposits batch: ${error.message}` };
+      counts.exchangeDeposits = newRows.length;
     }
   }
 
-  // ── 8. Broker Deposits ────────────────────────────────
-  for (const dep of data.brokerDeposits) {
-    const mappedBrokerId = brokerMap.get(dep.broker_id);
-    if (!mappedBrokerId) continue;
-    let found = false;
+  // ── 8. Broker Deposits (batch insert) ──────────────────
+  {
+    const newRows: Record<string, unknown>[] = [];
 
-    if (!isReplace) {
-      const { data: existing } = await supabase
-        .from("broker_deposits")
-        .select("id")
-        .eq("user_id", uid)
-        .eq("broker_id", mappedBrokerId)
-        .eq("currency", dep.currency)
-        .is("deleted_at", null)
-        .limit(1);
-      if (existing && existing.length > 0) found = true;
-    }
+    for (const dep of data.brokerDeposits) {
+      const mappedBrokerId = brokerMap.get(dep.broker_id);
+      if (!mappedBrokerId) continue;
+      let found = false;
 
-    if (found) {
-      skipped.brokerDeposits++;
-    } else {
-      const { error } = await supabase
-        .from("broker_deposits")
-        .insert({
+      if (!isReplace) {
+        const { data: existing } = await supabase
+          .from("broker_deposits")
+          .select("id")
+          .eq("user_id", uid)
+          .eq("broker_id", mappedBrokerId)
+          .eq("currency", dep.currency)
+          .is("deleted_at", null)
+          .limit(1);
+        if (existing && existing.length > 0) found = true;
+      }
+
+      if (found) {
+        skipped.brokerDeposits++;
+      } else {
+        newRows.push({
           user_id: uid,
           broker_id: mappedBrokerId,
           currency: dep.currency,
           amount: dep.amount,
           apy: dep.apy ?? 0,
           last_was_adjustment: dep.last_was_adjustment ?? false,
+          last_was_transfer: dep.last_was_transfer ?? false,
         });
-      if (error) return { ok: false, error: `Broker deposit ${dep.broker_name}/${dep.currency}: ${error.message}` };
-      counts.brokerDeposits++;
+      }
+    }
+
+    if (newRows.length > 0) {
+      const { error } = await supabase.from("broker_deposits").insert(newRows);
+      if (error) return { ok: false, error: `Broker deposits batch: ${error.message}` };
+      counts.brokerDeposits = newRows.length;
     }
   }
 
-  // ── 9. Trade Entries ──────────────────────────────────
-  // Always import (no natural dedup key)
-  for (const t of data.tradeEntries) {
-    const { error } = await supabase
-      .from("trade_entries")
-      .insert({
-        user_id: uid,
-        trade_date: t.trade_date,
-        asset_type: t.asset_type,
-        asset_name: t.asset_name,
-        action: t.action,
-        quantity: t.quantity,
-        price: t.price,
-        currency: t.currency ?? "USD",
-        total_value: t.total_value,
-        notes: t.notes ?? null,
-      });
-    if (error) return { ok: false, error: `Trade entry "${t.asset_name}": ${error.message}` };
-    counts.tradeEntries++;
-  }
+  // ── 9. Trade Entries (batch upsert by original UUID) ────
+  // Dedup via the original `id` from the backup — re-importing the same file
+  // is a no-op, while legitimate duplicate trades (different UUIDs) are preserved.
+  {
+    const tradeRows = data.tradeEntries.map((t) => ({
+      ...(t.id ? { id: t.id } : {}),
+      user_id: uid,
+      trade_date: t.trade_date,
+      asset_type: t.asset_type,
+      asset_name: t.asset_name,
+      action: t.action,
+      quantity: t.quantity,
+      price: t.price,
+      currency: t.currency ?? "USD",
+      total_value: t.total_value,
+      notes: t.notes ?? null,
+    }));
 
-  // ── 10. Snapshots ─────────────────────────────────────
-  // Upsert by date (unique constraint: user_id + snapshot_date)
-  for (const s of data.snapshots) {
-    const { error } = await supabase
-      .from("portfolio_snapshots")
-      .upsert(
-        {
-          user_id: uid,
-          snapshot_date: s.snapshot_date,
-          total_value_usd: s.total_value_usd,
-          total_value_eur: s.total_value_eur,
-          crypto_value_usd: s.crypto_value_usd,
-          stocks_value_usd: s.stocks_value_usd,
-          cash_value_usd: s.cash_value_usd,
-        },
-        { onConflict: "user_id,snapshot_date" }
-      );
-    if (error) {
-      skipped.snapshots++;
-    } else {
-      counts.snapshots++;
+    if (tradeRows.length > 0) {
+      const { error } = await supabase
+        .from("trade_entries")
+        .upsert(tradeRows, { onConflict: "id" });
+      if (error) return { ok: false, error: `Trade entries batch: ${error.message}` };
+      counts.tradeEntries = tradeRows.length;
     }
   }
+
+  // ── 10. Snapshots (batch upsert) ───────────────────────
+  {
+    const snapshotRows = data.snapshots.map((s) => ({
+      user_id: uid,
+      snapshot_date: s.snapshot_date,
+      total_value_usd: s.total_value_usd,
+      total_value_eur: s.total_value_eur,
+      crypto_value_usd: s.crypto_value_usd,
+      stocks_value_usd: s.stocks_value_usd,
+      cash_value_usd: s.cash_value_usd,
+    }));
+
+    if (snapshotRows.length > 0) {
+      const { error } = await supabase
+        .from("portfolio_snapshots")
+        .upsert(snapshotRows, { onConflict: "user_id,snapshot_date" });
+      if (error) {
+        skipped.snapshots += snapshotRows.length;
+      } else {
+        counts.snapshots = snapshotRows.length;
+      }
+    }
+  }
+
+  // ── 11. Diary Entries (v2) ─────────────────────────────
+  if (data.diaryEntries?.length) {
+    const rows = data.diaryEntries.map((d) => ({
+      user_id: uid,
+      entry_date: d.entry_date,
+      content: d.content,
+    }));
+    const { error } = await supabase.from("diary_entries").insert(rows);
+    if (!error) counts.diaryEntries = rows.length;
+  }
+
+  // ── 12. Profile (v2) ──────────────────────────────────
+  if (data.profile) {
+    await supabase
+      .from("profiles")
+      .update({
+        display_name: data.profile.display_name,
+        theme: data.profile.theme,
+      })
+      .eq("id", uid);
+  }
+
+  // activityLog and portfolioShares are export-only (archival) — not imported
 
   revalidatePath("/dashboard");
   return { ok: true, counts, skipped };

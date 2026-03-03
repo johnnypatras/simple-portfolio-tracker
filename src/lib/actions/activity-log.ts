@@ -3,6 +3,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getFXRates } from "@/lib/prices/fx";
+import { toCsv } from "@/lib/csv";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 
 // ─── FX conversion helper ───────────────────────────────
@@ -419,32 +420,22 @@ export async function exportActivityLogsCsv(): Promise<string> {
 
   const rows = (data ?? []) as ActivityLog[];
 
-  // CSV header
-  const lines = [
-    "Date,Action,Type,Name,Description,Adjustment,Delta USD,Delta EUR,Undone At",
+  const headers = [
+    "Date", "Action", "Type", "Name", "Description",
+    "Adjustment", "Delta USD", "Delta EUR", "Undone At",
   ];
 
-  for (const row of rows) {
-    const date = new Date(row.created_at).toISOString();
-    const escapeCsv = (s: string) =>
-      s.includes(",") || s.includes('"') || s.includes("\n")
-        ? `"${s.replace(/"/g, '""')}"`
-        : s;
+  const csvRows = rows.map((row) => [
+    new Date(row.created_at).toISOString(),
+    row.action,
+    row.entity_type,
+    row.entity_name,
+    row.description,
+    row.is_adjustment ? "Yes" : "No",
+    row.delta_usd ?? "",
+    row.delta_eur ?? "",
+    row.undone_at ?? "",
+  ]);
 
-    lines.push(
-      [
-        date,
-        row.action,
-        row.entity_type,
-        escapeCsv(row.entity_name),
-        escapeCsv(row.description),
-        row.is_adjustment ? "Yes" : "No",
-        row.delta_usd ?? "",
-        row.delta_eur ?? "",
-        row.undone_at ?? "",
-      ].join(",")
-    );
-  }
-
-  return lines.join("\n");
+  return toCsv(headers, csvRows);
 }
