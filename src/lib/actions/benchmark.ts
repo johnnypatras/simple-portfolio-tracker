@@ -174,13 +174,16 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
     if (!currency || currency === "USD") return amount;
     if (currency === "EUR") {
       const rate = getPrice(eurUsdMap, date) ?? (fxPrices.get("EUR") ? getPrice(fxPrices.get("EUR")!, date) : undefined);
-      return rate != null ? amount * rate : amount * 1.08;
+      if (rate != null) return amount * rate;
+      console.warn(`[benchmark] No EUR/USD rate for ${date}, returning unconverted EUR amount`);
+      return amount;
     }
     const fxMap = fxPrices.get(currency);
     if (fxMap) {
       const rate = getPrice(fxMap, date);
       if (rate != null) return amount * rate;
     }
+    console.warn(`[benchmark] No FX rate for ${currency}/USD on ${date}, returning unconverted amount`);
     return amount;
   }
 

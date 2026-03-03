@@ -74,6 +74,12 @@ interface AggregateParams {
   brokerDeposits: BrokerDeposit[];
   primaryCurrency: string;
   fxRates: FXRates;
+  /** Dual FX rate sets for accurate snapshot storage.
+   *  fxRatesUsd: rates relative to USD (for computing *_value_usd columns).
+   *  fxRatesEur: rates relative to EUR (for computing *_value_eur columns).
+   *  If omitted, falls back to cross-conversion via primaryCurrency (legacy). */
+  fxRatesUsd?: FXRates;
+  fxRatesEur?: FXRates;
   /** 24h change in EUR/USD (% — e.g. +0.5 means EUR gained 0.5% vs USD).
    *  Used to include FX impact on foreign-currency stocks, cash, and stablecoins. */
   eurUsdChange24h?: number;
@@ -98,6 +104,8 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     brokerDeposits,
     primaryCurrency,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h = 0,
   } = params;
 
@@ -235,8 +243,10 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
       : { crypto: 0, stocks: 0, cash: 0 };
 
   // ── Dual-currency values for snapshot storage ─────────
-  // The DB stores both USD and EUR. We compute both from the base values.
-  // CoinGecko gives us both directly; for stocks/cash we use FX.
+  // The DB stores both USD and EUR. We compute both independently.
+  // CoinGecko gives us both directly; for stocks/cash we convert from
+  // native currency to USD and EUR using separate FX rate sets.
+  // This matches the Edge Function's approach (direct conversion, no 2-legged hops).
   let cryptoValueUsd = 0;
   let cryptoValueEur = 0;
   let stablecoinValueUsd = 0;
@@ -255,28 +265,56 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     }
   }
 
-  // For stocks and cash, convert base-currency values to the other currency
-  const eurPerUsd = fxRates["EUR"] ?? 1; // rates are relative to primaryCurrency
+  // Stocks and cash: convert directly from native currency to USD and EUR.
+  // Uses dual FX rate sets when available (accurate), falls back to cross-conversion (legacy).
+  let stocksValueUsd = 0;
+  let stocksValueEur = 0;
+  let fiatCashValueUsd = 0;
+  let fiatCashValueEur = 0;
 
-  let stocksValueUsd: number;
-  let stocksValueEur: number;
-  let cashValueUsd: number;
-  let cashValueEur: number;
-
-  if (primaryCurrency === "USD") {
-    stocksValueUsd = stocksValue;
-    stocksValueEur = stocksValue * eurPerUsd;
-    // Cash (excluding stablecoins which have their own CoinGecko rates)
-    cashValueUsd = (cashValue - stablecoinValue) + stablecoinValueUsd;
-    cashValueEur = (cashValue - stablecoinValue) * eurPerUsd + stablecoinValueEur;
+  if (fxRatesUsd && fxRatesEur) {
+    // Direct conversion — each native currency converts independently to USD and EUR
+    // This matches the Edge Function's approach and avoids 2-legged FX triangulation.
+    for (const asset of stockAssets) {
+      const key = asset.yahoo_ticker || asset.ticker;
+      const priceData = stockPrices[key];
+      if (!priceData) continue;
+      const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
+      const valueNative = totalQty * priceData.price;
+      stocksValueUsd += convertToBase(valueNative, asset.currency, "USD", fxRatesUsd);
+      stocksValueEur += convertToBase(valueNative, asset.currency, "EUR", fxRatesEur);
+    }
+    for (const bank of bankAccounts) {
+      fiatCashValueUsd += convertToBase(bank.balance, bank.currency, "USD", fxRatesUsd);
+      fiatCashValueEur += convertToBase(bank.balance, bank.currency, "EUR", fxRatesEur);
+    }
+    for (const deposit of exchangeDeposits) {
+      fiatCashValueUsd += convertToBase(deposit.amount, deposit.currency, "USD", fxRatesUsd);
+      fiatCashValueEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
+    }
+    for (const deposit of brokerDeposits) {
+      fiatCashValueUsd += convertToBase(deposit.amount, deposit.currency, "USD", fxRatesUsd);
+      fiatCashValueEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
+    }
   } else {
-    // primaryCurrency is EUR; fxRates["USD"] = USD per 1 EUR
-    const usdPerEur = fxRates["USD"] ?? 1;
-    stocksValueEur = stocksValue;
-    stocksValueUsd = stocksValue * usdPerEur;
-    cashValueEur = (cashValue - stablecoinValue) + stablecoinValueEur;
-    cashValueUsd = (cashValue - stablecoinValue) * usdPerEur + stablecoinValueUsd;
+    // Legacy cross-conversion fallback (single FX rate set)
+    const eurPerUsd = fxRates["EUR"] ?? (() => { console.warn("[aggregate] Missing EUR rate, falling back to 1:1"); return 1; })();
+    if (primaryCurrency === "USD") {
+      stocksValueUsd = stocksValue;
+      stocksValueEur = stocksValue * eurPerUsd;
+      fiatCashValueUsd = cashValue - stablecoinValue;
+      fiatCashValueEur = (cashValue - stablecoinValue) * eurPerUsd;
+    } else {
+      const usdPerEur = fxRates["USD"] ?? (() => { console.warn("[aggregate] Missing USD rate, falling back to 1:1"); return 1; })();
+      stocksValueEur = stocksValue;
+      stocksValueUsd = stocksValue * usdPerEur;
+      fiatCashValueEur = cashValue - stablecoinValue;
+      fiatCashValueUsd = (cashValue - stablecoinValue) * usdPerEur;
+    }
   }
+
+  const cashValueUsd = fiatCashValueUsd + stablecoinValueUsd;
+  const cashValueEur = fiatCashValueEur + stablecoinValueEur;
 
   return {
     totalValue,

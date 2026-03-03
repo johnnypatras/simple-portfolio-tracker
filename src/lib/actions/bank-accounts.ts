@@ -9,6 +9,7 @@ import {
   findOrCreateInstitution,
   renameInstitution,
 } from "@/lib/actions/institutions";
+import { validateAmount, validateCurrency, validateName } from "@/lib/validation";
 
 export async function getBankAccounts() {
   const supabase = await createServerSupabaseClient();
@@ -41,6 +42,11 @@ export async function createBankAccount(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateName(input.name, 100, "Account name");
+  validateName(input.bank_name, 100, "Bank name");
+  if (input.currency) validateCurrency(input.currency);
+  if (input.balance != null) validateAmount(input.balance, "Balance");
+
   const trimmedBankName = input.bank_name.trim();
   const institutionId = await findOrCreateInstitution(trimmedBankName);
 
@@ -61,9 +67,13 @@ export async function createBankAccount(
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment && created) {
-    const converted = await toUsdAndEur(created.balance ?? 0, created.currency ?? "EUR");
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const converted = await toUsdAndEur(created.balance ?? 0, created.currency ?? "EUR", opts?.effectiveDate?.split("T")[0]);
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[bank-accounts] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "created",
@@ -169,6 +179,11 @@ export async function updateBankAccount(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  validateName(input.name, 100, "Account name");
+  validateName(input.bank_name, 100, "Bank name");
+  if (input.currency) validateCurrency(input.currency);
+  if (input.balance != null) validateAmount(input.balance, "Balance");
 
   const trimmedBankName = input.bank_name.trim();
 
@@ -288,12 +303,16 @@ export async function updateBankAccount(
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment) {
-    const beforeBal = (before?.balance as number) ?? 0;
-    const afterBal = (after?.balance as number) ?? 0;
-    const currency = (after?.currency as string) ?? (before?.currency as string) ?? "EUR";
-    const converted = await toUsdAndEur(afterBal - beforeBal, currency);
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const beforeBal = (before?.balance as number) ?? 0;
+      const afterBal = (after?.balance as number) ?? 0;
+      const currency = (after?.currency as string) ?? (before?.currency as string) ?? "EUR";
+      const converted = await toUsdAndEur(afterBal - beforeBal, currency, opts?.effectiveDate?.split("T")[0]);
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[bank-accounts] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "updated",
@@ -339,9 +358,13 @@ export async function deleteBankAccount(id: string, opts?: { isAdjustment?: bool
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment && snapshot) {
-    const converted = await toUsdAndEur(-(snapshot.balance ?? 0), snapshot.currency ?? "EUR");
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const converted = await toUsdAndEur(-(snapshot.balance ?? 0), snapshot.currency ?? "EUR");
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[bank-accounts] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "removed",

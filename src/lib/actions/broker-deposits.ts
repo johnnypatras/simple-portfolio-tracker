@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { BrokerDeposit, BrokerDepositInput } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
+import { validateAmount, validateCurrency } from "@/lib/validation";
 
 export async function getBrokerDeposits(): Promise<BrokerDeposit[]> {
   const supabase = await createServerSupabaseClient();
@@ -39,6 +40,9 @@ export async function createBrokerDeposit(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateCurrency(input.currency);
+  validateAmount(input.amount, "Deposit amount");
+
   const { data: broker } = await supabase
     .from("brokers")
     .select("name")
@@ -69,9 +73,13 @@ export async function createBrokerDeposit(
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment && created) {
-    const converted = await toUsdAndEur(created.amount ?? 0, created.currency);
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const converted = await toUsdAndEur(created.amount ?? 0, created.currency, opts?.effectiveDate?.split("T")[0]);
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[broker-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "created",
@@ -98,21 +106,27 @@ export async function updateBrokerDeposit(
   opts?: { isAdjustment?: boolean; transferGroupId?: string; effectiveDate?: string }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
-  const { data: broker } = await supabase
-    .from("brokers")
-    .select("name")
-    .eq("id", input.broker_id)
-    .is("deleted_at", null)
-    .single();
+  validateCurrency(input.currency);
+  validateAmount(input.amount, "Deposit amount");
 
-  // Capture before snapshot
-  const { data: before } = await supabase
-    .from("broker_deposits")
-    .select("*")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
+  // Parallelize independent queries: broker name + before snapshot
+  const [{ data: broker }, { data: before }] = await Promise.all([
+    supabase
+      .from("brokers")
+      .select("name")
+      .eq("id", input.broker_id)
+      .is("deleted_at", null)
+      .single(),
+    supabase
+      .from("broker_deposits")
+      .select("*")
+      .eq("id", id)
+      .is("deleted_at", null)
+      .single(),
+  ]);
 
   const { error } = await supabase
     .from("broker_deposits")
@@ -147,12 +161,16 @@ export async function updateBrokerDeposit(
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment) {
-    const beforeAmt = (before?.amount as number) ?? 0;
-    const afterAmt = (after?.amount as number) ?? 0;
-    const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
-    const converted = await toUsdAndEur(afterAmt - beforeAmt, currency);
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const beforeAmt = (before?.amount as number) ?? 0;
+      const afterAmt = (after?.amount as number) ?? 0;
+      const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
+      const converted = await toUsdAndEur(afterAmt - beforeAmt, currency, opts?.effectiveDate?.split("T")[0]);
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[broker-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "updated",
@@ -175,6 +193,8 @@ export async function updateBrokerDeposit(
 
 export async function deleteBrokerDeposit(id: string, opts?: { isAdjustment?: boolean }): Promise<void> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase
@@ -199,9 +219,13 @@ export async function deleteBrokerDeposit(id: string, opts?: { isAdjustment?: bo
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment && snapshot) {
-    const converted = await toUsdAndEur(-(snapshot.amount ?? 0), snapshot.currency ?? "USD");
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const converted = await toUsdAndEur(-(snapshot.amount ?? 0), snapshot.currency ?? "USD");
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[broker-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "removed",

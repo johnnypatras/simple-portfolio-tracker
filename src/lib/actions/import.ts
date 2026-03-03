@@ -157,19 +157,21 @@ export async function importFromJson(
   };
 
   // ── 1. Institutions ───────────────────────────────────
-  for (const inst of data.institutions) {
-    let existingId: string | null = null;
-
-    if (!isReplace) {
-      const { data: existing } = await supabase
-        .from("institutions")
-        .select("id")
-        .eq("user_id", uid)
-        .eq("name", inst.name)
-        .is("deleted_at", null)
-        .limit(1);
-      if (existing && existing.length > 0) existingId = existing[0].id;
+  // Pre-fetch all existing institutions for merge-mode dedup (1 query instead of N)
+  const existingInstMap = new Map<string, string>();
+  if (!isReplace) {
+    const { data: existingInsts } = await supabase
+      .from("institutions")
+      .select("id, name")
+      .eq("user_id", uid)
+      .is("deleted_at", null);
+    for (const inst of existingInsts ?? []) {
+      existingInstMap.set(inst.name, inst.id);
     }
+  }
+
+  for (const inst of data.institutions) {
+    const existingId = isReplace ? null : (existingInstMap.get(inst.name) ?? null);
 
     if (existingId) {
       instMap.set(inst.id, existingId);
@@ -226,20 +228,22 @@ export async function importFromJson(
   }
 
   // ── 3. Brokers ────────────────────────────────────────
+  // Pre-fetch all existing brokers for merge-mode dedup (1 query instead of N)
+  const existingBrokerMap = new Map<string, string>();
+  if (!isReplace) {
+    const { data: existingBrokers } = await supabase
+      .from("brokers")
+      .select("id, name")
+      .eq("user_id", uid)
+      .is("deleted_at", null);
+    for (const b of existingBrokers ?? []) {
+      existingBrokerMap.set(b.name, b.id);
+    }
+  }
+
   for (const b of data.brokers) {
     const mappedInstId = b.institution_id ? instMap.get(b.institution_id) ?? null : null;
-    let existingId: string | null = null;
-
-    if (!isReplace) {
-      const { data: existing } = await supabase
-        .from("brokers")
-        .select("id")
-        .eq("user_id", uid)
-        .eq("name", b.name)
-        .is("deleted_at", null)
-        .limit(1);
-      if (existing && existing.length > 0) existingId = existing[0].id;
-    }
+    const existingId = isReplace ? null : (existingBrokerMap.get(b.name) ?? null);
 
     if (existingId) {
       brokerMap.set(b.id, existingId);
@@ -299,19 +303,21 @@ export async function importFromJson(
   }
 
   // ── 5. Crypto Assets + Positions ──────────────────────
-  for (const asset of data.cryptoAssets) {
-    let existingId: string | null = null;
-
-    if (!isReplace) {
-      const { data: existing } = await supabase
-        .from("crypto_assets")
-        .select("id")
-        .eq("user_id", uid)
-        .eq("coingecko_id", asset.coingecko_id)
-        .is("deleted_at", null)
-        .limit(1);
-      if (existing && existing.length > 0) existingId = existing[0].id;
+  // Pre-fetch all existing crypto assets for merge-mode dedup (1 query instead of N)
+  const existingCryptoMap = new Map<string, string>();
+  if (!isReplace) {
+    const { data: existingCrypto } = await supabase
+      .from("crypto_assets")
+      .select("id, coingecko_id")
+      .eq("user_id", uid)
+      .is("deleted_at", null);
+    for (const c of existingCrypto ?? []) {
+      existingCryptoMap.set(c.coingecko_id, c.id);
     }
+  }
+
+  for (const asset of data.cryptoAssets) {
+    const existingId = isReplace ? null : (existingCryptoMap.get(asset.coingecko_id) ?? null);
 
     let newAssetId: string;
     if (existingId) {

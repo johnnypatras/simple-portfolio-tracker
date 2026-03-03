@@ -11,7 +11,7 @@ import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getSnapshots } from "@/lib/actions/snapshots";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
-import { getFXRates, convertToBase } from "@/lib/prices/fx";
+import { getFXRatesSafe, convertToBase } from "@/lib/prices/fx";
 import { aggregatePortfolio, type PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { PortfolioSnapshot } from "@/lib/types";
 
@@ -124,10 +124,12 @@ export async function getComparisonData(
   // 5. Single set of price fetches (shared between both aggregations)
   //    Fold EURUSD=X into the stock batch for a single Yahoo request
   const allTickersWithEurUsd = [...new Set([...allYahooTickers, "EURUSD=X"])];
-  const [cryptoPrices, allStockPrices, fxRates] = await Promise.all([
+  const [cryptoPrices, allStockPrices, fxRates, fxRatesUsd, fxRatesEur] = await Promise.all([
     getPrices(allCoinIds),
     getStockPrices(allTickersWithEurUsd),
-    getFXRates(viewerCurrency, allCurrencies),
+    getFXRatesSafe(viewerCurrency, allCurrencies),
+    getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
+    getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
   ]);
 
   const eurUsdChange24h = allStockPrices["EURUSD=X"]?.change24h ?? 0;
@@ -147,6 +149,8 @@ export async function getComparisonData(
     brokerDeposits: viewerBrokerDeps,
     primaryCurrency: viewerCurrency,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h,
   });
 
@@ -160,6 +164,8 @@ export async function getComparisonData(
     brokerDeposits: ownerData.brokerDeposits,
     primaryCurrency: viewerCurrency,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h,
   });
 

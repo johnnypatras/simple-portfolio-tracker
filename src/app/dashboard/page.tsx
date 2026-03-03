@@ -8,7 +8,7 @@ import { getPrices } from "@/lib/prices/coingecko";
 import { getStockAndIndexPrices, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRatesSafe } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import {
@@ -74,11 +74,13 @@ export default async function DashboardPage() {
   ];
 
   // ── Round 2: Prices (stocks + indices in one batch) ─────
-  const [cryptoPrices, { stockPrices, indexPrices }, fxRates, dividends] =
+  const [cryptoPrices, { stockPrices, indexPrices }, fxRates, fxRatesUsd, fxRatesEur, dividends] =
     await Promise.all([
       getPrices(coinIds),
       getStockAndIndexPrices(yahooTickers),
-      getFXRates(primaryCurrency, allCurrencies),
+      getFXRatesSafe(primaryCurrency, allCurrencies),
+      getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
+      getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
       getDividendYields(yahooTickers), // trailing 12-month yields (6h cache)
     ]);
 
@@ -99,6 +101,8 @@ export default async function DashboardPage() {
     brokerDeposits,
     primaryCurrency,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 

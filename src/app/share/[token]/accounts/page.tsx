@@ -3,7 +3,7 @@ import { requireScope } from "../scope-gate";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRatesSafe } from "@/lib/prices/fx";
 import { AccountsView } from "@/components/accounts/accounts-view";
 
 export default async function SharedAccountsPage({
@@ -38,7 +38,7 @@ export default async function SharedAccountsPage({
   const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
     getPrices(coinIds),
     getStockPrices(yahooTickers),
-    getFXRates(primaryCurrency, allCurrencies),
+    getFXRatesSafe(primaryCurrency, allCurrencies),
   ]);
 
   return (

@@ -2,7 +2,7 @@ import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getBrokers } from "@/lib/actions/brokers";
 import { getProfile } from "@/lib/actions/profile";
 import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRatesSafe } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { StockTable } from "@/components/stocks/stock-table";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -25,7 +25,7 @@ export default async function StocksPage() {
   const allTickers = [...new Set([...yahooTickers, "EURUSD=X"])];
   const [allPrices, fxRates, dividends] = await Promise.all([
     getStockPrices(allTickers),
-    getFXRates(cur, uniqueCurrencies),
+    getFXRatesSafe(cur, uniqueCurrencies),
     getDividendYields(yahooTickers),
   ]);
   const eurUsdData = allPrices["EURUSD=X"] ?? null;

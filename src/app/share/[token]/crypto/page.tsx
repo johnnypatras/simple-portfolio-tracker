@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireScope } from "../scope-gate";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { CryptoTable } from "@/components/crypto/crypto-table";
@@ -24,7 +24,7 @@ export default async function SharedCryptoPage({
   const coinIds = cryptoAssets.map((a) => a.coingecko_id);
   const [prices, fxRates, eurUsdBatch] = await Promise.all([
     getPrices(coinIds),
-    getFXRates(cur, ["USD", "EUR"]),
+    getFXRatesSafe(cur, ["USD", "EUR"]),
     getStockPrices(["EURUSD=X"]),
   ]);
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;

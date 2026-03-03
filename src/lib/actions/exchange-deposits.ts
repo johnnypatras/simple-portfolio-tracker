@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ExchangeDeposit, ExchangeDepositInput } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
+import { validateAmount, validateCurrency } from "@/lib/validation";
 
 export async function getExchangeDeposits(): Promise<ExchangeDeposit[]> {
   const supabase = await createServerSupabaseClient();
@@ -39,6 +40,9 @@ export async function createExchangeDeposit(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  validateCurrency(input.currency);
+  validateAmount(input.amount, "Deposit amount");
 
   // Fetch wallet and verify it's custodial (only exchanges can hold fiat deposits)
   const { data: wallet } = await supabase
@@ -77,9 +81,13 @@ export async function createExchangeDeposit(
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment && created) {
-    const converted = await toUsdAndEur(created.amount ?? 0, created.currency);
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const converted = await toUsdAndEur(created.amount ?? 0, created.currency, opts?.effectiveDate?.split("T")[0]);
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[exchange-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "created",
@@ -106,27 +114,32 @@ export async function updateExchangeDeposit(
   opts?: { isAdjustment?: boolean; transferGroupId?: string; effectiveDate?: string }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
-  // Fetch wallet and verify it's custodial (only exchanges can hold fiat deposits)
-  const { data: wallet } = await supabase
-    .from("wallets")
-    .select("name, wallet_type")
-    .eq("id", input.wallet_id)
-    .is("deleted_at", null)
-    .single();
+  validateCurrency(input.currency);
+  validateAmount(input.amount, "Deposit amount");
+
+  // Parallelize independent queries: wallet info + before snapshot
+  const [{ data: wallet }, { data: before }] = await Promise.all([
+    supabase
+      .from("wallets")
+      .select("name, wallet_type")
+      .eq("id", input.wallet_id)
+      .is("deleted_at", null)
+      .single(),
+    supabase
+      .from("exchange_deposits")
+      .select("*")
+      .eq("id", id)
+      .is("deleted_at", null)
+      .single(),
+  ]);
 
   if (!wallet) throw new Error("Wallet not found");
   if (wallet.wallet_type !== "custodial") {
     throw new Error("Exchange deposits can only be added to custodial wallets (exchanges)");
   }
-
-  // Capture before snapshot
-  const { data: before } = await supabase
-    .from("exchange_deposits")
-    .select("*")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
 
   const { error } = await supabase
     .from("exchange_deposits")
@@ -161,12 +174,16 @@ export async function updateExchangeDeposit(
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment) {
-    const beforeAmt = (before?.amount as number) ?? 0;
-    const afterAmt = (after?.amount as number) ?? 0;
-    const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
-    const converted = await toUsdAndEur(afterAmt - beforeAmt, currency);
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const beforeAmt = (before?.amount as number) ?? 0;
+      const afterAmt = (after?.amount as number) ?? 0;
+      const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
+      const converted = await toUsdAndEur(afterAmt - beforeAmt, currency, opts?.effectiveDate?.split("T")[0]);
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[exchange-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "updated",
@@ -189,6 +206,8 @@ export async function updateExchangeDeposit(
 
 export async function deleteExchangeDeposit(id: string, opts?: { isAdjustment?: boolean }): Promise<void> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase
@@ -212,9 +231,13 @@ export async function deleteExchangeDeposit(id: string, opts?: { isAdjustment?: 
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment && snapshot) {
-    const converted = await toUsdAndEur(-(snapshot.amount ?? 0), snapshot.currency ?? "USD");
-    deltaUsd = Math.round(converted.usd * 100) / 100;
-    deltaEur = Math.round(converted.eur * 100) / 100;
+    try {
+      const converted = await toUsdAndEur(-(snapshot.amount ?? 0), snapshot.currency ?? "USD");
+      deltaUsd = Math.round(converted.usd * 100) / 100;
+      deltaEur = Math.round(converted.eur * 100) / 100;
+    } catch (err) {
+      console.error("[exchange-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
   await logActivity({
     action: "removed",

@@ -6,7 +6,7 @@ import { getBrokers } from "@/lib/actions/brokers";
 import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { CashTable } from "@/components/cash/cash-table";
@@ -42,7 +42,7 @@ export default async function CashPage() {
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
-    getFXRates(profile.primary_currency, allCurrencies),
+    getFXRatesSafe(profile.primary_currency, allCurrencies),
     getStockPrices(["EURUSD=X"]),
   ]);
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;

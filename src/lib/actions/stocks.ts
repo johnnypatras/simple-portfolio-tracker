@@ -184,6 +184,7 @@ export async function updateStockAsset(
     .from("stock_assets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
@@ -314,12 +315,16 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       let deltaUsd: number | null = null;
       let deltaEur: number | null = null;
       if (opts?.isAdjustment && opts.currentPriceNative) {
-        const qty = (existing.quantity as number) ?? 0;
-        const deltaNative = -(qty * opts.currentPriceNative);
-        const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-        const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD");
-        deltaUsd = converted.usd;
-        deltaEur = converted.eur;
+        try {
+          const qty = (existing.quantity as number) ?? 0;
+          const deltaNative = -(qty * opts.currentPriceNative);
+          const { toUsdAndEur } = await import("@/lib/actions/activity-log");
+          const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD", opts.effectiveDate?.split("T")[0]);
+          deltaUsd = converted.usd;
+          deltaEur = converted.eur;
+        } catch (err) {
+          console.error("[stocks] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+        }
       }
 
       await logActivity({
@@ -375,14 +380,18 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
     let deltaUsd: number | null = null;
     let deltaEur: number | null = null;
     if (opts?.isAdjustment && opts.currentPriceNative) {
-      const beforeQty = (before?.quantity as number) ?? 0;
-      const afterQty = input.quantity;
-      const qtyDelta = afterQty - beforeQty;
-      const deltaNative = qtyDelta * opts.currentPriceNative;
-      const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-      const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD");
-      deltaUsd = converted.usd;
-      deltaEur = converted.eur;
+      try {
+        const beforeQty = (before?.quantity as number) ?? 0;
+        const afterQty = input.quantity;
+        const qtyDelta = afterQty - beforeQty;
+        const deltaNative = qtyDelta * opts.currentPriceNative;
+        const { toUsdAndEur } = await import("@/lib/actions/activity-log");
+        const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD", opts.effectiveDate?.split("T")[0]);
+        deltaUsd = converted.usd;
+        deltaEur = converted.eur;
+      } catch (err) {
+        console.error("[stocks] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+      }
     }
 
     await logActivity({
@@ -436,12 +445,16 @@ export async function deleteStockPosition(positionId: string, opts?: {
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   if (opts?.isAdjustment && snapshot && opts.currentPriceNative) {
-    const qty = (snapshot.quantity as number) ?? 0;
-    const deltaNative = -(qty * opts.currentPriceNative);
-    const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-    const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD");
-    deltaUsd = converted.usd;
-    deltaEur = converted.eur;
+    try {
+      const qty = (snapshot.quantity as number) ?? 0;
+      const deltaNative = -(qty * opts.currentPriceNative);
+      const { toUsdAndEur } = await import("@/lib/actions/activity-log");
+      const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD", opts?.effectiveDate?.split("T")[0]);
+      deltaUsd = converted.usd;
+      deltaEur = converted.eur;
+    } catch (err) {
+      console.error("[stocks] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+    }
   }
 
   await logActivity({

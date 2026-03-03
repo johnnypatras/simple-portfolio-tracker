@@ -204,13 +204,13 @@ export function PortfolioChart({
     const snapshotRatios = viewMode === "total"
       ? null
       : filtered.map((s) => {
-          const totalUsd = s.total_value_usd || 1;
+          const totalUsd = s.total_value_usd ?? 0;
           let sliceUsd: number;
           if (viewMode === "investments") sliceUsd = (s.crypto_value_usd ?? 0) + (s.stocks_value_usd ?? 0);
           else if (viewMode === "crypto") sliceUsd = s.crypto_value_usd ?? 0;
           else if (viewMode === "stocks") sliceUsd = s.stocks_value_usd ?? 0;
           else sliceUsd = s.cash_value_usd ?? 0;
-          return { date: s.snapshot_date, ratio: sliceUsd / totalUsd };
+          return { date: s.snapshot_date, ratio: totalUsd > 0 ? sliceUsd / totalUsd : 0 };
         });
 
     const getSliceRatio = (date: string): number => {

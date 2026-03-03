@@ -845,7 +845,7 @@ export function TransferDialog({
                       <div className="absolute z-10 mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                         {buySearchResults.map((r, i) => (
                           <button
-                            key={i}
+                            key={r.symbol}
                             type="button"
                             onClick={() => handleBuyAssetSelect(r)}
                             className="w-full text-left px-3 py-2 hover:bg-zinc-800 transition-colors"

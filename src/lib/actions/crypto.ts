@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
+import { validateQuantity } from "@/lib/validation";
 
 /** Get all crypto assets with their positions and wallet names */
 export async function getCryptoAssetsWithPositions(): Promise<
@@ -240,6 +241,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  validateQuantity(input.quantity, "Crypto quantity");
+
   const supabase = await createServerSupabaseClient();
 
   // Fetch asset ticker for logging

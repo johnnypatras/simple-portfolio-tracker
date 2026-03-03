@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockAndIndexPrices, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRatesSafe } from "@/lib/prices/fx";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
@@ -51,12 +51,14 @@ export default async function SharedOverviewPage({
 
   // Fetch prices + market data + benchmark (stocks + indices in one batch)
   const [
-    cryptoPrices, { stockPrices, indexPrices }, fxRates, dividends,
-    sp500TRHistory, cashFlows, adjustmentDeltas,
+    cryptoPrices, { stockPrices, indexPrices }, fxRates, fxRatesUsd, fxRatesEur,
+    dividends, sp500TRHistory, cashFlows, adjustmentDeltas,
   ] = await Promise.all([
     getPrices(coinIds),
     getStockAndIndexPrices(yahooTickers),
-    getFXRates(primaryCurrency, allCurrencies),
+    getFXRatesSafe(primaryCurrency, allCurrencies),
+    getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
+    getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
     getDividendYields(yahooTickers),
     fetchIndexHistory("^SP500TR", 365),
     deriveCashFlows(data.share.owner_id),
@@ -79,6 +81,8 @@ export default async function SharedOverviewPage({
     brokerDeposits,
     primaryCurrency,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 

@@ -240,6 +240,16 @@ Deno.serve(async (req: Request) => {
       const totalValueUsd = cryptoValueUsd + stocksValueUsd + cashValueUsd;
       const totalValueEur = cryptoValueEur + stocksValueEur + fiatCashValueEur + stablecoinValueEur;
 
+      // Validation: component sum must match total (catches computation bugs)
+      const roundedTotal = round2(totalValueUsd);
+      const componentSum = round2(cryptoValueUsd + stocksValueUsd + cashValueUsd);
+      const drift = Math.abs(roundedTotal - componentSum);
+      if (drift > 1) {
+        console.error(
+          `[daily-snapshot] VALIDATION FAILED for ${userId}: total ($${roundedTotal}) ≠ components ($${componentSum}), drift $${drift}`
+        );
+      }
+
       snapshots.push({
         user_id: userId,
         snapshot_date: today,
@@ -385,19 +395,39 @@ async function fetchFxRates(
 ): Promise<Record<string, number>> {
   const symbols = [...new Set(targets.filter((t) => t !== base))];
   if (symbols.length === 0) return { [base]: 1 };
-  try {
-    const url = `${FRANKFURTER_URL}?base=${base}&symbols=${symbols.join(",")}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      console.error("[daily-snapshot] Frankfurter error:", res.status);
-      return { [base]: 1 };
+
+  // Retry once on failure, then throw — snapshot with wrong FX is worse than no snapshot
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const url = `${FRANKFURTER_URL}?base=${base}&symbols=${symbols.join(",")}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        if (attempt === 0) {
+          console.warn(`[daily-snapshot] Frankfurter ${res.status}, retrying...`);
+          continue;
+        }
+        throw new Error(`Frankfurter API returned ${res.status} for ${base}→${symbols.join(",")}`);
+      }
+      const data = await res.json();
+
+      // Validate all requested rates are present
+      for (const sym of symbols) {
+        if (data.rates[sym] == null) {
+          throw new Error(`Frankfurter returned no rate for ${base}→${sym}`);
+        }
+      }
+
+      return { ...data.rates, [base]: 1 };
+    } catch (err) {
+      if (attempt === 0 && err instanceof TypeError) {
+        console.warn("[daily-snapshot] FX network error, retrying...");
+        continue;
+      }
+      throw err;
     }
-    const data = await res.json();
-    return { ...data.rates, [base]: 1 };
-  } catch (err) {
-    console.error("[daily-snapshot] FX fetch error:", err);
-    return { [base]: 1 };
   }
+
+  throw new Error(`[daily-snapshot] FX retries exhausted for ${base}→${symbols.join(",")}`);
 }
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -410,7 +440,10 @@ function convertToBase(
 ): number {
   if (fromCurrency === baseCurrency) return amount;
   const rate = rates[fromCurrency];
-  if (!rate || rate === 0) return amount;
+  if (!rate || rate === 0) {
+    console.error(`[daily-snapshot] convertToBase: no rate for ${fromCurrency}→${baseCurrency}, returning unconverted (SNAPSHOT MAY BE INACCURATE)`);
+    return amount;
+  }
   // rates[X] = X per 1 base → base = amount / rates[X]
   return amount / rate;
 }

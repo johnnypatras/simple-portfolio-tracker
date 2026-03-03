@@ -16,19 +16,21 @@ export async function toUsdAndEur(
 ): Promise<{ usd: number; eur: number }> {
   if (amount === 0) return { usd: 0, eur: 0 };
 
+  // getFXRates throws on failure — callers must handle or let it propagate.
+  // This prevents silently writing wrong deltas (e.g., 1:1 EUR/USD).
   if (currency === "USD") {
     const rates = await getFXRates("USD", ["EUR"], date);
-    return { usd: amount, eur: amount * (rates.EUR ?? 1) };
+    return { usd: amount, eur: amount * rates.EUR };
   }
   if (currency === "EUR") {
     const rates = await getFXRates("EUR", ["USD"], date);
-    return { usd: amount * (rates.USD ?? 1), eur: amount };
+    return { usd: amount * rates.USD, eur: amount };
   }
   // Other currency → fetch both rates
   const rates = await getFXRates(currency, ["USD", "EUR"], date);
   return {
-    usd: amount * (rates.USD ?? 1),
-    eur: amount * (rates.EUR ?? 1),
+    usd: amount * rates.USD,
+    eur: amount * rates.EUR,
   };
 }
 
@@ -167,7 +169,7 @@ async function computeDeltaFromSnapshots(
       const assetId =
         (after?.crypto_asset_id as string) ??
         (before?.crypto_asset_id as string);
-      if (!assetId) return { usd: 0, eur: 0 };
+      if (!assetId) throw new Error(`No crypto_asset_id in snapshots for delta computation`);
 
       const supabase = supabaseOverride ?? (await createServerSupabaseClient());
       const { data: asset } = await supabase
@@ -175,7 +177,7 @@ async function computeDeltaFromSnapshots(
         .select("coingecko_id")
         .eq("id", assetId)
         .single();
-      if (!asset?.coingecko_id) return { usd: 0, eur: 0 };
+      if (!asset?.coingecko_id) throw new Error(`Crypto asset ${assetId} not found or missing coingecko_id`);
 
       // Fetch historical price for the date
       const { fetchCoinHistory } = await import("@/lib/prices/coingecko");
@@ -187,18 +189,23 @@ async function computeDeltaFromSnapshots(
         asset.coingecko_id,
         Math.max(daysSince + 5, 30)
       );
+
+      if (history.length === 0) {
+        throw new Error(`CoinGecko returned no price history for ${asset.coingecko_id} (${daysSince} days)`);
+      }
+
       // Find closest price on or before the date
       let priceUsd = 0;
       for (const h of history) {
         if (h.date <= txDate) priceUsd = h.price;
         else break;
       }
-      if (priceUsd === 0 && history.length > 0) priceUsd = history[0].price;
+      if (priceUsd === 0) priceUsd = history[0].price;
 
       const deltaUsd = qtyDelta * priceUsd;
       // Convert to EUR
       const rates = await getFXRates("USD", ["EUR"], txDate);
-      return { usd: deltaUsd, eur: deltaUsd * (rates.EUR ?? 1) };
+      return { usd: deltaUsd, eur: deltaUsd * rates.EUR };
     }
 
     if (entityType === "stock_position") {
@@ -206,7 +213,7 @@ async function computeDeltaFromSnapshots(
       const assetId =
         (after?.stock_asset_id as string) ??
         (before?.stock_asset_id as string);
-      if (!assetId) return { usd: 0, eur: 0 };
+      if (!assetId) throw new Error(`No stock_asset_id in snapshots for delta computation`);
 
       const supabase = supabaseOverride ?? (await createServerSupabaseClient());
       const { data: asset } = await supabase
@@ -214,7 +221,7 @@ async function computeDeltaFromSnapshots(
         .select("yahoo_ticker, currency")
         .eq("id", assetId)
         .single();
-      if (!asset?.yahoo_ticker) return { usd: 0, eur: 0 };
+      if (!asset?.yahoo_ticker) throw new Error(`Stock asset ${assetId} not found or missing yahoo_ticker`);
 
       const { fetchIndexHistory } = await import("@/lib/prices/yahoo");
       const txDate = date.split("T")[0];
@@ -225,13 +232,17 @@ async function computeDeltaFromSnapshots(
         asset.yahoo_ticker,
         Math.max(daysSince + 5, 30)
       );
+
+      if (history.length === 0) {
+        throw new Error(`Yahoo returned no price history for ${asset.yahoo_ticker} (${daysSince} days)`);
+      }
+
       let priceNative = 0;
       for (const h of history) {
         if (h.date <= txDate) priceNative = h.close;
         else break;
       }
-      if (priceNative === 0 && history.length > 0)
-        priceNative = history[0].close;
+      if (priceNative === 0) priceNative = history[0].close;
 
       const deltaNative = qtyDelta * priceNative;
       return toUsdAndEur(deltaNative, asset.currency ?? "USD", txDate);
@@ -392,65 +403,6 @@ export async function getAdjustmentDeltas(
     cash_cumulative_usd: v.cashUsd,
     cash_cumulative_eur: v.cashEur,
   }));
-}
-
-// ─── Backfill existing adjustment rows ──────────────────
-// Computes deltas for all adjustment rows that lack them.
-
-export async function backfillAdjustmentDeltas(): Promise<number> {
-  // Verify caller is admin before accessing cross-user data
-  const authClient = await createServerSupabaseClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  const { data: profile } = await authClient
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (profile?.role !== "admin") throw new Error("Admin access required");
-
-  // Use admin client to bypass RLS — backfill needs to process all users' rows
-  const supabase = createAdminClient();
-
-  const { data: rows, error } = await supabase
-    .from("activity_log")
-    .select("*")
-    .eq("is_adjustment", true)
-    .is("delta_usd", null)
-    .order("created_at", { ascending: true })
-    .limit(10);
-
-  if (error) throw new Error(error.message);
-  if (!rows?.length) return 0;
-
-  let count = 0;
-  for (const row of rows) {
-    try {
-      const deltas = await computeDeltaFromSnapshots(
-        row.entity_type,
-        row.action,
-        row.created_at,
-        row.before_snapshot as Record<string, unknown> | null,
-        row.after_snapshot as Record<string, unknown> | null,
-        supabase // pass admin client for cross-user asset lookups
-      );
-      const deltaUsd = Math.round(deltas.usd * 100) / 100;
-      const deltaEur = Math.round(deltas.eur * 100) / 100;
-
-      await supabase
-        .from("activity_log")
-        .update({ delta_usd: deltaUsd, delta_eur: deltaEur })
-        .eq("id", row.id);
-      count++;
-    } catch (err) {
-      console.error(
-        `Backfill failed for ${row.entity_type}/${row.action}:`,
-        err instanceof Error ? err.message : err
-      );
-    }
-  }
-
-  return count;
 }
 
 // ─── CSV export ─────────────────────────────────────────

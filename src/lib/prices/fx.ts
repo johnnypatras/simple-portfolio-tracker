@@ -1,6 +1,10 @@
 /**
  * FX conversion service using Frankfurter API (ECB data).
  * Free, no API key, batch support, 15-min cache.
+ *
+ * Two variants:
+ * - getFXRates(): THROWS on failure — use for delta computation (data integrity)
+ * - getFXRatesSafe(): falls back to { base: 1 } — use for dashboard display
  */
 
 export type FXRates = Record<string, number>;
@@ -9,6 +13,8 @@ const API_BASE = "https://api.frankfurter.dev/v1";
 
 /**
  * Fetch exchange rates from Frankfurter (European Central Bank data).
+ * THROWS on API failure — use for delta computation where silent fallback
+ * would permanently corrupt cached values.
  *
  * Returns rates relative to `base`, e.g.:
  *   getFXRates("USD", ["EUR", "GBP"]) → { EUR: 0.92, GBP: 0.79, USD: 1 }
@@ -27,22 +33,62 @@ export async function getFXRates(
   // Always include the base at rate 1
   if (symbols.length === 0) return { [base]: 1 };
 
-  try {
-    const endpoint = date ? `${API_BASE}/${date}` : `${API_BASE}/latest`;
-    const url = `${endpoint}?base=${base}&symbols=${symbols.join(",")}`;
-    // Historical rates are immutable — cache forever; latest rates refresh every 15 min
-    const cacheOpts = date ? { cache: "force-cache" as const } : { next: { revalidate: 900 } };
-    const res = await fetch(url, cacheOpts);
+  const endpoint = date ? `${API_BASE}/${date}` : `${API_BASE}/latest`;
+  const url = `${endpoint}?base=${base}&symbols=${symbols.join(",")}`;
+  // Historical rates are immutable — cache forever; latest rates refresh every 15 min
+  const cacheOpts = date ? { cache: "force-cache" as const } : { next: { revalidate: 900 } };
 
-    if (!res.ok) {
-      console.error("[fx] Frankfurter API error:", res.status);
-      return { [base]: 1 };
+  // Retry once on failure before throwing
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, cacheOpts);
+
+      if (!res.ok) {
+        if (attempt === 0) {
+          console.warn(`[fx] Frankfurter API error ${res.status}, retrying...`);
+          continue;
+        }
+        throw new Error(`Frankfurter API returned ${res.status} for ${base}→${symbols.join(",")}`);
+      }
+
+      const data: { rates: Record<string, number> } = await res.json();
+
+      // Validate response has all requested rates
+      for (const sym of symbols) {
+        if (data.rates[sym] == null) {
+          throw new Error(`Frankfurter returned no rate for ${base}→${sym}`);
+        }
+      }
+
+      return { ...data.rates, [base]: 1 };
+    } catch (err) {
+      if (attempt === 0 && err instanceof TypeError) {
+        // Network error — retry once
+        console.warn("[fx] Network error, retrying...", err.message);
+        continue;
+      }
+      throw err;
     }
+  }
 
-    const data: { rates: Record<string, number> } = await res.json();
-    return { ...data.rates, [base]: 1 };
+  // Should never reach here, but TypeScript needs it
+  throw new Error(`[fx] All retries exhausted for ${base}→${symbols.join(",")}`);
+}
+
+/**
+ * Safe version of getFXRates that falls back to { base: 1 } on failure.
+ * Use for dashboard display where showing approximate values is better than crashing.
+ * NEVER use for delta computation — use getFXRates() instead.
+ */
+export async function getFXRatesSafe(
+  base: string,
+  targets: string[],
+  date?: string
+): Promise<FXRates> {
+  try {
+    return await getFXRates(base, targets, date);
   } catch (err) {
-    console.error("[fx] Failed to fetch FX rates:", err);
+    console.error("[fx] getFXRatesSafe fallback:", err instanceof Error ? err.message : err);
     return { [base]: 1 };
   }
 }

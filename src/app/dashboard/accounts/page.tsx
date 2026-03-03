@@ -9,7 +9,7 @@ import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRatesSafe } from "@/lib/prices/fx";
 import { AccountsView } from "@/components/accounts/accounts-view";
 import { MobileMenuButton } from "@/components/sidebar";
 
@@ -54,7 +54,7 @@ export default async function AccountsPage() {
   const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
     getPrices(coinIds),
     getStockPrices(yahooTickers),
-    getFXRates(primaryCurrency, allCurrencies),
+    getFXRatesSafe(primaryCurrency, allCurrencies),
   ]);
 
   return (

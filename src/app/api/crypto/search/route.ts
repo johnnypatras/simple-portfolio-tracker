@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchCoins, getPrices } from "@/lib/prices/coingecko";
+import { rateLimit } from "@/lib/rate-limit";
+
+const limiter = rateLimit({ windowMs: 60_000, max: 30 });
 
 export async function GET(req: NextRequest) {
+  const limited = limiter(req);
+  if (limited) return limited;
+
   const query = req.nextUrl.searchParams.get("q") ?? "";
 
   if (query.length < 2) {

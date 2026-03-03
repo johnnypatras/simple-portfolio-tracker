@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireScope } from "../scope-gate";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
-import { getFXRates } from "@/lib/prices/fx";
+import { getFXRatesSafe } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { StockTable } from "@/components/stocks/stock-table";
 
@@ -28,7 +28,7 @@ export default async function SharedStocksPage({
   const allTickers = [...new Set([...yahooTickers, "EURUSD=X"])];
   const [allPrices, fxRates, dividends] = await Promise.all([
     getStockPrices(allTickers),
-    getFXRates(cur, uniqueCurrencies),
+    getFXRatesSafe(cur, uniqueCurrencies),
     getDividendYields(yahooTickers),
   ]);
   const eurUsdData = allPrices["EURUSD=X"] ?? null;

@@ -129,7 +129,8 @@ export async function createWallet(
   revalidatePath("/dashboard/accounts");
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
 
-  return created!.id;
+  if (!created) throw new Error("Failed to create wallet");
+  return created.id;
 }
 
 /**

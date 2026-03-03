@@ -517,13 +517,16 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   let eurUsdRate = 0;
   if (pc === "EUR") {
     eurUsdRate = fxRates["USD"] ?? 0;
+    if (!eurUsdRate) console.warn("[dashboard-insights] Missing USD rate for EUR-based EUR/USD cross");
   } else if (pc === "USD") {
     const eurRate = fxRates["EUR"];
     eurUsdRate = eurRate ? 1 / eurRate : 0;
+    if (!eurRate) console.warn("[dashboard-insights] Missing EUR rate for USD-based EUR/USD cross");
   } else {
     const usdRate = fxRates["USD"];
     const eurRate = fxRates["EUR"];
     eurUsdRate = usdRate && eurRate ? usdRate / eurRate : 0;
+    if (!usdRate || !eurRate) console.warn(`[dashboard-insights] Missing USD/EUR rates for ${pc}-based EUR/USD cross`);
   }
 
   return {
