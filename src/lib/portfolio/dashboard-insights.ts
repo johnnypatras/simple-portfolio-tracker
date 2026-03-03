@@ -52,6 +52,19 @@ export interface CashCurrencyEntry {
   stablecoinValue: number;  // stablecoins pegged to this currency
 }
 
+export interface CurrencyExposureEntry {
+  currency: string;           // e.g., "USD", "EUR"
+  value: number;              // total in base currency (for bar % calculation)
+  percent: number;            // of total portfolio value
+  nativeTotal: number;        // total in native/denomination currency (for display)
+  cryptoValue: number;        // in native currency
+  stocksValue: number;        // in native currency
+  cashValue: number;          // in native currency
+  cryptoValueBase: number;    // in base/primary currency
+  stocksValueBase: number;    // in base/primary currency
+  cashValueBase: number;      // in base/primary currency
+}
+
 export interface DashboardInsights {
   // Market indices (all prices in USD)
   btcPriceUsd: number;
@@ -66,11 +79,24 @@ export interface DashboardInsights {
   nasdaqChange24h: number;
   dowPrice: number;
   dowChange24h: number;
+  solPriceUsd: number;
+  solChange24h: number;
+  stoxx50Price: number;
+  stoxx50Change24h: number;
+  silverPriceUsd: number;
+  silverChange24h: number;
+  oilPriceUsd: number;
+  oilChange24h: number;
+  treasury10yYield: number;    // yield %, not price
+  treasury10yChange24h: number;
+  vixPrice: number;
+  vixChange24h: number;
   eurUsdRate: number; // EUR/USD cross rate (how many USD per 1 EUR)
   eurUsdChange24h: number; // 24h change % for EUR/USD
 
   // Crypto insights
   cryptoAssetCount: number;
+  cryptoPositionCount: number;
   cryptoChange24h: number;
   btcDominancePercent: number;
   btcValueInBase: number;
@@ -79,6 +105,7 @@ export interface DashboardInsights {
   cryptoBreakdown: BreakdownEntry[];
 
   // Equities insights
+  stockAssetCount: number;
   stockPositionCount: number;
   stockChange24h: number;
   equitiesBreakdown: BreakdownEntry[];
@@ -93,6 +120,9 @@ export interface DashboardInsights {
   apyIncomeMonthly: number;
   apyIncomeYearly: number;
   cashCurrencyBreakdown: CashCurrencyEntry[];
+
+  // Portfolio-wide currency exposure
+  currencyExposure: CurrencyExposureEntry[];
 }
 
 interface InsightsParams {
@@ -115,6 +145,18 @@ interface InsightsParams {
   dowPrice: number;
   dowChange24h: number;
   eurUsdChange24h: number;
+  solPriceUsd: number;
+  solChange24h: number;
+  stoxx50Price: number;
+  stoxx50Change24h: number;
+  silverPrice: number;
+  silverChange24h: number;
+  oilPrice: number;
+  oilChange24h: number;
+  treasury10yPrice: number;
+  treasury10yChange24h: number;
+  vixPrice: number;
+  vixChange24h: number;
   dividends?: YahooDividendMap;
 }
 
@@ -141,6 +183,18 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     dowPrice,
     dowChange24h,
     eurUsdChange24h,
+    solPriceUsd,
+    solChange24h,
+    stoxx50Price,
+    stoxx50Change24h,
+    silverPrice,
+    silverChange24h,
+    oilPrice,
+    oilChange24h,
+    treasury10yPrice,
+    treasury10yChange24h,
+    vixPrice,
+    vixChange24h,
     dividends,
   } = params;
 
@@ -169,6 +223,9 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     (a) => a.subcategory?.toLowerCase() !== "stablecoin"
   );
   const cryptoAssetCount = nonStablecoinAssets.length;
+  const cryptoPositionCount = nonStablecoinAssets.reduce(
+    (sum, a) => sum + a.positions.length, 0
+  );
 
   // Crypto 24h change (value-weighted, excluding stablecoins)
   let cryptoTotalValue = 0;
@@ -307,6 +364,8 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
       };
     }
   }
+
+  const stockAssetCount = stockAssets.length;
 
   const stockChange24h = stockTotalValue > 0
     ? stockWeightedChange / stockTotalValue
@@ -505,6 +564,108 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     .filter((e) => e.value > 0)
     .sort((a, b) => b.value - a.value);
 
+  // ── Portfolio-wide currency exposure ────────────────
+  // Combines cash (fiat + stablecoins), stocks, and crypto by denomination currency.
+  // Crypto: non-stablecoin → USD (CoinGecko prices are USD-denominated).
+  //         Stablecoins → inferred peg currency (already in cashCurrencyBreakdown).
+  // Stocks: grouped by stock_assets.currency (e.g., EUR, USD, GBP).
+  // Two parallel maps: base currency (for % calculation) and native currency (for display)
+  type ExposureBucket = { crypto: number; stocks: number; cash: number };
+  const baseMap = new Map<string, ExposureBucket>();
+  const nativeMap = new Map<string, ExposureBucket>();
+
+  const ensureCcy = (ccy: string) => {
+    if (!baseMap.has(ccy)) baseMap.set(ccy, { crypto: 0, stocks: 0, cash: 0 });
+    if (!nativeMap.has(ccy)) nativeMap.set(ccy, { crypto: 0, stocks: 0, cash: 0 });
+    return { base: baseMap.get(ccy)!, native: nativeMap.get(ccy)! };
+  };
+
+  // Cash: fiat deposits + bank accounts (native amounts from raw entities)
+  for (const bank of bankAccounts) {
+    const ccy = bank.currency.toUpperCase();
+    const { base, native } = ensureCcy(ccy);
+    base.cash += convertToBase(bank.balance, bank.currency, primaryCurrency, fxRates);
+    native.cash += bank.balance;
+  }
+  for (const deposit of exchangeDeposits) {
+    const ccy = deposit.currency.toUpperCase();
+    const { base, native } = ensureCcy(ccy);
+    base.cash += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
+    native.cash += deposit.amount;
+  }
+  for (const deposit of brokerDeposits) {
+    const ccy = deposit.currency.toUpperCase();
+    const { base, native } = ensureCcy(ccy);
+    base.cash += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
+    native.cash += deposit.amount;
+  }
+  // Stablecoins → grouped by inferred peg currency
+  for (const asset of cryptoAssets) {
+    if (asset.subcategory?.toLowerCase() !== "stablecoin") continue;
+    const price = cryptoPrices[asset.coingecko_id];
+    if (!price) continue;
+    const peg = inferPegCurrency(asset.ticker, asset.name);
+    const priceInBase = price[currencyKey] ?? 0;
+    // Native value: stablecoin quantity ≈ peg currency units (1 USDC ≈ $1, 1 EURS ≈ €1)
+    // More precisely: use CoinGecko's price in peg currency if available, else approximate
+    const pegKey = peg.toLowerCase() as "usd" | "eur";
+    const priceInPeg = price[pegKey] ?? priceInBase;
+    for (const pos of asset.positions) {
+      const { base, native } = ensureCcy(peg);
+      base.cash += pos.quantity * priceInBase;
+      native.cash += pos.quantity * priceInPeg;
+    }
+  }
+
+  // Stocks: group by asset.currency
+  for (const asset of stockAssets) {
+    const key = asset.yahoo_ticker || asset.ticker;
+    const priceData = stockPrices[key];
+    if (!priceData) continue;
+    const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
+    const valueNative = totalQty * priceData.price;
+    const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
+    const { base, native } = ensureCcy(asset.currency.toUpperCase());
+    base.stocks += valueBase;
+    native.stocks += valueNative;
+  }
+
+  // Crypto: non-stablecoins → USD (stablecoins already counted in cash above)
+  for (const asset of cryptoAssets) {
+    if (asset.subcategory?.toLowerCase() === "stablecoin") continue;
+    const price = cryptoPrices[asset.coingecko_id];
+    if (!price) continue;
+    const priceInBase = price[currencyKey] ?? 0;
+    const priceInUsd = price.usd ?? 0;
+    for (const pos of asset.positions) {
+      const { base, native } = ensureCcy("USD");
+      base.crypto += pos.quantity * priceInBase;
+      native.crypto += pos.quantity * priceInUsd;
+    }
+  }
+
+  const totalPortfolioValue = summary.totalValue;
+  const currencyExposure: CurrencyExposureEntry[] = [...baseMap.keys()]
+    .map((currency) => {
+      const base = baseMap.get(currency)!;
+      const native = nativeMap.get(currency)!;
+      const value = base.crypto + base.stocks + base.cash;
+      return {
+        currency,
+        value,
+        percent: totalPortfolioValue > 0 ? (value / totalPortfolioValue) * 100 : 0,
+        nativeTotal: native.crypto + native.stocks + native.cash,
+        cryptoValue: native.crypto,
+        stocksValue: native.stocks,
+        cashValue: native.cash,
+        cryptoValueBase: base.crypto,
+        stocksValueBase: base.stocks,
+        cashValueBase: base.cash,
+      };
+    })
+    .filter((e) => e.value > 0.5)
+    .sort((a, b) => b.value - a.value);
+
   // ── Gold price (USD only) ────────────────────────────
   const goldPriceUsd = goldPrice; // from Yahoo, already USD
 
@@ -542,10 +703,23 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     nasdaqChange24h,
     dowPrice,
     dowChange24h,
+    solPriceUsd,
+    solChange24h,
+    stoxx50Price,
+    stoxx50Change24h,
+    silverPriceUsd: silverPrice,
+    silverChange24h,
+    oilPriceUsd: oilPrice,
+    oilChange24h,
+    treasury10yYield: treasury10yPrice,
+    treasury10yChange24h,
+    vixPrice,
+    vixChange24h,
     eurUsdRate,
     eurUsdChange24h,
 
     cryptoAssetCount,
+    cryptoPositionCount,
     cryptoChange24h,
     btcDominancePercent,
     btcValueInBase,
@@ -553,6 +727,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     minedStakedCount,
     cryptoBreakdown,
 
+    stockAssetCount,
     stockPositionCount,
     stockChange24h,
     equitiesBreakdown,
@@ -566,5 +741,6 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     apyIncomeMonthly,
     apyIncomeYearly,
     cashCurrencyBreakdown,
+    currencyExposure,
   };
 }

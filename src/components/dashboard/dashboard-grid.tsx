@@ -13,11 +13,15 @@ import {
   Layers,
   Coins,
   BarChart2,
+  Droplet,
+  Landmark,
+  Zap,
+  Flag,
 } from "lucide-react";
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
-import type { CashFlowEvent } from "@/lib/actions/benchmark";
+import type { AssetClass, CashFlowEvent } from "@/lib/actions/benchmark";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
 import { useSharedView } from "@/components/shared-view-context";
 
@@ -42,12 +46,58 @@ type ApyPeriod = (typeof APY_PERIODS)[number];
 
 // Formatters imported from @/lib/format
 
+const fmtIndex = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
+type MarketFormat = "usd" | "index" | "yield" | "plain";
+
+function MarketRow({ icon, label, price, change, format }: {
+  icon: React.ReactNode;
+  label: string;
+  price: number;
+  change: number;
+  format: MarketFormat;
+}) {
+  if (price <= 0) return null;
+
+  let priceStr: string;
+  switch (format) {
+    case "usd":
+      priceStr = fmtCurrencyCompact(price, "USD", 1).replace(/\.0$/, "");
+      break;
+    case "index":
+      priceStr = fmtIndex.format(price);
+      break;
+    case "yield":
+      priceStr = `${price.toFixed(2)}%`;
+      break;
+    case "plain":
+      priceStr = price.toFixed(2);
+      break;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 flex-1">
+        {icon}
+        <span className="text-sm text-zinc-300">{label}</span>
+      </div>
+      <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
+        {priceStr}
+      </span>
+      <span className={`text-xs tabular-nums w-14 text-right ${changeColorClass(change)}`}>
+        {fmtPct(change)}
+      </span>
+    </div>
+  );
+}
+
 // ─── Component ──────────────────────────────────────────
 
 export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: DashboardGridProps) {
   const [changePeriod, setChangePeriod] = useState<ChangePeriod>("24h");
   const [apyPeriod, setApyPeriod] = useState<ApyPeriod>("monthly");
   const [fxFlipped, setFxFlipped] = useState(false);
+  const [exposureInBase, setExposureInBase] = useState(false);
   const [openTooltip, setOpenTooltip] = useState<string | null>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
   const { shareToken } = useSharedView();
@@ -237,19 +287,33 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
   }
 
-  // Deposit sums per period from cash flow events
-  function getDepositsForPeriod(period: ChangePeriod): number {
+  // Deposit sums per period from cash flow events, optionally filtered by asset class
+  // Returns total + per-entity breakdown for tooltip display
+  function getDepositsForPeriod(period: ChangePeriod, filterClass?: AssetClass): {
+    total: number;
+    breakdown: { name: string; value: number }[];
+  } {
     const now = new Date();
     const msMap: Record<ChangePeriod, number> = {
       "24h": 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000, "1y": 365 * 86400000,
     };
     const cutoff = new Date(now.getTime() - msMap[period]);
-    const sumUsd = cashFlows
-      .filter(f => new Date(f.date) >= cutoff)
-      .reduce((s, f) => s + f.amount_usd, 0);
-    // Convert USD to primary currency using current portfolio rate
-    if (cur === "USD" || totalValueUsd === 0) return sumUsd;
-    return sumUsd * (totalValue / totalValueUsd);
+    const filtered = cashFlows.filter(
+      f => new Date(f.date) >= cutoff && (!filterClass || f.asset_class === filterClass)
+    );
+    const fxMul = cur === "USD" || totalValueUsd === 0 ? 1 : totalValue / totalValueUsd;
+    const total = filtered.reduce((s, f) => s + f.amount_usd, 0) * fxMul;
+    // Group by entity name
+    const byName = new Map<string, number>();
+    for (const f of filtered) {
+      const name = f.entity_name || "Unknown";
+      byName.set(name, (byName.get(name) ?? 0) + f.amount_usd * fxMul);
+    }
+    const breakdown = [...byName.entries()]
+      .map(([name, value]) => ({ name, value }))
+      .filter(e => Math.abs(e.value) >= 0.5)
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    return { total, breakdown };
   }
 
   // APY income for selected period
@@ -293,7 +357,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {/* ── Total value + change ── */}
           {(() => {
             const c = getChangeForPeriod(changePeriod);
-            const deposits = getDepositsForPeriod(changePeriod);
+            const dep = getDepositsForPeriod(changePeriod);
             return (
               <div className="flex items-baseline gap-3 mt-1 flex-nowrap">
                 <p className="text-3xl sm:text-5xl font-bold text-zinc-100 tabular-nums">
@@ -318,7 +382,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     <ChangeTooltip
                       valueChange={c.valueChange}
                       fxValueChange={c.fxValueChange}
-                      deposits={deposits}
+                      deposits={dep.total}
+                      depositBreakdown={dep.breakdown}
+                      startValue={totalValue - c.valueChange}
                       cur={cur}
                       open={openTooltip === "total"}
                     />
@@ -336,7 +402,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             {/* Crypto */}
             <AllocationBar label="Crypto" percent={allocation.crypto} color="bg-orange-500" value={cryptoValue} currency={cur} />
             {cryptoValue > 0 && (
-              <p className="text-[11px] pl-[10rem] pb-1">
+              <p className="text-[11px] pl-6 sm:pl-[10rem] pb-1">
                 <span className="text-orange-300">BTC {fmtCurrencyCompact(insights.btcValueInBase, cur)}</span>
                 {cryptoValue - insights.btcValueInBase > 0 && (
                   <>
@@ -350,7 +416,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             {/* Stocks */}
             <AllocationBar label="Stocks" percent={allocation.stocks} color="bg-blue-500" value={stocksValue} currency={cur} />
             {stocksValue > 0 && insights.equitiesBreakdown.length > 0 && (
-              <p className="text-[11px] pl-[10rem] pb-1">
+              <p className="text-[11px] pl-6 sm:pl-[10rem] pb-1">
                 {insights.equitiesBreakdown.map((e, i) => (
                   <span key={e.label}>
                     {i > 0 && <span className="text-zinc-600"> · </span>}
@@ -363,7 +429,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             {/* Cash */}
             <AllocationBar label="Cash" percent={allocation.cash} color="bg-emerald-500" value={cashValue} currency={cur} />
             {cashValue > 0 && insights.cashCurrencyBreakdown.length > 0 && (
-              <p className="text-[11px] pl-[10rem] pb-1">
+              <p className="text-[11px] pl-6 sm:pl-[10rem] pb-1">
                 {insights.cashCurrencyBreakdown.map((e, i) => (
                   <span key={e.currency}>
                     {i > 0 && <span className="text-zinc-600"> · </span>}
@@ -373,129 +439,119 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
               </p>
             )}
           </div>
+
+          {/* ── Currency exposure bars ── */}
+          {insights.currencyExposure.length > 1 && (
+            <div className="mt-4 pt-4 border-t border-zinc-800/50 space-y-1">
+              <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Currency Exposure</span>
+              {insights.currencyExposure.map((e) => {
+                const textColor = CURRENCY_TEXT_COLORS[e.currency] ?? "text-zinc-400";
+                const showBase = exposureInBase && e.currency !== cur;
+                const displayCur = showBase ? cur : e.currency;
+                const displayTotal = showBase ? e.value : e.nativeTotal;
+                const cryptoVal = showBase ? e.cryptoValueBase : e.cryptoValue;
+                const stocksVal = showBase ? e.stocksValueBase : e.stocksValue;
+                const cashVal = showBase ? e.cashValueBase : e.cashValue;
+                const parts: { label: string; value: number }[] = [];
+                if (cryptoVal > 0.5) parts.push({ label: "Crypto", value: cryptoVal });
+                if (stocksVal > 0.5) parts.push({ label: "Stocks", value: stocksVal });
+                if (cashVal > 0.5) parts.push({ label: "Cash", value: cashVal });
+                const altCur = showBase ? e.currency : cur;
+                const altTotal = showBase ? e.nativeTotal : e.value;
+                return (
+                  <div key={e.currency}>
+                    <AllocationBar
+                      label={e.currency}
+                      percent={e.percent}
+                      color={CURRENCY_COLORS[e.currency] ?? "bg-zinc-500"}
+                      value={displayTotal}
+                      currency={displayCur}
+                      valueTitle={e.currency !== cur ? fmtCurrencyCompact(altTotal, altCur) : undefined}
+                      onValueClick={e.currency !== cur ? () => setExposureInBase((v) => !v) : undefined}
+                    />
+                    {parts.length > 1 && (
+                      <p className="text-[11px] pl-6 sm:pl-[10rem] pb-1">
+                        {parts.map((p, i) => (
+                          <span key={p.label}>
+                            {i > 0 && <span className="text-zinc-600"> · </span>}
+                            <span className={textColor}>{p.label} {fmtCurrencyCompact(p.value, displayCur)}</span>
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Market Indices */}
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
+        {/* Market */}
+        <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 flex flex-col">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="w-4 h-4 text-zinc-500" />
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
               Market
             </span>
           </div>
-          <div className="space-y-2.5 mt-2">
-            {/* BTC */}
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-2 flex-1">
-                <Bitcoin className="w-4 h-4 text-orange-400" />
-                <span className="text-sm text-zinc-300">BTC</span>
-              </div>
-              <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
-                {fmtCurrencyCompact(insights.btcPriceUsd, "USD")}
-              </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${changeColorClass(insights.btcChange24h)}`}>
-                {fmtPct(insights.btcChange24h)}
-              </span>
+
+          <div className="flex-1 flex flex-col md:justify-between">
+            {/* ── Crypto ─────────────────────────────── */}
+            <div className="space-y-2 pb-3 md:pb-0">
+              <MarketRow icon={<Bitcoin className="w-4 h-4 text-orange-400" />} label="BTC" price={insights.btcPriceUsd} change={insights.btcChange24h} format="usd" />
+              <MarketRow icon={<svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5 4.5 12 12 16.5 19.5 12Zm0 21L4.5 13.5 12 18l7.5-4.5Z" /></svg>} label="ETH" price={insights.ethPriceUsd} change={insights.ethChange24h} format="usd" />
+              <MarketRow icon={<svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19.3 5H6.5L3.5 8h12.8l3-3Z"/><path d="M4.7 10.5h12.8l3 3H7.7l-3-3Z"/><path d="M19.3 16H6.5l-3 3h12.8l3-3Z"/></svg>} label="SOL" price={insights.solPriceUsd} change={insights.solChange24h} format="usd" />
             </div>
-            {/* ETH */}
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-2 flex-1">
-                <svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 1.5 4.5 12 12 16.5 19.5 12Zm0 21L4.5 13.5 12 18l7.5-4.5Z" />
-                </svg>
-                <span className="text-sm text-zinc-300">ETH</span>
-              </div>
-              <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
-                {fmtCurrencyCompact(insights.ethPriceUsd, "USD")}
-              </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${changeColorClass(insights.ethChange24h)}`}>
-                {fmtPct(insights.ethChange24h)}
-              </span>
+
+            {/* ── Indices ────────────────────────────── */}
+            <div className="space-y-2 border-t border-zinc-800 pt-4 pb-3 md:pt-0 md:pb-0">
+              <MarketRow icon={<TrendingUp className="w-4 h-4 text-blue-400" />} label="S&P 500" price={insights.sp500Price} change={insights.sp500Change24h} format="index" />
+              <MarketRow icon={<BarChart2 className="w-4 h-4 text-cyan-400" />} label="Nasdaq" price={insights.nasdaqPrice} change={insights.nasdaqChange24h} format="index" />
+              <MarketRow icon={<BarChart3 className="w-4 h-4 text-violet-400" />} label="Dow" price={insights.dowPrice} change={insights.dowChange24h} format="index" />
+              <MarketRow icon={<Flag className="w-4 h-4 text-sky-400" />} label="Stoxx 50" price={insights.stoxx50Price} change={insights.stoxx50Change24h} format="index" />
             </div>
-            {/* Gold */}
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-2 flex-1">
-                <Coins className="w-4 h-4 text-yellow-400" />
-                <span className="text-sm text-zinc-300">Gold</span>
-              </div>
-              <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
-                {insights.goldPriceUsd > 0 ? fmtCurrencyCompact(insights.goldPriceUsd, "USD") : "—"}
-              </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${insights.goldPriceUsd > 0 ? changeColorClass(insights.goldChange24h) : ""}`}>
-                {insights.goldPriceUsd > 0 ? fmtPct(insights.goldChange24h) : ""}
-              </span>
+
+            {/* ── Commodities ─────────────────────────── */}
+            <div className="space-y-2 border-t border-zinc-800 pt-4 pb-3 md:pt-0 md:pb-0">
+              <MarketRow icon={<Coins className="w-4 h-4 text-yellow-400" />} label="Gold" price={insights.goldPriceUsd} change={insights.goldChange24h} format="usd" />
+              <MarketRow icon={<Coins className="w-4 h-4 text-zinc-300" />} label="Silver" price={insights.silverPriceUsd} change={insights.silverChange24h} format="usd" />
+              <MarketRow icon={<Droplet className="w-4 h-4 text-amber-600" />} label="Brent" price={insights.oilPriceUsd} change={insights.oilChange24h} format="usd" />
             </div>
-            {/* S&P 500 */}
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-2 flex-1">
-                <TrendingUp className="w-4 h-4 text-blue-400" />
-                <span className="text-sm text-zinc-300">S&P 500</span>
-              </div>
-              <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
-                {insights.sp500Price > 0
-                  ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(insights.sp500Price)
-                  : "—"}
-              </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${insights.sp500Price > 0 ? changeColorClass(insights.sp500Change24h) : ""}`}>
-                {insights.sp500Price > 0 ? fmtPct(insights.sp500Change24h) : ""}
-              </span>
+
+            {/* ── Rates & Vol ─────────────────────────── */}
+            <div className="space-y-2 border-t border-zinc-800 pt-4 pb-3 md:pt-0 md:pb-0">
+              <MarketRow icon={<Landmark className="w-4 h-4 text-emerald-400" />} label="10Y UST" price={insights.treasury10yYield} change={insights.treasury10yChange24h} format="yield" />
+              <MarketRow icon={<Zap className="w-4 h-4 text-red-400" />} label="VIX" price={insights.vixPrice} change={insights.vixChange24h} format="plain" />
             </div>
-            {/* Nasdaq */}
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-2 flex-1">
-                <BarChart2 className="w-4 h-4 text-cyan-400" />
-                <span className="text-sm text-zinc-300">Nasdaq</span>
-              </div>
-              <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
-                {insights.nasdaqPrice > 0
-                  ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(insights.nasdaqPrice)
-                  : "—"}
-              </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${insights.nasdaqPrice > 0 ? changeColorClass(insights.nasdaqChange24h) : ""}`}>
-                {insights.nasdaqPrice > 0 ? fmtPct(insights.nasdaqChange24h) : ""}
-              </span>
-            </div>
-            {/* Dow Jones */}
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-2 flex-1">
-                <BarChart3 className="w-4 h-4 text-violet-400" />
-                <span className="text-sm text-zinc-300">Dow</span>
-              </div>
-              <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
-                {insights.dowPrice > 0
-                  ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(insights.dowPrice)
-                  : "—"}
-              </span>
-              <span className={`text-xs tabular-nums w-14 text-right ${insights.dowPrice > 0 ? changeColorClass(insights.dowChange24h) : ""}`}>
-                {insights.dowPrice > 0 ? fmtPct(insights.dowChange24h) : ""}
-              </span>
-            </div>
-            {/* EUR/USD — click to flip */}
-            {insights.eurUsdRate > 0 && (
-              <div
-                className="flex items-center gap-1.5 cursor-pointer select-none hover:bg-zinc-800/40 -mx-1 px-1 rounded transition-colors"
-                onClick={() => setFxFlipped((f) => !f)}
-              >
-                <div className="flex items-center gap-2 flex-1">
-                  <Banknote className="w-4 h-4 text-emerald-400" />
-                  <span className="text-sm text-zinc-300">
-                    {fxFlipped ? "USD/EUR" : "EUR/USD"}
+
+            {/* ── FX ──────────────────────────────────── */}
+            <div className="border-t border-zinc-800 pt-4 md:pt-0">
+              {insights.eurUsdRate > 0 && (
+                <div
+                  className="flex items-center gap-2 cursor-pointer select-none hover:bg-zinc-800/40 -mx-1 px-1 rounded transition-colors"
+                  onClick={() => setFxFlipped((f) => !f)}
+                >
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <Banknote className="w-4 h-4 text-emerald-400" />
+                    <span className="text-sm text-zinc-300">
+                      {fxFlipped ? "USD/EUR" : "EUR/USD"}
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
+                    {fxFlipped
+                      ? (1 / insights.eurUsdRate).toFixed(4)
+                      : insights.eurUsdRate.toFixed(4)}
                   </span>
+                  {insights.eurUsdChange24h !== 0 ? (
+                    <span className={`text-xs tabular-nums w-14 text-right ${changeColorClass(fxFlipped ? -insights.eurUsdChange24h : insights.eurUsdChange24h)}`}>
+                      {fmtPct(fxFlipped ? -insights.eurUsdChange24h : insights.eurUsdChange24h)}
+                    </span>
+                  ) : (
+                    <span className="w-14" />
+                  )}
                 </div>
-                <span className="text-sm font-medium text-zinc-100 tabular-nums w-[5.5rem] text-right">
-                  {fxFlipped
-                    ? (1 / insights.eurUsdRate).toFixed(4)
-                    : insights.eurUsdRate.toFixed(4)}
-                </span>
-                {insights.eurUsdChange24h !== 0 ? (
-                  <span className={`text-xs tabular-nums w-14 text-right ${changeColorClass(fxFlipped ? -insights.eurUsdChange24h : insights.eurUsdChange24h)}`}>
-                    {fmtPct(fxFlipped ? -insights.eurUsdChange24h : insights.eurUsdChange24h)}
-                  </span>
-                ) : (
-                  <span className="w-14" />
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -534,43 +590,56 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getCryptoChangeForPeriod(changePeriod);
             return (
-              <>
-                <div className="flex items-baseline gap-3 mt-2">
-                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                    {fmtCurrency(cryptoValue, cur, 0)}
-                  </p>
-                  {c.available ? (
-                    <span
-                      ref={openTooltip === "crypto" ? tooltipRef : undefined}
-                      onClick={(e) => toggleTooltip("crypto", e)}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
-                    >
-                      {c.valueChange !== 0 ? (
-                        <>
-                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                          <span className="ml-1">({fmtPct(c.percent)})</span>
-                        </>
-                      ) : (
-                        fmtPct(c.percent)
-                      )}
-                      <ChangeTooltip
-                        valueChange={c.valueChange}
-                        fxValueChange={c.fxValueChange}
-                        deposits={0}
-                        cur={cur}
-                        open={openTooltip === "crypto"}
-                      />
-                    </span>
-                  ) : (
-                    <span className="text-xs text-zinc-600">—</span>
+              <div className="flex items-start justify-between mt-2">
+                <div>
+                  <div className="flex items-baseline gap-3">
+                    <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                      {fmtCurrency(cryptoValue, cur, 0)}
+                    </p>
+                    {c.available ? (
+                      <span
+                        ref={openTooltip === "crypto" ? tooltipRef : undefined}
+                        onClick={(e) => toggleTooltip("crypto", e)}
+                        className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                      >
+                        {c.valueChange !== 0 ? (
+                          <>
+                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                            <span className="ml-1">({fmtPct(c.percent)})</span>
+                          </>
+                        ) : (
+                          fmtPct(c.percent)
+                        )}
+                        {(() => {
+                          const dep = getDepositsForPeriod(changePeriod, "crypto");
+                          return (
+                            <ChangeTooltip
+                              valueChange={c.valueChange}
+                              fxValueChange={c.fxValueChange}
+                              deposits={dep.total}
+                              depositBreakdown={dep.breakdown}
+                              startValue={cryptoValue - c.valueChange}
+                              cur={cur}
+                              open={openTooltip === "crypto"}
+                            />
+                          );
+                        })()}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-zinc-600">—</span>
+                    )}
+                  </div>
+                  {summary.stablecoinValue > 0 && (
+                    <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                      excl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
+                    </p>
                   )}
                 </div>
-                {summary.stablecoinValue > 0 && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                    excl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
-                  </p>
-                )}
-              </>
+                <div className="text-xs text-zinc-500 text-right space-y-0.5 shrink-0 ml-3 pt-2">
+                  <p>{insights.cryptoAssetCount} asset{insights.cryptoAssetCount !== 1 ? "s" : ""}</p>
+                  <p>{insights.cryptoPositionCount} position{insights.cryptoPositionCount !== 1 ? "s" : ""}</p>
+                </div>
+              </div>
             );
           })()}
         </Link>
@@ -624,9 +693,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     {/* Sub-line: individual alts with colored labels */}
                     {segments && (
                       <div className="flex gap-2 mt-0.5">
-                        <span className="w-14 shrink-0" />
-                        <span className="w-14 shrink-0" />
-                        <p className="text-[11px] flex-1">
+                        <span className="w-14 shrink-0 hidden sm:block" />
+                        <span className="w-14 shrink-0 hidden sm:block" />
+                        <p className="text-[11px] flex-1 pl-6 sm:pl-0">
                           {segments.map((s, i) => {
                             const pctWithin = entry.value > 0 ? (s.value / entry.value) * 100 : 0;
                             return (
@@ -639,7 +708,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                             );
                           })}
                         </p>
-                        <span className="w-10 shrink-0" />
+                        <span className="w-10 shrink-0 hidden sm:block" />
                       </div>
                     )}
                   </div>
@@ -685,58 +754,71 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getStockChangeForPeriod(changePeriod);
             return (
-              <>
-                <div className="flex items-baseline gap-3 mt-2">
-                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                    {fmtCurrency(stocksValue, cur, 0)}
-                  </p>
-                  {c.available ? (
-                    <span
-                      ref={openTooltip === "equities" ? tooltipRef : undefined}
-                      onClick={(e) => toggleTooltip("equities", e)}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
-                    >
-                      {c.valueChange !== 0 ? (
-                        <>
-                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                          <span className="ml-1">({fmtPct(c.percent)})</span>
-                        </>
-                      ) : (
-                        fmtPct(c.percent)
-                      )}
-                      <ChangeTooltip
-                        valueChange={c.valueChange}
-                        fxValueChange={c.fxValueChange}
-                        deposits={0}
-                        cur={cur}
-                        open={openTooltip === "equities"}
-                      />
-                    </span>
-                  ) : (
-                    <span className="text-xs text-zinc-600">—</span>
-                  )}
-                </div>
-                {insights.stocksWeightedYield > 0 && (() => {
-                  const yearly = insights.stocksDividendIncomeYearly;
-                  const periodIncome =
-                    changePeriod === "24h" ? yearly / 365 :
-                    changePeriod === "7d" ? yearly / 365 * 7 :
-                    changePeriod === "30d" ? yearly / 12 :
-                    yearly;
-                  const periodLabel =
-                    changePeriod === "24h" ? "/day" :
-                    changePeriod === "7d" ? "/7d" :
-                    changePeriod === "30d" ? "/mo" :
-                    "/yr";
-                  return (
-                    <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
-                      ~{insights.stocksWeightedYield.toFixed(2)}% yield{periodIncome > 0 && (
-                        <> · +{fmtCurrencyCompact(periodIncome, cur, 2)}{periodLabel}</>
-                      )}
+              <div className="flex items-start justify-between mt-2">
+                <div>
+                  <div className="flex items-baseline gap-3">
+                    <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                      {fmtCurrency(stocksValue, cur, 0)}
                     </p>
-                  );
-                })()}
-              </>
+                    {c.available ? (
+                      <span
+                        ref={openTooltip === "equities" ? tooltipRef : undefined}
+                        onClick={(e) => toggleTooltip("equities", e)}
+                        className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                      >
+                        {c.valueChange !== 0 ? (
+                          <>
+                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                            <span className="ml-1">({fmtPct(c.percent)})</span>
+                          </>
+                        ) : (
+                          fmtPct(c.percent)
+                        )}
+                        {(() => {
+                          const dep = getDepositsForPeriod(changePeriod, "stocks");
+                          return (
+                            <ChangeTooltip
+                              valueChange={c.valueChange}
+                              fxValueChange={c.fxValueChange}
+                              deposits={dep.total}
+                              depositBreakdown={dep.breakdown}
+                              startValue={stocksValue - c.valueChange}
+                              cur={cur}
+                              open={openTooltip === "equities"}
+                            />
+                          );
+                        })()}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-zinc-600">—</span>
+                    )}
+                  </div>
+                  {insights.stocksWeightedYield > 0 && (() => {
+                    const yearly = insights.stocksDividendIncomeYearly;
+                    const periodIncome =
+                      changePeriod === "24h" ? yearly / 365 :
+                      changePeriod === "7d" ? yearly / 365 * 7 :
+                      changePeriod === "30d" ? yearly / 12 :
+                      yearly;
+                    const periodLabel =
+                      changePeriod === "24h" ? "/day" :
+                      changePeriod === "7d" ? "/7d" :
+                      changePeriod === "30d" ? "/mo" :
+                      "/yr";
+                    return (
+                      <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">
+                        ~{insights.stocksWeightedYield.toFixed(2)}% yield{periodIncome > 0 && (
+                          <> · +{fmtCurrencyCompact(periodIncome, cur, 2)}{periodLabel}</>
+                        )}
+                      </p>
+                    );
+                  })()}
+                </div>
+                <div className="text-xs text-zinc-500 text-right space-y-0.5 shrink-0 ml-3 pt-2">
+                  <p>{insights.stockAssetCount} asset{insights.stockAssetCount !== 1 ? "s" : ""}</p>
+                  <p>{insights.stockPositionCount} position{insights.stockPositionCount !== 1 ? "s" : ""}</p>
+                </div>
+              </div>
             );
           })()}
         </Link>
@@ -795,9 +877,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     {/* Sub-line: colored labels matching bar segments, aligned with bar start */}
                     {segments && (
                       <div className="flex gap-2 mt-0.5">
-                        <span className="w-12 shrink-0" />
-                        <span className="w-14 shrink-0" />
-                        <p className="text-[11px] flex-1">
+                        <span className="w-12 shrink-0 hidden sm:block" />
+                        <span className="w-14 shrink-0 hidden sm:block" />
+                        <p className="text-[11px] flex-1 pl-6 sm:pl-0">
                           {segments.map((s, i) => {
                             const pctWithin = entry.value > 0 ? (s.value / entry.value) * 100 : 0;
                             return (
@@ -810,7 +892,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                             );
                           })}
                         </p>
-                        <span className="w-10 shrink-0" />
+                        <span className="w-10 shrink-0 hidden sm:block" />
                       </div>
                     )}
                   </div>
@@ -861,68 +943,80 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getCashChangeForPeriod(changePeriod);
             return (
-              <>
-                <div className="flex items-baseline gap-3 mt-2">
-                  <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
-                    {fmtCurrency(cashValue, cur, 0)}
-                  </p>
-                  {c.available ? (
-                    <span
-                      ref={openTooltip === "cash" ? tooltipRef : undefined}
-                      onClick={(e) => toggleTooltip("cash", e)}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
-                    >
-                      {c.valueChange !== 0 ? (
-                        <>
-                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                          <span className="ml-1">({fmtPct(c.percent)})</span>
-                        </>
-                      ) : (
-                        fmtPct(c.percent)
-                      )}
-                      <ChangeTooltip
-                        valueChange={c.valueChange}
-                        fxValueChange={c.fxValueChange}
-                        deposits={0}
-                        cur={cur}
-                        open={openTooltip === "cash"}
-                      />
-                    </span>
-                  ) : (
-                    <span className="text-xs text-zinc-600">—</span>
+              <div className="flex items-start justify-between mt-2">
+                <div>
+                  <div className="flex items-baseline gap-3">
+                    <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
+                      {fmtCurrency(cashValue, cur, 0)}
+                    </p>
+                    {c.available ? (
+                      <span
+                        ref={openTooltip === "cash" ? tooltipRef : undefined}
+                        onClick={(e) => toggleTooltip("cash", e)}
+                        className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                      >
+                        {c.valueChange !== 0 ? (
+                          <>
+                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
+                            <span className="ml-1">({fmtPct(c.percent)})</span>
+                          </>
+                        ) : (
+                          fmtPct(c.percent)
+                        )}
+                        {(() => {
+                          const dep = getDepositsForPeriod(changePeriod, "cash");
+                          return (
+                            <ChangeTooltip
+                              valueChange={c.valueChange}
+                              fxValueChange={c.fxValueChange}
+                              deposits={dep.total}
+                              depositBreakdown={dep.breakdown}
+                              startValue={cashValue - c.valueChange}
+                              cur={cur}
+                              open={openTooltip === "cash"}
+                            />
+                          );
+                        })()}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-zinc-600">—</span>
+                    )}
+                  </div>
+                  {insights.weightedAvgApy > 0 && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-xs tabular-nums text-emerald-500">
+                        {insights.weightedAvgApy.toFixed(2)}% APY
+                      </span>
+                      <span className="text-[11px] text-emerald-500/70 tabular-nums">
+                        · +{fmtCurrencyCompact(apyIncomeMap[apyPeriod], cur, 2)}/{apyPeriod === "daily" ? "day" : apyPeriod === "monthly" ? "mo" : "yr"}
+                      </span>
+                      <div className="flex gap-0.5 ml-auto">
+                        {APY_PERIODS.map((p) => (
+                          <button
+                            key={p}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setApyPeriod(p); }}
+                            className={`px-1 py-0.5 text-[9px] rounded transition-colors ${
+                              p === apyPeriod
+                                ? "bg-emerald-600/30 text-emerald-400"
+                                : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                            }`}
+                          >
+                            {p === "daily" ? "day" : p === "monthly" ? "mo" : "yr"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {summary.stablecoinValue > 0 && (
+                    <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                      incl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
+                    </p>
                   )}
                 </div>
-                {insights.weightedAvgApy > 0 && (
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-xs tabular-nums text-emerald-500">
-                      {insights.weightedAvgApy.toFixed(2)}% APY
-                    </span>
-                    <span className="text-[11px] text-emerald-500/70 tabular-nums">
-                      · +{fmtCurrencyCompact(apyIncomeMap[apyPeriod], cur, 2)}/{apyPeriod === "daily" ? "day" : apyPeriod === "monthly" ? "mo" : "yr"}
-                    </span>
-                    <div className="flex gap-0.5 ml-auto">
-                      {APY_PERIODS.map((p) => (
-                        <button
-                          key={p}
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setApyPeriod(p); }}
-                          className={`px-1 py-0.5 text-[9px] rounded transition-colors ${
-                            p === apyPeriod
-                              ? "bg-emerald-600/30 text-emerald-400"
-                              : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
-                          }`}
-                        >
-                          {p === "daily" ? "day" : p === "monthly" ? "mo" : "yr"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {summary.stablecoinValue > 0 && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
-                    incl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
-                  </p>
-                )}
-              </>
+                <div className="text-xs text-zinc-500 text-right shrink-0 ml-3 pt-2">
+                  <p>{insights.cashAccountCount} account{insights.cashAccountCount !== 1 ? "s" : ""}</p>
+                </div>
+              </div>
             );
           })()}
         </Link>
@@ -1072,25 +1166,33 @@ function segmentColor(parentColor: string, index: number): string {
 
 // ─── Change Tooltip ─────────────────────────────────────
 
+/** Single row inside the 3-column grid: label | value | pct */
 function TooltipRow({
-  label, value, cur, colored, bold,
+  label, value, cur, colored, bold, pct, indent,
 }: {
   label: string; value: number; cur: string; colored?: boolean; bold?: boolean;
+  pct?: number; indent?: boolean;
 }) {
   const formatted = `${value > 0 ? "+" : ""}${fmtCurrencyCompact(value, cur)}`;
-  const colorCls = colored ? changeColorClass(value) : "text-zinc-300";
+  const colorCls = colored ? changeColorClass(value) : indent ? "text-zinc-500" : "text-zinc-300";
+  const hasPct = pct != null && isFinite(pct) && Math.abs(pct) >= 0.05;
   return (
-    <div className={`flex justify-between gap-4 ${bold ? "font-medium" : ""}`}>
-      <span className="text-zinc-400">{label}</span>
-      <span className={`${colorCls} tabular-nums`}>{formatted}</span>
-    </div>
+    <>
+      <span className={`${indent ? "pl-3 text-zinc-500" : "text-zinc-400"} ${bold ? "font-medium" : ""} whitespace-nowrap`}>{label}</span>
+      <span className={`${colorCls} ${bold ? "font-medium" : ""} tabular-nums whitespace-nowrap text-right`}>{formatted}</span>
+      <span className={`text-zinc-500 tabular-nums whitespace-nowrap ${bold ? "font-medium" : ""}`}>
+        {hasPct ? `(${fmtPct(pct!)})` : ""}
+      </span>
+    </>
   );
 }
 
 function ChangeTooltip({
-  valueChange, fxValueChange, deposits, cur, open,
+  valueChange, fxValueChange, deposits, depositBreakdown, startValue, cur, open,
 }: {
-  valueChange: number; fxValueChange: number; deposits: number; cur: string; open?: boolean;
+  valueChange: number; fxValueChange: number; deposits: number;
+  depositBreakdown?: { name: string; value: number }[];
+  startValue?: number; cur: string; open?: boolean;
 }) {
   const hasFx = Math.abs(fxValueChange) >= 0.5;
   const hasDeposits = Math.abs(deposits) >= 0.5;
@@ -1099,19 +1201,34 @@ function ChangeTooltip({
   if (!hasFx && !hasDeposits) return null;
 
   const assetPrices = valueChange - fxValueChange - deposits;
+  const marketChange = valueChange - deposits; // prices + FX combined
   const fxLabel = cur === "EUR" ? "EUR/USD" : "USD/EUR";
+  const base = startValue && startValue > 0 ? startValue : undefined;
 
   return (
-    <div className={`absolute right-0 top-full mt-1 z-50 ${open ? "block" : "hidden group-hover/tip:block"}`}>
-      <div className="bg-zinc-800/95 backdrop-blur border border-zinc-700 rounded-lg shadow-xl p-3 text-xs tabular-nums min-w-[200px]">
-        <TooltipRow label="Asset prices" value={assetPrices} cur={cur} colored />
-        {hasFx && <TooltipRow label={fxLabel} value={fxValueChange} cur={cur} colored />}
+    <div className={`absolute right-0 sm:right-auto sm:left-0 top-full mt-1 z-50 ${open ? "block" : "hidden group-hover/tip:block"}`}>
+      <div className="bg-zinc-800/95 backdrop-blur border border-zinc-700 rounded-lg shadow-xl px-2.5 py-2 text-[10px] tabular-nums grid grid-cols-[auto_auto_auto] gap-x-2.5 gap-y-0.5 w-max max-w-[min(320px,calc(100vw-3rem))]">
+        {/* Market row: price + FX performance, excluding deposits — only when deposits exist */}
         {hasDeposits && (
-          <TooltipRow label={deposits > 0 ? "Deposits" : "Withdrawals"} value={deposits} cur={cur} />
+          <>
+            <TooltipRow label="Market" value={marketChange} cur={cur} colored bold pct={base ? (marketChange / base) * 100 : undefined} />
+            <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />
+          </>
         )}
-        <div className="border-t border-zinc-700 mt-1.5 pt-1.5">
-          <TooltipRow label="Total" value={valueChange} cur={cur} colored bold />
-        </div>
+        {/* Prices + FX decomposition — show Prices only when FX exists (otherwise Market = Prices) */}
+        {(hasFx || !hasDeposits) && <TooltipRow label="Prices" value={assetPrices} cur={cur} colored pct={base ? (assetPrices / base) * 100 : undefined} />}
+        {hasFx && <TooltipRow label={fxLabel} value={fxValueChange} cur={cur} colored pct={base ? (fxValueChange / base) * 100 : undefined} />}
+        {hasDeposits && (
+          <>
+            <TooltipRow label={deposits > 0 ? "Deposits" : "Withdrawals"} value={deposits} cur={cur} pct={base ? (deposits / base) * 100 : undefined} />
+            {depositBreakdown && depositBreakdown.length > 1 && depositBreakdown.map((e) => (
+              <TooltipRow key={e.name} label={e.name} value={e.value} cur={cur} indent />
+            ))}
+          </>
+        )}
+        {/* Separator + Total row */}
+        <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />
+        <TooltipRow label="Total" value={valueChange} cur={cur} colored bold pct={base ? (valueChange / base) * 100 : undefined} />
       </div>
     </div>
   );
@@ -1125,19 +1242,31 @@ function AllocationBar({
   color,
   value,
   currency,
+  valueTitle,
+  onValueClick,
 }: {
   label: string;
   percent: number;
   color: string;
   value?: number;
   currency?: string;
+  valueTitle?: string;
+  onValueClick?: () => void;
 }) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs text-zinc-400 w-20 shrink-0 truncate">{label}</span>
       {value != null && currency && (
-        <span className="text-xs text-zinc-300 tabular-nums w-16 text-right shrink-0">
+        <span
+          className={`relative group/val text-xs text-zinc-300 tabular-nums w-16 text-right shrink-0 ${onValueClick ? "cursor-pointer select-none" : ""}`}
+          onClick={onValueClick}
+        >
           {fmtCurrencyCompact(value, currency)}
+          {valueTitle && (
+            <span className="absolute right-0 top-full mt-1 px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[10px] text-zinc-300 whitespace-nowrap opacity-0 pointer-events-none group-hover/val:opacity-100 transition-opacity z-50">
+              {valueTitle}
+            </span>
+          )}
         </span>
       )}
       <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
