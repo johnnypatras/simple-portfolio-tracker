@@ -4,6 +4,8 @@ import { Sidebar } from "@/components/sidebar";
 import { SidebarProvider } from "@/components/sidebar-context";
 import { ThemeSync } from "@/components/theme-sync";
 import { CurrencyToggle } from "@/components/currency-toggle";
+import { CommandPaletteProvider } from "@/components/ui/command-palette-provider";
+import { SearchPill } from "@/components/ui/search-pill";
 
 export default async function DashboardLayout({
   children,
@@ -28,20 +30,23 @@ export default async function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <ThemeSync profileTheme={profile?.theme ?? null} />
-      <div className="flex min-h-screen">
-        <Sidebar email={user.email ?? ""} />
-        <main className="flex-1 min-w-0 lg:ml-0">
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 overflow-x-hidden">
-            <div className="absolute top-6 right-4 sm:right-6 lg:right-8 z-10">
-              <CurrencyToggle
-                initialCurrency={profile?.primary_currency ?? "EUR"}
-              />
+      <CommandPaletteProvider primaryCurrency={profile?.primary_currency ?? "EUR"}>
+        <ThemeSync profileTheme={profile?.theme ?? null} />
+        <div className="flex min-h-screen">
+          <Sidebar email={user.email ?? ""} />
+          <main className="flex-1 min-w-0 lg:ml-0">
+            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 overflow-x-hidden">
+              <div className="absolute top-6 right-4 sm:right-6 lg:right-8 z-10 flex items-center gap-2">
+                <SearchPill />
+                <CurrencyToggle
+                  initialCurrency={profile?.primary_currency ?? "EUR"}
+                />
+              </div>
+              {children}
             </div>
-            {children}
-          </div>
-        </main>
-      </div>
+          </main>
+        </div>
+      </CommandPaletteProvider>
     </SidebarProvider>
   );
 }

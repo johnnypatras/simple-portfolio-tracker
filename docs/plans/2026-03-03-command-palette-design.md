@@ -12,7 +12,7 @@ Available on all dashboard and share pages.
 ## Trigger & Placement
 
 - **Keyboard:** `Cmd+K` (Mac) / `Ctrl+K` (Windows/Linux)
-- **UI:** Search icon in sidebar (below nav, above Settings) for discoverability
+- **UI:** Search pill next to CurrencyToggle (top-right corner) for discoverability
 - **Placement:** Centered overlay modal (Spotlight-style) via React portal
 - **Scope:** All `/dashboard/*` and `/share/[token]/*` pages
 - **Dismiss:** `Escape`, click outside, or selecting a result
@@ -58,6 +58,7 @@ Selecting opens the existing Add Crypto/Stock modal pre-filled with the asset.
 ```
 src/components/ui/command-palette.tsx           — Main palette component (cmdk)
 src/components/ui/command-palette-provider.tsx   — Context + Cmd+K listener
+src/components/ui/search-pill.tsx               — Visible trigger next to CurrencyToggle
 ```
 
 ### Dependencies

@@ -18,6 +18,8 @@ import {
 } from "@/lib/actions/snapshots";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { MobileMenuButton } from "@/components/sidebar";
+import { RegisterHoldings } from "@/components/ui/command-palette-provider";
+import type { HoldingItem } from "@/lib/types";
 import dynamic from "next/dynamic";
 
 const PortfolioChart = dynamic(
@@ -165,8 +167,64 @@ export default async function DashboardPage() {
     "1y": snap1y,
   };
 
+  // ── Build flat holdings for command palette search ─────
+  const paletteHoldings: HoldingItem[] = [
+    ...cryptoAssets.map((a) => {
+      const price = cryptoPrices[a.coingecko_id];
+      const totalQty = a.positions.reduce((s, p) => s + p.quantity, 0);
+      const valueUsd = (price?.usd ?? 0) * totalQty;
+      return {
+        id: a.id,
+        type: "crypto" as const,
+        name: a.name,
+        ticker: a.ticker.toUpperCase(),
+        value: valueUsd * (fxRates["USD"] ?? 1),
+        change24h: price?.usd_24h_change,
+        icon: a.image_url,
+        detailPath: "/dashboard/crypto",
+      };
+    }),
+    ...stockAssets.map((a) => {
+      const tick = a.yahoo_ticker || a.ticker;
+      const price = stockPrices[tick];
+      const totalQty = a.positions.reduce((s, p) => s + p.quantity, 0);
+      const valueNative = (price?.price ?? 0) * totalQty;
+      return {
+        id: a.id,
+        type: "stock" as const,
+        name: a.name,
+        ticker: a.ticker,
+        value: valueNative * (fxRates[price?.currency ?? a.currency] ?? 1),
+        change24h: price?.change24h,
+        detailPath: "/dashboard/stocks",
+      };
+    }),
+    ...bankAccounts.map((a) => ({
+      id: a.id,
+      type: "bank" as const,
+      name: `${a.name} (${a.currency})`,
+      value: a.balance * (fxRates[a.currency] ?? 1),
+      detailPath: "/dashboard/cash",
+    })),
+    ...exchangeDeposits.map((d) => ({
+      id: d.id,
+      type: "exchange_deposit" as const,
+      name: `${d.wallet_name} ${d.currency}`,
+      value: d.amount * (fxRates[d.currency] ?? 1),
+      detailPath: "/dashboard/cash",
+    })),
+    ...brokerDeposits.map((d) => ({
+      id: d.id,
+      type: "broker_deposit" as const,
+      name: `${d.broker_name} ${d.currency}`,
+      value: d.amount * (fxRates[d.currency] ?? 1),
+      detailPath: "/dashboard/cash",
+    })),
+  ];
+
   return (
     <div>
+      <RegisterHoldings holdings={paletteHoldings} />
       <div className="mb-8">
         <div className="flex items-center gap-3">
           <MobileMenuButton />

@@ -563,3 +563,17 @@ export interface TransferInput {
 export type TransferResult =
   | { success: true; transferGroupId: string; partialFailure?: boolean }
   | { success: false; error: string; transferGroupId?: string; partialFailure?: boolean };
+
+// ─── Command Palette ─────────────────────────────────────
+
+/** Flat portfolio item for command palette search. */
+export interface HoldingItem {
+  id: string;
+  type: "crypto" | "stock" | "bank" | "exchange_deposit" | "broker_deposit";
+  name: string;
+  ticker?: string;
+  value: number;
+  change24h?: number;
+  icon?: string | null;
+  detailPath: string;
+}
