@@ -17,6 +17,8 @@ import {
   Landmark,
   Zap,
   Flag,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
@@ -99,6 +101,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
   const [changePeriod, setChangePeriod] = useState<ChangePeriod>("24h");
   const [apyPeriod, setApyPeriod] = useState<ApyPeriod>("monthly");
   const [fxFlipped, setFxFlipped] = useState(false);
+  const [marketExpanded, setMarketExpanded] = useState(false);
   const [exposureInBase, setExposureInBase] = useState(false);
   const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
   const { shareToken, isReadOnly } = useSharedView();
@@ -490,35 +493,43 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
 
           <div className="flex-1 flex flex-col md:justify-between">
             {/* ── Crypto ─────────────────────────────── */}
-            <div className="space-y-2 pb-3 md:pb-0">
+            <div className="space-y-2 pb-3 md:pb-2">
               <MarketRow icon={<Bitcoin className="w-4 h-4 text-orange-400" />} label="BTC" price={insights.btcPriceUsd} change={insights.btcChange24h} format="usd" />
-              <MarketRow icon={<svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5 4.5 12 12 16.5 19.5 12Zm0 21L4.5 13.5 12 18l7.5-4.5Z" /></svg>} label="ETH" price={insights.ethPriceUsd} change={insights.ethChange24h} format="usd" />
-              <MarketRow icon={<svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19.3 5H6.5L3.5 8h12.8l3-3Z"/><path d="M4.7 10.5h12.8l3 3H7.7l-3-3Z"/><path d="M19.3 16H6.5l-3 3h12.8l3-3Z"/></svg>} label="SOL" price={insights.solPriceUsd} change={insights.solChange24h} format="usd" />
+              <div className={`space-y-2 ${marketExpanded ? "" : "hidden"} md:block`}>
+                <MarketRow icon={<svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5 4.5 12 12 16.5 19.5 12Zm0 21L4.5 13.5 12 18l7.5-4.5Z" /></svg>} label="ETH" price={insights.ethPriceUsd} change={insights.ethChange24h} format="usd" />
+                <MarketRow icon={<svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19.3 5H6.5L3.5 8h12.8l3-3Z"/><path d="M4.7 10.5h12.8l3 3H7.7l-3-3Z"/><path d="M19.3 16H6.5l-3 3h12.8l3-3Z"/></svg>} label="SOL" price={insights.solPriceUsd} change={insights.solChange24h} format="usd" />
+              </div>
             </div>
 
             {/* ── Indices ────────────────────────────── */}
-            <div className="space-y-2 border-t border-zinc-800 pt-4 pb-3 md:pt-0 md:pb-0">
+            <div className="space-y-2 border-t border-zinc-800 py-3 md:py-2">
               <MarketRow icon={<TrendingUp className="w-4 h-4 text-blue-400" />} label="S&P 500" price={insights.sp500Price} change={insights.sp500Change24h} format="index" />
-              <MarketRow icon={<BarChart2 className="w-4 h-4 text-cyan-400" />} label="Nasdaq" price={insights.nasdaqPrice} change={insights.nasdaqChange24h} format="index" />
-              <MarketRow icon={<BarChart3 className="w-4 h-4 text-violet-400" />} label="Dow" price={insights.dowPrice} change={insights.dowChange24h} format="index" />
-              <MarketRow icon={<Flag className="w-4 h-4 text-sky-400" />} label="Stoxx 50" price={insights.stoxx50Price} change={insights.stoxx50Change24h} format="index" />
+              <div className={`space-y-2 ${marketExpanded ? "" : "hidden"} md:block`}>
+                <MarketRow icon={<BarChart2 className="w-4 h-4 text-cyan-400" />} label="Nasdaq" price={insights.nasdaqPrice} change={insights.nasdaqChange24h} format="index" />
+                <MarketRow icon={<BarChart3 className="w-4 h-4 text-violet-400" />} label="Dow" price={insights.dowPrice} change={insights.dowChange24h} format="index" />
+                <MarketRow icon={<Flag className="w-4 h-4 text-sky-400" />} label="Stoxx 50" price={insights.stoxx50Price} change={insights.stoxx50Change24h} format="index" />
+              </div>
             </div>
 
             {/* ── Commodities ─────────────────────────── */}
-            <div className="space-y-2 border-t border-zinc-800 pt-4 pb-3 md:pt-0 md:pb-0">
+            <div className="space-y-2 border-t border-zinc-800 py-3 md:py-2">
               <MarketRow icon={<Coins className="w-4 h-4 text-yellow-400" />} label="Gold" price={insights.goldPriceUsd} change={insights.goldChange24h} format="usd" />
-              <MarketRow icon={<Coins className="w-4 h-4 text-zinc-300" />} label="Silver" price={insights.silverPriceUsd} change={insights.silverChange24h} format="usd" />
-              <MarketRow icon={<Droplet className="w-4 h-4 text-amber-600" />} label="Brent" price={insights.oilPriceUsd} change={insights.oilChange24h} format="usd" />
+              <div className={`space-y-2 ${marketExpanded ? "" : "hidden"} md:block`}>
+                <MarketRow icon={<Coins className="w-4 h-4 text-zinc-300" />} label="Silver" price={insights.silverPriceUsd} change={insights.silverChange24h} format="usd" />
+                <MarketRow icon={<Droplet className="w-4 h-4 text-amber-600" />} label="Brent" price={insights.oilPriceUsd} change={insights.oilChange24h} format="usd" />
+              </div>
             </div>
 
-            {/* ── Rates & Vol ─────────────────────────── */}
-            <div className="space-y-2 border-t border-zinc-800 pt-4 pb-3 md:pt-0 md:pb-0">
-              <MarketRow icon={<Landmark className="w-4 h-4 text-emerald-400" />} label="10Y UST" price={insights.treasury10yYield} change={insights.treasury10yChange24h} format="yield" />
+            {/* ── Vol & Rates ─────────────────────────── */}
+            <div className="space-y-2 border-t border-zinc-800 py-3 md:py-2">
               <MarketRow icon={<Zap className="w-4 h-4 text-red-400" />} label="VIX" price={insights.vixPrice} change={insights.vixChange24h} format="plain" />
+              <div className={`space-y-2 ${marketExpanded ? "" : "hidden"} md:block`}>
+                <MarketRow icon={<Landmark className="w-4 h-4 text-emerald-400" />} label="10Y UST" price={insights.treasury10yYield} change={insights.treasury10yChange24h} format="yield" />
+              </div>
             </div>
 
             {/* ── FX ──────────────────────────────────── */}
-            <div className="border-t border-zinc-800 pt-4 md:pt-0">
+            <div className="border-t border-zinc-800 pt-3 md:pt-2">
               {insights.eurUsdRate > 0 && (
                 <div
                   className="flex items-center gap-2 cursor-pointer select-none hover:bg-zinc-800/40 -mx-1 px-1 rounded transition-colors"
@@ -545,6 +556,18 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                 </div>
               )}
             </div>
+
+            {/* ── Mobile expand toggle ──────────────── */}
+            <button
+              className="flex items-center justify-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 pt-3 transition-colors md:hidden"
+              onClick={() => setMarketExpanded((e) => !e)}
+            >
+              {marketExpanded ? (
+                <>Less <ChevronUp className="w-3 h-3" /></>
+              ) : (
+                <>More <ChevronDown className="w-3 h-3" /></>
+              )}
+            </button>
           </div>
         </div>
 

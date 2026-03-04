@@ -18,6 +18,7 @@ import {
   Activity,
 } from "lucide-react";
 import { useSidebar } from "@/components/sidebar-context";
+import { HOLDINGS_CACHE_KEY } from "@/components/ui/command-palette-provider";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -53,6 +54,7 @@ export function Sidebar({ email }: { email: string }) {
   const { mobileOpen, setMobileOpen } = useSidebar();
 
   async function handleLogout() {
+    try { localStorage.removeItem(HOLDINGS_CACHE_KEY); } catch { /* ignore */ }
     await supabase.auth.signOut();
     router.push("/login");
   }

@@ -11,15 +11,16 @@ import {
 import type { HoldingItem } from "@/lib/types";
 import { CommandPalette } from "./command-palette";
 
-const HOLDINGS_CACHE_KEY = "cmd-palette-holdings";
+export const HOLDINGS_CACHE_KEY = "cmd-palette-holdings";
 
-function readCachedHoldings(): HoldingItem[] {
+function readCachedHoldings(): { items: HoldingItem[]; wasEmpty: boolean } {
   try {
     const raw = localStorage.getItem(HOLDINGS_CACHE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as HoldingItem[];
+    if (!raw) return { items: [], wasEmpty: true };
+    const items = JSON.parse(raw) as HoldingItem[];
+    return { items, wasEmpty: items.length === 0 };
   } catch {
-    return [];
+    return { items: [], wasEmpty: true };
   }
 }
 
@@ -47,19 +48,16 @@ export function CommandPaletteProvider({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [holdings, setHoldingsRaw] = useState<HoldingItem[]>([]);
+  const [{ items: initialItems, wasEmpty: cacheWasEmpty }] = useState(readCachedHoldings);
+  const [holdings, setHoldingsRaw] = useState<HoldingItem[]>(initialItems);
 
-  // Hydrate holdings: localStorage first (instant), then API if cache is empty
+  // If localStorage was empty on mount, fetch from API (first-ever visit, cleared storage)
   useEffect(() => {
-    const cached = readCachedHoldings();
-    if (cached.length > 0) {
-      setHoldingsRaw(cached);
-      return;
-    }
-    // No cache — fetch from API (first-ever visit, cleared storage, etc.)
+    if (!cacheWasEmpty) return;
     fetch("/api/holdings")
       .then((r) => (r.ok ? r.json() : []))
-      .then((items: HoldingItem[]) => {
+      .then((data: unknown) => {
+        const items = Array.isArray(data) ? data as HoldingItem[] : [];
         if (items.length > 0) {
           setHoldingsRaw(items);
           try {
@@ -68,7 +66,7 @@ export function CommandPaletteProvider({
         }
       })
       .catch(() => {});
-  }, []);
+  }, [cacheWasEmpty]);
 
   const setHoldings = useCallback((items: HoldingItem[]) => {
     setHoldingsRaw(items);

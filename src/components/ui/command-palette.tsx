@@ -101,7 +101,7 @@ function useExternalSearch(query: string, enabled: boolean) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!enabled || query.length < 3) {
+    if (!enabled || query.length < 3 || query.length > 100) {
       setResults([]);
       return;
     }
@@ -240,7 +240,7 @@ export function CommandPalette({
               value={search}
               onValueChange={setSearch}
               placeholder="Search holdings, pages, actions..."
-              className="w-full py-3 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+              className="w-full py-3 bg-transparent text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
               autoFocus
             />
             <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-500 font-mono shrink-0 border border-zinc-700/50">
@@ -275,7 +275,7 @@ export function CommandPalette({
                             alt=""
                             width={20}
                             height={20}
-                            unoptimized
+
                             className="w-5 h-5 rounded-full shrink-0"
                           />
                         ) : (
@@ -283,8 +283,8 @@ export function CommandPalette({
                             {(h.ticker ?? h.name)[0]}
                           </div>
                         )}
-                        <div className="flex-1 min-w-0">
-                          <span className="truncate">{h.name}</span>
+                        <div className="flex-1 min-w-0 truncate">
+                          <span>{h.name}</span>
                           {h.ticker && (
                             <span className="ml-1.5 text-xs text-zinc-500">
                               {h.ticker}
@@ -419,7 +419,7 @@ export function CommandPalette({
                               alt=""
                               width={20}
                               height={20}
-                              unoptimized
+  
                               className="w-5 h-5 rounded-full shrink-0"
                             />
                           ) : (
@@ -427,8 +427,8 @@ export function CommandPalette({
                               {r.ticker[0]}
                             </div>
                           )}
-                          <div className="flex-1 min-w-0">
-                            <span className="truncate">{r.name}</span>
+                          <div className="flex-1 min-w-0 truncate">
+                            <span>{r.name}</span>
                             <span className="ml-1.5 text-xs text-zinc-500">
                               {r.ticker}
                             </span>
@@ -440,7 +440,7 @@ export function CommandPalette({
                           </div>
                           {r.price !== undefined && (
                             <span className="text-xs text-zinc-400 tabular-nums shrink-0">
-                              ${r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                              {formatPrice(r.price, "USD")}
                             </span>
                           )}
                         </Command.Item>

@@ -32,7 +32,6 @@ function AssetIcon({
         width={size}
         height={size}
         className="rounded-full bg-zinc-800"
-        unoptimized
       />
     );
   }
