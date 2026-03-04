@@ -62,10 +62,20 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   let destination: TransferSide = input.destination;
 
   try {
-    // ── Step 0: Create inline entities for buy mode ──────
     // Use a mutable copy of input so we can patch source IDs
     let currentSource = input.source;
 
+    // ── Early validation: check source balance BEFORE creating any entities.
+    // When newCashDeposit is involved, the source IS the deposit being created
+    // (so it can't be validated yet — its amount is controlled by the UI).
+    // For all other cases, validate the pre-existing source now to avoid
+    // orphaning entities (broker, wallet, asset) if balance is insufficient.
+    if (currentSource && !input.newCashDeposit) {
+      const earlyState = await fetchSourceState(supabase, currentSource);
+      validateSufficientBalance(currentSource, earlyState);
+    }
+
+    // ── Step 0: Create inline entities for buy mode ──────
     if (input.newBroker) {
       const brokerId = await createBroker({ name: input.newBroker.name });
       if (destination.type === "stock_position") {
