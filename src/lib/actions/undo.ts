@@ -156,7 +156,7 @@ async function undoSingleEntry(
 /**
  * Undo a previously logged activity.
  *
- * - If the entry has a transfer_group_id, undoes ALL legs of the transfer atomically.
+ * - If the entry has a transfer_group_id, undoes ALL legs sequentially (fail-fast on first error).
  * - Undo "created"  → soft-delete the entity
  * - Undo "removed"  → restore the entity (clear deleted_at; cascade trigger restores children)
  * - Undo "updated"  → restore before_snapshot field values

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { rateLimit } from "@/lib/rate-limit";
+
+const limiter = rateLimit({ windowMs: 60_000, max: 5 });
 
 export async function POST(req: NextRequest) {
+  const limited = limiter(req);
+  if (limited) return limited;
+
   try {
     const { code, email, password, display_name, first_name, last_name } = await req.json();
 
@@ -23,11 +29,11 @@ export async function POST(req: NextRequest) {
     const hasCode = typeof code === "string" && code.trim().length > 0;
     let inviteId: string | null = null;
 
-    // 1. If invite code provided, validate it
+    // 1. If invite code provided, validate it exists and is available
     if (hasCode) {
       const { data: invite, error: inviteError } = await admin
         .from("invite_codes")
-        .select("*")
+        .select("id, expires_at")
         .eq("code", code.trim())
         .is("used_by", null)
         .single();
@@ -75,14 +81,27 @@ export async function POST(req: NextRequest) {
         nameFields.last_name = last_name.trim();
 
       if (hasCode && inviteId) {
-        // 3a. Mark invite as used — user is auto-approved (status stays 'active')
-        await admin
+        // 3a. Atomically claim the invite (prevents TOCTOU double-consume).
+        // The WHERE used_by IS NULL ensures only one concurrent request wins.
+        const { data: claimed } = await admin
           .from("invite_codes")
           .update({
             used_by: userData.user.id,
             used_at: new Date().toISOString(),
           })
-          .eq("id", inviteId);
+          .eq("id", inviteId)
+          .is("used_by", null)
+          .select("id")
+          .single();
+
+        if (!claimed) {
+          // Race lost — another request claimed this code. Clean up the user.
+          await admin.auth.admin.deleteUser(userData.user.id);
+          return NextResponse.json(
+            { error: "Invalid or already used invite code" },
+            { status: 400 }
+          );
+        }
 
         // Save names if provided
         if (Object.keys(nameFields).length > 0) {

@@ -50,7 +50,7 @@ export async function approveUser(userId: string): Promise<void> {
     .eq("id", userId);
 
   if (error) throw new Error(error.message);
-  revalidatePath("/settings");
+  revalidatePath("/dashboard/settings");
 }
 
 export async function rejectUser(userId: string): Promise<void> {
@@ -60,7 +60,7 @@ export async function rejectUser(userId: string): Promise<void> {
   // Delete auth user — profile cascade should handle the rest
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw new Error(error.message);
-  revalidatePath("/settings");
+  revalidatePath("/dashboard/settings");
 }
 
 export async function suspendUser(userId: string): Promise<void> {
@@ -74,7 +74,7 @@ export async function suspendUser(userId: string): Promise<void> {
     .eq("id", userId);
 
   if (error) throw new Error(error.message);
-  revalidatePath("/settings");
+  revalidatePath("/dashboard/settings");
 }
 
 export async function unsuspendUser(userId: string): Promise<void> {
@@ -87,7 +87,7 @@ export async function unsuspendUser(userId: string): Promise<void> {
     .eq("id", userId);
 
   if (error) throw new Error(error.message);
-  revalidatePath("/settings");
+  revalidatePath("/dashboard/settings");
 }
 
 // ─── Invite Codes ─────────────────────────────────────────
@@ -160,7 +160,7 @@ export async function createInviteCode(
   });
 
   if (error) throw new Error(error.message);
-  revalidatePath("/settings");
+  revalidatePath("/dashboard/settings");
   return code;
 }
 
@@ -175,5 +175,5 @@ export async function deleteInviteCode(codeId: string): Promise<void> {
     .is("used_by", null); // only delete unused codes
 
   if (error) throw new Error(error.message);
-  revalidatePath("/settings");
+  revalidatePath("/dashboard/settings");
 }
