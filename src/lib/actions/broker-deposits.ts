@@ -34,7 +34,7 @@ export async function getBrokerDeposits(): Promise<BrokerDeposit[]> {
 export async function createBrokerDeposit(
   input: BrokerDepositInput,
   opts?: { isAdjustment?: boolean; transferGroupId?: string; effectiveDate?: string }
-): Promise<void> {
+): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -100,6 +100,8 @@ export async function createBrokerDeposit(
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
+
+  return created!.id;
 }
 
 export async function updateBrokerDeposit(

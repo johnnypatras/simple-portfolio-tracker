@@ -27,6 +27,11 @@ import type {
 } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// ─── Types for cleanup tracking ─────────────────────────────
+
+/** Entity created during transfer setup, tracked for cleanup on failure */
+interface CreatedEntity { table: string; id: string }
+
 // ─── Types for internal state tracking ───────────────────────
 
 /** Original state captured before source leg, used for rollback */
@@ -61,6 +66,12 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   // Use a local destination variable to avoid mutating input
   let destination: TransferSide = input.destination;
 
+  // Track entities created during setup for cleanup on failure.
+  // Assets (crypto_assets, stock_assets) are NOT tracked — dedup may return
+  // pre-existing IDs, and hard-deleting those would destroy portfolio data.
+  const createdEntities: CreatedEntity[] = [];
+  let transferGroupId: string | undefined;
+
   try {
     // Use a mutable copy of input so we can patch source IDs
     let currentSource = input.source;
@@ -78,6 +89,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     // ── Step 0: Create inline entities for buy mode ──────
     if (input.newBroker) {
       const brokerId = await createBroker({ name: input.newBroker.name });
+      createdEntities.push({ table: "brokers", id: brokerId });
       if (destination.type === "stock_position") {
         destination = { ...destination, brokerId };
       }
@@ -91,6 +103,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
         name: input.newWallet.name,
         wallet_type: "custodial",
       });
+      createdEntities.push({ table: "wallets", id: walletId });
       if (destination.type === "crypto_position") {
         destination = { ...destination, walletId };
       }
@@ -101,7 +114,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
 
     if (input.newCashDeposit && currentSource) {
       if (currentSource.type === "broker_deposit") {
-        await createBrokerDeposit(
+        const depositId = await createBrokerDeposit(
           {
             broker_id: currentSource.brokerId,
             currency: input.newCashDeposit.currency,
@@ -112,8 +125,9 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
             effectiveDate: input.effectiveDate,
           }
         );
+        createdEntities.push({ table: "broker_deposits", id: depositId });
       } else if (currentSource.type === "exchange_deposit") {
-        await createExchangeDeposit(
+        const depositId = await createExchangeDeposit(
           {
             wallet_id: currentSource.walletId,
             currency: input.newCashDeposit.currency,
@@ -124,11 +138,12 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
             effectiveDate: input.effectiveDate,
           }
         );
+        createdEntities.push({ table: "exchange_deposits", id: depositId });
       }
     }
 
     // Generate a transfer group ID only for two-legged transfers
-    const transferGroupId: string | undefined = currentSource ? crypto.randomUUID() : undefined;
+    transferGroupId = currentSource ? crypto.randomUUID() : undefined;
 
     // ── Step 1: Create new assets if needed ─────────────────
     if (input.newCryptoAsset) {
@@ -166,25 +181,19 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
         try {
           await rollbackSource(currentSource, originalState, transferGroupId!, prices.source, input.effectiveDate);
         } catch (rollbackErr) {
-          return {
-            success: false,
-            error: `Transfer failed and rollback failed. Source was modified. Original: ${JSON.stringify(originalState)}. Rollback error: ${rollbackErr instanceof Error ? rollbackErr.message : "unknown"}. Check positions.`,
-            transferGroupId,
-            partialFailure: true,
-          };
+          // Source modified + rollback failed → partial failure.
+          // Skip cleanup — entities may be referenced by the modified source.
+          const err = new Error(
+            `Transfer failed and rollback failed. Source was modified. Original: ${JSON.stringify(originalState)}. Rollback error: ${rollbackErr instanceof Error ? rollbackErr.message : "unknown"}. Check positions.`
+          );
+          (err as Error & { partialFailure: boolean }).partialFailure = true;
+          throw err;
         }
-        return {
-          success: false,
-          error: destErr instanceof Error ? destErr.message : "Destination leg failed",
-          transferGroupId,
-        };
-      } else {
-        // Single-legged buy: no rollback needed
-        return {
-          success: false,
-          error: destErr instanceof Error ? destErr.message : "Failed to create position",
-        };
+        // Rollback succeeded → re-throw so outer catch does cleanup
+        throw destErr;
       }
+      // Single-legged buy: no rollback needed, re-throw for cleanup
+      throw destErr;
     }
 
     // ── Step 7: Revalidate and return ───────────────────────
@@ -193,9 +202,18 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
 
     return { success: true, transferGroupId: transferGroupId ?? "" };
   } catch (err) {
+    const isPartial = (err as Error & { partialFailure?: boolean })?.partialFailure === true;
+
+    // Clean up orphaned entities unless partial failure (entities may be needed for manual recovery)
+    if (!isPartial && createdEntities.length > 0) {
+      await cleanupTransferEntities(supabase, createdEntities);
+    }
+
     return {
       success: false,
       error: err instanceof Error ? err.message : "Transfer failed",
+      transferGroupId,
+      partialFailure: isPartial || undefined,
     };
   }
 }
@@ -698,6 +716,39 @@ async function rollbackSource(
         { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
+    }
+  }
+}
+
+// ─── Cleanup Orphaned Entities ───────────────────────────────
+
+/**
+ * Hard-delete entities created during transfer setup after a failure.
+ * Reverse iteration order: deposits before wallets/brokers (FK safety).
+ * Also removes their activity_log entries to avoid dangling audit trail.
+ * Best-effort: individual failures are logged and skipped.
+ */
+async function cleanupTransferEntities(
+  supabase: SupabaseClient,
+  entities: CreatedEntity[]
+): Promise<void> {
+  // Reverse order: deposits first, then wallets/brokers (FK constraints)
+  for (let i = entities.length - 1; i >= 0; i--) {
+    const { table, id } = entities[i];
+    try {
+      // Hard-delete the entity (just-created, no children/references)
+      await supabase.from(table).delete().eq("id", id);
+      // Remove its activity_log entry so no "Created X" log exists for a non-existent entity
+      await supabase
+        .from("activity_log")
+        .delete()
+        .eq("entity_id", id)
+        .eq("entity_table", table);
+    } catch (err) {
+      console.warn(
+        `[transfers] cleanup failed for ${table}/${id}:`,
+        err instanceof Error ? err.message : err
+      );
     }
   }
 }

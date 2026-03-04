@@ -35,7 +35,7 @@ export async function getExchangeDeposits(): Promise<ExchangeDeposit[]> {
 export async function createExchangeDeposit(
   input: ExchangeDepositInput,
   opts?: { isAdjustment?: boolean; transferGroupId?: string; effectiveDate?: string }
-): Promise<void> {
+): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -108,6 +108,8 @@ export async function createExchangeDeposit(
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
+
+  return created!.id;
 }
 
 export async function updateExchangeDeposit(

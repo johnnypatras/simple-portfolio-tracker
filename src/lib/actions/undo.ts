@@ -188,31 +188,17 @@ export async function undoActivity(
     return { success: false, message: "This action has already been undone" };
   }
 
-  // ── Paired transfer undo — reverse both legs ─────────────
+  // ── Paired transfer undo — atomic RPC reverses all legs ──
   if (log.transfer_group_id) {
-    const { data: groupEntries, error: groupError } = await supabase
-      .from("activity_log")
-      .select("*")
-      .eq("transfer_group_id", log.transfer_group_id)
-      .is("undone_at", null)
-      .order("created_at", { ascending: true });
-
-    if (groupError) {
-      return { success: false, message: `Failed to fetch transfer group: ${groupError.message}` };
+    const { data, error } = await supabase.rpc("undo_transfer_group", {
+      p_group_id: log.transfer_group_id,
+    });
+    if (error) {
+      return { success: false, message: `Transfer undo failed: ${error.message}` };
     }
-    if (!groupEntries?.length) {
-      return { success: false, message: "No active transfer legs found" };
-    }
-
-    for (const entry of groupEntries) {
-      const result = await undoSingleEntry(entry as ActivityLog, supabase);
-      if (!result.success) {
-        return { success: false, message: `Transfer undo failed at leg: ${result.message}` };
-      }
-    }
-
-    revalidateDashboard();
-    return { success: true, message: "Transfer reversed (both legs undone)" };
+    const result = data as { success: boolean; message: string };
+    if (result.success) revalidateDashboard();
+    return result;
   }
 
   // ── Single-entry undo (non-transfer) ─────────────────────
