@@ -48,6 +48,7 @@ next-env.d.ts
 .playwright-mcp/
 CLAUDE.md
 supabase/.temp/
+supabase/.branches/
 .audit-report.md
 
 # one-off scripts and debug utilities
