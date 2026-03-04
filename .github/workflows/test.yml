@@ -25,12 +25,16 @@ jobs:
         run: npm run lint
 
       - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-build
         run: npm run build
 
       - name: Unit tests
         run: npm test
 
       - name: Install Supabase CLI
+        id: supabase-cli
         uses: supabase/setup-cli@v1
         with:
           version: latest
@@ -42,5 +46,5 @@ jobs:
         run: npm run test:integration
 
       - name: Stop Supabase
-        if: always()
+        if: always() && steps.supabase-cli.outcome == 'success'
         run: supabase stop
