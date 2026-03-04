@@ -11,9 +11,9 @@ ALTER TYPE asset_category ADD VALUE IF NOT EXISTS 'individual_stock';
 ALTER TYPE asset_category ADD VALUE IF NOT EXISTS 'etf';
 ALTER TYPE asset_category ADD VALUE IF NOT EXISTS 'bond_fixed_income';
 
--- Enum additions require a commit before they can be used in DML
-COMMIT;
-BEGIN;
+-- COMMIT/BEGIN not reliable in supabase local (wraps all migrations
+-- in one transaction). Use ::text::enum cast to bypass same-transaction
+-- restriction on newly-added enum values.
 
 -- ─── Step 2: Move old subcategory values into tags ────────────
 -- Only move non-empty values that aren't already instrument subtypes
@@ -49,9 +49,9 @@ SET subcategory = CASE
 END;
 
 -- ─── Step 4: Remap category values ───────────────────────────
-UPDATE stock_assets SET category = 'individual_stock' WHERE category = 'stock';
-UPDATE stock_assets SET category = 'etf' WHERE category IN ('etf_ucits', 'etf_non_ucits');
-UPDATE stock_assets SET category = 'bond_fixed_income' WHERE category = 'bond';
+UPDATE stock_assets SET category = 'individual_stock'::text::asset_category WHERE category = 'stock';
+UPDATE stock_assets SET category = 'etf'::text::asset_category WHERE category IN ('etf_ucits', 'etf_non_ucits');
+UPDATE stock_assets SET category = 'bond_fixed_income'::text::asset_category WHERE category = 'bond';
 
 -- ─── Step 5: Clean up tags — remove old category values ──────
 -- Tags should now contain only theme/strategy strings, not category enums

@@ -1,11 +1,7 @@
 -- ================================================================
--- 027: Backfill existing undo entries with 'undone' action
+-- 027: (no-op) Backfill merged into 026
 -- ================================================================
--- Must run in a separate migration from 026 because PostgreSQL
--- cannot use a newly-added enum value in the same transaction.
+-- Originally contained the UPDATE backfill for 'undone' action,
+-- but supabase local runs all migrations in one transaction,
+-- so the separate-file approach didn't help. Merged into 026.
 -- ================================================================
-
-UPDATE activity_log
-  SET action = 'undone'
-  WHERE description LIKE 'Undid %'
-    AND action = 'updated';
