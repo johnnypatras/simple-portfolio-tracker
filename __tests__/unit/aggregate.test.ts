@@ -79,6 +79,7 @@ describe("aggregatePortfolio", () => {
         balance: 5000, currency: "EUR", apy: 0, institution_id: null,
         user_id: "u1", created_at: "", updated_at: "",
         last_was_adjustment: false, last_was_transfer: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }] as any,
       exchangeDeposits: [], brokerDeposits: [],
       primaryCurrency: "EUR", fxRates: { EUR: 1, USD: 1.09 },
