@@ -22,12 +22,10 @@ vi.mock("next/server", () => ({
   },
 }));
 
+import { NextRequest } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
 
 function makeReq(ip = "127.0.0.1") {
-   
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
-  const { NextRequest } = require("next/server") as any;
   return new NextRequest("http://localhost/api/test", {
     headers: { "x-forwarded-for": ip },
   });
