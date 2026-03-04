@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json([], { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -65,7 +65,8 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json(holdings);
-  } catch {
+  } catch (e) {
+    console.error("[holdings] Failed to build palette holdings:", e);
     return NextResponse.json([], { status: 500 });
   }
 }

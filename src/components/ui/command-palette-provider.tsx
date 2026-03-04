@@ -57,7 +57,9 @@ export function CommandPaletteProvider({
     fetch("/api/holdings")
       .then((r) => (r.ok ? r.json() : []))
       .then((data: unknown) => {
-        const items = Array.isArray(data) ? data as HoldingItem[] : [];
+        const items = Array.isArray(data)
+          ? (data as HoldingItem[]).filter((x) => x && typeof x.id === "string" && typeof x.type === "string")
+          : [];
         if (items.length > 0) {
           setHoldingsRaw(items);
           try {

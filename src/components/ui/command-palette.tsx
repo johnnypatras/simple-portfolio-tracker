@@ -334,11 +334,11 @@ export function CommandPalette({
                         >
                           <div className="flex justify-between">
                             <span>Quantity</span>
-                            <span className="tabular-nums">{formatQuantity(h.quantity!)}</span>
+                            <span className="tabular-nums">{formatQuantity(h.quantity ?? 0)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Price</span>
-                            <span className="tabular-nums">{formatPrice(h.pricePerUnit!, primaryCurrency)}</span>
+                            <span className="tabular-nums">{formatPrice(h.pricePerUnit ?? 0, primaryCurrency)}</span>
                           </div>
                           <div className="flex justify-between border-t border-zinc-800/50 pt-0.5">
                             <span className="text-zinc-400">Total</span>
@@ -419,7 +419,6 @@ export function CommandPalette({
                               alt=""
                               width={20}
                               height={20}
-  
                               className="w-5 h-5 rounded-full shrink-0"
                             />
                           ) : (

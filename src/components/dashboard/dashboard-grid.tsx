@@ -529,7 +529,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             </div>
 
             {/* ── FX ──────────────────────────────────── */}
-            <div className="border-t border-zinc-800 pt-3 md:pt-2">
+            <div className="border-t border-zinc-800 py-3 md:py-2">
               {insights.eurUsdRate > 0 && (
                 <div
                   className="flex items-center gap-2 cursor-pointer select-none hover:bg-zinc-800/40 -mx-1 px-1 rounded transition-colors"

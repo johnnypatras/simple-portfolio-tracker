@@ -5,24 +5,15 @@ import type {
   ExchangeDeposit,
   BrokerDeposit,
   HoldingItem,
+  CoinGeckoPriceData,
+  YahooStockPriceData,
 } from "@/lib/types";
-
-interface CryptoPriceEntry {
-  usd?: number;
-  usd_24h_change?: number;
-}
-
-interface StockPriceEntry {
-  price?: number;
-  currency?: string;
-  change24h?: number;
-}
 
 interface BuildPaletteHoldingsInput {
   cryptoAssets: CryptoAssetWithPositions[];
-  cryptoPrices: Record<string, CryptoPriceEntry>;
+  cryptoPrices: CoinGeckoPriceData;
   stockAssets: StockAssetWithPositions[];
-  stockPrices: Record<string, StockPriceEntry>;
+  stockPrices: YahooStockPriceData;
   bankAccounts: BankAccount[];
   exchangeDeposits: ExchangeDeposit[];
   brokerDeposits: BrokerDeposit[];

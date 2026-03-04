@@ -8,8 +8,8 @@ const nextConfig: NextConfig = {
   },
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "assets.coingecko.com" },
-      { protocol: "https", hostname: "coin-images.coingecko.com" },
+      { protocol: "https", hostname: "assets.coingecko.com", pathname: "/coins/images/**" },
+      { protocol: "https", hostname: "coin-images.coingecko.com", pathname: "/coins/images/**" },
     ],
   },
 };
