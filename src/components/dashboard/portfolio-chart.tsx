@@ -504,8 +504,8 @@ export function PortfolioChart({
   return (
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-        <div className="flex items-center gap-3">
-          <h3 className="text-sm font-medium text-zinc-400 min-w-[9rem]">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <h3 className="text-sm font-medium text-zinc-400 sm:min-w-[9rem]">
             {returnMode ? `${VIEW_MODE_LABELS[viewMode]} Return` : CHART_TITLES[viewMode]}
           </h3>
           <div className="flex items-center gap-2">
@@ -514,7 +514,7 @@ export function PortfolioChart({
                 const nextIdx = (VIEW_MODES.indexOf(viewMode) + 1) % VIEW_MODES.length;
                 setViewMode(VIEW_MODES[nextIdx]);
               }}
-              className={`flex items-center justify-center gap-1 min-w-[6rem] px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+              className={`flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
                 viewMode !== "total"
                   ? VIEW_MODE_BUTTON_CLASSES[viewMode]
                   : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
@@ -661,6 +661,16 @@ export function PortfolioChart({
                     {showBenchmark && point.sp500Value != null && (
                       <p className="text-xs text-zinc-500 mt-0.5">
                         S&P 500 TR {fmtVal(point.sp500Value)}
+                        {point.sp500Value !== 0 && (() => {
+                          const diff = returnMode
+                            ? displayValue - point.sp500Value
+                            : ((displayValue - point.sp500Value) / point.sp500Value) * 100;
+                          return (
+                            <span className={`ml-1.5 text-[10px] font-medium ${diff >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                              ({diff >= 0 ? "+" : ""}{diff.toFixed(1)}{returnMode ? "pp" : "%"})
+                            </span>
+                          );
+                        })()}
                       </p>
                     )}
                     {showAllocation && (

@@ -1683,11 +1683,11 @@ function MobileCryptoCard({
                     const posValue = pos.quantity * row.priceInBase;
                     const method = pos.acquisition_method ?? "bought";
                     return (
-                      <div key={pos.id} className="flex justify-between text-xs">
-                        <span className="text-zinc-500">
+                      <div key={pos.id} className="flex gap-2 text-xs min-w-0">
+                        <span className="text-zinc-500 truncate shrink min-w-0">
                           {pos.wallet_name}
                         </span>
-                        <span className="text-zinc-400 tabular-nums">
+                        <span className="text-zinc-400 tabular-nums shrink-0 text-right whitespace-nowrap ml-auto">
                           {formatQuantity(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
                           {pos.apy != null && pos.apy > 0 && (
                             <>
