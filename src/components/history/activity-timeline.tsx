@@ -212,6 +212,65 @@ function groupByDate(logs: ActivityLog[]): Map<string, ActivityLog[]> {
   return groups;
 }
 
+// ─── Snapshot diff for "updated" entries ─────────────────
+
+/** Columns to skip when diffing snapshots — system/meta fields. */
+const SKIP_DIFF_COLUMNS = new Set([
+  "id", "user_id", "created_at", "updated_at", "deleted_at",
+  "last_was_adjustment", "last_was_transfer",
+]);
+
+/** Human-readable labels for known columns. */
+const FIELD_LABELS: Record<string, string> = {
+  apy: "APY",
+  amount: "Amount",
+  balance: "Balance",
+  quantity: "Qty",
+  currency: "Currency",
+  name: "Name",
+  ticker: "Ticker",
+  broker_id: "Broker",
+  wallet_id: "Wallet",
+  institution_id: "Institution",
+  category: "Category",
+  subcategory: "Subcategory",
+  chain: "Chain",
+  isin: "ISIN",
+  stock_asset_id: "Asset",
+  wallet_type: "Type",
+};
+
+/** Format a snapshot value for display. */
+function formatDiffValue(value: unknown): string {
+  if (value == null) return "—";
+  if (typeof value === "number") {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  }
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
+/** Build a human-readable change summary from before/after snapshots. */
+function describeChanges(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown> | null
+): string | null {
+  if (!before || !after) return null;
+  const changes: string[] = [];
+  for (const key of Object.keys(after)) {
+    if (SKIP_DIFF_COLUMNS.has(key)) continue;
+    const bVal = before[key];
+    const aVal = after[key];
+    if (JSON.stringify(bVal) !== JSON.stringify(aVal)) {
+      const label = FIELD_LABELS[key] ?? key.replace(/_/g, " ");
+      changes.push(`${label}: ${formatDiffValue(bVal)} → ${formatDiffValue(aVal)}`);
+    }
+  }
+  if (changes.length === 0) return null;
+  if (changes.length <= 3) return changes.join(", ");
+  return `${changes.slice(0, 3).join(", ")} +${changes.length - 3} more`;
+}
+
 // ─── Transfer grouping ──────────────────────────────────
 
 type TimelineItem =
@@ -640,7 +699,7 @@ export function ActivityTimeline({
                             )}
                           </div>
                           <p className="text-xs text-zinc-500 mt-0.5 truncate">
-                            {log.description}
+                            {(log.action === "updated" && describeChanges(log.before_snapshot, log.after_snapshot)) || log.description}
                           </p>
                         </div>
 
