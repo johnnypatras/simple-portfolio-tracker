@@ -501,7 +501,7 @@ export function getStockColumns(handlers: {
       header: "Currency",
       align: "center",
       width: "w-20",
-      hiddenBelow: "sm",
+      hiddenBelow: "md",
       renderCell: (row) => (
         <span className="text-xs text-zinc-400">
           {row.asset.currency}
@@ -514,7 +514,7 @@ export function getStockColumns(handlers: {
       header: "Type",
       align: "left",
       width: "w-28",
-      hiddenBelow: "md",
+      hiddenBelow: "xl",
       renderCell: (row) => (
         <div>
           <span className={`text-xs font-medium ${TYPE_COLORS[row.asset.category]}`}>
@@ -534,7 +534,7 @@ export function getStockColumns(handlers: {
       header: "Tags",
       align: "left",
       width: "w-32",
-      hiddenBelow: "lg",
+      hiddenBelow: "xl",
       renderCell: (row) => {
         const tags = row.asset.tags;
         if (!tags || tags.length === 0) {
@@ -567,7 +567,7 @@ export function getStockColumns(handlers: {
       header: "Yield",
       align: "right",
       width: "w-24",
-      hiddenBelow: "md",
+      hiddenBelow: "xl",
       renderCell: (row) =>
         row.dividendYield > 0 ? (
           <div>
@@ -621,6 +621,7 @@ export function getStockColumns(handlers: {
       header: "Shares",
       align: "right",
       width: "w-24",
+      hiddenBelow: "xl",
       renderCell: (row) => (
         <span className="text-xs text-zinc-500 tabular-nums">
           {row.totalQty > 0 ? formatQuantity(row.totalQty, 4) : "—"}

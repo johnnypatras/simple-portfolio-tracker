@@ -5,6 +5,7 @@ export const HIDDEN_BELOW: Record<string, string> = {
   sm: "hidden sm:table-cell",
   md: "hidden md:table-cell",
   lg: "hidden lg:table-cell",
+  xl: "hidden xl:table-cell",
 };
 
 /** Default country code for new institutions / bank accounts */

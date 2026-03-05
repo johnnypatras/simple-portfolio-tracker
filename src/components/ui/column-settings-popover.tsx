@@ -61,7 +61,7 @@ export function ColumnSettingsPopover({
       {open && (
         <div
           ref={popoverRef}
-          className="absolute right-0 top-full mt-1 z-50 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl"
+          className="absolute left-0 top-full mt-1 z-50 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800/50">

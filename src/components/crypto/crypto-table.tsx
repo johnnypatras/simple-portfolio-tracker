@@ -817,7 +817,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
 
           {/* ── Desktop table layout ── */}
           <div className="hidden md:block bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-x-auto">
-            <table className="w-full min-w-[600px]">
+            <table className="w-full [&_td:first-child:not([colspan])]:max-w-0 [&_td:first-child:not([colspan])]:overflow-hidden">
               <thead>
                 <tr className="border-b border-zinc-800/50">
                   {orderedColumns.map((col) => {

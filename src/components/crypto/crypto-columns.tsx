@@ -493,7 +493,7 @@ export function getCryptoColumns(handlers: {
       header: "Custody",
       align: "left",
       width: "w-24",
-      hiddenBelow: "md",
+      hiddenBelow: "lg",
       renderCell: (row) => {
         const positions = row.asset.positions;
         if (positions.length === 0)
@@ -524,7 +524,7 @@ export function getCryptoColumns(handlers: {
       header: "Source",
       align: "left",
       width: "w-24",
-      hiddenBelow: "md",
+      hiddenBelow: "xl",
       renderCell: (row) => {
         const method = getDominantMethod(row.asset.positions);
         if (row.asset.positions.length === 0) {
@@ -545,7 +545,7 @@ export function getCryptoColumns(handlers: {
       header: "Chain",
       align: "left",
       width: "w-24",
-      hiddenBelow: "md",
+      hiddenBelow: "xl",
       renderCell: (row) => {
         const chain = row.asset.chain?.trim();
         return chain ? (
@@ -561,7 +561,7 @@ export function getCryptoColumns(handlers: {
       header: "Type",
       align: "left",
       width: "w-28",
-      hiddenBelow: "md",
+      hiddenBelow: "xl",
       renderCell: (row) => {
         const sub = row.asset.subcategory?.trim();
         return sub ? (
@@ -577,7 +577,7 @@ export function getCryptoColumns(handlers: {
       header: "APY",
       align: "right",
       width: "w-20",
-      hiddenBelow: "md",
+      hiddenBelow: "xl",
       renderCell: (row) =>
         row.weightedApy > 0 ? (
           <span className="text-xs text-emerald-400 font-medium tabular-nums">

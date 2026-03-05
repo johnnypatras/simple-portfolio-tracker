@@ -24,7 +24,7 @@ export interface ColumnDef<TRow> {
   /** Text alignment — maps to "text-left", "text-center", or "text-right" */
   align?: "left" | "center" | "right";
   /** Hide this column below a Tailwind breakpoint */
-  hiddenBelow?: "sm" | "md" | "lg";
+  hiddenBelow?: "sm" | "md" | "lg" | "xl";
   /** Fixed Tailwind width class, e.g. "w-28" */
   width?: string;
   /** Optional scope tag — when set, the column only applies to tables
