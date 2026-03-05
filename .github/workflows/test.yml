@@ -46,7 +46,7 @@ jobs:
         run: supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor
 
       - name: Integration tests
-        run: vitest run --project integration
+        run: npx vitest run --project integration
 
       - name: Stop Supabase
         if: always() && steps.supabase-cli.outcome == 'success'
