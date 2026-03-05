@@ -165,7 +165,7 @@ export function AccountsView({
 
   // Transfer
   const router = useRouter();
-  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferInstId, setTransferInstId] = useState<string | null>(null);
 
   const { isReadOnly } = useSharedView();
 
@@ -657,7 +657,7 @@ export function AccountsView({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setTransferOpen(true);
+                        setTransferInstId(institution.id);
                       }}
                       className={`p-1.5 rounded-lg text-zinc-600 hover:text-blue-400 hover:bg-zinc-800 transition-colors ${
                         isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
@@ -1215,10 +1215,11 @@ export function AccountsView({
 
           {/* Transfer dialog */}
           <TransferDialog
-            open={transferOpen}
-            onClose={() => setTransferOpen(false)}
-            onSuccess={() => { router.refresh(); setTransferOpen(false); }}
+            open={!!transferInstId}
+            onClose={() => setTransferInstId(null)}
+            onSuccess={() => { router.refresh(); setTransferInstId(null); }}
             mode={"sell" as TransferMode}
+            initialInstitutionId={transferInstId ?? undefined}
           />
 
           {/* Delete confirmation */}

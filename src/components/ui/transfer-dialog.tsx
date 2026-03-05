@@ -83,6 +83,8 @@ interface TransferDialogProps {
   mode: TransferMode;
   initialSource?: InitialSide;
   initialDestination?: InitialSide;
+  /** When set, the generic source picker filters to this institution's assets */
+  initialInstitutionId?: string;
 }
 
 // ─── Component ──────────────────────────────────────────────
@@ -94,6 +96,7 @@ export function TransferDialog({
   mode,
   initialSource,
   initialDestination,
+  initialInstitutionId,
 }: TransferDialogProps) {
   // ── Data state ──
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -115,6 +118,10 @@ export function TransferDialog({
   const [effectiveDate, setEffectiveDate] = useState("");
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Source picker state (generic transfer — no initialSource) ──
+  const [srcLocationId, setSrcLocationId] = useState("");
+  const [srcAmount, setSrcAmount] = useState("");
 
   // ── Buy mode state ──
   const [buyAssetType, setBuyAssetType] = useState<"stock" | "crypto">("stock");
@@ -150,6 +157,22 @@ export function TransferDialog({
   const prefilledLabel = prefilled
     ? `${prefilled.assetTicker} on ${prefilled.locationName}`
     : "";
+  const needsPicker = mode === "sell" && !prefilled;
+
+  // ── Institution filter (for accounts page transfer button) ──
+  const instWalletIds = useMemo(() => {
+    if (!initialInstitutionId) return null;
+    if (initialInstitutionId.startsWith("__wallet__")) {
+      return new Set([initialInstitutionId.replace("__wallet__", "")]);
+    }
+    return new Set(wallets.filter((w) => w.institution_id === initialInstitutionId).map((w) => w.id));
+  }, [initialInstitutionId, wallets]);
+
+  const instBrokerIds = useMemo(() => {
+    if (!initialInstitutionId) return null;
+    if (initialInstitutionId.startsWith("__wallet__")) return new Set<string>();
+    return new Set(brokers.filter((b) => b.institution_id === initialInstitutionId).map((b) => b.id));
+  }, [initialInstitutionId, brokers]);
 
   // ── Load data on mount ──
   useEffect(() => {
@@ -212,7 +235,9 @@ export function TransferDialog({
     setCashBalance("");
     setCashIsAdjustment(true);
     setExistingCashAmount(null);
-     
+    // Source picker reset
+    setSrcLocationId("");
+    setSrcAmount("");
   }, [open, prefilled?.assetId, prefilled?.locationId]);
 
   // ── Title ──
@@ -225,12 +250,12 @@ export function TransferDialog({
       }
       return "Record Buy";
     }
-    const name = prefilled?.assetTicker ?? "Asset";
+    if (!prefilled) return "Transfer";
     switch (mode) {
-      case "sell": return `Sell ${name}`;
-      case "move": return `Move ${name}`;
+      case "sell": return `Sell ${prefilled.assetTicker}`;
+      case "move": return `Move ${prefilled.assetTicker}`;
     }
-  }, [mode, prefilled?.assetTicker, buySelectedAsset]);
+  }, [mode, prefilled, buySelectedAsset]);
 
   // ── Buy mode: debounced asset search ──
   useEffect(() => {
@@ -340,8 +365,101 @@ export function TransferDialog({
       .map((w) => ({ id: w.id, name: w.name }));
   }, [mode, buyAssetType, brokers, wallets]);
 
+  // ── Source location options (generic picker — flat grouped list) ──
+  type SrcOption = { id: string; name: string; available: number; unit: string; group: string };
+  const srcGroupedOptions = useMemo(() => {
+    if (!needsPicker) return new Map<string, SrcOption[]>();
+    const groups = new Map<string, SrcOption[]>();
+    const push = (group: string, opt: Omit<SrcOption, "group">) => {
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group)!.push({ ...opt, group });
+    };
+
+    // Crypto positions
+    for (const ca of cryptoAssets) {
+      for (const p of ca.positions) {
+        if (p.quantity <= 0) continue;
+        if (instWalletIds && !instWalletIds.has(p.wallet_id)) continue;
+        push("Crypto", {
+          id: `crypto|${ca.id}|${p.wallet_id}`,
+          name: `${ca.ticker} on ${p.wallet_name}`,
+          available: p.quantity,
+          unit: ca.ticker,
+        });
+      }
+    }
+
+    // Stock positions
+    for (const sa of stockAssets) {
+      for (const p of sa.positions) {
+        if (p.quantity <= 0) continue;
+        if (instBrokerIds && !instBrokerIds.has(p.broker_id)) continue;
+        push("Stock / ETF", {
+          id: `stock|${sa.id}|${p.broker_id}`,
+          name: `${sa.ticker} on ${p.broker_name}`,
+          available: p.quantity,
+          unit: sa.ticker,
+        });
+      }
+    }
+
+    // Bank accounts
+    for (const ba of bankAccounts) {
+      if (ba.balance <= 0) continue;
+      if (initialInstitutionId && ba.institution_id !== initialInstitutionId) continue;
+      push("Cash", {
+        id: `bank|${ba.id}`,
+        name: `${ba.name} (${ba.currency})`,
+        available: ba.balance,
+        unit: ba.currency,
+      });
+    }
+
+    // Exchange deposits
+    for (const ed of exchangeDeposits) {
+      if (ed.amount <= 0) continue;
+      if (instWalletIds && !instWalletIds.has(ed.wallet_id)) continue;
+      push("Cash", {
+        id: `exchange|${ed.wallet_id}|${ed.currency}`,
+        name: `${ed.wallet_name} - ${ed.currency}`,
+        available: ed.amount,
+        unit: ed.currency,
+      });
+    }
+
+    // Broker deposits
+    for (const bd of brokerDeposits) {
+      if (bd.amount <= 0) continue;
+      if (instBrokerIds && !instBrokerIds.has(bd.broker_id)) continue;
+      push("Cash", {
+        id: `broker|${bd.broker_id}|${bd.currency}`,
+        name: `${bd.broker_name} - ${bd.currency}`,
+        available: bd.amount,
+        unit: bd.currency,
+      });
+    }
+
+    return groups;
+  }, [needsPicker, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits, instWalletIds, instBrokerIds, initialInstitutionId]);
+
+  const srcSelected = useMemo(() => {
+    for (const opts of srcGroupedOptions.values()) {
+      const found = opts.find((o) => o.id === srcLocationId);
+      if (found) return found;
+    }
+    return undefined;
+  }, [srcGroupedOptions, srcLocationId]);
+
   // ── Auto-calculate destination amount ──
+  const srcIsCash = srcLocationId.startsWith("bank|") || srcLocationId.startsWith("exchange|") || srcLocationId.startsWith("broker|");
   const autoCalcValue = useMemo(() => {
+    // Generic picker: cash→cash mirrors amount directly
+    if (needsPicker && srcIsCash) {
+      const amt = parseFloat(srcAmount);
+      if (!isNaN(amt) && amt > 0 && (destType === "broker_deposit" || destType === "exchange_deposit" || destType === "bank_account")) {
+        return amt;
+      }
+    }
     if (!prefilled?.currentPrice) return null;
     const qty = parseFloat(sourceQty);
     if (isNaN(qty) || qty <= 0) return null;
@@ -361,7 +479,7 @@ export function TransferDialog({
     }
 
     return null;
-  }, [sourceQty, prefilled?.currentPrice, prefilled?.currentPriceUsd, prefilled?.currentPriceEur, mode, destType, destCurrency]);
+  }, [sourceQty, prefilled?.currentPrice, prefilled?.currentPriceUsd, prefilled?.currentPriceEur, mode, destType, destCurrency, needsPicker, srcIsCash, srcAmount]);
 
   // Update destination amount when auto-calc changes (only if not manually edited)
   useEffect(() => {
@@ -384,6 +502,43 @@ export function TransferDialog({
 
   // ── Build TransferSide for source ──
   const buildSource = useCallback((): TransferSide | null => {
+    // ── Generic picker path (type prefix encoded in srcLocationId) ──
+    if (needsPicker) {
+      if (!srcLocationId) return null;
+      const amt = parseFloat(srcAmount);
+      if (isNaN(amt) || amt <= 0) return null;
+      const parts = srcLocationId.split("|");
+      const prefix = parts[0];
+      switch (prefix) {
+        case "crypto": {
+          const [, assetId, walletId] = parts;
+          if (!assetId || !walletId) return null;
+          return { type: "crypto_position", assetId, walletId, quantity: amt };
+        }
+        case "stock": {
+          const [, assetId, brokerId] = parts;
+          if (!assetId || !brokerId) return null;
+          return { type: "stock_position", assetId, brokerId, quantity: amt };
+        }
+        case "bank": {
+          const [, accountId] = parts;
+          if (!accountId) return null;
+          return { type: "bank_account", accountId, amount: amt };
+        }
+        case "exchange": {
+          const [, walletId, currency] = parts;
+          if (!walletId || !currency) return null;
+          return { type: "exchange_deposit", walletId, currency, amount: amt };
+        }
+        case "broker": {
+          const [, brokerId, currency] = parts;
+          if (!brokerId || !currency) return null;
+          return { type: "broker_deposit", brokerId, currency, amount: amt };
+        }
+        default:
+          return null;
+      }
+    }
     if (!prefilled) return null;
     const qty = parseFloat(sourceQty);
     if (isNaN(qty) || qty <= 0) return null;
@@ -402,7 +557,7 @@ export function TransferDialog({
       brokerId: prefilled.locationId,
       quantity: qty,
     };
-  }, [prefilled, sourceQty]);
+  }, [prefilled, sourceQty, needsPicker, srcLocationId, srcAmount]);
 
   // ── Build TransferSide for destination ──
   const buildDest = useCallback((): TransferSide | null => {
@@ -776,6 +931,62 @@ export function TransferDialog({
                       : ""}
                   </div>
                 </div>
+              </>
+            )}
+            {needsPicker && (
+              <>
+                {/* Single grouped source dropdown */}
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1">
+                    Position / Account
+                  </label>
+                  <select
+                    value={srcLocationId}
+                    onChange={(e) => {
+                      setSrcLocationId(e.target.value);
+                      setSrcAmount("");
+                    }}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  >
+                    <option value="">Select source...</option>
+                    {Array.from(srcGroupedOptions.entries()).map(([group, opts]) => (
+                      <optgroup key={group} label={group}>
+                        {opts.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.name} ({opt.available.toLocaleString(undefined, { maximumFractionDigits: 6 })} {opt.unit})
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {srcGroupedOptions.size === 0 && (
+                    <p className="text-xs text-zinc-600 mt-1">No positions with balance found</p>
+                  )}
+                </div>
+
+                {/* Amount / Quantity input — only shown after selection */}
+                {srcSelected && (
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">
+                      {srcIsCash ? "Amount" : "Quantity"}
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      max={srcSelected.available}
+                      value={srcAmount}
+                      onChange={(e) => {
+                        setSrcAmount(e.target.value);
+                        setDestAmountManual(false);
+                      }}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    />
+                    <div className="text-xs text-zinc-600 mt-1">
+                      Available: {srcSelected.available.toLocaleString(undefined, { maximumFractionDigits: 6 })} {srcSelected.unit}
+                    </div>
+                  </div>
+                )}
               </>
             )}
             {mode === "buy" && (

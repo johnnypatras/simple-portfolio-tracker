@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback } from "react";
 import { toast } from "sonner";
 import {
   Clock,
@@ -9,6 +9,8 @@ import {
   Pencil,
   Trash2,
   Download,
+  ChevronDown,
+  ChevronUp,
   ChevronLeft,
   ChevronRight,
   Bitcoin,
@@ -210,6 +212,127 @@ function groupByDate(logs: ActivityLog[]): Map<string, ActivityLog[]> {
   return groups;
 }
 
+// ─── Transfer grouping ──────────────────────────────────
+
+type TimelineItem =
+  | { type: "single"; entry: ActivityLog }
+  | { type: "transfer"; groupId: string; entries: ActivityLog[] };
+
+/** Merge entries sharing a transfer_group_id into grouped items. */
+function groupTransfers(
+  dateGroups: Map<string, ActivityLog[]>
+): Map<string, TimelineItem[]> {
+  const result = new Map<string, TimelineItem[]>();
+
+  for (const [dateLabel, entries] of dateGroups) {
+    const items: TimelineItem[] = [];
+    const transferMap = new Map<string, ActivityLog[]>();
+    const placed = new Set<string>();
+
+    for (const entry of entries) {
+      if (entry.transfer_group_id) {
+        const group = transferMap.get(entry.transfer_group_id);
+        if (group) group.push(entry);
+        else transferMap.set(entry.transfer_group_id, [entry]);
+      }
+    }
+
+    for (const entry of entries) {
+      if (placed.has(entry.id)) continue;
+      placed.add(entry.id);
+
+      if (entry.transfer_group_id) {
+        const group = transferMap.get(entry.transfer_group_id)!;
+        if (group.length >= 2) {
+          for (const e of group) placed.add(e.id);
+          items.push({ type: "transfer", groupId: entry.transfer_group_id, entries: group });
+        } else {
+          items.push({ type: "single", entry });
+        }
+      } else {
+        items.push({ type: "single", entry });
+      }
+    }
+
+    result.set(dateLabel, items);
+  }
+
+  return result;
+}
+
+/** Identify source (negative delta) and destination (positive delta) legs. */
+function identifyTransferLegs(entries: ActivityLog[]): {
+  source: ActivityLog;
+  dest: ActivityLog;
+} {
+  if (entries.length < 2) return { source: entries[0], dest: entries[0] };
+
+  const d0 = entries[0].delta_eur ?? entries[0].delta_usd ?? 0;
+  const d1 = entries[1].delta_eur ?? entries[1].delta_usd ?? 0;
+  return d0 <= d1
+    ? { source: entries[0], dest: entries[1] }
+    : { source: entries[1], dest: entries[0] };
+}
+
+/** Extract institution/location name from an entity_name. */
+function extractLocation(entityName: string): string | null {
+  // "Payroll (Alpha Bank)" → "Alpha Bank"
+  const parenMatch = entityName.match(/\(([^)]+)\)\s*$/);
+  if (parenMatch) return parenMatch[1];
+  // "6984 EUR on Trading212" → "Trading212"
+  const onMatch = entityName.match(/ on (.+)$/);
+  if (onMatch) return onMatch[1];
+  return null;
+}
+
+/** Format absolute delta as currency string. */
+function formatTransferAmount(log: ActivityLog): string | null {
+  const delta = log.delta_eur ?? log.delta_usd;
+  if (delta == null || delta === 0) return null;
+  const abs = Math.abs(delta);
+  const cur = log.delta_eur != null ? "EUR" : "USD";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: cur,
+    maximumFractionDigits: abs >= 100 ? 0 : 2,
+  }).format(abs);
+}
+
+/** Extract quantity change from before/after snapshots. */
+function extractQtyChange(log: ActivityLog): number | null {
+  const before = log.before_snapshot?.quantity;
+  const after = log.after_snapshot?.quantity;
+  if (typeof before === "number" && typeof after === "number") {
+    return Math.abs(before - after);
+  }
+  return null;
+}
+
+/** Build a human-readable transfer summary line. */
+function buildTransferSummary(source: ActivityLog, dest: ActivityLog): string {
+  const srcLoc = extractLocation(source.entity_name);
+  const destLoc = extractLocation(dest.entity_name);
+
+  // Both locations extractable (cash transfers) → "€6984 transferred from Alpha Bank → Trading212"
+  if (srcLoc && destLoc) {
+    const amount = formatTransferAmount(source);
+    if (amount) return `${amount} transferred from ${srcLoc} → ${destLoc}`;
+    return `Transferred from ${srcLoc} → ${destLoc}`;
+  }
+
+  // Same entity (position move between brokers/wallets) → "5 VWCE transferred"
+  if (source.entity_name === dest.entity_name) {
+    const qty = extractQtyChange(source);
+    if (qty != null) return `${qty} ${source.entity_name} transferred`;
+    return `${source.entity_name} transferred`;
+  }
+
+  // Mixed types, partial location info
+  const amount = formatTransferAmount(source);
+  if (amount) return `${amount} from ${source.entity_name} → ${dest.entity_name}`;
+  return `${source.entity_name} → ${dest.entity_name}`;
+}
+
 // ─── Main component ─────────────────────────────────────
 
 export function ActivityTimeline({
@@ -224,6 +347,7 @@ export function ActivityTimeline({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const { isReadOnly } = useSharedView();
+  const [expandedTransfers, setExpandedTransfers] = useState<Set<string>>(new Set());
 
   const totalPages = Math.ceil(total / limit);
 
@@ -289,7 +413,16 @@ export function ActivityTimeline({
     }
   }
 
-  const grouped = groupByDate(logs);
+  function toggleTransferExpand(groupId: string) {
+    setExpandedTransfers((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }
+
+  const grouped = groupTransfers(groupByDate(logs));
 
   return (
     <div className={isPending ? "opacity-60 transition-opacity" : ""}>
@@ -351,7 +484,7 @@ export function ActivityTimeline({
         <>
           {/* Timeline grouped by date */}
           <div className="space-y-6">
-            {Array.from(grouped.entries()).map(([dateLabel, entries]) => (
+            {Array.from(grouped.entries()).map(([dateLabel, items]) => (
               <div key={dateLabel}>
                 {/* Date header */}
                 <div className="flex items-center gap-3 mb-3">
@@ -363,7 +496,102 @@ export function ActivityTimeline({
 
                 {/* Entries */}
                 <div className="space-y-1">
-                  {entries.map((log) => {
+                  {items.map((item) => {
+                    if (item.type === "transfer") {
+                      const { source, dest } = identifyTransferLegs(item.entries);
+                      const isExpanded = expandedTransfers.has(item.groupId);
+                      const isUndone = item.entries.some((e) => e.undone_at);
+                      const entityTypes = [...new Set(item.entries.map((e) => e.entity_type))];
+                      const summaryText = buildTransferSummary(source, dest);
+
+                      return (
+                        <div
+                          key={`xfer-${item.groupId}`}
+                          className={`border-l-2 border-teal-500/30 rounded-r-lg ${isUndone ? "opacity-50" : ""}`}
+                        >
+                          {/* Transfer header */}
+                          <div className="flex items-start gap-3 px-3 py-2.5 rounded-r-lg hover:bg-zinc-900/50 transition-colors group">
+                            <div className="shrink-0 p-1.5 rounded-lg bg-teal-500/15 text-teal-400 mt-0.5">
+                              <ArrowLeftRight className="w-3.5 h-3.5" />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium text-zinc-200">Transfer</span>
+                                {entityTypes.map((type) => {
+                                  const Icon = getEntityIcon(type);
+                                  return (
+                                    <span
+                                      key={type}
+                                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${getEntityBadgeColor(type)}`}
+                                    >
+                                      <Icon className="w-2.5 h-2.5" />
+                                      {ENTITY_LABELS[type] ?? type}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                                {summaryText}
+                              </p>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-2 mt-0.5">
+                              <button
+                                onClick={() => toggleTransferExpand(item.groupId)}
+                                className="p-1 rounded text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-all"
+                                title={isExpanded ? "Collapse" : "Show details"}
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              {isUndone ? (
+                                <span className="text-[10px] font-medium text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded">
+                                  Undone
+                                </span>
+                              ) : !isReadOnly ? (
+                                <ConfirmButton
+                                  onConfirm={() => handleUndo(source.id)}
+                                  confirmLabel="Undo?"
+                                  confirmLabelClassName="text-amber-400"
+                                  className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
+                                  title="Undo this transfer"
+                                >
+                                  <Undo2 className="w-3.5 h-3.5" />
+                                </ConfirmButton>
+                              ) : null}
+                              <span className="text-xs text-zinc-600">
+                                {getTimeLabel(source.created_at)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Expanded legs */}
+                          {isExpanded && (
+                            <div className="ml-[2.75rem] space-y-0.5 pb-2">
+                              {item.entries.map((leg) => {
+                                const LegIcon = getActionIcon(leg.action);
+                                const legColor = getActionColor(leg.action);
+                                return (
+                                  <div key={leg.id} className="flex items-center gap-2 px-2 py-1 rounded text-xs">
+                                    <div className={`shrink-0 p-1 rounded ${legColor}`}>
+                                      <LegIcon className="w-2.5 h-2.5" />
+                                    </div>
+                                    <span className="text-zinc-400 shrink-0">{leg.entity_name}</span>
+                                    <span className="text-zinc-600 truncate">{leg.description}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    const log = item.entry;
                     const EntityIcon = getEntityIcon(log.entity_type);
                     const ActionIcon = getActionIcon(log.action);
                     const actionColor = getActionColor(log.action);
