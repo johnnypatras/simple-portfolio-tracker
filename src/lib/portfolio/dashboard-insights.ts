@@ -6,7 +6,7 @@
  * aggregate function focused on totals and the insights on display.
  */
 
-import { convertToBase } from "@/lib/prices/fx";
+import { convertToBase, fxChangeForCurrency as fxChangeFor } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { PortfolioSummary } from "./aggregate";
 import type {
@@ -201,13 +201,8 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
 
-  // FX impact helper — mirrors aggregate.ts logic
-  function fxChangeForCurrency(assetCurrency: string): number {
-    if (assetCurrency === primaryCurrency) return 0;
-    if (primaryCurrency === "EUR" && assetCurrency === "USD") return -eurUsdChange24h;
-    if (primaryCurrency === "USD" && assetCurrency === "EUR") return eurUsdChange24h;
-    return 0;
-  }
+  // FX impact helper — see fxChangeForCurrency() in fx.ts for full docs
+  const fxChangeForCurrency = (c: string) => fxChangeFor(c, primaryCurrency, eurUsdChange24h);
 
   // ── BTC & ETH market prices (USD only) ───────────────
   const btcData = cryptoPrices["bitcoin"];

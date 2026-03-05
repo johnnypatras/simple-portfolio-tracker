@@ -1,11 +1,6 @@
 import { notFound } from "next/navigation";
-import { validateShareToken, type ShareScope } from "@/lib/actions/shares";
-
-const SCOPE_RANK: Record<ShareScope, number> = {
-  overview: 0,
-  full: 1,
-  full_with_history: 2,
-};
+import { validateShareToken } from "@/lib/actions/shares";
+import { SCOPE_RANK, type ShareScope } from "@/lib/share-utils";
 
 /**
  * Validate token and enforce minimum scope for a sub-page.

@@ -1,7 +1,8 @@
+import Image from "next/image";
 import { Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ColumnDef } from "@/lib/column-config";
 import type { CryptoAssetWithPositions, CoinGeckoPriceData } from "@/lib/types";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatQuantity } from "@/lib/format";
 
 // ── Computed row type (asset + price data) ───────────────────
 
@@ -37,17 +38,6 @@ export const ACQUISITION_COLORS: Record<string, string> = {
 };
 
 // ── Rotating palette for dynamic groups (wallets, brokers) ──
-
-export const GROUP_PALETTE = [
-  "text-blue-400",
-  "text-purple-400",
-  "text-amber-400",
-  "text-emerald-400",
-  "text-sky-400",
-  "text-rose-400",
-  "text-teal-400",
-  "text-orange-400",
-];
 
 // ── Position-level group types for group-by-source mode ─────
 
@@ -360,21 +350,6 @@ export function buildCryptoCustodyPositionGroups(rows: CryptoRow[]): CryptoCusto
 
 // ── Formatters ───────────────────────────────────────────────
 
-export function formatNumber(n: number, decimals = 2): string {
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(n);
-}
-
-/** Format quantities (holdings) — strips trailing zeros while keeping up to maxDecimals precision */
-export function formatQuantity(n: number, maxDecimals: number): string {
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: maxDecimals,
-  }).format(n);
-}
-
 // ── Build rows from assets + prices ──────────────────────────
 
 export function buildCryptoRows(
@@ -497,8 +472,7 @@ export function getCryptoColumns(handlers: {
             <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
           )}
           {row.asset.image_url ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={row.asset.image_url} alt="" className="w-5 h-5 rounded-full bg-zinc-800 shrink-0" />
+            <Image src={row.asset.image_url} alt="" width={20} height={20} className="rounded-full bg-zinc-800 shrink-0" />
           ) : (
             <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0" />
           )}

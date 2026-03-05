@@ -36,10 +36,9 @@ describe("migration bootstrap", () => {
     const { error } = await admin.rpc("undo_transfer_group", {
       p_group_id: "00000000-0000-0000-0000-000000000000",
     });
-    // Should not get "function does not exist" — any other error is expected
-    // (e.g. "No active transfer legs found" is fine)
-    if (error) {
-      expect(error.message).not.toContain("function");
-    }
+    // A nil UUID will always error, but the error should NOT be "function not found".
+    // Any domain error (e.g. "No active transfer legs found") confirms the RPC exists.
+    expect(error).not.toBeNull();
+    expect(error!.message).not.toContain("Could not find");
   });
 });

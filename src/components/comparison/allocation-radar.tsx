@@ -51,10 +51,10 @@ export function AllocationRadar({
         <Radar
           name={viewerName}
           dataKey="viewer"
-          stroke="#3b82f6"
-          fill="#3b82f6"
+          stroke="#06b6d4"
+          fill="#06b6d4"
           fillOpacity={0.25}
-          dot={{ r: 3, fill: "#3b82f6" }}
+          dot={{ r: 3, fill: "#06b6d4" }}
         />
         <Radar
           name={ownerName}

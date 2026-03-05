@@ -25,7 +25,6 @@ interface PortfolioChartProps {
   sp500History?: { date: string; close: number }[];
   cashFlows?: CashFlowEvent[];
   adjustmentDeltas?: AdjustmentDelta[];
-  liveSlices?: { crypto: number; stocks: number; cash: number };
   liveSlicesUsd?: { crypto: number; stocks: number; cash: number };
   /** When true, chart defaults to cumulative % return mode */
   defaultReturnMode?: boolean;

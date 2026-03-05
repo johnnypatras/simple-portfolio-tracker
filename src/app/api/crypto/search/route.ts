@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { searchCoins, getPrices } from "@/lib/prices/coingecko";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -7,6 +8,10 @@ const limiter = rateLimit({ windowMs: 60_000, max: 30 });
 export async function GET(req: NextRequest) {
   const limited = limiter(req);
   if (limited) return limited;
+
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const query = req.nextUrl.searchParams.get("q") ?? "";
 

@@ -47,3 +47,31 @@ export function changeColorClass(value: number): string {
   if (value < 0) return "text-red-400";
   return "text-zinc-400";
 }
+
+/** Plain number with fixed decimal places */
+export function formatNumber(n: number, decimals = 2): string {
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(n);
+}
+
+/** Format quantities (shares/holdings) — strips trailing zeros up to maxDecimals */
+export function formatQuantity(n: number, maxDecimals: number): string {
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: maxDecimals,
+  }).format(n);
+}
+
+/** Color palette for group-by-source rows */
+export const GROUP_PALETTE = [
+  "text-blue-400",
+  "text-purple-400",
+  "text-amber-400",
+  "text-emerald-400",
+  "text-sky-400",
+  "text-rose-400",
+  "text-teal-400",
+  "text-orange-400",
+];

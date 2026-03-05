@@ -25,7 +25,7 @@ type AssetClass = keyof Allocation;
 
 const CLASS_META: { key: AssetClass; label: string; colorDot: string; accentHex: string }[] = [
   { key: "crypto", label: "Crypto", colorDot: "bg-orange-500", accentHex: "#f97316" },
-  { key: "stocks", label: "Equities", colorDot: "bg-blue-500", accentHex: "#3b82f6" },
+  { key: "stocks", label: "Equities", colorDot: "bg-cyan-500", accentHex: "#06b6d4" },
   { key: "cash", label: "Cash", colorDot: "bg-emerald-500", accentHex: "#10b981" },
 ];
 

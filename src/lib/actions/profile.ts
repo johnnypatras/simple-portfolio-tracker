@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Profile, BaseCurrency } from "@/lib/types";
 
 /** Fetch the current user's profile. */
@@ -95,8 +96,8 @@ export async function clearAllData(): Promise<void> {
 
 /**
  * Delete the current user's account entirely.
- * Uses the Supabase admin auth.admin.deleteUser via an RPC function,
- * or signs out and deletes profile (cascade handles the rest).
+ * Uses service-role admin client to delete from auth.users,
+ * which cascades to profiles and all portfolio data via ON DELETE CASCADE.
  */
 export async function deleteAccount(): Promise<void> {
   const supabase = await createServerSupabaseClient();
@@ -105,16 +106,16 @@ export async function deleteAccount(): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // Delete profile — CASCADE will remove all user data
-  const { error } = await supabase
-    .from("profiles")
-    .delete()
-    .eq("id", user.id);
+  // Delete from auth.users via admin API — cascades to all data tables.
+  // This must happen BEFORE signOut: if deleteUser fails, the user
+  // can still log in and retry. Reversing the order would lock them out.
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.deleteUser(user.id);
+  if (error) throw new Error(`Account deletion failed: ${error.message}`);
 
-  if (error) throw new Error(error.message);
-
-  // Sign out the user
-  await supabase.auth.signOut();
+  // Clean up client session. Non-critical — the user is already deleted,
+  // so any future getUser() call would fail regardless.
+  await supabase.auth.signOut().catch(() => {});
 }
 
 /**

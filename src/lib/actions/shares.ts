@@ -5,10 +5,12 @@ import { revalidatePath } from "next/cache";
 import { nanoid } from "nanoid";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { ShareScope } from "@/lib/share-utils";
 
 // ─── Types ──────────────────────────────────────────────
 
-export type ShareScope = "overview" | "full" | "full_with_history";
+// Canonical definition lives in share-utils.ts (pure, no "use server")
+export type { ShareScope } from "@/lib/share-utils";
 
 export interface ShareLink {
   id: string;

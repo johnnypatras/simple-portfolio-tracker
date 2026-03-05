@@ -118,3 +118,21 @@ export function convertToBase(
   // rates[X] = X per 1 base. So base = amount / rates[X]
   return amount / rate;
 }
+
+/**
+ * Estimate 24h FX impact on an asset priced in `assetCurrency`
+ * when the user's primary currency is `primaryCurrency`.
+ *
+ * Only EUR↔USD is supported (we get EUR/USD 24h change from Yahoo).
+ * Other pairs return 0 (no 24h FX data available).
+ */
+export function fxChangeForCurrency(
+  assetCurrency: string,
+  primaryCurrency: string,
+  eurUsdChange24h: number,
+): number {
+  if (assetCurrency === primaryCurrency) return 0;
+  if (primaryCurrency === "EUR" && assetCurrency === "USD") return -eurUsdChange24h;
+  if (primaryCurrency === "USD" && assetCurrency === "EUR") return eurUsdChange24h;
+  return 0;
+}

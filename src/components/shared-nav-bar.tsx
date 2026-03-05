@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart2 } from "lucide-react";
-import type { ShareScope } from "@/lib/actions/shares";
+import { SCOPE_RANK, type ShareScope } from "@/lib/share-utils";
 
 interface SharedNavBarProps {
   token: string;
@@ -22,12 +22,6 @@ const allTabs = [
   { id: "history", label: "History", href: "/history", minScope: "full_with_history" as const },
   { id: "diary", label: "Diary", href: "/diary", minScope: "full_with_history" as const },
 ];
-
-const SCOPE_RANK: Record<ShareScope, number> = {
-  overview: 0,
-  full: 1,
-  full_with_history: 2,
-};
 
 export function SharedNavBar({ token, scope, ownerName, isAuthenticated, onCompareClick }: SharedNavBarProps) {
   const pathname = usePathname();

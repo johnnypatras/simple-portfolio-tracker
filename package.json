@@ -8,8 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run --project unit",
-    "test:integration": "vitest run --project integration",
-    "test:all": "vitest run",
+    "test:integration": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor && vitest run --project integration && supabase stop",
+    "test:all": "npm test && npm run test:integration",
     "test:watch": "vitest --project unit"
   },
   "dependencies": {

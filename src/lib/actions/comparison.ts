@@ -17,7 +17,7 @@ import type { PortfolioSnapshot } from "@/lib/types";
 
 // ─── Types ──────────────────────────────────────────────
 
-export interface HoldingItem {
+export interface ComparisonHoldingItem {
   key: string;             // dedup key: coingecko_id | ticker | "cash:{currency}"
   name: string;            // "Bitcoin", "VWCE", "EUR Cash"
   ticker: string;          // "BTC", "VWCE", "EUR"
@@ -31,7 +31,7 @@ export interface ComparisonData {
   viewer: { name: string; summary: PortfolioSummary };
   owner: { name: string; summary: PortfolioSummary };
   normalizedCurrency: string;
-  holdings: HoldingItem[];
+  holdings: ComparisonHoldingItem[];
   viewerSnapshots: PortfolioSnapshot[];
   ownerSnapshots: PortfolioSnapshot[];
 }
@@ -172,11 +172,11 @@ export async function getComparisonData(
   // 7. Compute per-asset holdings for overlap visualization.
   //    Only names/tickers/values leave the server — no quantities or positions.
   const currencyKey = viewerCurrency.toLowerCase() as "usd" | "eur";
-  const holdingsMap = new Map<string, HoldingItem>();
+  const holdingsMap = new Map<string, ComparisonHoldingItem>();
 
   function upsertHolding(
     key: string,
-    init: Omit<HoldingItem, "viewerValue" | "ownerValue">,
+    init: Omit<ComparisonHoldingItem, "viewerValue" | "ownerValue">,
     side: "viewer" | "owner",
     value: number
   ) {

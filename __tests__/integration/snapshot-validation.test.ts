@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 describe("snapshot validation", () => {
   let client: SupabaseClient;
   let userId: string;
-  let cleanup: () => Promise<void>;
+  let cleanup: () => void;
 
   beforeAll(async () => {
     const u = await createTestUser("snapshot@test.local");
@@ -14,8 +14,8 @@ describe("snapshot validation", () => {
     cleanup = u.cleanup;
   });
 
-  afterAll(async () => {
-    await cleanup();
+  afterAll(() => {
+    cleanup();
   });
 
   it("saves snapshot with correct component sum", async () => {

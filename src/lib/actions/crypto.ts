@@ -10,7 +10,7 @@ import type {
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
-import { validateQuantity } from "@/lib/validation";
+import { validateQuantity, validateUUID } from "@/lib/validation";
 
 /** Get all crypto assets with their positions and wallet names */
 export async function getCryptoAssetsWithPositions(): Promise<
@@ -183,6 +183,7 @@ export async function updateCryptoAsset(
 
 /** Soft-delete a crypto asset — individually deletes child positions first for activity logging */
 export async function deleteCryptoAsset(id: string, opts?: { isAdjustment?: boolean }) {
+  validateUUID(id, "Crypto asset ID");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -372,6 +373,7 @@ export async function deletePosition(positionId: string, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  validateUUID(positionId, "Crypto position ID");
   const supabase = await createServerSupabaseClient();
 
   // Capture full snapshot before soft-delete

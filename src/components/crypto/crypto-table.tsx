@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Plus, Bitcoin, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -32,10 +33,8 @@ import {
   buildCryptoSubcategoryGroups,
   buildCryptoCustodyPositionGroups,
   sortCryptoRows,
-  formatQuantity,
   ACQUISITION_COLORS,
   ACQUISITION_LABELS,
-  GROUP_PALETTE,
   CRYPTO_SORT_OPTIONS,
   COLUMN_TO_SORT,
   DEFAULT_SORT_KEY,
@@ -44,7 +43,7 @@ import {
   type CryptoSortKey,
   type SortDirection,
 } from "./crypto-columns";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatQuantity, GROUP_PALETTE } from "@/lib/format";
 import { useSharedView } from "@/components/shared-view-context";
 
 // ── Group mode ──────────────────────────────────────────────
@@ -1601,8 +1600,7 @@ function MobileCryptoCard({
       >
         <div className="flex items-center gap-2.5 min-w-0">
           {row.asset.image_url ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={row.asset.image_url} alt="" className="w-6 h-6 rounded-full bg-zinc-800 shrink-0" />
+            <Image src={row.asset.image_url} alt="" width={24} height={24} className="rounded-full bg-zinc-800 shrink-0" />
           ) : (
             <div className="w-6 h-6 rounded-full bg-zinc-800 shrink-0" />
           )}

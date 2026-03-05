@@ -10,18 +10,8 @@ import type {
   Broker,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-
-/** Normalize old DB category values (pre-migration-022) to current enum */
-const OLD_CAT_MAP: Record<string, AssetCategory> = {
-  stock: "individual_stock",
-  etf_ucits: "etf",
-  etf_non_ucits: "etf",
-  bond: "bond_fixed_income",
-};
-function normalizeCategory(raw: string | null | undefined): AssetCategory {
-  if (!raw) return "individual_stock";
-  return OLD_CAT_MAP[raw] ?? (raw as AssetCategory);
-}
+import { validateUUID } from "@/lib/validation";
+import { normalizeCategory } from "@/lib/stock-categories";
 
 /** Get all stock assets with their positions and broker names */
 export async function getStockAssetsWithPositions(): Promise<
@@ -226,6 +216,7 @@ export async function updateStockAsset(
 
 /** Soft-delete a stock asset — individually deletes child positions first for activity logging */
 export async function deleteStockAsset(id: string, opts?: { isAdjustment?: boolean }) {
+  validateUUID(id, "Stock asset ID");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -423,6 +414,7 @@ export async function deleteStockPosition(positionId: string, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  validateUUID(positionId, "Stock position ID");
   const supabase = await createServerSupabaseClient();
 
   // Capture full snapshot before soft-delete

@@ -2,6 +2,10 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { convertToBase, getFXRates, getFXRatesSafe } from "@/lib/prices/fx";
 
 describe("convertToBase", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("returns amount unchanged when currencies match", () => {
     expect(convertToBase(100, "USD", "USD", { USD: 1 })).toBe(100);
   });
@@ -13,18 +17,16 @@ describe("convertToBase", () => {
   });
 
   it("returns unconverted amount when rate is missing", () => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = convertToBase(100, "GBP", "USD", { USD: 1 });
     expect(result).toBe(100);
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining("No rate for GBP"));
-    spy.mockRestore();
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("No rate for GBP"));
   });
 
   it("returns unconverted amount when rate is zero", () => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = convertToBase(100, "GBP", "USD", { GBP: 0, USD: 1 });
     expect(result).toBe(100);
-    spy.mockRestore();
   });
 });
 
@@ -92,7 +94,7 @@ describe("getFXRatesSafe", () => {
   });
 
   it("returns fallback { base: 1 } on API error", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -100,15 +102,13 @@ describe("getFXRatesSafe", () => {
 
     const result = await getFXRatesSafe("USD", ["EUR"]);
     expect(result).toEqual({ USD: 1 });
-    spy.mockRestore();
   });
 
   it("returns fallback { base: 1 } on network error", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network error")));
 
     const result = await getFXRatesSafe("USD", ["EUR"]);
     expect(result).toEqual({ USD: 1 });
-    spy.mockRestore();
   });
 });

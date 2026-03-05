@@ -2,7 +2,7 @@ import { Pencil, Trash2, ChevronDown, ChevronRight, AlertTriangle } from "lucide
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef } from "@/lib/column-config";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatQuantity } from "@/lib/format";
 import type {
   StockAssetWithPositions,
   AssetCategory,
@@ -44,34 +44,6 @@ export const TYPE_COLORS: Record<AssetCategory, string> = {
 };
 
 // ── Rotating palette for dynamic groups (brokers) ───────────
-
-export const GROUP_PALETTE = [
-  "text-blue-400",
-  "text-purple-400",
-  "text-amber-400",
-  "text-emerald-400",
-  "text-sky-400",
-  "text-rose-400",
-  "text-teal-400",
-  "text-orange-400",
-];
-
-// ── Formatters ───────────────────────────────────────────────
-
-export function formatNumber(n: number, decimals = 2): string {
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(n);
-}
-
-/** Format quantities (shares) — strips trailing zeros while keeping up to maxDecimals precision */
-export function formatQuantity(n: number, maxDecimals: number): string {
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: maxDecimals,
-  }).format(n);
-}
 
 // ── Build rows from assets + prices ──────────────────────────
 

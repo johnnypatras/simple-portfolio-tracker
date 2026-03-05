@@ -35,11 +35,9 @@ import {
   buildTickerGroups,
   sortFlatItems,
   sortRows,
-  formatQuantity,
   getCurrencyColor,
   TYPE_LABELS,
   TYPE_COLORS,
-  GROUP_PALETTE,
   SORT_OPTIONS,
   COLUMN_TO_SORT,
   DEFAULT_SORT_KEY,
@@ -50,7 +48,7 @@ import {
   type SortKey,
   type SortDirection,
 } from "./stock-columns";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatQuantity, GROUP_PALETTE } from "@/lib/format";
 import { useSharedView } from "@/components/shared-view-context";
 
 // ── Group mode ──────────────────────────────────────────────

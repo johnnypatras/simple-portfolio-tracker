@@ -5,7 +5,7 @@
  * with everything converted to the user's base currency.
  */
 
-import { convertToBase } from "@/lib/prices/fx";
+import { convertToBase, fxChangeForCurrency as fxChangeFor } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type {
   CryptoAssetWithPositions,
@@ -112,17 +112,8 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
 
-  // FX impact: when primary currency is EUR and assets are in USD, a move in
-  // EUR/USD changes their EUR value.  EUR/USD going up means EUR strengthened
-  // → USD assets lost value in EUR terms → the FX impact is negative.
-  // Conversely for a USD user with EUR assets.
-  // For non-EUR/USD pairs we don't have 24h change data, so FX impact = 0.
-  function fxChangeForCurrency(assetCurrency: string): number {
-    if (assetCurrency === primaryCurrency) return 0;
-    if (primaryCurrency === "EUR" && assetCurrency === "USD") return -eurUsdChange24h;
-    if (primaryCurrency === "USD" && assetCurrency === "EUR") return eurUsdChange24h;
-    return 0;
-  }
+  // FX impact helper — see fxChangeForCurrency() in fx.ts for full docs
+  const fxChangeForCurrency = (c: string) => fxChangeFor(c, primaryCurrency, eurUsdChange24h);
 
   // ── Crypto (stablecoins separated → reclassified as cash) ──
   // CoinGecko gives us prices in both USD and EUR directly

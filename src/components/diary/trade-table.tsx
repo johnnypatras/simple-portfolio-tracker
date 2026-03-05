@@ -178,7 +178,7 @@ export function TradeTable({
       onClose={() => setModalOpen(false)}
       title={editing ? "Edit Trade" : "Log Trade"}
     >
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Row 1: Date + Buy/Sell */}
         <div className="grid grid-cols-[1fr_120px] gap-3">
           <div>

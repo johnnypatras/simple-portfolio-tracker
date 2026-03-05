@@ -3,13 +3,13 @@
 import { useState } from "react";
 import Image from "next/image";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import type { HoldingItem } from "@/lib/actions/comparison";
+import type { ComparisonHoldingItem } from "@/lib/actions/comparison";
 import { fmtCurrency } from "@/lib/format";
 
 const INITIAL_LIMIT = 5;
 
 interface HoldingsOverlapProps {
-  holdings: HoldingItem[];
+  holdings: ComparisonHoldingItem[];
   viewerName: string;
   ownerName: string;
   currency: string;
@@ -21,7 +21,7 @@ function AssetIcon({
   item,
   size = 24,
 }: {
-  item: HoldingItem;
+  item: ComparisonHoldingItem;
   size?: number;
 }) {
   if (item.imageUrl) {
@@ -93,7 +93,7 @@ function SharedHoldingRow({
   maxValue,
   currency,
 }: {
-  item: HoldingItem;
+  item: ComparisonHoldingItem;
   maxValue: number;
   currency: string;
 }) {
@@ -143,7 +143,7 @@ function UniqueHoldingRow({
   side,
   currency,
 }: {
-  item: HoldingItem;
+  item: ComparisonHoldingItem;
   side: "viewer" | "owner";
   currency: string;
 }) {

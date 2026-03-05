@@ -9,6 +9,7 @@ import {
   findOrCreateInstitution,
   renameInstitution,
 } from "@/lib/actions/institutions";
+import { validateUUID } from "@/lib/validation";
 
 export async function getBrokers() {
   const supabase = await createServerSupabaseClient();
@@ -270,6 +271,7 @@ export async function updateBroker(
 }
 
 export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }) {
+  validateUUID(id, "Broker ID");
   const supabase = await createServerSupabaseClient();
 
   // Delete child stock positions individually so each gets an activity_log entry

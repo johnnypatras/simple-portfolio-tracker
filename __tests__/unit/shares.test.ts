@@ -1,21 +1,5 @@
 import { describe, it, expect } from "vitest";
-
-// Test share validation logic (pure — no DB)
-interface ShareRow {
-  expires_at: string | null;
-  revoked_at: string | null;
-  scope: string;
-}
-
-function isShareValid(
-  row: ShareRow | null
-): { valid: boolean; scope?: string } {
-  if (!row) return { valid: false };
-  if (row.revoked_at) return { valid: false };
-  if (row.expires_at && new Date(row.expires_at) < new Date())
-    return { valid: false };
-  return { valid: true, scope: row.scope };
-}
+import { isShareValid, SCOPE_RANK } from "@/lib/share-utils";
 
 describe("share token validation logic", () => {
   it("rejects null row", () => {
@@ -65,12 +49,6 @@ describe("share token validation logic", () => {
 });
 
 describe("scope ranking", () => {
-  const SCOPE_RANK: Record<string, number> = {
-    overview: 0,
-    full: 1,
-    full_with_history: 2,
-  };
-
   it("overview < full < full_with_history", () => {
     expect(SCOPE_RANK["overview"]).toBeLessThan(SCOPE_RANK["full"]);
     expect(SCOPE_RANK["full"]).toBeLessThan(SCOPE_RANK["full_with_history"]);

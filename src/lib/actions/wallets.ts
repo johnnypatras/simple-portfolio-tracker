@@ -9,6 +9,7 @@ import {
   findOrCreateInstitution,
   renameInstitution,
 } from "@/lib/actions/institutions";
+import { validateUUID } from "@/lib/validation";
 
 export async function getWallets() {
   const supabase = await createServerSupabaseClient();
@@ -214,75 +215,65 @@ export async function updateWallet(
 
   // Role extension: create sibling broker if requested
   if (opts?.also_broker && before?.institution_id) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      const { data: existingBroker } = await supabase
-        .from("brokers")
-        .select("id")
-        .eq("institution_id", before.institution_id)
-        .is("deleted_at", null)
-        .limit(1);
+    const { data: existingBroker } = await supabase
+      .from("brokers")
+      .select("id")
+      .eq("institution_id", before.institution_id)
+      .is("deleted_at", null)
+      .limit(1);
 
-      if (!existingBroker?.length) {
-        const { data: brokerCreated, error: brokerErr } = await supabase.from("brokers").insert({
-          user_id: user.id,
-          name: trimmedName,
-          institution_id: before.institution_id,
-        }).select("*").single();
-        if (!brokerErr && brokerCreated) {
-          await logActivity({
-            action: "created",
-            entity_type: "broker",
-            entity_name: trimmedName,
-            description: `Added broker "${trimmedName}" (via wallet edit)`,
-            entity_id: brokerCreated.id,
-            entity_table: "brokers",
-            before_snapshot: null,
-            after_snapshot: brokerCreated,
-          });
-        }
+    if (!existingBroker?.length) {
+      const { data: brokerCreated, error: brokerErr } = await supabase.from("brokers").insert({
+        user_id: user.id,
+        name: trimmedName,
+        institution_id: before.institution_id,
+      }).select("*").single();
+      if (!brokerErr && brokerCreated) {
+        await logActivity({
+          action: "created",
+          entity_type: "broker",
+          entity_name: trimmedName,
+          description: `Added broker "${trimmedName}" (via wallet edit)`,
+          entity_id: brokerCreated.id,
+          entity_table: "brokers",
+          before_snapshot: null,
+          after_snapshot: brokerCreated,
+        });
       }
     }
   }
 
   // Role extension: create sibling bank account if requested
   if (opts?.also_bank && before?.institution_id) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      const { data: existingBank } = await supabase
-        .from("bank_accounts")
-        .select("id")
-        .eq("institution_id", before.institution_id)
-        .is("deleted_at", null)
-        .limit(1);
+    const { data: existingBank } = await supabase
+      .from("bank_accounts")
+      .select("id")
+      .eq("institution_id", before.institution_id)
+      .is("deleted_at", null)
+      .limit(1);
 
-      if (!existingBank?.length) {
-        const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
-          user_id: user.id,
-          name: trimmedName,
-          bank_name: trimmedName,
-          region: DEFAULT_COUNTRY,
-          currency: "EUR",
-          balance: 0,
-          apy: 0,
-          institution_id: before.institution_id,
-        }).select("*").single();
-        if (!bankErr && bankCreated) {
-          await logActivity({
-            action: "created",
-            entity_type: "bank_account",
-            entity_name: trimmedName,
-            description: `Added bank account "${trimmedName}" (via wallet edit)`,
-            entity_id: bankCreated.id,
-            entity_table: "bank_accounts",
-            before_snapshot: null,
-            after_snapshot: bankCreated,
-          });
-        }
+    if (!existingBank?.length) {
+      const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
+        user_id: user.id,
+        name: trimmedName,
+        bank_name: trimmedName,
+        region: DEFAULT_COUNTRY,
+        currency: "EUR",
+        balance: 0,
+        apy: 0,
+        institution_id: before.institution_id,
+      }).select("*").single();
+      if (!bankErr && bankCreated) {
+        await logActivity({
+          action: "created",
+          entity_type: "bank_account",
+          entity_name: trimmedName,
+          description: `Added bank account "${trimmedName}" (via wallet edit)`,
+          entity_id: bankCreated.id,
+          entity_table: "bank_accounts",
+          before_snapshot: null,
+          after_snapshot: bankCreated,
+        });
       }
     }
   }
@@ -311,6 +302,7 @@ export async function updateWallet(
 }
 
 export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }) {
+  validateUUID(id, "Wallet ID");
   const supabase = await createServerSupabaseClient();
 
   // Delete child crypto positions individually so each gets an activity_log entry

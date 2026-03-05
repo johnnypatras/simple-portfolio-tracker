@@ -248,7 +248,7 @@ export function PerformanceRaceChart({
             <Line
               type="monotone"
               dataKey={viewerKey}
-              stroke="#3b82f6"
+              stroke="#06b6d4"
               strokeWidth={2}
               dot={false}
               connectNulls

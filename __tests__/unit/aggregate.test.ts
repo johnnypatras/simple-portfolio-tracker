@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 
-// Minimal crypto position factory
+let idCounter = 0;
+
+// Minimal crypto position factory (deterministic IDs)
 function cryptoPos(qty: number, assetId: string) {
   return {
-    id: "cp-" + Math.random().toString(36).slice(2, 8),
+    id: `cp-${++idCounter}`,
     crypto_asset_id: assetId,
     wallet_id: "w1",
     wallet_name: "TestWallet",
@@ -19,10 +21,10 @@ function cryptoPos(qty: number, assetId: string) {
   };
 }
 
-// Minimal stock position factory
+// Minimal stock position factory (deterministic IDs)
 function stockPos(qty: number, assetId: string) {
   return {
-    id: "sp-" + Math.random().toString(36).slice(2, 8),
+    id: `sp-${++idCounter}`,
     stock_asset_id: assetId,
     broker_id: "b1",
     broker_name: "TestBroker",
@@ -35,6 +37,10 @@ function stockPos(qty: number, assetId: string) {
 }
 
 describe("aggregatePortfolio", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("classifies stablecoin as cash, not crypto", () => {
     const result = aggregatePortfolio({
       cryptoAssets: [{
@@ -88,7 +94,7 @@ describe("aggregatePortfolio", () => {
   });
 
   it("handles missing FX rate without silent zero", () => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = aggregatePortfolio({
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [{
@@ -103,6 +109,5 @@ describe("aggregatePortfolio", () => {
       primaryCurrency: "USD", fxRates: { USD: 1 }, // GBP missing
     });
     expect(result.stocksValue).toBe(2000); // unconverted, not zero
-    spy.mockRestore();
   });
 });

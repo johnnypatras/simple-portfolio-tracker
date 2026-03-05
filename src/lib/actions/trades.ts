@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
+import { validateUUID } from "@/lib/validation";
 
 /** Lightweight asset name lists for the trade diary dropdown */
 export async function getAssetOptions(): Promise<{
@@ -141,6 +142,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
 }
 
 export async function deleteTradeEntry(id: string) {
+  validateUUID(id, "Trade entry ID");
   const supabase = await createServerSupabaseClient();
 
   // Capture full snapshot before soft-delete

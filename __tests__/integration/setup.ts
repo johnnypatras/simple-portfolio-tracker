@@ -1,6 +1,9 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { execFileSync } from "child_process";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface LocalConfig {
   API_URL: string;
   ANON_KEY: string;
@@ -39,6 +42,9 @@ export function getAdminClient(): SupabaseClient {
  * This cascades to all user data via ON DELETE CASCADE.
  */
 function deleteAuthUser(userId: string): void {
+  if (!UUID_RE.test(userId)) {
+    throw new Error(`deleteAuthUser: invalid UUID: ${userId}`);
+  }
   execFileSync("docker", [
     "exec",
     "supabase_db_simple-portfolio-tracker",
@@ -57,7 +63,7 @@ function deleteAuthUser(userId: string): void {
 export async function createTestUser(email?: string): Promise<{
   client: SupabaseClient;
   userId: string;
-  cleanup: () => Promise<void>;
+  cleanup: () => void;
 }> {
   const config = getLocalConfig();
   const testEmail = email ?? `test-${Date.now()}@test.local`;
@@ -77,7 +83,7 @@ export async function createTestUser(email?: string): Promise<{
   return {
     client: userClient,
     userId,
-    cleanup: async () => {
+    cleanup: () => {
       deleteAuthUser(userId);
     },
   };

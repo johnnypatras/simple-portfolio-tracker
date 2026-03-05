@@ -14,8 +14,8 @@ import type {
   InstitutionWithRoles,
   InstitutionRole,
   PortfolioSnapshot,
-  AssetCategory,
 } from "@/lib/types";
+import { normalizeCategory } from "@/lib/stock-categories";
 
 // ─── Shared portfolio bundle ───────────────────────────
 
@@ -34,18 +34,6 @@ export interface SharedPortfolioData {
   snap7d: PortfolioSnapshot | null;
   snap30d: PortfolioSnapshot | null;
   snap1y: PortfolioSnapshot | null;
-}
-
-/** Normalize old DB category values to current enum */
-const OLD_CAT_MAP: Record<string, AssetCategory> = {
-  stock: "individual_stock",
-  etf_ucits: "etf",
-  etf_non_ucits: "etf",
-  bond: "bond_fixed_income",
-};
-function normalizeCategory(raw: string | null | undefined): AssetCategory {
-  if (!raw) return "individual_stock";
-  return OLD_CAT_MAP[raw] ?? (raw as AssetCategory);
 }
 
 /**

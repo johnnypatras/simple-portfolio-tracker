@@ -3,6 +3,12 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getFXRates } from "@/lib/prices/fx";
+import {
+  cashAmountField,
+  cashDelta,
+  positionQtyDelta,
+  type CashEntityType,
+} from "@/lib/deltas";
 import { toCsv } from "@/lib/csv";
 import { validateUUID } from "@/lib/validation";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -139,16 +145,13 @@ async function computeDeltaFromSnapshots(
     entityType === "exchange_deposit" ||
     entityType === "broker_deposit"
   ) {
-    const amountField = entityType === "bank_account" ? "balance" : "amount";
-    const beforeAmt = (before?.[amountField] as number) ?? 0;
-    const afterAmt = (after?.[amountField] as number) ?? 0;
+    const field = cashAmountField(entityType as CashEntityType);
+    const beforeAmt = (before?.[field] as number) ?? 0;
+    const afterAmt = (after?.[field] as number) ?? 0;
     const currency =
       (after?.currency as string) ?? (before?.currency as string) ?? "USD";
 
-    let delta: number;
-    if (action === "created") delta = afterAmt;
-    else if (action === "removed") delta = -beforeAmt;
-    else delta = afterAmt - beforeAmt; // updated
+    const delta = cashDelta(action, beforeAmt, afterAmt);
 
     const txDate = date.split("T")[0];
     return toUsdAndEur(delta, currency, txDate);
@@ -159,10 +162,7 @@ async function computeDeltaFromSnapshots(
     const beforeQty = (before?.quantity as number) ?? 0;
     const afterQty = (after?.quantity as number) ?? 0;
 
-    let qtyDelta: number;
-    if (action === "created") qtyDelta = afterQty;
-    else if (action === "removed") qtyDelta = -beforeQty;
-    else qtyDelta = afterQty - beforeQty;
+    const qtyDelta = positionQtyDelta(action, beforeQty, afterQty);
 
     if (Math.abs(qtyDelta) < 1e-12) return { usd: 0, eur: 0 };
 
