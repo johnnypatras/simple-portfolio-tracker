@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -846,7 +846,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.category)}
                           >
-                            <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                            {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
                                 {isGroupOpen ? (
                                   <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -868,12 +868,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                     {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                   </button>
                                 )}
-                                <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                  {formatCurrency(group.totalValue, primaryCurrency)}
-                                </span>
-                              </div>
-                            </td>
-                            <td />
+                              </div>,
+                              formatCurrency(group.totalValue, primaryCurrency),
+                              "px-4 py-2.5",
+                            )}
                           </tr>
 
                           {isGroupOpen && <TypeGroupInnerRows
@@ -904,7 +902,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.brokerName)}
                           >
-                            <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                            {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
                                 {isGroupOpen ? (
                                   <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -926,12 +924,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                     {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                   </button>
                                 )}
-                                <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                  {formatCurrency(group.totalValue, primaryCurrency)}
-                                </span>
-                              </div>
-                            </td>
-                            <td />
+                              </div>,
+                              formatCurrency(group.totalValue, primaryCurrency),
+                              "px-4 py-2.5",
+                            )}
                           </tr>
 
                           {/* Broker group child rows (position-level) */}
@@ -1016,7 +1012,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.currency)}
                           >
-                            <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                            {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
                                 {isGroupOpen ? (
                                   <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -1038,12 +1034,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                     {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                   </button>
                                 )}
-                                <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                  {formatCurrency(group.totalValue, primaryCurrency)}
-                                </span>
-                              </div>
-                            </td>
-                            <td />
+                              </div>,
+                              formatCurrency(group.totalValue, primaryCurrency),
+                              "px-4 py-2.5",
+                            )}
                           </tr>
 
                           {isGroupOpen &&
@@ -1109,7 +1103,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.subcategory)}
                           >
-                            <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                            {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
                                 {isGroupOpen ? (
                                   <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -1131,12 +1125,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                     {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                   </button>
                                 )}
-                                <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                  {formatCurrency(group.totalValue, primaryCurrency)}
-                                </span>
-                              </div>
-                            </td>
-                            <td />
+                              </div>,
+                              formatCurrency(group.totalValue, primaryCurrency),
+                              "px-4 py-2.5",
+                            )}
                           </tr>
 
                           {isGroupOpen &&
@@ -1396,6 +1388,31 @@ function MobileStockCard({
 }
 
 // ── Expanded sub-row ─────────────────────────────────────────
+// ── Group header cells: renders content in Asset, value in Value, hidden elsewhere ──
+
+function groupHeaderCells(
+  orderedColumns: ColumnDef<StockRow>[],
+  assetContent: ReactNode,
+  formattedValue: string,
+  padding: string,
+  valueClass: string = "text-xs font-medium text-zinc-400",
+) {
+  return orderedColumns.map((col) => {
+    const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+    if (col.key === "asset") {
+      return <td key={col.key} className={padding}>{assetContent}</td>;
+    }
+    if (col.key === "value") {
+      return (
+        <td key={col.key} className={`${padding} text-right ${hidden}`}>
+          <span className={`${valueClass} tabular-nums`}>{formattedValue}</span>
+        </td>
+      );
+    }
+    return <td key={col.key} className={hidden} />;
+  });
+}
+
 // Renders broker name under the Asset column, quantity under Shares,
 // value under Value, and empty cells for everything else.
 
@@ -1538,7 +1555,7 @@ function TickerGroupRows({
         className="border-b border-zinc-800/30 border-l-2 border-l-zinc-500/30 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
         onClick={toggleOpen}
       >
-        <td colSpan={orderedColumns.length - 1} className={`${headerPl} py-3`}>
+        {groupHeaderCells(orderedColumns,
           <div className="flex items-center gap-2">
             {isOpen ? (
               <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
@@ -1558,12 +1575,11 @@ function TickerGroupRows({
               {group.weightedChange24h >= 0 ? "+" : ""}
               {group.weightedChange24h.toFixed(2)}%
             </span>
-            <span className="ml-auto text-sm font-semibold text-zinc-100 tabular-nums">
-              {formatCurrency(group.totalValueBase, primaryCurrency)}
-            </span>
-          </div>
-        </td>
-        <td />
+          </div>,
+          formatCurrency(group.totalValueBase, primaryCurrency),
+          `${headerPl} py-3`,
+          "text-sm font-semibold text-zinc-100",
+        )}
       </tr>
 
       {/* Variant rows (one per exchange listing) — visually lighter than header */}

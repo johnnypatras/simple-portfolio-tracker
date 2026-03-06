@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Plus, Bitcoin, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
@@ -862,7 +862,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.acquisitionMethod)}
                           >
-                            <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                            {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
                                 {isGroupOpen ? (
                                   <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -888,12 +888,10 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                     {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                   </button>
                                 )}
-                                <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                  {formatCurrency(group.totalValue, primaryCurrency)}
-                                </span>
-                              </div>
-                            </td>
-                            <td />
+                              </div>,
+                              formatCurrency(group.totalValue, primaryCurrency),
+                              "px-4 py-2.5",
+                            )}
                           </tr>
 
                           {isGroupOpen &&
@@ -923,7 +921,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                               onClick={() => toggleGroupExpand(group.walletName)}
                             >
-                              <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                              {groupHeaderCells(orderedColumns,
                                 <div className="flex items-center gap-2">
                                   {isGroupOpen ? (
                                     <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -950,12 +948,10 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                       {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                     </button>
                                   )}
-                                  <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                    {formatCurrency(group.totalValue, primaryCurrency)}
-                                  </span>
-                                </div>
-                              </td>
-                              <td />
+                                </div>,
+                                formatCurrency(group.totalValue, primaryCurrency),
+                                "px-4 py-2.5",
+                              )}
                             </tr>
 
                             {isGroupOpen &&
@@ -984,7 +980,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 className={`border-b border-zinc-800/30 border-l-2 ${borderColor} bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors`}
                                 onClick={() => toggleGroupExpand(group.custodyType)}
                               >
-                                <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                                {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">
                                     {isGroupOpen ? (
                                       <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -1008,12 +1004,10 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                         {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                       </button>
                                     )}
-                                    <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                      {formatCurrency(group.totalValue, primaryCurrency)}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td />
+                                  </div>,
+                                  formatCurrency(group.totalValue, primaryCurrency),
+                                  "px-4 py-2.5",
+                                )}
                               </tr>
 
                               {isGroupOpen &&
@@ -1042,7 +1036,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                                 onClick={() => toggleGroupExpand(group.chain)}
                               >
-                                <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                                {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">
                                     {isGroupOpen ? (
                                       <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -1064,12 +1058,10 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                         {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                       </button>
                                     )}
-                                    <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                      {formatCurrency(group.totalValue, primaryCurrency)}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td />
+                                  </div>,
+                                  formatCurrency(group.totalValue, primaryCurrency),
+                                  "px-4 py-2.5",
+                                )}
                               </tr>
 
                               {isGroupOpen &&
@@ -1135,7 +1127,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                                 onClick={() => toggleGroupExpand(group.subcategory)}
                               >
-                                <td colSpan={orderedColumns.length - 1} className="px-4 py-2.5">
+                                {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">
                                     {isGroupOpen ? (
                                       <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -1157,12 +1149,10 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                         {allItemsExpanded ? <ChevronsDownUp className="w-3 h-3" /> : <ChevronsUpDown className="w-3 h-3" />}
                                       </button>
                                     )}
-                                    <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
-                                      {formatCurrency(group.totalValue, primaryCurrency)}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td />
+                                  </div>,
+                                  formatCurrency(group.totalValue, primaryCurrency),
+                                  "px-4 py-2.5",
+                                )}
                               </tr>
 
                               {isGroupOpen &&
@@ -1473,6 +1463,31 @@ function CustodyGroupHeader({
       </td>
     </tr>
   );
+}
+
+// ── Group header cells: renders content in Asset, value in Value, hidden elsewhere ──
+
+function groupHeaderCells(
+  orderedColumns: ColumnDef<CryptoRow>[],
+  assetContent: ReactNode,
+  formattedValue: string,
+  padding: string,
+  valueClass: string = "text-xs font-medium text-zinc-400",
+) {
+  return orderedColumns.map((col) => {
+    const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
+    if (col.key === "asset") {
+      return <td key={col.key} className={padding}>{assetContent}</td>;
+    }
+    if (col.key === "value") {
+      return (
+        <td key={col.key} className={`${padding} text-right ${hidden}`}>
+          <span className={`${valueClass} tabular-nums`}>{formattedValue}</span>
+        </td>
+      );
+    }
+    return <td key={col.key} className={hidden} />;
+  });
 }
 
 function ExpandedCryptoRow({
