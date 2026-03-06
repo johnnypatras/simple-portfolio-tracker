@@ -652,6 +652,16 @@ export function PortfolioChart({
                         <span className="text-zinc-500 mr-1">{VIEW_MODE_LABELS[viewMode]}</span>
                       )}
                       {fmtVal(displayValue)}
+                      {showBenchmark && point.sp500Value != null && point.sp500Value !== 0 && (() => {
+                        const diff = returnMode
+                          ? displayValue - point.sp500Value
+                          : ((displayValue - point.sp500Value) / point.sp500Value) * 100;
+                        return (
+                          <span className={`ml-1.5 text-[10px] font-medium ${diff >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            ({diff >= 0 ? "+" : ""}{diff.toFixed(1)}{returnMode ? "pp" : "%"} <span className="text-zinc-500 font-normal">vs S&P</span>)
+                          </span>
+                        );
+                      })()}
                     </p>
                     {!returnMode && hasDeltas && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
                       <p className="text-[10px] text-zinc-600 mt-0.5">
@@ -661,16 +671,6 @@ export function PortfolioChart({
                     {showBenchmark && point.sp500Value != null && (
                       <p className="text-xs text-zinc-500 mt-0.5">
                         S&P 500 TR {fmtVal(point.sp500Value)}
-                        {point.sp500Value !== 0 && (() => {
-                          const diff = returnMode
-                            ? displayValue - point.sp500Value
-                            : ((displayValue - point.sp500Value) / point.sp500Value) * 100;
-                          return (
-                            <span className={`ml-1.5 text-[10px] font-medium ${diff >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                              ({diff >= 0 ? "+" : ""}{diff.toFixed(1)}{returnMode ? "pp" : "%"})
-                            </span>
-                          );
-                        })()}
                       </p>
                     )}
                     {showAllocation && (
