@@ -289,12 +289,14 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
       f => new Date(f.date) >= cutoff && (!filterClass || f.asset_class === filterClass)
     );
     const fxMul = cur === "USD" || totalValueUsd === 0 ? 1 : totalValue / totalValueUsd;
-    const total = filtered.reduce((s, f) => s + f.amount_usd, 0) * fxMul;
+    const amt = (f: CashFlowEvent): number =>
+      cur === "EUR" && f.amount_eur != null ? f.amount_eur : f.amount_usd * fxMul;
+    const total = filtered.reduce((s, f) => s + amt(f), 0);
     // Group by entity name
     const byName = new Map<string, number>();
     for (const f of filtered) {
       const name = f.entity_name || "Unknown";
-      byName.set(name, (byName.get(name) ?? 0) + f.amount_usd * fxMul);
+      byName.set(name, (byName.get(name) ?? 0) + amt(f));
     }
     const breakdown = [...byName.entries()]
       .map(([name, value]) => ({ name, value }))
