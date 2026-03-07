@@ -533,6 +533,7 @@ export interface ActivityLog {
   delta_usd: number | null;
   delta_eur: number | null;
   transfer_group_id: string | null;
+  compensates_for: string | null;
   created_at: string;
 }
 
