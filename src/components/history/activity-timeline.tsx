@@ -687,12 +687,18 @@ export function ActivityTimeline({
                                 Undo
                               </span>
                             )}
+                            {log.compensates_for && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title="Compensating undo — reversed a previous action">
+                                <Undo2 className="w-2.5 h-2.5" />
+                                Undo
+                              </span>
+                            )}
                             {log.transfer_group_id && (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-teal-500/15 text-teal-400" title="Part of a sell/buy/move transfer">
                                 Xfer
                               </span>
                             )}
-                            {!log.transfer_group_id && log.is_adjustment && (
+                            {!log.transfer_group_id && !log.compensates_for && log.is_adjustment && (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title="Not a real transaction — portfolio balance correction">
                                 Adj.
                               </span>
