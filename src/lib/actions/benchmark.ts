@@ -12,6 +12,7 @@ export type AssetClass = "crypto" | "stocks" | "cash";
 export interface CashFlowEvent {
   date: string;       // YYYY-MM-DD
   amount_usd: number; // positive = deposit, negative = withdrawal
+  amount_eur?: number; // EUR amount via historical rate (avoids USD round-trip for EUR entities)
   asset_class?: AssetClass;
   entity_name?: string;
 }
@@ -193,6 +194,16 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
     return amount;
   }
 
+  // ── Helper: convert any currency to EUR (native EUR passes through) ──
+  const hasEurRates = eurUsdMap.size > 0;
+  function toEur(amount: number, currency: string | undefined, date: string): number {
+    if (currency === "EUR") return amount;
+    const usdAmount = toUsd(amount, currency, date);
+    const rate = getPrice(eurUsdMap, date);
+    if (rate != null && rate > 0) return usdAmount / rate;
+    return usdAmount;
+  }
+
   // ── Step 5: Process all activity log events ──
   const events: CashFlowEvent[] = [];
 
@@ -201,6 +212,7 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
     const before = row.before_snapshot as Record<string, unknown> | null;
     const after = row.after_snapshot as Record<string, unknown> | null;
     let deltaUsd = 0;
+    let deltaEur: number | undefined;
     let assetClass: AssetClass | undefined;
 
     if (row.entity_type === "exchange_deposit" || row.entity_type === "broker_deposit") {
@@ -212,6 +224,11 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
       if (row.action === "created") deltaUsd = toUsd(aAmt, aCur, date);
       else if (row.action === "updated") deltaUsd = toUsd(aAmt, aCur, date) - toUsd(bAmt, bCur, date);
       else if (row.action === "removed") deltaUsd = -toUsd(bAmt, bCur, date);
+      if (hasEurRates) {
+        if (row.action === "created") deltaEur = toEur(aAmt, aCur, date);
+        else if (row.action === "updated") deltaEur = toEur(aAmt, aCur, date) - toEur(bAmt, bCur, date);
+        else if (row.action === "removed") deltaEur = -toEur(bAmt, bCur, date);
+      }
     } else if (row.entity_type === "bank_account") {
       assetClass = "cash";
       const bBal = (before?.balance as number) ?? 0;
@@ -221,6 +238,11 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
       if (row.action === "created") deltaUsd = toUsd(aBal, aCur, date);
       else if (row.action === "updated") deltaUsd = toUsd(aBal, aCur, date) - toUsd(bBal, bCur, date);
       else if (row.action === "removed") deltaUsd = -toUsd(bBal, bCur, date);
+      if (hasEurRates) {
+        if (row.action === "created") deltaEur = toEur(aBal, aCur, date);
+        else if (row.action === "updated") deltaEur = toEur(aBal, aCur, date) - toEur(bBal, bCur, date);
+        else if (row.action === "removed") deltaEur = -toEur(bBal, bCur, date);
+      }
     } else if (row.entity_type === "crypto_position") {
       const assetId = (after?.crypto_asset_id ?? before?.crypto_asset_id) as string | undefined;
       assetClass = assetId && stablecoinAssetIds.has(assetId) ? "cash" : "crypto";
@@ -233,6 +255,10 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
         if (row.action === "created") deltaUsd = aQty * price;
         else if (row.action === "updated") deltaUsd = (aQty - bQty) * price;
         else if (row.action === "removed") deltaUsd = -(bQty * price);
+        if (hasEurRates) {
+          const rate = getPrice(eurUsdMap, date);
+          if (rate != null && rate > 0) deltaEur = deltaUsd / rate;
+        }
       }
     } else if (row.entity_type === "stock_position") {
       assetClass = "stocks";
@@ -248,11 +274,18 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
         else if (row.action === "updated") deltaLocal = (aQty - bQty) * price;
         else if (row.action === "removed") deltaLocal = -(bQty * price);
         deltaUsd = toUsd(deltaLocal, stockInfo.currency, date);
+        if (hasEurRates) deltaEur = toEur(deltaLocal, stockInfo.currency, date);
       }
     }
 
     if (Math.abs(deltaUsd) > 0.01) {
-      events.push({ date, amount_usd: deltaUsd, asset_class: assetClass, entity_name: row.entity_name ?? undefined });
+      events.push({
+        date,
+        amount_usd: deltaUsd,
+        ...(deltaEur != null ? { amount_eur: deltaEur } : {}),
+        asset_class: assetClass,
+        entity_name: row.entity_name ?? undefined,
+      });
     }
   }
 
