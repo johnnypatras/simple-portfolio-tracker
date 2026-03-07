@@ -31,15 +31,13 @@ describe("migration bootstrap", () => {
     }
   });
 
-  it("undo_transfer_group RPC exists", async () => {
+  it("activity_log has compensates_for column", async () => {
     const admin = getAdminClient();
-    const { data, error } = await admin.rpc("undo_transfer_group", {
-      p_group_id: "00000000-0000-0000-0000-000000000000",
-    });
-    // The RPC returns JSONB (never throws) — a nil UUID returns
-    // { success: false, message: "No active transfer legs found" }.
-    // A null error + valid data shape confirms the function exists.
-    expect(error).toBeNull();
-    expect(data).toMatchObject({ success: false });
+    // Query with the compensates_for column to verify migration 049 applied
+    const { error } = await admin
+      .from("activity_log")
+      .select("compensates_for")
+      .limit(0);
+    expect(error, "compensates_for column should exist on activity_log").toBeNull();
   });
 });
