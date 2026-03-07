@@ -137,8 +137,12 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
       // Full return from CoinGecko (includes both price deviation + FX)
       const stableChange = price[changeKey] ?? 0;
       stablecoinWeightedChange += value * stableChange;
-      // FX-only: stablecoins are USD-pegged → their FX exposure = EUR/USD change
-      stablecoinFxWeightedChange += value * fxChangeForCurrency("USD");
+      // FX-only: derive from CoinGecko's own data (eur_change - usd_change)
+      // to stay consistent with the total return above. Using Yahoo's EUR/USD
+      // here would mix two sources with different 24h windows, causing the
+      // residual "Prices" row to show a phantom depeg.
+      const usdChange = price.usd_24h_change ?? 0;
+      stablecoinFxWeightedChange += value * (stableChange - usdChange);
     } else {
       const change = price[changeKey] ?? 0;
       cryptoValue += value;
