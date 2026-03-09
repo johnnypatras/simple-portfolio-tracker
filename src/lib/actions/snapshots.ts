@@ -25,6 +25,11 @@ export async function saveSnapshot(values: {
   cryptoValueUsd: number;
   stocksValueUsd: number;
   cashValueUsd: number;
+  cryptoValueEur: number;
+  stocksValueEur: number;
+  cashValueEur: number;
+  stocksHomeCurrencyEur: number;
+  cashHomeCurrencyEur: number;
 }): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -38,6 +43,11 @@ export async function saveSnapshot(values: {
   const cryptoUsd = round2(values.cryptoValueUsd);
   const stocksUsd = round2(values.stocksValueUsd);
   const cashUsd = round2(values.cashValueUsd);
+  const cryptoEur = round2(values.cryptoValueEur);
+  const stocksEur = round2(values.stocksValueEur);
+  const cashEur = round2(values.cashValueEur);
+  const stocksHomeCurEur = round2(values.stocksHomeCurrencyEur);
+  const cashHomeCurEur = round2(values.cashHomeCurrencyEur);
 
   // ── Validation: component sum must match total ────────
   const componentSum = round2(cryptoUsd + stocksUsd + cashUsd);
@@ -77,6 +87,11 @@ export async function saveSnapshot(values: {
       crypto_value_usd: cryptoUsd,
       stocks_value_usd: stocksUsd,
       cash_value_usd: cashUsd,
+      crypto_value_eur: cryptoEur,
+      stocks_value_eur: stocksEur,
+      cash_value_eur: cashEur,
+      stocks_eur_denominated_value: stocksHomeCurEur,
+      cash_eur_denominated_value: cashHomeCurEur,
     },
     { onConflict: "user_id,snapshot_date" }
   );

@@ -157,6 +157,11 @@ export default async function DashboardPage() {
     cryptoValueUsd: summary.cryptoValueUsd,
     stocksValueUsd: summary.stocksValueUsd,
     cashValueUsd: summary.cashValueUsd,
+    cryptoValueEur: summary.cryptoValueEur,
+    stocksValueEur: summary.stocksValueEur,
+    cashValueEur: summary.cashValueEur,
+    stocksHomeCurrencyEur: summary.stocksHomeCurrencyEur,
+    cashHomeCurrencyEur: summary.cashHomeCurrencyEur,
   }).catch(() => {}); // silently ignore errors
 
   // Build past-snapshot map for the change card
