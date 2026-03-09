@@ -17,6 +17,12 @@ export interface CashFlowEvent {
   entity_name?: string;
 }
 
+// Internal type with entity reference for name resolution
+type CashFlowEventInternal = CashFlowEvent & {
+  _entityId: string | null;
+  _entityTable: string | null;
+};
+
 // ─── Price history helpers ───────────────────────────────
 
 type PriceMap = Map<string, number>; // date → price
@@ -63,7 +69,7 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
   // ── Step 1: Fetch activity log entries with non-null snapshots ──
   let query = supabase
     .from("activity_log")
-    .select("action, entity_type, entity_name, before_snapshot, after_snapshot, created_at")
+    .select("action, entity_type, entity_name, entity_id, entity_table, before_snapshot, after_snapshot, created_at")
     .in("entity_type", [
       "exchange_deposit", "broker_deposit", "bank_account",
       "crypto_position", "stock_position",
@@ -205,7 +211,7 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
   }
 
   // ── Step 5: Process all activity log events ──
-  const events: CashFlowEvent[] = [];
+  const events: CashFlowEventInternal[] = [];
 
   for (const row of logs) {
     const date = row.created_at.split("T")[0];
@@ -285,9 +291,97 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
         ...(deltaEur != null ? { amount_eur: deltaEur } : {}),
         asset_class: assetClass,
         entity_name: row.entity_name ?? undefined,
+        _entityId: row.entity_id as string | null,
+        _entityTable: row.entity_table as string | null,
       });
     }
   }
 
-  return events;
+  // ── Step 6: Resolve current entity names ──
+  // activity_log.entity_name is frozen at write time — stale after renames.
+  // Batch-fetch current names for entities that produced cash flow events.
+  const nameMap = new Map<string, string>(); // "table:id" → current name
+  const idsByTable = new Map<string, Set<string>>();
+  for (const e of events) {
+    if (e._entityId && e._entityTable) {
+      const ids = idsByTable.get(e._entityTable) ?? new Set();
+      ids.add(e._entityId);
+      idsByTable.set(e._entityTable, ids);
+    }
+  }
+
+  const nameQueries: PromiseLike<void>[] = [];
+
+  const bankIds = idsByTable.get("bank_accounts");
+  if (bankIds?.size) {
+    nameQueries.push(
+      supabase.from("bank_accounts").select("id, name, bank_name").in("id", [...bankIds])
+        .then(({ data }) => {
+          for (const r of data ?? []) nameMap.set(`bank_accounts:${r.id}`, `${r.name} (${r.bank_name})`);
+        })
+    );
+  }
+
+  const exDepIds = idsByTable.get("exchange_deposits");
+  if (exDepIds?.size) {
+    nameQueries.push(
+      supabase.from("exchange_deposits").select("id, currency, wallets(name)").in("id", [...exDepIds])
+        .then(({ data }) => {
+          for (const r of data ?? []) {
+            const w = r.wallets as unknown as { name: string } | null;
+            nameMap.set(`exchange_deposits:${r.id}`, w ? `${r.currency} (${w.name})` : r.currency);
+          }
+        })
+    );
+  }
+
+  const brDepIds = idsByTable.get("broker_deposits");
+  if (brDepIds?.size) {
+    nameQueries.push(
+      supabase.from("broker_deposits").select("id, currency, brokers(name)").in("id", [...brDepIds])
+        .then(({ data }) => {
+          for (const r of data ?? []) {
+            const b = r.brokers as unknown as { name: string } | null;
+            nameMap.set(`broker_deposits:${r.id}`, b ? `${r.currency} (${b.name})` : r.currency);
+          }
+        })
+    );
+  }
+
+  const cryptoPosIds = idsByTable.get("crypto_positions");
+  if (cryptoPosIds?.size) {
+    nameQueries.push(
+      supabase.from("crypto_positions").select("id, crypto_assets(name)").in("id", [...cryptoPosIds])
+        .then(({ data }) => {
+          for (const r of data ?? []) {
+            const a = r.crypto_assets as unknown as { name: string } | null;
+            if (a) nameMap.set(`crypto_positions:${r.id}`, a.name);
+          }
+        })
+    );
+  }
+
+  const stockPosIds = idsByTable.get("stock_positions");
+  if (stockPosIds?.size) {
+    nameQueries.push(
+      supabase.from("stock_positions").select("id, stock_assets(name)").in("id", [...stockPosIds])
+        .then(({ data }) => {
+          for (const r of data ?? []) {
+            const a = r.stock_assets as unknown as { name: string } | null;
+            if (a) nameMap.set(`stock_positions:${r.id}`, a.name);
+          }
+        })
+    );
+  }
+
+  await Promise.all(nameQueries);
+
+  // Patch events with current names and strip internal fields
+  return events.map(({ _entityId, _entityTable, ...ev }) => {
+    if (_entityId && _entityTable) {
+      const currentName = nameMap.get(`${_entityTable}:${_entityId}`);
+      if (currentName) ev.entity_name = currentName;
+    }
+    return ev;
+  });
 }

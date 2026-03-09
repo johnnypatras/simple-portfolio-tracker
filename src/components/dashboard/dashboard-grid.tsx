@@ -196,12 +196,12 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     currentClassEur: number,
     pastClassUsd: number,
     snapshot: PortfolioSnapshot,
-  ): { fxPct: number; fxAbs: number } {
+  ): { fxPct: number; fxAbs: number; pastClassEur: number } {
     // Estimate past class EUR value using the portfolio's implied EUR/USD rate at snapshot time
     const snapTotalUsd = snapshot.total_value_usd ?? 0;
     const snapTotalEur = snapshot.total_value_eur ?? 0;
     if (snapTotalUsd === 0 || snapTotalEur === 0 || pastClassUsd === 0)
-      return { fxPct: 0, fxAbs: 0 };
+      return { fxPct: 0, fxAbs: 0, pastClassEur: 0 };
 
     const impliedRate = snapTotalEur / snapTotalUsd; // EUR per USD at snapshot time
     const pastClassEur = pastClassUsd * impliedRate;
@@ -214,7 +214,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     const otherReturn = cur === "EUR" ? usdReturn : eurReturn;
     const fxPct = primaryReturn - otherReturn;
     const fxAbs = fxPct !== 0 ? currentClassValue - currentClassValue / (1 + fxPct / 100) : 0;
-    return { fxPct, fxAbs };
+    return { fxPct, fxAbs, pastClassEur };
   }
 
   // Per-asset-class change for selected period (uses USD snapshots, derives display-currency delta)
@@ -232,9 +232,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastUsd = snapshot.crypto_value_usd ?? 0;
     if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const pct = ((cryptoValueUsd - pastUsd) / pastUsd) * 100;
-    const delta = cryptoValue - cryptoValue / (1 + pct / 100);
-    const { fxPct, fxAbs } = deriveClassFx(cryptoValue, cryptoValueUsd, cryptoValueEur, pastUsd, snapshot);
+    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(cryptoValue, cryptoValueUsd, cryptoValueEur, pastUsd, snapshot);
+    const pastEur = cur === "EUR" ? pastClassEur : pastUsd;
+    const delta = cryptoValue - (pastEur || cryptoValue);
+    const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
     return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
   }
 
@@ -250,9 +251,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastUsd = snapshot.stocks_value_usd ?? 0;
     if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const pct = ((stocksValueUsd - pastUsd) / pastUsd) * 100;
-    const delta = stocksValue - stocksValue / (1 + pct / 100);
-    const { fxPct, fxAbs } = deriveClassFx(stocksValue, stocksValueUsd, stocksValueEur, pastUsd, snapshot);
+    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(stocksValue, stocksValueUsd, stocksValueEur, pastUsd, snapshot);
+    const pastEur = cur === "EUR" ? pastClassEur : pastUsd;
+    const delta = stocksValue - (pastEur || stocksValue);
+    const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
     return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
   }
 
@@ -268,9 +270,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastUsd = snapshot.cash_value_usd ?? 0;
     if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const pct = ((cashValueUsd - pastUsd) / pastUsd) * 100;
-    const delta = cashValue - cashValue / (1 + pct / 100);
-    const { fxPct, fxAbs } = deriveClassFx(cashValue, cashValueUsd, cashValueEur, pastUsd, snapshot);
+    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(cashValue, cashValueUsd, cashValueEur, pastUsd, snapshot);
+    const pastEur = cur === "EUR" ? pastClassEur : pastUsd;
+    const delta = cashValue - (pastEur || cashValue);
+    const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
     return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
   }
 
