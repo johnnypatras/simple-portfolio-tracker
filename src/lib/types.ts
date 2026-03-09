@@ -273,6 +273,11 @@ export interface PortfolioSnapshot {
   crypto_value_usd: number;
   stocks_value_usd: number;
   cash_value_usd: number;
+  crypto_value_eur: number | null;
+  stocks_value_eur: number | null;
+  cash_value_eur: number | null;
+  stocks_eur_denominated_value: number | null;
+  cash_eur_denominated_value: number | null;
   created_at: string;
 }
 
