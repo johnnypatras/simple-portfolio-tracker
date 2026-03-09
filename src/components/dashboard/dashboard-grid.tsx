@@ -135,6 +135,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     cashTotalValueChange24h,
     cashTotalFxValueChange24h,
     cashTotalFxChange24hPercent,
+    stocksHomeCurrencyEur,
+    cashHomeCurrencyEur,
   } = summary;
 
   const cur = primaryCurrency;
@@ -196,6 +198,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     currentClassEur: number,
     pastClassUsd: number,
     snapshot: PortfolioSnapshot,
+    currentHomeCurrencyEur?: number,
+    pastHomeCurrencyEur?: number | null,
   ): { fxPct: number; fxAbs: number; pastClassEur: number } {
     // Estimate past class EUR value using the portfolio's implied EUR/USD rate at snapshot time
     const snapTotalUsd = snapshot.total_value_usd ?? 0;
@@ -213,7 +217,18 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     const primaryReturn = cur === "EUR" ? eurReturn : usdReturn;
     const otherReturn = cur === "EUR" ? usdReturn : eurReturn;
     const fxPct = primaryReturn - otherReturn;
-    const fxAbs = fxPct !== 0 ? currentClassValue - currentClassValue / (1 + fxPct / 100) : 0;
+    let fxAbs = fxPct !== 0 ? currentClassValue - currentClassValue / (1 + fxPct / 100) : 0;
+
+    // Adjust fxAbs: only apply FX to the foreign-currency (non-home) portion
+    if (currentHomeCurrencyEur != null && pastHomeCurrencyEur != null
+        && currentClassEur > 0 && pastClassEur > 0) {
+      const currentFxFraction = 1 - (currentHomeCurrencyEur / currentClassEur);
+      const pastFxFraction = 1 - (Number(pastHomeCurrencyEur) / pastClassEur);
+      // Average of past and present fractions handles mix changes over the period
+      const avgFxFraction = (currentFxFraction + pastFxFraction) / 2;
+      fxAbs = fxAbs * Math.max(0, Math.min(1, avgFxFraction));
+    }
+
     return { fxPct, fxAbs, pastClassEur };
   }
 
@@ -251,7 +266,11 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastUsd = snapshot.stocks_value_usd ?? 0;
     if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(stocksValue, stocksValueUsd, stocksValueEur, pastUsd, snapshot);
+    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
+      stocksValue, stocksValueUsd, stocksValueEur, pastUsd, snapshot,
+      stocksHomeCurrencyEur,
+      snapshot.stocks_eur_denominated_value,
+    );
     const pastEur = cur === "EUR" ? pastClassEur : pastUsd;
     const delta = stocksValue - (pastEur || stocksValue);
     const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
@@ -270,7 +289,11 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
     const pastUsd = snapshot.cash_value_usd ?? 0;
     if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(cashValue, cashValueUsd, cashValueEur, pastUsd, snapshot);
+    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
+      cashValue, cashValueUsd, cashValueEur, pastUsd, snapshot,
+      cashHomeCurrencyEur,
+      snapshot.cash_eur_denominated_value,
+    );
     const pastEur = cur === "EUR" ? pastClassEur : pastUsd;
     const delta = cashValue - (pastEur || cashValue);
     const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
