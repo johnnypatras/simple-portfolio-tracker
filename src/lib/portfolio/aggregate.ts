@@ -62,6 +62,10 @@ export interface PortfolioSummary {
   stocksValueEur: number;
   cashValueUsd: number;
   cashValueEur: number;
+
+  // EUR value of positions denominated in the user's home currency (zero FX sensitivity)
+  stocksHomeCurrencyEur: number;
+  cashHomeCurrencyEur: number;
 }
 
 interface AggregateParams {
@@ -266,6 +270,8 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   let stocksValueEur = 0;
   let fiatCashValueUsd = 0;
   let fiatCashValueEur = 0;
+  let stocksHomeCurrencyEur = 0;
+  let cashHomeCurrencyEur = 0;
 
   if (fxRatesUsd && fxRatesEur) {
     // Direct conversion — each native currency converts independently to USD and EUR
@@ -278,18 +284,30 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
       const valueNative = totalQty * priceData.price;
       stocksValueUsd += convertToBase(valueNative, asset.currency, "USD", fxRatesUsd);
       stocksValueEur += convertToBase(valueNative, asset.currency, "EUR", fxRatesEur);
+      if (asset.currency === primaryCurrency) {
+        stocksHomeCurrencyEur += convertToBase(valueNative, asset.currency, "EUR", fxRatesEur);
+      }
     }
     for (const bank of bankAccounts) {
       fiatCashValueUsd += convertToBase(bank.balance, bank.currency, "USD", fxRatesUsd);
       fiatCashValueEur += convertToBase(bank.balance, bank.currency, "EUR", fxRatesEur);
+      if (bank.currency === primaryCurrency) {
+        cashHomeCurrencyEur += convertToBase(bank.balance, bank.currency, "EUR", fxRatesEur);
+      }
     }
     for (const deposit of exchangeDeposits) {
       fiatCashValueUsd += convertToBase(deposit.amount, deposit.currency, "USD", fxRatesUsd);
       fiatCashValueEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
+      if (deposit.currency === primaryCurrency) {
+        cashHomeCurrencyEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
+      }
     }
     for (const deposit of brokerDeposits) {
       fiatCashValueUsd += convertToBase(deposit.amount, deposit.currency, "USD", fxRatesUsd);
       fiatCashValueEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
+      if (deposit.currency === primaryCurrency) {
+        cashHomeCurrencyEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
+      }
     }
   } else {
     // Legacy cross-conversion fallback (single FX rate set)
@@ -345,5 +363,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     stocksValueEur,
     cashValueUsd,
     cashValueEur,
+    stocksHomeCurrencyEur,
+    cashHomeCurrencyEur,
   };
 }
