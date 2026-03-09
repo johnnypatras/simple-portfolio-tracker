@@ -42,7 +42,7 @@ Deno.serve(async (req: Request) => {
     // 1. Fetch all active users
     const { data: users, error: usersErr } = await supabase
       .from("profiles")
-      .select("id")
+      .select("id, primary_currency")
       .eq("status", "active");
 
     if (usersErr) throw new Error(`Failed to fetch users: ${usersErr.message}`);
@@ -51,6 +51,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const userIds = users.map((u: { id: string }) => u.id);
+    const userCurrencyMap = new Map<string, string>(
+      users.map((u: { id: string; primary_currency: string | null }) => [
+        u.id,
+        u.primary_currency ?? "EUR",
+      ])
+    );
 
     // 2. Bulk-fetch all holdings across all users (service-role bypasses RLS)
     const [
@@ -194,9 +200,16 @@ Deno.serve(async (req: Request) => {
       crypto_value_usd: number;
       stocks_value_usd: number;
       cash_value_usd: number;
+      crypto_value_eur: number;
+      stocks_value_eur: number;
+      cash_value_eur: number;
+      stocks_eur_denominated_value: number;
+      cash_eur_denominated_value: number;
     }[] = [];
 
     for (const [userId, holdings] of userHoldings) {
+      const primaryCurrency = userCurrencyMap.get(userId) ?? "EUR";
+
       let cryptoValueUsd = 0;
       let cryptoValueEur = 0;
       let stablecoinValueUsd = 0;
@@ -219,20 +232,28 @@ Deno.serve(async (req: Request) => {
       // Stock values (convert native currency → USD and EUR via FX)
       let stocksValueUsd = 0;
       let stocksValueEur = 0;
+      let stocksHomeCurrencyEur = 0;
       for (const asset of holdings.stockAssets) {
         const quote = yahooQuotes.get(asset.yahoo_ticker);
         if (!quote) continue;
         const valueNative = asset.quantity * quote.price;
         stocksValueUsd += convertToBase(valueNative, quote.currency, "USD", fxUsd);
         stocksValueEur += convertToBase(valueNative, quote.currency, "EUR", fxEur);
+        if (quote.currency === primaryCurrency) {
+          stocksHomeCurrencyEur += convertToBase(valueNative, quote.currency, "EUR", fxEur);
+        }
       }
 
       // Cash values (convert each currency → USD and EUR via FX)
       let fiatCashValueUsd = 0;
       let fiatCashValueEur = 0;
+      let cashHomeCurrencyEur = 0;
       for (const item of holdings.cashItems) {
         fiatCashValueUsd += convertToBase(item.amount, item.currency, "USD", fxUsd);
         fiatCashValueEur += convertToBase(item.amount, item.currency, "EUR", fxEur);
+        if (item.currency === primaryCurrency) {
+          cashHomeCurrencyEur += convertToBase(item.amount, item.currency, "EUR", fxEur);
+        }
       }
 
       // Cash = fiat + stablecoins (matching aggregate.ts logic)
@@ -258,6 +279,11 @@ Deno.serve(async (req: Request) => {
         crypto_value_usd: round2(cryptoValueUsd),
         stocks_value_usd: round2(stocksValueUsd),
         cash_value_usd: round2(cashValueUsd),
+        crypto_value_eur: round2(cryptoValueEur),
+        stocks_value_eur: round2(stocksValueEur),
+        cash_value_eur: round2(fiatCashValueEur + stablecoinValueEur),
+        stocks_eur_denominated_value: round2(stocksHomeCurrencyEur),
+        cash_eur_denominated_value: round2(cashHomeCurrencyEur),
       });
     }
 
