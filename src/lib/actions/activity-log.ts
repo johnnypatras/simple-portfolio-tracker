@@ -424,7 +424,8 @@ export async function exportActivityLogsCsv(): Promise<string> {
 
   const headers = [
     "Date", "Action", "Type", "Name", "Description",
-    "Adjustment", "Delta USD", "Delta EUR", "Undone At",
+    "Adjustment", "Delta USD", "Delta EUR",
+    "Transfer Group", "Compensates For", "Undone At",
   ];
 
   const csvRows = rows.map((row) => [
@@ -436,6 +437,8 @@ export async function exportActivityLogsCsv(): Promise<string> {
     row.is_adjustment ? "Yes" : "No",
     row.delta_usd ?? "",
     row.delta_eur ?? "",
+    row.transfer_group_id ?? "",
+    row.compensates_for ?? "",
     row.undone_at ?? "",
   ]);
 
