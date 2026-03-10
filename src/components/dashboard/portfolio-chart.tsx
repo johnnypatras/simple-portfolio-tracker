@@ -16,6 +16,8 @@ import type { PortfolioSnapshot } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/actions/benchmark";
 import type { AdjustmentDelta } from "@/lib/actions/activity-log";
 import { fmtCurrencyCompact } from "@/lib/format";
+import { enrichChartData } from "@/lib/portfolio/chart-enrichment";
+import type { ChartViewMode, ChartPoint } from "@/lib/portfolio/chart-enrichment";
 
 interface PortfolioChartProps {
   snapshots: PortfolioSnapshot[];
@@ -44,8 +46,7 @@ const PERIODS = [
   { label: "All", days: Infinity },
 ] as const;
 
-const VIEW_MODES = ["total", "investments", "crypto", "stocks", "cash"] as const;
-type ChartViewMode = (typeof VIEW_MODES)[number];
+const VIEW_MODES: readonly ChartViewMode[] = ["total", "investments", "crypto", "stocks", "cash"];
 
 const VIEW_MODE_LABELS: Record<ChartViewMode, string> = {
   total: "Total",
@@ -128,7 +129,7 @@ export function PortfolioChart({
       ? snapshots.filter((s) => s.snapshot_date >= cutoff)
       : snapshots;
 
-    const points = filtered.map((s) => {
+    const points: ChartPoint[] = filtered.map((s) => {
       const totalUsd = s.total_value_usd || 1;
       return {
         date: s.snapshot_date,
@@ -169,63 +170,6 @@ export function PortfolioChart({
       }
     }
 
-    // ── Slice value extraction per view mode ──
-    const getSliceValueUsd = (p: typeof points[number]): number => {
-      if (viewMode === "total") return p.valueUsd;
-      if (viewMode === "investments") return p.cryptoUsd + p.stocksUsd;
-      if (viewMode === "crypto") return p.cryptoUsd;
-      if (viewMode === "stocks") return p.stocksUsd;
-      return p.cashUsd;
-    };
-
-    const toDisplayFromUsd = (usd: number, p: { value: number; valueUsd: number }): number => {
-      if (primaryCurrency === "USD") return usd;
-      if (p.valueUsd === 0) return usd;
-      return usd * (p.value / p.valueUsd);
-    };
-
-    const getSliceValue = (p: typeof points[number]): number => {
-      if (viewMode === "total") return p.value;
-      return toDisplayFromUsd(getSliceValueUsd(p), p);
-    };
-
-    // ── Adjustment delta lookup (per view mode) ──
-    const getDeltaPair = (d: AdjustmentDelta): { cumUsd: number; cumEur: number } => {
-      if (viewMode === "total") return { cumUsd: d.cumulative_usd, cumEur: d.cumulative_eur };
-      if (viewMode === "investments") return {
-        cumUsd: d.crypto_cumulative_usd + d.stocks_cumulative_usd,
-        cumEur: d.crypto_cumulative_eur + d.stocks_cumulative_eur,
-      };
-      if (viewMode === "crypto") return { cumUsd: d.crypto_cumulative_usd, cumEur: d.crypto_cumulative_eur };
-      if (viewMode === "stocks") return { cumUsd: d.stocks_cumulative_usd, cumEur: d.stocks_cumulative_eur };
-      return { cumUsd: d.cash_cumulative_usd, cumEur: d.cash_cumulative_eur };
-    };
-
-    const deltaLookup = adjustmentDeltas.map((d) => ({
-      date: d.date,
-      ...getDeltaPair(d),
-    }));
-
-    const finalCumDelta =
-      deltaLookup.length > 0
-        ? deltaLookup[deltaLookup.length - 1]
-        : { cumUsd: 0, cumEur: 0 };
-
-    const getCumulativeDelta = (
-      date: string
-    ): { usd: number; eur: number } => {
-      if (deltaLookup.length === 0) return { usd: 0, eur: 0 };
-      let result = { usd: 0, eur: 0 };
-      for (const d of deltaLookup) {
-        if (d.date <= date) {
-          result = { usd: d.cumUsd, eur: d.cumEur };
-        } else {
-          break;
-        }
-      }
-      return result;
-    };
-
     // ── Snapshot ratio lookup for S&P scaling ──
     const snapshotRatios = viewMode === "total"
       ? null
@@ -239,170 +183,22 @@ export function PortfolioChart({
           return { date: s.snapshot_date, ratio: totalUsd > 0 ? sliceUsd / totalUsd : 0 };
         });
 
-    const getSliceRatio = (date: string): number => {
-      if (!snapshotRatios || snapshotRatios.length === 0) return 1;
-      let ratio = snapshotRatios[0].ratio;
-      for (const sr of snapshotRatios) {
-        if (sr.date <= date) ratio = sr.ratio;
-        else break;
-      }
-      return ratio;
-    };
-
-    // ── Cash-flow-adjusted S&P 500 benchmark ──
-    const sp500Map = new Map(sp500History.map((p) => [p.date, p.close]));
-
-    // Helper: get S&P price for a date, falling back to nearest earlier date
-    const getSp500Price = (date: string): number | undefined => {
-      const exact = sp500Map.get(date);
-      if (exact != null) return exact;
-      for (let i = sp500History.length - 1; i >= 0; i--) {
-        if (sp500History[i].date <= date && sp500History[i].close > 0)
-          return sp500History[i].close;
-      }
-      return undefined;
-    };
-
-    const hasCashFlows = cashFlows.length > 0;
-    const chartStart = points[0]?.date ?? "";
-
-    // Helper: convert a USD amount to display currency using the snapshot's
-    // implicit FX rate. When primaryCurrency is USD, this is a no-op.
-    const toDisplayCurrency = (usdAmount: number, point: { value: number; valueUsd: number }): number | undefined => {
-      if (primaryCurrency === "USD") return usdAmount;
-      if (point.valueUsd === 0) return undefined; // can't derive FX rate
-      return usdAmount * (point.value / point.valueUsd);
-    };
-
-    type ChartPoint = typeof points[number] & {
-      sp500Value?: number;
-      adjustedValue?: number;
-      rawValue?: number;
-    };
-
-    let enriched: ChartPoint[];
-
-    if (hasCashFlows) {
-      // ── Cash-flow-adjusted mode ──
-      let sp500Units = 0;
-      let preChartUnits = 0;
-      const unitsByDate = new Map<string, number>();
-
-      for (const cf of cashFlows) {
-        const price = getSp500Price(cf.date);
-        if (price && price > 0) {
-          const scaledAmount = cf.amount_usd * getSliceRatio(cf.date);
-          sp500Units += scaledAmount / price;
-        }
-        if (cf.date < chartStart) {
-          preChartUnits = sp500Units;
-        } else {
-          unitsByDate.set(cf.date, sp500Units);
-        }
-      }
-
-      // Seed S&P units so the benchmark starts at the adjusted portfolio value.
-      // Import entries excluded from cashFlows (is_adjustment=true) still represent
-      // real invested capital. Without seeding, the S&P line starts too low.
-      const firstPoint = points[0];
-      if (firstPoint) {
-        const sp500StartPrice = getSp500Price(firstPoint.date);
-        if (sp500StartPrice && sp500StartPrice > 0) {
-          const firstDelta = getCumulativeDelta(firstPoint.date);
-          const firstSliceVal = getSliceValue(firstPoint);
-          const firstSliceUsd = getSliceValueUsd(firstPoint);
-          const firstDeltaDisp =
-            primaryCurrency === "EUR" ? firstDelta.eur : firstDelta.usd;
-          const finalDeltaDisp =
-            primaryCurrency === "EUR"
-              ? finalCumDelta.cumEur
-              : finalCumDelta.cumUsd;
-          const adjustedFirstDisp =
-            firstSliceVal + (finalDeltaDisp - firstDeltaDisp);
-          // Convert adjusted display value → USD for unit calculation.
-          // Prefer per-class FX ratio; fall back to portfolio-wide ratio when
-          // slice starts at 0 (e.g., stocks not yet imported at chart start).
-          const adjustedFirstUsd =
-            firstSliceUsd > 0 && firstSliceVal > 0
-              ? adjustedFirstDisp * (firstSliceUsd / firstSliceVal)
-              : firstPoint.value > 0
-                ? adjustedFirstDisp * (firstPoint.valueUsd / firstPoint.value)
-                : adjustedFirstDisp;
-          const neededUnits = adjustedFirstUsd / sp500StartPrice;
-          if (neededUnits > preChartUnits) {
-            const seedDelta = neededUnits - preChartUnits;
-            sp500Units += seedDelta;
-            preChartUnits = neededUnits;
-            for (const [date, units] of unitsByDate) {
-              unitsByDate.set(date, units + seedDelta);
-            }
-          }
-        }
-      }
-
-      let currentUnits = preChartUnits;
-      enriched = points.map((p) => {
-        if (unitsByDate.has(p.date)) {
-          currentUnits = unitsByDate.get(p.date)!;
-        }
-        const price = getSp500Price(p.date);
-        const sp500ValueUsd = price != null ? currentUnits * price : undefined;
-        const sp500Value = sp500ValueUsd != null
-          ? toDisplayCurrency(sp500ValueUsd, p)
-          : undefined;
-
-        const sliceVal = getSliceValue(p);
-        const delta = getCumulativeDelta(p.date);
-        const deltaDisplay =
-          primaryCurrency === "EUR" ? delta.eur : delta.usd;
-        const finalDeltaDisplay =
-          primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
-        const adjustedValue = sliceVal + (finalDeltaDisplay - deltaDisplay);
-
-        return { ...p, value: sliceVal, sp500Value, adjustedValue, rawValue: sliceVal };
-      });
-    } else {
-      // ── Fallback: naive normalization ──
-      // Use adjusted start value so S&P matches portfolio after adjustment compensation
-      const firstSliceVal = points[0] ? getSliceValue(points[0]) : 0;
-      const firstDeltaFb = getCumulativeDelta(chartStart);
-      const finalDeltaFb =
-        primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
-      const firstDeltaFbDisplay =
-        primaryCurrency === "EUR" ? firstDeltaFb.eur : firstDeltaFb.usd;
-      const portfolioStart = firstSliceVal + (finalDeltaFb - firstDeltaFbDisplay);
-      const sp500Start = getSp500Price(chartStart);
-
-      enriched = points.map((p) => {
-        const sliceVal = getSliceValue(p);
-        let sp500Value: number | undefined;
-        if (sp500Start && portfolioStart > 0) {
-          const close = getSp500Price(p.date);
-          if (close != null) {
-            sp500Value = (portfolioStart / sp500Start) * close;
-          }
-        }
-
-        const delta = getCumulativeDelta(p.date);
-        const deltaDisplay =
-          primaryCurrency === "EUR" ? delta.eur : delta.usd;
-        const finalDeltaDisplay =
-          primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
-        const adjustedValue = sliceVal + (finalDeltaDisplay - deltaDisplay);
-
-        return { ...p, value: sliceVal, sp500Value, adjustedValue, rawValue: sliceVal };
-      });
-    }
-
-    return enriched;
+    return enrichChartData({
+      points,
+      viewMode,
+      primaryCurrency,
+      sp500History,
+      cashFlows,
+      adjustmentDeltas,
+      snapshotRatios,
+    });
   }, [snapshots, liveValue, liveValueUsd, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, adjustmentDeltas, viewMode]);
 
   // Use the active dataKey for y-axis domain
   const yDomain = useMemo(() => {
     if (data.length === 0) return [0, 100] as const;
-    const key = hasDeltas ? "adjustedValue" : "value";
     const allValues = data.flatMap((d) => {
-      const v = (d as Record<string, unknown>)[key] as number ?? d.value;
+      const v = (hasDeltas ? d.adjustedValue : d.value) ?? d.value;
       return showBenchmark && d.sp500Value != null ? [v, d.sp500Value] : [v];
     });
     const minValue = Math.min(...allValues);
