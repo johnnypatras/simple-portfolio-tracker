@@ -11,11 +11,14 @@ Built with Next.js, Supabase, and Tailwind CSS. Deployed on Vercel with automate
 
 ### Portfolio Dashboard
 - **Portfolio value chart** with configurable periods (24H, 3D, 7D, 30D, 90D, 1Y, All)
-- **S&P 500 benchmark** overlay — cash-flow-adjusted "what if" comparison
-- **Adjustment-aware chart** — compensates for portfolio corrections and imports so the chart reflects real growth, not data entry artifacts
+- **Chart view modes** — cycle through Total, Investments, Crypto, Stocks, Cash for per-class performance
+- **S&P 500 benchmark** overlay — cash-flow-adjusted "what if" comparison, per-class ratio-based scaling
+- **Adjustment-aware chart** — compensates for portfolio corrections and imports; per-class deltas scoped by entity type
+- **FX decomposition** — tooltips split value changes into Prices vs EUR/USD components
 - **Allocation breakdown** by asset class (crypto, stocks, cash) with visual bars
-- **Market overview** — live BTC, ETH, Gold, S&P 500, Nasdaq, Dow, EUR/USD
+- **Market overview** — live BTC, ETH, SOL, Gold, Silver, Brent, S&P 500, Nasdaq, Dow, Stoxx 50, VIX, 10Y UST, EUR/USD
 - **Dual currency** — toggle between EUR and USD at any time
+- **Command palette** — Cmd+K global search across portfolio holdings, CoinGecko, and Yahoo Finance
 
 ### Crypto
 - Live prices from CoinGecko (batch API, 30 calls/min free tier)
@@ -55,7 +58,9 @@ Built with Next.js, Supabase, and Tailwind CSS. Deployed on Vercel with automate
 
 ### Activity & History
 - **Activity log** — full audit trail of every portfolio change with before/after snapshots
-- **Undo** — revert any logged change (soft-delete with `undone_at` timestamp)
+- **Undo** — compensating transaction undo for all entity types (restores via reverse operations)
+- **Transfer pair grouping** — linked sell/buy/move legs displayed together in timeline
+- **Field-level changes** — update diffs show exactly which fields changed
 - **Portfolio adjustment flagging** — mark entries as corrections vs. real transactions
 - **Trade diary** — manual buy/sell trade logging across all asset types
 - **Snapshot history** — browse historical portfolio snapshots with value breakdown
@@ -73,8 +78,17 @@ Built with Next.js, Supabase, and Tailwind CSS. Deployed on Vercel with automate
 - Invite-only registration (admin generates invite codes)
 - MFA support (TOTP two-factor authentication)
 - Row Level Security on every table
+- Auth guards (`getUser()` + 401) on all API routes
+- Sliding-window rate limiting on all endpoints
+- Input validation on all mutation server actions and import flows
 - Customizable columns per table (persisted in localStorage)
 - Password and email change flows with confirmation
+
+### Testing & CI
+- **123 automated tests** — 114 unit tests + 9 integration tests
+- Unit: validation, CSV, rate-limit, FX, aggregate, activity-log, dashboard-insights, holdings, shares, import-backup
+- Integration: migration bootstrap, RLS enforcement, snapshot validation (real local Supabase)
+- **GitHub Actions CI** — lint → build → unit tests → Supabase start → integration tests
 
 ## S&P 500 Benchmark
 
@@ -86,9 +100,13 @@ The benchmark uses a **cash-flow-adjusted** approach. Each deposit, purchase, or
 
 Cash flows are derived from the activity log (bank account changes, exchange/broker deposits, crypto/stock position changes valued at historical prices). All amounts are converted to USD using daily FX rates from Yahoo Finance and Frankfurter (ECB data).
 
+### Per-Asset-Class Benchmark
+
+When viewing a specific asset class (Crypto, Stocks, or Cash), the S&P benchmark scales proportionally. At each cash flow date, the ratio of the selected class's value to total portfolio value determines how many S&P units are allocated.
+
 ### Adjustment Awareness
 
-When portfolio corrections are flagged as adjustments (e.g., importing pre-existing holdings), the chart compensates so the line reflects real growth. The S&P benchmark seeds its starting units from the adjusted portfolio value, ensuring both lines start at the same point. Deltas are cached at write-time in USD and EUR using historical FX rates for accuracy.
+When portfolio corrections are flagged as adjustments (e.g., importing pre-existing holdings), the chart compensates so the line reflects real growth. The S&P benchmark seeds its starting units from the adjusted portfolio value, ensuring both lines start at the same point. Deltas are cached at write-time in USD and EUR using historical FX rates for accuracy. Per-class adjustment deltas are scoped by entity type.
 
 ### Known Compromises
 
@@ -148,13 +166,14 @@ When importing existing holdings or correcting data, you can flag entries as **p
 |-------|------|
 | Framework | [Next.js 16](https://nextjs.org) (App Router, Turbopack, React 19) |
 | Language | TypeScript |
-| Database & Auth | [Supabase](https://supabase.com) (PostgreSQL, RLS, JWT + MFA) |
+| Database & Auth | [Supabase](https://supabase.com) (PostgreSQL, 18 tables, 50 migrations, RLS, JWT + MFA) |
 | Styling | [Tailwind CSS 4](https://tailwindcss.com) |
 | Charts | [Recharts](https://recharts.org) |
 | Crypto prices | [CoinGecko](https://www.coingecko.com/en/api) (free Demo plan) |
 | Stock prices | [Yahoo Finance](https://finance.yahoo.com) (v7 batch + v8 chart) |
 | FX rates | [Frankfurter](https://www.frankfurter.app) (ECB data) + Yahoo for EUR/USD |
 | Daily snapshots | pg_cron + pg_net → Supabase Edge Function |
+| Testing | [Vitest](https://vitest.dev) (unit + integration), GitHub Actions CI |
 | Hosting | [Vercel](https://vercel.com) |
 | Icons | [Lucide React](https://lucide.dev) |
 | Fonts | [Geist](https://vercel.com/font) (Sans + Mono) |
@@ -178,7 +197,7 @@ npm install
 
 1. Create a new project at [supabase.com](https://supabase.com)
 2. Go to the **SQL Editor** in your Supabase dashboard
-3. Run each migration file from `supabase/migrations/` **in numerical order** (001 through 045)
+3. Run each migration file from `supabase/migrations/` **in numerical order** (001 through 050)
 
 ### 3. Configure environment variables
 
@@ -210,6 +229,17 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) and sign in.
 
+### Running Tests
+
+```bash
+npm test                  # Unit tests (114 cases, ~170ms)
+npm run test:integration  # Integration tests (requires local Supabase via Docker)
+npm run test:all          # Both unit + integration
+npm run test:watch        # Unit tests in watch mode
+```
+
+Integration tests require a running local Supabase instance (`supabase start`).
+
 ### Daily Snapshots (optional)
 
 To enable automated daily portfolio snapshots:
@@ -224,7 +254,7 @@ To enable automated daily portfolio snapshots:
 ```
 src/
 ├── app/                        # Next.js App Router
-│   ├── api/                    #   API routes (auth, crypto search, stock quotes)
+│   ├── api/                    #   API routes (auth, crypto search, stock quotes, holdings)
 │   ├── dashboard/              #   Main app (accounts, crypto, stocks, cash, etc.)
 │   ├── share/[token]/          #   Public shared portfolio views
 │   ├── login/                  #   Authentication pages
@@ -240,18 +270,27 @@ src/
 │   ├── history/                #   Activity log & snapshots
 │   ├── settings/               #   User settings & admin
 │   ├── stocks/                 #   Stock/ETF positions & modals
-│   └── ui/                     #   Shared primitives (modals, tooltips, etc.)
+│   └── ui/                     #   Shared primitives (modals, tooltips, command palette)
 ├── lib/
-│   ├── actions/                #   20 server action modules (mutations + queries)
-│   ├── portfolio/              #   Aggregate calculations & dashboard insights
+│   ├── actions/                #   21 server action modules (mutations + queries)
+│   ├── portfolio/              #   Aggregate calculations, dashboard insights, holdings
 │   ├── prices/                 #   Price clients (CoinGecko, Yahoo, Frankfurter)
 │   ├── supabase/               #   4 Supabase clients (browser, server, middleware, admin)
 │   ├── hooks/                  #   Custom React hooks
 │   ├── types.ts                #   TypeScript type definitions
-│   └── format.ts               #   Currency & number formatting
+│   ├── format.ts               #   Currency & number formatting
+│   ├── validation.ts           #   Input validators (amount, quantity, currency, etc.)
+│   ├── rate-limit.ts           #   Sliding-window rate limiter for API routes
+│   ├── csv.ts                  #   CSV utilities (export + activity log)
+│   └── deltas.ts               #   Pure delta computation (cash, position quantity)
+__tests__/
+├── unit/                       # 114 unit tests across 10 files (~170ms)
+├── integration/                # 9 integration tests across 3 files (local Supabase)
 supabase/
-├── migrations/                 # 45 SQL migrations (schema, RLS, triggers, cron)
+├── migrations/                 # 50 SQL migrations (schema, RLS, triggers, cron, FX columns)
 └── functions/                  # Edge Functions (daily-snapshot)
+.github/
+└── workflows/test.yml          # CI: lint → build → unit → supabase → integration
 ```
 
 ## License

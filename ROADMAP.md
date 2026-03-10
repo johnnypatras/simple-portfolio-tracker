@@ -169,6 +169,46 @@ Per-asset-class chart views with mode-specific S&P benchmark and adjustment delt
 - S&P per mode: ratio-based scaling using `slice_usd / total_usd` at each cash flow date
 - Editable stock asset fields (name, yahoo_ticker, ISIN) in position editor — fix broken tickers without recreating
 
+### Phase 24 — Testing Infrastructure ✅
+Comprehensive test suite with CI pipeline for ongoing quality assurance.
+- Vitest framework with separate unit and integration test projects
+- 114 unit tests across 10 files: validation (46), csv (14), rate-limit (6), fx (12), aggregate (4), activity-log (8), dashboard-insights (2), holdings (3), shares (8), import-backup (6)
+- 9 integration tests across 3 files: migration-bootstrap (2), RLS enforcement (3), snapshot-validation (4) — real local Supabase via Docker
+- GitHub Actions CI pipeline: lint → build → unit tests → supabase start → integration tests → supabase stop
+- Design doc: `docs/plans/2026-03-04-test-infrastructure-design.md`
+
+### Phase 25 — Code Review & Hardening ✅
+Security audit, API hardening, and codebase quality improvements.
+- Auth guards (`getUser()` + 401) on all 4 previously unprotected API routes
+- Sliding-window rate limiting on all API endpoints (`src/lib/rate-limit.ts`)
+- Pure module extractions for testability: `share-utils.ts`, `stock-categories.ts`, `format.ts`, `csv.ts`, `deltas.ts`
+- Security fix: `deleteAccount` now uses `admin.auth.admin.deleteUser()` (was only deleting profile row)
+- Compensating transaction undo system replacing RPC-based undo for all entity types
+- Test quality: deterministic IDs, unconditional assertions, afterEach cleanup
+
+### Phase 26 — Command Palette ✅
+Global search with portfolio holdings, external asset lookup, and quick navigation.
+- Cmd+K / SearchPill trigger with strict substring filter (not fuzzy)
+- Holdings preview with inline chevron toggle for quantity/price/total expansion
+- External CoinGecko + Yahoo Finance search with "Owned" badge on matching portfolio tickers
+- localStorage cache + `/api/holdings` endpoint (rate-limited 30/min)
+- `buildPaletteHoldings()` shared builder in `src/lib/portfolio/holdings.ts`
+
+### Phase 27 — FX Decomposition Accuracy ✅
+Accurate per-asset-class Prices vs FX attribution in chart view modes.
+- 5 new snapshot columns: per-class EUR values + `stocks_eur_denominated_value`, `cash_eur_denominated_value`
+- FX-sensitive fraction (`avgFxFraction`) for accurate per-class Prices vs FX split
+- Daily snapshot Edge Function writes all per-class EUR value columns
+- One-time backfill script for historical snapshot data
+- Design doc: `docs/plans/2026-03-09-fx-decomposition-design.md`
+
+### Miscellaneous Improvements (Phases 23–27) ✅
+- History timeline: grouped transfer pairs, specific field changes shown for updates
+- Mobile UI polish: responsive tables with staggered column visibility, truncated assets, flex-wrap toolbars
+- S&P benchmark fixes: chart tooltip delta annotation, zero-slice FX seeding fix for EUR users
+- Entity name resolution in deposit tooltips, FX round-trip rounding elimination
+- CoinGecko-internal FX for stablecoin decomposition accuracy
+
 ---
 
 ## Future Ideas (Unscoped)
@@ -182,4 +222,4 @@ Per-asset-class chart views with mode-specific S&P benchmark and adjustment delt
 
 ---
 
-*Last updated after: Phase 23 — Chart View Modes*
+*Last updated after: Phase 27 — FX Decomposition Accuracy*
