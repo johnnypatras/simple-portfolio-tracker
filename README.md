@@ -85,8 +85,8 @@ Built with Next.js, Supabase, and Tailwind CSS. Deployed on Vercel with automate
 - Password and email change flows with confirmation
 
 ### Testing & CI
-- **127 automated tests** — 118 unit tests + 9 integration tests
-- Unit: validation, CSV, rate-limit, FX, aggregate, activity-log, dashboard-insights, holdings, shares, import-backup
+- **208 automated tests** — 199 unit tests + 9 integration tests
+- Unit: validation, CSV, rate-limit, FX, aggregate, activity-log, dashboard-insights, holdings, shares, import-backup, format, stock-categories, dashboard-changes, chart-enrichment, institution-grouping
 - Integration: migration bootstrap, RLS enforcement, snapshot validation (real local Supabase)
 - **GitHub Actions CI** — lint → build → unit tests → Supabase start → integration tests
 
@@ -232,7 +232,7 @@ Open [http://localhost:3000](http://localhost:3000) and sign in.
 ### Running Tests
 
 ```bash
-npm test                  # Unit tests (118 cases, ~170ms)
+npm test                  # Unit tests (199 cases, ~290ms)
 npm run test:integration  # Integration tests (requires local Supabase via Docker)
 npm run test:all          # Both unit + integration
 npm run test:watch        # Unit tests in watch mode
@@ -284,7 +284,7 @@ src/
 │   ├── csv.ts                  #   CSV utilities (export + activity log)
 │   └── deltas.ts               #   Pure delta computation (cash, position quantity)
 __tests__/
-├── unit/                       # 118 unit tests across 11 files (~170ms)
+├── unit/                       # 199 unit tests across 15 files (~290ms)
 ├── integration/                # 9 integration tests across 3 files (local Supabase)
 supabase/
 ├── migrations/                 # 50 SQL migrations (schema, RLS, triggers, cron, FX columns)
