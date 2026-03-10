@@ -1556,19 +1556,19 @@ function TickerGroupRows({
         onClick={toggleOpen}
       >
         {groupHeaderCells(orderedColumns,
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {isOpen ? (
               <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
             ) : (
               <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
             )}
-            <span className="text-sm font-semibold text-zinc-100">{group.name}</span>
-            <span className="text-xs text-zinc-500 uppercase">{group.ticker}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">
+            <span className="text-sm font-semibold text-zinc-100 truncate min-w-0">{group.name}</span>
+            <span className="text-xs text-zinc-500 uppercase shrink-0">{group.ticker}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 whitespace-nowrap shrink-0">
               {group.rows.length} listings
             </span>
             <span
-              className={`text-xs tabular-nums ${
+              className={`text-xs tabular-nums shrink-0 ${
                 group.weightedChange24h >= 0 ? "text-emerald-400" : "text-red-400"
               }`}
             >
