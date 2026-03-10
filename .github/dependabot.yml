@@ -7,6 +7,8 @@ updates:
       day: monday
     open-pull-requests-limit: 10
     groups:
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       dev-dependencies:
         dependency-type: development
         update-types: [minor, patch]
