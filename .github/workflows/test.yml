@@ -36,6 +36,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Component tests
+        run: npm run test:component
+
       - name: Install Supabase CLI
         id: supabase-cli
         uses: supabase/setup-cli@v1

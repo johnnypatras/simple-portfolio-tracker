@@ -85,10 +85,11 @@ Built with Next.js, Supabase, and Tailwind CSS. Deployed on Vercel with automate
 - Password and email change flows with confirmation
 
 ### Testing & CI
-- **225 automated tests** — 216 unit tests + 9 integration tests
+- **277 automated tests** — 216 unit + 38 component + 23 integration tests
 - Unit: validation, CSV, rate-limit, FX, aggregate, activity-log, dashboard-insights, holdings, shares, import-backup, format, stock-categories, dashboard-changes, chart-enrichment, institution-grouping
-- Integration: migration bootstrap, RLS enforcement, snapshot validation (real local Supabase)
-- **GitHub Actions CI** — lint → build → unit tests → Supabase start → integration tests
+- Component: ChangeTooltip, ConfirmButton, Modal, ColumnSettingsPopover (React Testing Library + jsdom)
+- Integration: migration bootstrap, RLS enforcement, snapshot validation, cascade soft-delete triggers, crypto server actions (real local Supabase)
+- **GitHub Actions CI** — lint → build → unit tests → component tests → Supabase start → integration tests
 
 ## S&P 500 Benchmark
 
@@ -232,8 +233,9 @@ Open [http://localhost:3000](http://localhost:3000) and sign in.
 ### Running Tests
 
 ```bash
-npm test                  # Unit tests (216 cases, ~305ms)
-npm run test:integration  # Integration tests (requires local Supabase via Docker)
+npm test                  # Unit tests (216 cases, ~300ms)
+npm run test:component    # Component tests (38 cases, ~700ms)
+npm run test:integration  # Integration tests (23 cases, requires local Supabase via Docker)
 npm run test:all          # Both unit + integration
 npm run test:watch        # Unit tests in watch mode
 ```
@@ -284,13 +286,14 @@ src/
 │   ├── csv.ts                  #   CSV utilities (export + activity log)
 │   └── deltas.ts               #   Pure delta computation (cash, position quantity)
 __tests__/
-├── unit/                       # 216 unit tests across 15 files (~305ms)
-├── integration/                # 9 integration tests across 3 files (local Supabase)
+├── unit/                       # 216 unit tests across 15 files (~300ms)
+├── component/                  # 38 component tests across 4 files (RTL + jsdom, ~700ms)
+├── integration/                # 23 integration tests across 5 files (local Supabase)
 supabase/
 ├── migrations/                 # 50 SQL migrations (schema, RLS, triggers, cron, FX columns)
 └── functions/                  # Edge Functions (daily-snapshot)
 .github/
-└── workflows/test.yml          # CI: lint → build → unit → supabase → integration
+└── workflows/test.yml          # CI: lint → build → unit → component → supabase → integration
 ```
 
 ## License
