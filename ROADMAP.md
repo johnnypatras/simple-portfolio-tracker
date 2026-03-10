@@ -172,7 +172,7 @@ Per-asset-class chart views with mode-specific S&P benchmark and adjustment delt
 ### Phase 24 — Testing Infrastructure ✅
 Comprehensive test suite with CI pipeline for ongoing quality assurance.
 - Vitest framework with separate unit and integration test projects
-- 114 unit tests across 10 files: validation (46), csv (14), rate-limit (6), fx (12), aggregate (4), activity-log (8), dashboard-insights (2), holdings (3), shares (8), import-backup (6)
+- 118 unit tests across 11 files: validation (46), csv (14), rate-limit (6), fx (12), aggregate (4), activity-log (13), dashboard-insights (2), holdings (3), shares (8), import-backup (6), chart-enrichment (4)
 - 9 integration tests across 3 files: migration-bootstrap (2), RLS enforcement (3), snapshot-validation (4) — real local Supabase via Docker
 - GitHub Actions CI pipeline: lint → build → unit tests → supabase start → integration tests → supabase stop
 - Design doc: `docs/plans/2026-03-04-test-infrastructure-design.md`
