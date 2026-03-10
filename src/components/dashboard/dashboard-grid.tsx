@@ -23,11 +23,19 @@ import {
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
-import type { AssetClass, CashFlowEvent } from "@/lib/actions/benchmark";
+import type { CashFlowEvent } from "@/lib/actions/benchmark";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
 import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { useSharedView } from "@/components/shared-view-context";
 import { ChangeTooltip } from "@/components/ui/change-tooltip";
+import {
+  getChangeForPeriod,
+  getCryptoChangeForPeriod,
+  getStockChangeForPeriod,
+  getCashChangeForPeriod,
+  getDepositsForPeriod,
+} from "@/lib/portfolio/dashboard-changes";
+import type { ChangeContext, ChangePeriod } from "@/lib/portfolio/dashboard-changes";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -40,8 +48,7 @@ interface DashboardGridProps {
 
 // ─── Constants ──────────────────────────────────────────
 
-const CHANGE_PERIODS = ["24h", "7d", "30d", "1y"] as const;
-type ChangePeriod = (typeof CHANGE_PERIODS)[number];
+const CHANGE_PERIODS: readonly ChangePeriod[] = ["24h", "7d", "30d", "1y"];
 
 const PERIOD_LABELS: Record<ChangePeriod, string> = { "24h": "24h", "7d": "7d", "30d": "30d", "1y": "1y" };
 
@@ -141,195 +148,24 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
 
   const cur = primaryCurrency;
 
-  // Change computation for selected period
-  const valueKey = cur === "EUR" ? "total_value_eur" : "total_value_usd";
-  const otherKey = cur === "EUR" ? "total_value_usd" : "total_value_eur";
-  const currentValueOther = cur === "EUR" ? totalValueUsd : totalValueEur;
-
-  function getChangeForPeriod(period: ChangePeriod): {
-    percent: number; valueChange: number; available: boolean;
-    fxPercent: number; fxValueChange: number;
-  } {
-    if (period === "24h") {
-      return {
-        percent: change24hPercent,
-        valueChange: totalValueChange24h,
-        available: true,
-        fxPercent: fxChange24hPercent,
-        fxValueChange: fxValueChange24h,
-      };
-    }
-    const snapshot = pastSnapshots[period];
-    if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const pastValue = snapshot[valueKey] ?? 0;
-    if (pastValue === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-
-    const primaryReturn = ((totalValue - pastValue) / pastValue) * 100;
-    // FX impact = difference in returns between primary and other currency
-    const pastOther = snapshot[otherKey] ?? 0;
-    let fxPct = 0;
-    if (pastOther > 0 && currentValueOther > 0) {
-      const otherReturn = ((currentValueOther - pastOther) / pastOther) * 100;
-      fxPct = primaryReturn - otherReturn;
-    }
-    const fxAbs = fxPct !== 0
-      ? totalValue - totalValue / (1 + fxPct / 100)
-      : 0;
-
-    return {
-      percent: primaryReturn,
-      valueChange: totalValue - pastValue,
-      available: true,
-      fxPercent: fxPct,
-      fxValueChange: fxAbs,
-    };
-  }
-
-  // Return type for per-class change functions (extended with FX)
-  type ClassChange = {
-    percent: number; valueChange: number; available: boolean;
-    fxPercent: number; fxValueChange: number;
+  // Build context object for extracted change calculation functions
+  const changeCtx: ChangeContext = {
+    primaryCurrency: cur,
+    totalValue, totalValueUsd, totalValueEur,
+    totalValueChange24h, change24hPercent, fxChange24hPercent, fxValueChange24h,
+    cryptoValue, cryptoValueUsd, cryptoValueEur,
+    cryptoValueChange24h, cryptoFxChange24hPercent, cryptoFxValueChange24h,
+    stocksValue, stocksValueUsd, stocksValueEur,
+    stocksValueChange24h: stocksValueChange24h ?? 0,
+    stocksFxChange24hPercent, stocksFxValueChange24h,
+    stocksHomeCurrencyEur: stocksHomeCurrencyEur ?? 0,
+    cashValue, cashValueUsd, cashValueEur,
+    cashTotalValueChange24h: cashTotalValueChange24h ?? 0,
+    cashTotalFxChange24hPercent, cashTotalFxValueChange24h,
+    cashHomeCurrencyEur: cashHomeCurrencyEur ?? 0,
+    cryptoChange24hPercent: insights.cryptoChange24h,
+    pastSnapshots, cashFlows,
   };
-
-  // Derive per-class FX from snapshot dual-currency data for non-24h periods
-  function deriveClassFx(
-    currentClassValue: number,
-    currentClassUsd: number,
-    currentClassEur: number,
-    pastClassUsd: number,
-    snapshot: PortfolioSnapshot,
-    currentHomeCurrencyEur?: number,
-    pastHomeCurrencyEur?: number | null,
-  ): { fxPct: number; fxAbs: number; pastClassEur: number } {
-    // Estimate past class EUR value using the portfolio's implied EUR/USD rate at snapshot time
-    const snapTotalUsd = snapshot.total_value_usd ?? 0;
-    const snapTotalEur = snapshot.total_value_eur ?? 0;
-    if (snapTotalUsd === 0 || snapTotalEur === 0 || pastClassUsd === 0)
-      return { fxPct: 0, fxAbs: 0, pastClassEur: 0 };
-
-    const impliedRate = snapTotalEur / snapTotalUsd; // EUR per USD at snapshot time
-    const pastClassEur = pastClassUsd * impliedRate;
-
-    const usdReturn = ((currentClassUsd - pastClassUsd) / pastClassUsd) * 100;
-    const eurReturn = ((currentClassEur - pastClassEur) / pastClassEur) * 100;
-
-    // FX impact = primary currency return - other currency return
-    const primaryReturn = cur === "EUR" ? eurReturn : usdReturn;
-    const otherReturn = cur === "EUR" ? usdReturn : eurReturn;
-    const fxPct = primaryReturn - otherReturn;
-    let fxAbs = fxPct !== 0 ? currentClassValue - currentClassValue / (1 + fxPct / 100) : 0;
-
-    // Adjust fxAbs: only apply FX to the foreign-currency (non-home) portion
-    if (currentHomeCurrencyEur != null && pastHomeCurrencyEur != null
-        && currentClassEur > 0 && pastClassEur > 0) {
-      const currentFxFraction = 1 - (currentHomeCurrencyEur / currentClassEur);
-      const pastFxFraction = 1 - (Number(pastHomeCurrencyEur) / pastClassEur);
-      // Average of past and present fractions handles mix changes over the period
-      const avgFxFraction = (currentFxFraction + pastFxFraction) / 2;
-      fxAbs = fxAbs * Math.max(0, Math.min(1, avgFxFraction));
-    }
-
-    return { fxPct, fxAbs, pastClassEur };
-  }
-
-  // Per-asset-class change for selected period (uses USD snapshots, derives display-currency delta)
-  function getCryptoChangeForPeriod(period: ChangePeriod): ClassChange {
-    if (period === "24h") {
-      return {
-        percent: insights.cryptoChange24h,
-        valueChange: cryptoValueChange24h,
-        available: true,
-        fxPercent: cryptoFxChange24hPercent,
-        fxValueChange: cryptoFxValueChange24h,
-      };
-    }
-    const snapshot = pastSnapshots[period];
-    if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const pastUsd = snapshot.crypto_value_usd ?? 0;
-    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(cryptoValue, cryptoValueUsd, cryptoValueEur, pastUsd, snapshot);
-    const pastEur = cur === "EUR" ? pastClassEur : pastUsd;
-    const delta = cryptoValue - (pastEur || cryptoValue);
-    const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
-    return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
-  }
-
-  function getStockChangeForPeriod(period: ChangePeriod): ClassChange {
-    if (period === "24h") {
-      const pct = stocksValue > 0 ? (stocksValueChange24h / stocksValue) * 100 : 0;
-      return {
-        percent: pct, valueChange: stocksValueChange24h, available: true,
-        fxPercent: stocksFxChange24hPercent, fxValueChange: stocksFxValueChange24h,
-      };
-    }
-    const snapshot = pastSnapshots[period];
-    if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const pastUsd = snapshot.stocks_value_usd ?? 0;
-    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
-      stocksValue, stocksValueUsd, stocksValueEur, pastUsd, snapshot,
-      stocksHomeCurrencyEur,
-      snapshot.stocks_eur_denominated_value,
-    );
-    const pastEur = cur === "EUR" ? pastClassEur : pastUsd;
-    const delta = stocksValue - (pastEur || stocksValue);
-    const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
-    return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
-  }
-
-  function getCashChangeForPeriod(period: ChangePeriod): ClassChange {
-    if (period === "24h") {
-      const pct = cashValue > 0 ? (cashTotalValueChange24h / cashValue) * 100 : 0;
-      return {
-        percent: pct, valueChange: cashTotalValueChange24h, available: true,
-        fxPercent: cashTotalFxChange24hPercent, fxValueChange: cashTotalFxValueChange24h,
-      };
-    }
-    const snapshot = pastSnapshots[period];
-    if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const pastUsd = snapshot.cash_value_usd ?? 0;
-    if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-    const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
-      cashValue, cashValueUsd, cashValueEur, pastUsd, snapshot,
-      cashHomeCurrencyEur,
-      snapshot.cash_eur_denominated_value,
-    );
-    const pastEur = cur === "EUR" ? pastClassEur : pastUsd;
-    const delta = cashValue - (pastEur || cashValue);
-    const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
-    return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
-  }
-
-  // Deposit sums per period from cash flow events, optionally filtered by asset class
-  // Returns total + per-entity breakdown for tooltip display
-  function getDepositsForPeriod(period: ChangePeriod, filterClass?: AssetClass): {
-    total: number;
-    breakdown: { name: string; value: number }[];
-  } {
-    const now = new Date();
-    const msMap: Record<ChangePeriod, number> = {
-      "24h": 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000, "1y": 365 * 86400000,
-    };
-    const cutoff = new Date(now.getTime() - msMap[period]);
-    const filtered = cashFlows.filter(
-      f => new Date(f.date) >= cutoff && (!filterClass || f.asset_class === filterClass)
-    );
-    const fxMul = cur === "USD" || totalValueUsd === 0 ? 1 : totalValue / totalValueUsd;
-    const amt = (f: CashFlowEvent): number =>
-      cur === "EUR" && f.amount_eur != null ? f.amount_eur : f.amount_usd * fxMul;
-    const total = filtered.reduce((s, f) => s + amt(f), 0);
-    // Group by entity name
-    const byName = new Map<string, number>();
-    for (const f of filtered) {
-      const name = f.entity_name || "Unknown";
-      byName.set(name, (byName.get(name) ?? 0) + amt(f));
-    }
-    const breakdown = [...byName.entries()]
-      .map(([name, value]) => ({ name, value }))
-      .filter(e => Math.abs(e.value) >= 0.5)
-      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-    return { total, breakdown };
-  }
 
   // APY income for selected period
   const apyIncomeMap = {
@@ -371,8 +207,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
 
           {/* ── Total value + change ── */}
           {(() => {
-            const c = getChangeForPeriod(changePeriod);
-            const dep = getDepositsForPeriod(changePeriod);
+            const c = getChangeForPeriod(changePeriod, changeCtx);
+            const dep = getDepositsForPeriod(changePeriod, changeCtx);
             return (
               <div className="flex items-baseline gap-3 mt-1 flex-nowrap">
                 <p className="text-3xl sm:text-5xl font-bold text-zinc-100 tabular-nums">
@@ -632,7 +468,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             </div>
           </div>
           {(() => {
-            const c = getCryptoChangeForPeriod(changePeriod);
+            const c = getCryptoChangeForPeriod(changePeriod, changeCtx);
             return (
               <>
                 <div className="flex items-baseline gap-3 mt-2">
@@ -661,7 +497,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                         fmtPct(c.percent)
                       )}
                       {(() => {
-                        const dep = getDepositsForPeriod(changePeriod, "crypto");
+                        const dep = getDepositsForPeriod(changePeriod, changeCtx, "crypto");
                         return (
                           <ChangeTooltip
                             valueChange={c.valueChange}
@@ -800,7 +636,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             </div>
           </div>
           {(() => {
-            const c = getStockChangeForPeriod(changePeriod);
+            const c = getStockChangeForPeriod(changePeriod, changeCtx);
             return (
               <>
                 <div className="flex items-baseline gap-3 mt-2">
@@ -829,7 +665,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                         fmtPct(c.percent)
                       )}
                       {(() => {
-                        const dep = getDepositsForPeriod(changePeriod, "stocks");
+                        const dep = getDepositsForPeriod(changePeriod, changeCtx, "stocks");
                         return (
                           <ChangeTooltip
                             valueChange={c.valueChange}
@@ -993,7 +829,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             </div>
           </div>
           {(() => {
-            const c = getCashChangeForPeriod(changePeriod);
+            const c = getCashChangeForPeriod(changePeriod, changeCtx);
             return (
               <>
                 <div className="flex items-baseline gap-3 mt-2">
@@ -1022,7 +858,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                         fmtPct(c.percent)
                       )}
                       {(() => {
-                        const dep = getDepositsForPeriod(changePeriod, "cash");
+                        const dep = getDepositsForPeriod(changePeriod, changeCtx, "cash");
                         return (
                           <ChangeTooltip
                             valueChange={c.valueChange}
