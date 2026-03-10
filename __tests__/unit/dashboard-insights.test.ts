@@ -79,8 +79,6 @@ describe("computeDashboardInsights", () => {
   });
 
   it("APY income uses APY-bearing balance only", () => {
-    // Bank accounts with apy > 0 should contribute to apyIncomeYearly
-    // Bank accounts with apy = 0 should NOT
     const result = computeDashboardInsights({
       cryptoAssets: [],
       cryptoPrices: {},
@@ -88,30 +86,14 @@ describe("computeDashboardInsights", () => {
       stockPrices: {},
       bankAccounts: [
         {
-          id: "1",
-          name: "Savings",
-          bank_name: "Test Bank",
-          region: "US",
-          balance: 10000,
-          currency: "USD",
-          apy: 5,
-          institution_id: null,
-          user_id: "u",
-          created_at: "",
-          updated_at: "",
+          id: "1", name: "Savings", bank_name: "Test Bank", region: "US",
+          balance: 10000, currency: "USD", apy: 5,
+          institution_id: null, user_id: "u", created_at: "", updated_at: "",
         },
         {
-          id: "2",
-          name: "Checking",
-          bank_name: "Test Bank",
-          region: "US",
-          balance: 5000,
-          currency: "USD",
-          apy: 0,
-          institution_id: null,
-          user_id: "u",
-          created_at: "",
-          updated_at: "",
+          id: "2", name: "Checking", bank_name: "Test Bank", region: "US",
+          balance: 5000, currency: "USD", apy: 0,
+          institution_id: null, user_id: "u", created_at: "", updated_at: "",
         },
       ],
       exchangeDeposits: [],
@@ -121,10 +103,246 @@ describe("computeDashboardInsights", () => {
       summary: { ...emptySummary, cashValue: 15000 },
       ...mkt,
     });
-    // APY income = apyTotalValue * (weightedAvgApy / 100)
-    // Only the savings account (10000 @ 5%) contributes → 10000 * 5/100 = 500
     expect(result.apyIncomeYearly).toBeCloseTo(500, 0);
-    // weightedAvgApy = (10000 * 5) / 10000 = 5
     expect(result.weightedAvgApy).toBe(5);
+  });
+
+  it("computes BTC dominance in crypto portfolio", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [
+        {
+          id: "ca1", user_id: "u", ticker: "BTC", name: "Bitcoin",
+          coingecko_id: "bitcoin", chain: null, subcategory: null, created_at: "",
+          positions: [{ id: "p1", crypto_asset_id: "ca1", wallet_id: "w1",
+            wallet_name: "W", quantity: 1, apy: 0, created_at: "" }],
+        },
+        {
+          id: "ca2", user_id: "u", ticker: "ETH", name: "Ethereum",
+          coingecko_id: "ethereum", chain: null, subcategory: null, created_at: "",
+          positions: [{ id: "p2", crypto_asset_id: "ca2", wallet_id: "w1",
+            wallet_name: "W", quantity: 10, apy: 0, created_at: "" }],
+        },
+      ],
+      cryptoPrices: {
+        bitcoin: { usd: 60000, eur: 60000, usd_24h_change: 0, eur_24h_change: 0 },
+        ethereum: { usd: 3000, eur: 3000, usd_24h_change: 0, eur_24h_change: 0 },
+      },
+      stockAssets: [], stockPrices: {},
+      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, totalValue: 90000, cryptoValue: 90000 },
+      ...mkt,
+    });
+    // BTC: 60000, ETH: 30000, Total: 90000 → BTC dominance = 66.67%
+    expect(result.btcDominancePercent).toBeCloseTo(66.67, 0);
+    expect(result.btcValueInBase).toBe(60000);
+  });
+
+  it("excludes stablecoins from crypto metrics", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [
+        {
+          id: "ca1", user_id: "u", ticker: "USDC", name: "USD Coin",
+          coingecko_id: "usd-coin", chain: null, subcategory: "stablecoin", created_at: "",
+          positions: [{ id: "p1", crypto_asset_id: "ca1", wallet_id: "w1",
+            wallet_name: "W", quantity: 5000, apy: 3, created_at: "" }],
+        },
+      ],
+      cryptoPrices: {
+        "usd-coin": { usd: 1, eur: 0.92, usd_24h_change: 0, eur_24h_change: 0 },
+      },
+      stockAssets: [], stockPrices: {},
+      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, cashValue: 5000 },
+      ...mkt,
+    });
+    expect(result.cryptoAssetCount).toBe(0);
+    expect(result.cryptoPositionCount).toBe(0);
+    // Stablecoin counts as cash account
+    expect(result.cashAccountCount).toBe(1);
+    // APY from stablecoin: 5000 × 3% = 150
+    expect(result.apyIncomeYearly).toBeCloseTo(150, 0);
+  });
+
+  it("tracks mined/staked positions", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [{
+        id: "ca1", user_id: "u", ticker: "ETH", name: "Ethereum",
+        coingecko_id: "ethereum", chain: null, subcategory: null, created_at: "",
+        positions: [
+          { id: "p1", crypto_asset_id: "ca1", wallet_id: "w1", wallet_name: "W",
+            quantity: 5, apy: 4, created_at: "", acquisition_method: "staked" },
+          { id: "p2", crypto_asset_id: "ca1", wallet_id: "w1", wallet_name: "W",
+            quantity: 3, apy: 0, created_at: "", acquisition_method: "buy" },
+        ],
+      }],
+      cryptoPrices: {
+        ethereum: { usd: 3000, eur: 3000, usd_24h_change: 0, eur_24h_change: 0 },
+      },
+      stockAssets: [], stockPrices: {},
+      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, totalValue: 24000, cryptoValue: 24000 },
+      ...mkt,
+    });
+    // 5 staked + 3 bought = 8 total, staked value = 15000
+    expect(result.minedStakedCount).toBe(1);
+    expect(result.minedStakedPercent).toBeCloseTo(62.5, 0); // 15000/24000
+  });
+
+  it("builds equities breakdown by category", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [
+        {
+          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          name: "Vanguard", currency: "USD", category: "etf" as const,
+          isin: null, subcategory: null, tags: [], created_at: "",
+          positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
+            broker_name: "B", quantity: 10, created_at: "" }],
+        },
+        {
+          id: "sa2", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
+          name: "Apple", currency: "USD", category: "individual_stock" as const,
+          isin: null, subcategory: null, tags: [], created_at: "",
+          positions: [{ id: "p2", stock_asset_id: "sa2", broker_id: "b1",
+            broker_name: "B", quantity: 5, created_at: "" }],
+        },
+      ],
+      stockPrices: {
+        "VWCE.DE": { price: 100, change24h: 0 },
+        AAPL: { price: 200, change24h: 0 },
+      },
+      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, totalValue: 2000, stocksValue: 2000 },
+      ...mkt,
+    });
+    expect(result.equitiesBreakdown).toHaveLength(2);
+    // AAPL: 5 × 200 = 1000 (stocks), VWCE: 10 × 100 = 1000 (ETF)
+    // Sorted by value descending — both equal, so order by TYPE_META order
+    const labels = result.equitiesBreakdown.map((e) => e.label);
+    expect(labels).toContain("ETFs");
+    expect(labels).toContain("Stocks");
+  });
+
+  it("identifies top holding", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [
+        {
+          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          name: "Vanguard FTSE", currency: "USD", category: "etf" as const,
+          isin: null, subcategory: null, tags: [], created_at: "",
+          positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
+            broker_name: "B", quantity: 20, created_at: "" }],
+        },
+        {
+          id: "sa2", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
+          name: "Apple", currency: "USD", category: "individual_stock" as const,
+          isin: null, subcategory: null, tags: [], created_at: "",
+          positions: [{ id: "p2", stock_asset_id: "sa2", broker_id: "b1",
+            broker_name: "B", quantity: 1, created_at: "" }],
+        },
+      ],
+      stockPrices: {
+        "VWCE.DE": { price: 100, change24h: 0 },
+        AAPL: { price: 200, change24h: 0 },
+      },
+      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, totalValue: 2200, stocksValue: 2200 },
+      ...mkt,
+    });
+    // VWCE: 20 × 100 = 2000, AAPL: 1 × 200 = 200
+    expect(result.topHolding).not.toBeNull();
+    expect(result.topHolding!.ticker).toBe("VWCE");
+    expect(result.topHolding!.percent).toBeCloseTo(90.9, 0);
+  });
+
+  it("builds cash currency breakdown with fiat and stablecoins", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [{
+        id: "ca1", user_id: "u", ticker: "USDC", name: "USD Coin",
+        coingecko_id: "usd-coin", chain: null, subcategory: "stablecoin", created_at: "",
+        positions: [{ id: "p1", crypto_asset_id: "ca1", wallet_id: "w1",
+          wallet_name: "W", quantity: 1000, apy: 0, created_at: "" }],
+      }],
+      cryptoPrices: {
+        "usd-coin": { usd: 1, eur: 1, usd_24h_change: 0, eur_24h_change: 0 },
+      },
+      stockAssets: [], stockPrices: {},
+      bankAccounts: [{
+        id: "ba1", name: "EUR Savings", bank_name: "Alpha", region: "EU",
+        balance: 5000, currency: "EUR", apy: 0,
+        institution_id: null, user_id: "u", created_at: "", updated_at: "",
+      }],
+      exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, cashValue: 6000 },
+      ...mkt,
+    });
+    // Two currencies: EUR (fiat bank) and USD (stablecoin USDC)
+    expect(result.cashCurrencyBreakdown.length).toBeGreaterThanOrEqual(2);
+    const eurEntry = result.cashCurrencyBreakdown.find((e) => e.currency === "EUR");
+    const usdEntry = result.cashCurrencyBreakdown.find((e) => e.currency === "USD");
+    expect(eurEntry).toBeDefined();
+    expect(eurEntry!.fiatValue).toBe(5000);
+    expect(usdEntry).toBeDefined();
+    expect(usdEntry!.stablecoinValue).toBe(1000);
+  });
+
+  it("derives EUR/USD rate from EUR-based FX rates", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [], stockPrices: {},
+      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "EUR", fxRates: { EUR: 1, USD: 1.10 },
+      summary: emptySummary,
+      ...mkt,
+    });
+    // EUR user: eurUsdRate = fxRates["USD"] = 1.10
+    expect(result.eurUsdRate).toBe(1.10);
+  });
+
+  it("derives EUR/USD rate from USD-based FX rates", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [], stockPrices: {},
+      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "USD", fxRates: { USD: 1, EUR: 0.91 },
+      summary: emptySummary,
+      ...mkt,
+    });
+    // USD user: eurUsdRate = 1 / fxRates["EUR"] = 1 / 0.91 ≈ 1.099
+    expect(result.eurUsdRate).toBeCloseTo(1.099, 2);
+  });
+
+  it("computes value-weighted stock dividend yield", () => {
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [
+        {
+          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          name: "Vanguard", currency: "USD", category: "etf" as const,
+          isin: null, subcategory: null, tags: [], created_at: "",
+          positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
+            broker_name: "B", quantity: 100, created_at: "" }],
+        },
+      ],
+      stockPrices: { "VWCE.DE": { price: 100, change24h: 0 } },
+      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, totalValue: 10000, stocksValue: 10000 },
+      ...mkt,
+      dividends: {
+        "VWCE.DE": { trailingYield: 1.5, annualDividend: 1.5, frequency: 4 },
+      },
+    });
+    // 100 × $100 = $10000 value, yield = 1.5%
+    expect(result.stocksWeightedYield).toBeCloseTo(1.5, 1);
+    // Annual income: 100 shares × $1.50 = $150
+    expect(result.stocksDividendIncomeYearly).toBeCloseTo(150, 0);
   });
 });
