@@ -319,10 +319,15 @@ export function PortfolioChart({
               : finalCumDelta.cumUsd;
           const adjustedFirstDisp =
             firstSliceVal + (finalDeltaDisp - firstDeltaDisp);
+          // Convert adjusted display value → USD for unit calculation.
+          // Prefer per-class FX ratio; fall back to portfolio-wide ratio when
+          // slice starts at 0 (e.g., stocks not yet imported at chart start).
           const adjustedFirstUsd =
             firstSliceUsd > 0 && firstSliceVal > 0
               ? adjustedFirstDisp * (firstSliceUsd / firstSliceVal)
-              : adjustedFirstDisp;
+              : firstPoint.value > 0
+                ? adjustedFirstDisp * (firstPoint.valueUsd / firstPoint.value)
+                : adjustedFirstDisp;
           const neededUnits = adjustedFirstUsd / sp500StartPrice;
           if (neededUnits > preChartUnits) {
             const seedDelta = neededUnits - preChartUnits;
