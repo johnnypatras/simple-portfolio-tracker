@@ -15,6 +15,17 @@ export default defineConfig({
       },
       {
         test: {
+          name: "component",
+          include: ["__tests__/component/**/*.test.tsx"],
+          environment: "jsdom",
+          setupFiles: ["__tests__/component/setup.ts"],
+        },
+        resolve: {
+          alias: { "@": path.resolve(__dirname, "src") },
+        },
+      },
+      {
+        test: {
           name: "integration",
           include: ["__tests__/integration/**/*.test.ts"],
           testTimeout: 30_000,
