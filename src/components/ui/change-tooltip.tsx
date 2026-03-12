@@ -43,16 +43,14 @@ export function ChangeTooltip({
       <div className="bg-zinc-800/95 backdrop-blur border border-zinc-700 rounded-lg shadow-xl px-2.5 py-2 text-[10px] tabular-nums grid grid-cols-[auto_auto_auto] gap-x-2.5 gap-y-0.5 w-max max-w-[min(320px,calc(100vw-3rem))]">
         {/* Market row: price + FX performance, excluding deposits — only when deposits exist */}
         {hasDeposits && (
-          <>
-            <TooltipRow label="Market" value={marketChange} cur={cur} colored bold pct={base ? (marketChange / base) * 100 : undefined} />
-            <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />
-          </>
+          <TooltipRow label="Market" value={marketChange} cur={cur} colored bold pct={base ? (marketChange / base) * 100 : undefined} />
         )}
-        {/* Prices + FX decomposition — show Prices only when FX exists (otherwise Market = Prices) */}
-        {(hasFx || !hasDeposits) && <TooltipRow label="Prices" value={assetPrices} cur={cur} colored pct={base ? (assetPrices / base) * 100 : undefined} />}
-        {hasFx && <TooltipRow label={fxLabel} value={fxValueChange} cur={cur} colored pct={base ? (fxValueChange / base) * 100 : undefined} />}
+        {/* Prices + FX decomposition — indented under Market when deposits exist */}
+        {(hasFx || !hasDeposits) && <TooltipRow label="Prices" value={assetPrices} cur={cur} colored={!hasDeposits} indent={hasDeposits} pct={base ? (assetPrices / base) * 100 : undefined} />}
+        {hasFx && <TooltipRow label={fxLabel} value={fxValueChange} cur={cur} colored={!hasDeposits} indent={hasDeposits} pct={base ? (fxValueChange / base) * 100 : undefined} />}
         {hasDeposits && (
           <>
+            <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />
             <TooltipRow label={deposits > 0 ? "Deposits" : "Withdrawals"} value={deposits} cur={cur} pct={base ? (deposits / base) * 100 : undefined} />
             {depositBreakdown && depositBreakdown.length > 1 && depositBreakdown.map((e) => (
               <TooltipRow key={e.name} label={e.name} value={e.value} cur={cur} indent />
