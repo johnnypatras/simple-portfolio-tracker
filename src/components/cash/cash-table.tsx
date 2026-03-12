@@ -80,6 +80,8 @@ interface CashTableProps {
   /** Total cash 24h absolute change in primary currency */
   cashChangeValue?: number;
   fxValueChange24h?: number;
+  deposits?: number;
+  depositBreakdown?: { name: string; value: number }[];
 }
 
 export function CashTable({
@@ -95,6 +97,8 @@ export function CashTable({
   cashChangePercent = 0,
   cashChangeValue = 0,
   fxValueChange24h = 0,
+  deposits = 0,
+  depositBreakdown,
 }: CashTableProps) {
   const { isReadOnly } = useSharedView();
   const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
@@ -407,7 +411,8 @@ export function CashTable({
               <ChangeTooltip
                 valueChange={cashChangeValue}
                 fxValueChange={fxValueChange24h}
-                deposits={0}
+                deposits={deposits}
+                depositBreakdown={depositBreakdown}
                 startValue={totalCash - cashChangeValue}
                 cur={primaryCurrency}
                 open={openTooltip === "summary"}

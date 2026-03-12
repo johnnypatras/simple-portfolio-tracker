@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { requireScope } from "../scope-gate";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
+import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { CryptoTable } from "@/components/crypto/crypto-table";
 
 export default async function SharedCryptoPage({
@@ -18,14 +20,15 @@ export default async function SharedCryptoPage({
   const data = await getSharedPortfolio(token);
   if (!data) notFound();
 
-  const { cryptoAssets, wallets, profile } = data;
+  const { cryptoAssets, wallets, profile, share } = data;
   const cur = profile.primary_currency;
 
   const coinIds = cryptoAssets.map((a) => a.coingecko_id);
-  const [prices, fxRates, eurUsdBatch] = await Promise.all([
+  const [prices, fxRates, eurUsdBatch, cashFlows] = await Promise.all([
     getPrices(coinIds),
     getFXRatesSafe(cur, ["USD", "EUR"]),
     getStockPrices(["EURUSD=X"]),
+    deriveCashFlows(share.owner_id),
   ]);
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
@@ -42,6 +45,9 @@ export default async function SharedCryptoPage({
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 
+  const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
+  const dep = computeDeposits("24h", cashFlows, cur, fxMul, "crypto");
+
   return (
     <div>
       <div className="mb-8">
@@ -54,6 +60,8 @@ export default async function SharedCryptoPage({
         primaryCurrency={cur}
         fxRates={fxRates}
         fxValueChange24h={summary.cryptoFxValueChange24h}
+        deposits={dep.total}
+        depositBreakdown={dep.breakdown}
       />
     </div>
   );

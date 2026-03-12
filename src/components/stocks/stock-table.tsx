@@ -73,11 +73,13 @@ interface StockTableProps {
   primaryCurrency: string;
   fxRates: FXRates;
   fxValueChange24h?: number;
+  deposits?: number;
+  depositBreakdown?: { name: string; value: number }[];
   /** Trailing 12-month dividend data per Yahoo ticker */
   dividends?: YahooDividendMap;
 }
 
-export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, dividends }: StockTableProps) {
+export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown, dividends }: StockTableProps) {
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
@@ -393,7 +395,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                 <ChangeTooltip
                   valueChange={delta}
                   fxValueChange={fxValueChange24h}
-                  deposits={0}
+                  deposits={deposits}
+                  depositBreakdown={depositBreakdown}
                   startValue={totalPortfolioValue - delta}
                   cur={primaryCurrency}
                   open={openTooltip === "summary"}

@@ -5,15 +5,17 @@ import { getWallets } from "@/lib/actions/wallets";
 import { getBrokers } from "@/lib/actions/brokers";
 import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
+import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { CashTable } from "@/components/cash/cash-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function CashPage() {
-  const [bankAccounts, exchangeDeposits, brokerDeposits, wallets, brokers, profile, cryptoAssets] =
+  const [bankAccounts, exchangeDeposits, brokerDeposits, wallets, brokers, profile, cryptoAssets, cashFlows] =
     await Promise.all([
       getBankAccounts(),
       getExchangeDeposits(),
@@ -22,6 +24,7 @@ export default async function CashPage() {
       getBrokers(),
       getProfile(),
       getCryptoAssetsWithPositions(),
+      deriveCashFlows(),
     ]);
 
   // Stablecoins are reclassified as cash — fetch their CoinGecko prices
@@ -61,6 +64,10 @@ export default async function CashPage() {
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 
+  const cur = profile.primary_currency;
+  const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
+  const dep = computeDeposits("24h", cashFlows, cur, fxMul, "cash");
+
   return (
     <div>
       <div className="mb-8">
@@ -85,6 +92,8 @@ export default async function CashPage() {
         cashChangePercent={summary.change24hPercent}
         cashChangeValue={summary.cashTotalValueChange24h}
         fxValueChange24h={summary.cashTotalFxValueChange24h}
+        deposits={dep.total}
+        depositBreakdown={dep.breakdown}
       />
     </div>
   );

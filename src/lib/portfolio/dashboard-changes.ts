@@ -240,17 +240,31 @@ export function getDepositsForPeriod(
   ctx: ChangeContext,
   filterClass?: AssetClass,
 ): DepositResult {
+  const fxMul = ctx.primaryCurrency === "USD" || ctx.totalValueUsd === 0 ? 1 : ctx.totalValue / ctx.totalValueUsd;
+  return computeDeposits(period, ctx.cashFlows, ctx.primaryCurrency, fxMul, filterClass);
+}
+
+/**
+ * Standalone deposit computation — usable without the full ChangeContext.
+ * The detail pages (crypto/stocks/cash) call this directly.
+ */
+export function computeDeposits(
+  period: ChangePeriod,
+  cashFlows: CashFlowEvent[],
+  primaryCurrency: string,
+  fxMul: number,
+  filterClass?: AssetClass,
+): DepositResult {
   const now = new Date();
   const msMap: Record<ChangePeriod, number> = {
     "24h": 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000, "1y": 365 * 86400000,
   };
   const cutoff = new Date(now.getTime() - msMap[period]);
-  const filtered = ctx.cashFlows.filter(
+  const filtered = cashFlows.filter(
     f => new Date(f.date) >= cutoff && (!filterClass || f.asset_class === filterClass)
   );
-  const fxMul = ctx.primaryCurrency === "USD" || ctx.totalValueUsd === 0 ? 1 : ctx.totalValue / ctx.totalValueUsd;
   const amt = (f: CashFlowEvent): number =>
-    ctx.primaryCurrency === "EUR" && f.amount_eur != null ? f.amount_eur : f.amount_usd * fxMul;
+    primaryCurrency === "EUR" && f.amount_eur != null ? f.amount_eur : f.amount_usd * fxMul;
   const total = filtered.reduce((s, f) => s + amt(f), 0);
   // Group by entity name
   const byName = new Map<string, number>();

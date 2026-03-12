@@ -69,9 +69,11 @@ interface CryptoTableProps {
   primaryCurrency: string;
   fxRates: Record<string, number>;
   fxValueChange24h?: number;
+  deposits?: number;
+  depositBreakdown?: { name: string; value: number }[];
 }
 
-export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates, fxValueChange24h = 0 }: CryptoTableProps) {
+export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown }: CryptoTableProps) {
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
@@ -363,7 +365,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                 <ChangeTooltip
                   valueChange={delta}
                   fxValueChange={fxValueChange24h}
-                  deposits={0}
+                  deposits={deposits}
+                  depositBreakdown={depositBreakdown}
                   startValue={nonStableValue - delta}
                   cur={primaryCurrency}
                   open={openTooltip === "summary"}

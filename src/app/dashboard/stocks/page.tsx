@@ -1,17 +1,20 @@
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getBrokers } from "@/lib/actions/brokers";
 import { getProfile } from "@/lib/actions/profile";
+import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { StockTable } from "@/components/stocks/stock-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function StocksPage() {
-  const [assets, brokers, profile] = await Promise.all([
+  const [assets, brokers, profile, cashFlows] = await Promise.all([
     getStockAssetsWithPositions(),
     getBrokers(),
     getProfile(),
+    deriveCashFlows(),
   ]);
 
   // Build Yahoo ticker list: use yahoo_ticker if set, otherwise fall back to ticker
@@ -47,6 +50,9 @@ export default async function StocksPage() {
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 
+  const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
+  const dep = computeDeposits("24h", cashFlows, cur, fxMul, "stocks");
+
   return (
     <div>
       <div className="mb-8">
@@ -63,6 +69,8 @@ export default async function StocksPage() {
         fxRates={fxRates}
         dividends={dividends}
         fxValueChange24h={summary.stocksFxValueChange24h}
+        deposits={dep.total}
+        depositBreakdown={dep.breakdown}
       />
     </div>
   );

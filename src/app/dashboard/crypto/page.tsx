@@ -1,18 +1,21 @@
 import { getCryptoAssetsWithPositions, backfillCryptoImages } from "@/lib/actions/crypto";
 import { getWallets } from "@/lib/actions/wallets";
 import { getProfile } from "@/lib/actions/profile";
+import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { CryptoTable } from "@/components/crypto/crypto-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function CryptoPage() {
-  const [assets, wallets, profile] = await Promise.all([
+  const [assets, wallets, profile, cashFlows] = await Promise.all([
     getCryptoAssetsWithPositions(),
     getWallets(),
     getProfile(),
+    deriveCashFlows(),
   ]);
 
   const cur = profile.primary_currency;
@@ -43,6 +46,9 @@ export default async function CryptoPage() {
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 
+  const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
+  const dep = computeDeposits("24h", cashFlows, cur, fxMul, "crypto");
+
   return (
     <div>
       <div className="mb-8">
@@ -60,6 +66,8 @@ export default async function CryptoPage() {
         primaryCurrency={cur}
         fxRates={fxRates}
         fxValueChange24h={summary.cryptoFxValueChange24h}
+        deposits={dep.total}
+        depositBreakdown={dep.breakdown}
       />
     </div>
   );
