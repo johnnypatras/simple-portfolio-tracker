@@ -358,7 +358,8 @@ export function buildCryptoRows(
   currencyKey: "usd" | "eur",
   changeKey: "usd_24h_change" | "eur_24h_change"
 ): CryptoRow[] {
-  const rows = assets.map((asset) => {
+  // Exclude assets with no positions (e.g. added with zero quantity)
+  const rows = assets.filter((a) => a.positions.length > 0).map((asset) => {
     const price = prices[asset.coingecko_id];
     const priceUsd = price?.usd ?? 0;
     const priceInBase = price?.[currencyKey] ?? 0;

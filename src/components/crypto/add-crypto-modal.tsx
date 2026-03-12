@@ -157,6 +157,16 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
     e.preventDefault();
     if (!selectedCoin) return;
 
+    const qty = parseFloat(positionQuantity);
+    if (!qty || qty <= 0) {
+      setError("Quantity must be greater than zero — assets with no holdings are not saved.");
+      return;
+    }
+    if (!positionWalletId) {
+      setError("Please select a wallet for this asset.");
+      return;
+    }
+
     setError(null);
     setAdding(true);
 
@@ -171,22 +181,17 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         image_url: selectedCoin.thumb || null,
       }, adjustOpts);
 
-      // If user filled in an initial position, create it with its acquisition method
-      const qty = parseFloat(positionQuantity);
-      if (positionWalletId && qty > 0) {
-        const apyVal = parseFloat(positionApy);
-        await upsertPosition({
-          crypto_asset_id: assetId,
-          wallet_id: positionWalletId,
-          quantity: qty,
-          acquisition_method: acquisitionType,
-          apy: apyVal > 0 ? apyVal : undefined,
-        }, {
-          ...adjustOpts,
-          currentPriceUsd: selectedCoin.price_usd,
-          // EUR not available from search, will be derived server-side via FX if needed for backfill
-        });
-      }
+      const apyVal = parseFloat(positionApy);
+      await upsertPosition({
+        crypto_asset_id: assetId,
+        wallet_id: positionWalletId,
+        quantity: qty,
+        acquisition_method: acquisitionType,
+        apy: apyVal > 0 ? apyVal : undefined,
+      }, {
+        ...adjustOpts,
+        currentPriceUsd: selectedCoin.price_usd,
+      });
 
       onClose();
       toast.success(`${selectedCoin.name} added to portfolio`);
