@@ -409,11 +409,11 @@ export function CashTable({
                 </>
               )}
               <ChangeTooltip
-                valueChange={cashChangeValue}
+                valueChange={cashChangeValue + deposits}
                 fxValueChange={fxValueChange24h}
                 deposits={deposits}
                 depositBreakdown={depositBreakdown}
-                startValue={totalCash - cashChangeValue}
+                startValue={totalCash - cashChangeValue - deposits}
                 cur={primaryCurrency}
                 open={openTooltip === "summary"}
               />

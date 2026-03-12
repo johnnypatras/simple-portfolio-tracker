@@ -209,6 +209,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getChangeForPeriod(changePeriod, changeCtx);
             const dep = getDepositsForPeriod(changePeriod, changeCtx);
+            // 24h aggregate is market-only; add deposits so tooltip
+            // decomposition (Market = Total − Deposits) works correctly.
+            // Snapshot-based periods (7d/30d/1y) already include deposits.
+            const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
             return (
               <div className="flex items-baseline gap-3 mt-1 flex-nowrap">
                 <p className="text-3xl sm:text-5xl font-bold text-zinc-100 tabular-nums">
@@ -240,11 +244,11 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       fmtPct(c.percent)
                     )}
                     <ChangeTooltip
-                      valueChange={c.valueChange}
+                      valueChange={tv}
                       fxValueChange={c.fxValueChange}
                       deposits={dep.total}
                       depositBreakdown={dep.breakdown}
-                      startValue={totalValue - c.valueChange}
+                      startValue={totalValue - tv}
                       cur={cur}
                       open={openTooltip === "total"}
                     />
@@ -498,13 +502,14 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       )}
                       {(() => {
                         const dep = getDepositsForPeriod(changePeriod, changeCtx, "crypto");
+                        const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
                         return (
                           <ChangeTooltip
-                            valueChange={c.valueChange}
+                            valueChange={tv}
                             fxValueChange={c.fxValueChange}
                             deposits={dep.total}
                             depositBreakdown={dep.breakdown}
-                            startValue={cryptoValue - c.valueChange}
+                            startValue={cryptoValue - tv}
                             cur={cur}
                             open={openTooltip === "crypto"}
                           />
@@ -666,13 +671,14 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       )}
                       {(() => {
                         const dep = getDepositsForPeriod(changePeriod, changeCtx, "stocks");
+                        const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
                         return (
                           <ChangeTooltip
-                            valueChange={c.valueChange}
+                            valueChange={tv}
                             fxValueChange={c.fxValueChange}
                             deposits={dep.total}
                             depositBreakdown={dep.breakdown}
-                            startValue={stocksValue - c.valueChange}
+                            startValue={stocksValue - tv}
                             cur={cur}
                             open={openTooltip === "equities"}
                           />
@@ -859,13 +865,14 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       )}
                       {(() => {
                         const dep = getDepositsForPeriod(changePeriod, changeCtx, "cash");
+                        const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
                         return (
                           <ChangeTooltip
-                            valueChange={c.valueChange}
+                            valueChange={tv}
                             fxValueChange={c.fxValueChange}
                             deposits={dep.total}
                             depositBreakdown={dep.breakdown}
-                            startValue={cashValue - c.valueChange}
+                            startValue={cashValue - tv}
                             cur={cur}
                             open={openTooltip === "cash"}
                           />

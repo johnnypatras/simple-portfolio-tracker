@@ -393,11 +393,11 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                   </>
                 )}
                 <ChangeTooltip
-                  valueChange={delta}
+                  valueChange={delta + deposits}
                   fxValueChange={fxValueChange24h}
                   deposits={deposits}
                   depositBreakdown={depositBreakdown}
-                  startValue={totalPortfolioValue - delta}
+                  startValue={totalPortfolioValue - delta - deposits}
                   cur={primaryCurrency}
                   open={openTooltip === "summary"}
                 />

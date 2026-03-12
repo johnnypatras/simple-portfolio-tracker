@@ -363,11 +363,11 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                   </>
                 )}
                 <ChangeTooltip
-                  valueChange={delta}
+                  valueChange={delta + deposits}
                   fxValueChange={fxValueChange24h}
                   deposits={deposits}
                   depositBreakdown={depositBreakdown}
-                  startValue={nonStableValue - delta}
+                  startValue={nonStableValue - delta - deposits}
                   cur={primaryCurrency}
                   open={openTooltip === "summary"}
                 />
