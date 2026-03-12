@@ -1081,16 +1081,23 @@ function AddAssetDropdown({
 
   // Build available options based on roles
   const options: { label: string; onClick: () => void }[] = [];
+  const hasBothDepositRoles = !isSelfCustody && roles.includes("wallet") && roles.includes("broker");
 
   if (isSelfCustody || roles.includes("wallet")) {
     options.push({ label: "Add Crypto Asset", onClick: onAddCrypto });
   }
   if (!isSelfCustody && roles.includes("wallet")) {
-    options.push({ label: "Add Fiat Deposit", onClick: onAddExchangeDeposit });
+    options.push({
+      label: hasBothDepositRoles ? "Add Exchange Deposit" : "Add Fiat Deposit",
+      onClick: onAddExchangeDeposit,
+    });
   }
   if (roles.includes("broker")) {
     options.push({ label: "Add Stock Asset", onClick: onAddStock });
-    options.push({ label: "Add Fiat Deposit", onClick: onAddBrokerDeposit });
+    options.push({
+      label: hasBothDepositRoles ? "Add Broker Deposit" : "Add Fiat Deposit",
+      onClick: onAddBrokerDeposit,
+    });
   }
   if (roles.includes("bank")) {
     options.push({ label: "Add Bank Account", onClick: onAddBankAccount });
@@ -1110,9 +1117,9 @@ function AddAssetDropdown({
       </button>
       {open && (
         <div className="absolute left-0 bottom-full mb-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-20 py-1 min-w-[180px]">
-          {options.map((opt) => (
+          {options.map((opt, i) => (
             <button
-              key={opt.label}
+              key={i}
               onClick={() => { setOpen(false); opt.onClick(); }}
               className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
             >
