@@ -8,6 +8,7 @@ import type {
   CoinGeckoPriceData,
   YahooStockPriceData,
 } from "@/lib/types";
+import { convertToBase } from "@/lib/prices/fx";
 
 interface BuildPaletteHoldingsInput {
   cryptoAssets: CryptoAssetWithPositions[];
@@ -18,6 +19,7 @@ interface BuildPaletteHoldingsInput {
   exchangeDeposits: ExchangeDeposit[];
   brokerDeposits: BrokerDeposit[];
   fxRates: Record<string, number>;
+  primaryCurrency: string;
   /** Path prefix for detail links, e.g. "/dashboard" or "/share/abc123" */
   pathPrefix: string;
 }
@@ -35,6 +37,7 @@ export function buildPaletteHoldings({
   exchangeDeposits,
   brokerDeposits,
   fxRates,
+  primaryCurrency,
   pathPrefix,
 }: BuildPaletteHoldingsInput): HoldingItem[] {
   return [
@@ -42,18 +45,19 @@ export function buildPaletteHoldings({
       const price = cryptoPrices[a.coingecko_id];
       const totalQty = a.positions.reduce((s, p) => s + p.quantity, 0);
       const priceUsd = price?.usd ?? 0;
-      const fxMul = fxRates["USD"] ?? 1;
+      const valueBase = convertToBase(priceUsd * totalQty, "USD", primaryCurrency, fxRates);
+      const priceBase = convertToBase(priceUsd, "USD", primaryCurrency, fxRates);
       return {
         id: a.id,
         type: "crypto" as const,
         name: a.name,
         ticker: a.ticker.toUpperCase(),
-        value: priceUsd * totalQty * fxMul,
+        value: valueBase,
         change24h: price?.usd_24h_change,
         icon: a.image_url,
         detailPath: `${pathPrefix}/crypto`,
         quantity: totalQty,
-        pricePerUnit: priceUsd * fxMul,
+        pricePerUnit: priceBase,
         currency: "USD",
       };
     }),
@@ -61,41 +65,41 @@ export function buildPaletteHoldings({
       const tick = a.yahoo_ticker || a.ticker;
       const price = stockPrices[tick];
       const totalQty = a.positions.reduce((s, p) => s + p.quantity, 0);
-      const nativeCurrency = price?.currency ?? a.currency;
       const priceNative = price?.price ?? 0;
-      const fxMul = fxRates[nativeCurrency] ?? 1;
+      const valueBase = convertToBase(priceNative * totalQty, a.currency, primaryCurrency, fxRates);
+      const priceBase = convertToBase(priceNative, a.currency, primaryCurrency, fxRates);
       return {
         id: a.id,
         type: "stock" as const,
         name: a.name,
         ticker: a.ticker,
-        value: priceNative * totalQty * fxMul,
+        value: valueBase,
         change24h: price?.change24h,
         detailPath: `${pathPrefix}/stocks`,
         quantity: totalQty,
-        pricePerUnit: priceNative * fxMul,
-        currency: nativeCurrency,
+        pricePerUnit: priceBase,
+        currency: a.currency,
       };
     }),
     ...bankAccounts.map((a) => ({
       id: a.id,
       type: "bank" as const,
       name: `${a.name} (${a.currency})`,
-      value: a.balance * (fxRates[a.currency] ?? 1),
+      value: convertToBase(a.balance, a.currency, primaryCurrency, fxRates),
       detailPath: `${pathPrefix}/cash`,
     })),
     ...exchangeDeposits.map((d) => ({
       id: d.id,
       type: "exchange_deposit" as const,
       name: `${d.wallet_name} ${d.currency}`,
-      value: d.amount * (fxRates[d.currency] ?? 1),
+      value: convertToBase(d.amount, d.currency, primaryCurrency, fxRates),
       detailPath: `${pathPrefix}/cash`,
     })),
     ...brokerDeposits.map((d) => ({
       id: d.id,
       type: "broker_deposit" as const,
       name: `${d.broker_name} ${d.currency}`,
-      value: d.amount * (fxRates[d.currency] ?? 1),
+      value: convertToBase(d.amount, d.currency, primaryCurrency, fxRates),
       detailPath: `${pathPrefix}/cash`,
     })),
   ];

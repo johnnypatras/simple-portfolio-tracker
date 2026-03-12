@@ -132,7 +132,7 @@ export default async function SharedOverviewPage({
   const paletteHoldings = buildPaletteHoldings({
     cryptoAssets, cryptoPrices, stockAssets, stockPrices,
     bankAccounts, exchangeDeposits, brokerDeposits, fxRates,
-    pathPrefix: `/share/${token}`,
+    primaryCurrency, pathPrefix: `/share/${token}`,
   });
 
   return (

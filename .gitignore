@@ -45,6 +45,7 @@ next-env.d.ts
 # tooling / local-only
 .serena/
 .claude/
+.firecrawl/
 .playwright-mcp/
 CLAUDE.md
 supabase/.temp/

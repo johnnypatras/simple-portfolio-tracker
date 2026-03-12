@@ -225,11 +225,11 @@ describe("getCashChangeForPeriod", () => {
 describe("getDepositsForPeriod", () => {
   it("sums deposits within the period window", () => {
     const now = new Date();
-    const yesterday = new Date(now.getTime() - 12 * 3600000).toISOString().split("T")[0];
+    const today = now.toISOString().split("T")[0];
     const ctx = makeCtx({
       cashFlows: [
-        { date: yesterday, amount_usd: 1000, entity_name: "Alpha Bank" },
-        { date: yesterday, amount_usd: 500, entity_name: "DEGIRO" },
+        { date: today, amount_usd: 1000, entity_name: "Alpha Bank" },
+        { date: today, amount_usd: 500, entity_name: "DEGIRO" },
         { date: "2020-01-01", amount_usd: 9999, entity_name: "Old" }, // outside window
       ],
     });

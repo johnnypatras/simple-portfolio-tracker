@@ -342,7 +342,7 @@ export function CommandPalette({
                           </div>
                           <div className="flex justify-between border-t border-zinc-800/50 pt-0.5">
                             <span className="text-zinc-400">Total</span>
-                            <span className="tabular-nums text-zinc-400">{formatValue(h.value, primaryCurrency)}</span>
+                            <span className="tabular-nums text-zinc-400">{formatValue((h.quantity ?? 0) * (h.pricePerUnit ?? 0), primaryCurrency)}</span>
                           </div>
                         </div>
                       )}

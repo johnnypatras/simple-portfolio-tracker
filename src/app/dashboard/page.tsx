@@ -175,7 +175,7 @@ export default async function DashboardPage() {
   const paletteHoldings = buildPaletteHoldings({
     cryptoAssets, cryptoPrices, stockAssets, stockPrices,
     bankAccounts, exchangeDeposits, brokerDeposits, fxRates,
-    pathPrefix: "/dashboard",
+    primaryCurrency, pathPrefix: "/dashboard",
   });
 
   return (

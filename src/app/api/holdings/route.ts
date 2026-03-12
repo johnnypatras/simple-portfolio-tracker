@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
     const holdings = buildPaletteHoldings({
       cryptoAssets, cryptoPrices, stockAssets, stockPrices,
       bankAccounts, exchangeDeposits, brokerDeposits, fxRates,
-      pathPrefix: "/dashboard",
+      primaryCurrency, pathPrefix: "/dashboard",
     });
 
     return NextResponse.json(holdings);

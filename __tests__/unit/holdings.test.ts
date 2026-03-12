@@ -61,6 +61,7 @@ describe("buildPaletteHoldings", () => {
       exchangeDeposits: [],
       brokerDeposits: [],
       fxRates: { USD: 1.09, EUR: 1 },
+      primaryCurrency: "EUR",
       pathPrefix: "/dashboard",
     });
 
@@ -81,9 +82,42 @@ describe("buildPaletteHoldings", () => {
       exchangeDeposits: [],
       brokerDeposits: [],
       fxRates: {},
+      primaryCurrency: "EUR",
       pathPrefix: "/dashboard",
     });
     expect(result).toEqual([]);
+  });
+
+  it("converts FX correctly using convertToBase (divides, not multiplies)", () => {
+    const result = buildPaletteHoldings({
+      cryptoAssets: [],
+      cryptoPrices: {},
+      stockAssets: [],
+      stockPrices: {},
+      bankAccounts: [
+        {
+          id: "ba1",
+          name: "USD Account",
+          bank_name: "Test",
+          region: "US",
+          balance: 109,
+          currency: "USD",
+          apy: 0,
+          institution_id: null,
+          user_id: "u",
+          created_at: "",
+          updated_at: "",
+        },
+      ],
+      exchangeDeposits: [],
+      brokerDeposits: [],
+      // 1 EUR = 1.09 USD → $109 = €100
+      fxRates: { USD: 1.09, EUR: 1 },
+      primaryCurrency: "EUR",
+      pathPrefix: "/dashboard",
+    });
+    // $109 / 1.09 = €100 (not $109 * 1.09 = €118.81)
+    expect(result[0].value).toBeCloseTo(100, 1);
   });
 
   it("applies pathPrefix correctly for share pages", () => {
@@ -112,6 +146,7 @@ describe("buildPaletteHoldings", () => {
       exchangeDeposits: [],
       brokerDeposits: [],
       fxRates: { USD: 1 },
+      primaryCurrency: "USD",
       pathPrefix: "/share/abc123",
     });
     expect(result[0].detailPath).toBe("/share/abc123/cash");
