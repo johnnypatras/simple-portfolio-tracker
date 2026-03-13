@@ -1,7 +1,0 @@
--- ================================================================
--- 027: (no-op) Backfill merged into 026
--- ================================================================
--- Originally contained the UPDATE backfill for 'undone' action,
--- but supabase local runs all migrations in one transaction,
--- so the separate-file approach didn't help. Merged into 026.
--- ================================================================
