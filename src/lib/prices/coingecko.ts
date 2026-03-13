@@ -1,4 +1,5 @@
 import type { CoinGeckoSearchResult, CoinGeckoPriceData } from "@/lib/types";
+import { fetchWithTimeout } from "./fetch-with-timeout";
 
 const BASE_URL = "https://api.coingecko.com/api/v3";
 
@@ -21,7 +22,7 @@ export async function searchCoins(
   if (!query.trim()) return [];
 
   const url = `${BASE_URL}/search?query=${encodeURIComponent(query.trim())}`;
-  const res = await fetch(url, { headers: headers(), next: { revalidate: 300 } });
+  const res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 300 } });
 
   if (!res.ok) {
     console.error("[coingecko] Search failed:", res.status, await res.text());
@@ -52,7 +53,7 @@ export async function getPrices(
 
   const ids = coinIds.join(",");
   const url = `${BASE_URL}/simple/price?ids=${ids}&vs_currencies=usd,eur&include_24hr_change=true`;
-  const res = await fetch(url, { headers: headers(), next: { revalidate: 60 } });
+  const res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
 
   if (!res.ok) {
     console.error("[coingecko] Price fetch failed:", res.status);
@@ -75,7 +76,7 @@ export async function fetchCoinHistory(
 ): Promise<{ date: string; price: number }[]> {
   try {
     const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: headers(),
       next: { revalidate: 21600 }, // 6 hours
     });
@@ -115,7 +116,7 @@ export interface CoinGeckoDetail {
  */
 export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | null> {
   const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`;
-  const res = await fetch(url, { headers: headers(), next: { revalidate: 3600 } });
+  const res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 3600 } });
 
   if (!res.ok) {
     console.error("[coingecko] Coin detail failed:", res.status);
@@ -144,7 +145,7 @@ export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | n
  */
 export async function getCoinImage(coinId: string): Promise<string | null> {
   const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`;
-  const res = await fetch(url, { headers: headers(), next: { revalidate: 86400 } });
+  const res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 86400 } });
 
   if (!res.ok) {
     console.error("[coingecko] Image fetch failed for", coinId, res.status);

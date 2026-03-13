@@ -7,6 +7,8 @@
  * - getFXRatesSafe(): falls back to { base: 1 } — use for dashboard display
  */
 
+import { fetchWithTimeout } from "./fetch-with-timeout";
+
 export type FXRates = Record<string, number>;
 
 const API_BASE = "https://api.frankfurter.dev/v1";
@@ -41,7 +43,7 @@ export async function getFXRates(
   // Retry once on failure before throwing
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await fetch(url, cacheOpts);
+      const res = await fetchWithTimeout(url, cacheOpts);
 
       if (!res.ok) {
         if (attempt === 0) {

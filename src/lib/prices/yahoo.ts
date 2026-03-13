@@ -1,4 +1,5 @@
 import type { YahooStockPriceData, YahooSearchResult, YahooDividendData, YahooDividendMap } from "@/lib/types";
+import { fetchWithTimeout } from "./fetch-with-timeout";
 
 const CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 const QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote";
@@ -15,7 +16,7 @@ export async function searchStocks(
 ): Promise<YahooSearchResult[]> {
   try {
     const url = `${SEARCH_URL}?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 300 },
     });
@@ -60,7 +61,7 @@ export async function getStockQuote(
 ): Promise<{ currency: string; name: string; price: number } | null> {
   try {
     const url = `${CHART_URL}/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 300 },
     });
@@ -98,7 +99,7 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null
 
   try {
     // Step 1: Get session cookies from Yahoo
-    const cookieRes = await fetch("https://fc.yahoo.com/", {
+    const cookieRes = await fetchWithTimeout("https://fc.yahoo.com/", {
       headers: { "User-Agent": "Mozilla/5.0" },
       redirect: "manual",
     });
@@ -114,7 +115,7 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null
     }
 
     // Step 2: Exchange cookies for a crumb token
-    const crumbRes = await fetch(
+    const crumbRes = await fetchWithTimeout(
       "https://query2.finance.yahoo.com/v1/test/getcrumb",
       { headers: { "User-Agent": "Mozilla/5.0", Cookie: cookie } }
     );
@@ -158,7 +159,7 @@ async function fetchQuotesBatch(
     if (!auth) return map; // caller will fall back to v8/chart
 
     const url = `${QUOTE_URL}?symbols=${symbols.join(",")}&crumb=${encodeURIComponent(auth.crumb)}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": "Mozilla/5.0", Cookie: auth.cookie },
       next: { revalidate: 60 },
     });
@@ -313,7 +314,7 @@ async function fetchSinglePrice(ticker: string): Promise<{
 } | null> {
   try {
     const url = `${CHART_URL}/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 60 },
     });
@@ -364,7 +365,7 @@ export async function fetchIndexHistory(
 
   try {
     const url = `${CHART_URL}/${encodeURIComponent(ticker)}?interval=1d&range=${range}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 3600 }, // 1 hour
     });
@@ -410,7 +411,7 @@ async function fetchSingleDividendYield(
 ): Promise<YahooDividendData | null> {
   try {
     const url = `${CHART_URL}/${encodeURIComponent(ticker)}?interval=3mo&range=1y&events=div`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 21600 }, // 6 hours
     });

@@ -162,7 +162,7 @@ export default async function DashboardPage() {
     cashValueEur: summary.cashValueEur,
     stocksHomeCurrencyEur: summary.stocksHomeCurrencyEur,
     cashHomeCurrencyEur: summary.cashHomeCurrencyEur,
-  }).catch(() => {}); // silently ignore errors
+  }).catch((err) => console.error("[snapshots] fire-and-forget save failed:", err));
 
   // Build past-snapshot map for the change card
   const pastSnapshots = {
