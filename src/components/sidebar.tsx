@@ -40,6 +40,7 @@ export function MobileMenuButton() {
   return (
     <button
       onClick={() => setMobileOpen(true)}
+      aria-label="Open menu"
       className="p-1 -ml-1 rounded-lg lg:hidden"
     >
       <Menu className="w-5 h-5 text-zinc-400" />
@@ -73,6 +74,7 @@ export function Sidebar({ email }: { email: string }) {
         </h1>
         <button
           onClick={() => setMobileOpen(false)}
+          aria-label="Close menu"
           className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors lg:hidden"
         >
           <X className="w-4 h-4" />

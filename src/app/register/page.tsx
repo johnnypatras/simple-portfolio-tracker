@@ -127,12 +127,13 @@ function InviteForm() {
       <form onSubmit={handleRegister} className="space-y-4">
         {/* Invite Code (optional) */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label htmlFor="register-invite-code" className="block text-sm text-zinc-400 mb-1.5">
             Invite Code <span className="text-zinc-600">(optional)</span>
           </label>
           <div className="relative">
             <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
+              id="register-invite-code"
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -144,12 +145,13 @@ function InviteForm() {
 
         {/* Display Name (optional) */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label htmlFor="register-display-name" className="block text-sm text-zinc-400 mb-1.5">
             Display Name <span className="text-zinc-600">(optional)</span>
           </label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
+              id="register-display-name"
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -162,12 +164,13 @@ function InviteForm() {
         {/* Name (optional) */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label htmlFor="register-first-name" className="block text-sm text-zinc-400 mb-1.5">
               First Name <span className="text-zinc-600">(optional)</span>
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
               <input
+                id="register-first-name"
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
@@ -177,12 +180,13 @@ function InviteForm() {
             </div>
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label htmlFor="register-last-name" className="block text-sm text-zinc-400 mb-1.5">
               Last Name <span className="text-zinc-600">(optional)</span>
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
               <input
+                id="register-last-name"
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
@@ -195,10 +199,11 @@ function InviteForm() {
 
         {/* Email */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">Email</label>
+          <label htmlFor="register-email" className="block text-sm text-zinc-400 mb-1.5">Email</label>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
+              id="register-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -211,12 +216,13 @@ function InviteForm() {
 
         {/* Password */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label htmlFor="register-password" className="block text-sm text-zinc-400 mb-1.5">
             Password
           </label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
+              id="register-password"
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -228,6 +234,7 @@ function InviteForm() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
             >
               {showPassword ? (
@@ -241,12 +248,13 @@ function InviteForm() {
 
         {/* Confirm Password */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label htmlFor="register-confirm-password" className="block text-sm text-zinc-400 mb-1.5">
             Confirm Password
           </label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
+              id="register-confirm-password"
               type={showPassword ? "text" : "password"}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -259,7 +267,7 @@ function InviteForm() {
         </div>
 
         {error && (
-          <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+          <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
             {error}
           </p>
         )}

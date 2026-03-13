@@ -216,6 +216,9 @@ export function CommandPalette({
   return (
     <div
       ref={overlayRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
       className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
@@ -311,6 +314,7 @@ export function CommandPalette({
                           {hasDetail && (
                             <button
                               type="button"
+                              aria-label={isExpanded ? "Hide details" : "Show details"}
                               className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-500 hover:text-zinc-300 transition-colors"
                               onClick={(e) => {
                                 e.preventDefault();

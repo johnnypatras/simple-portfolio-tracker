@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
+import FocusTrap from "focus-trap-react";
 
 interface ModalProps {
   open: boolean;
@@ -12,6 +13,8 @@ interface ModalProps {
 
 export function Modal({ open, onClose, title, children }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -32,20 +35,30 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl flex flex-col max-h-[85dvh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 md:px-5 md:py-4 border-b border-zinc-800/50 shrink-0">
-          <h2 className="text-base font-semibold text-zinc-100">{title}</h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      <FocusTrap focusTrapOptions={{ initialFocus: false, fallbackFocus: () => panelRef.current!, allowOutsideClick: true }}>
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl flex flex-col max-h-[85dvh] outline-none"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 md:px-5 md:py-4 border-b border-zinc-800/50 shrink-0">
+            <h2 id={titleId} className="text-base font-semibold text-zinc-100">{title}</h2>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="p-1 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {/* Body — scrollable when content exceeds viewport */}
+          <div className="px-4 py-3 md:px-5 md:py-4 overflow-y-auto">{children}</div>
         </div>
-        {/* Body — scrollable when content exceeds viewport */}
-        <div className="px-4 py-3 md:px-5 md:py-4 overflow-y-auto">{children}</div>
-      </div>
+      </FocusTrap>
     </div>
   );
 }

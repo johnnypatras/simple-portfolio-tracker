@@ -5,13 +5,15 @@ export default function DashboardLoading() {
       <div className="h-8 w-48 rounded bg-zinc-800 mb-8" />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl bg-zinc-900 p-5">
-            <div className="h-4 w-24 rounded bg-zinc-800 mb-3" />
-            <div className="h-7 w-32 rounded bg-zinc-800" />
-          </div>
-        ))}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="md:col-span-2 rounded-xl bg-zinc-900 p-5">
+          <div className="h-4 w-24 rounded bg-zinc-800 mb-3" />
+          <div className="h-7 w-32 rounded bg-zinc-800" />
+        </div>
+        <div className="rounded-xl bg-zinc-900 p-5">
+          <div className="h-4 w-24 rounded bg-zinc-800 mb-3" />
+          <div className="h-7 w-32 rounded bg-zinc-800" />
+        </div>
       </div>
 
       {/* Chart skeleton */}

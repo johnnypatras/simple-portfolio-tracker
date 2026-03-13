@@ -9,6 +9,7 @@ export function SearchPill() {
   return (
     <button
       onClick={() => setOpen(true)}
+      aria-label="Search (Command K)"
       className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800/60 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
     >
       <Search className="w-3 h-3" />
