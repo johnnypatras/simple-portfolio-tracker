@@ -10,7 +10,7 @@ import type {
   Broker,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateUUID } from "@/lib/validation";
+import { validateQuantity, validateUUID } from "@/lib/validation";
 import { normalizeCategory } from "@/lib/stock-categories";
 
 /** Get all stock assets with their positions and broker names */
@@ -275,6 +275,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  validateQuantity(input.quantity, "Stock quantity");
   const supabase = await createServerSupabaseClient();
 
   // Fetch asset ticker for logging

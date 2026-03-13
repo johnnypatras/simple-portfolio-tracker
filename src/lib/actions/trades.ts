@@ -92,7 +92,10 @@ export async function createTradeEntry(input: TradeEntryInput) {
 }
 
 export async function updateTradeEntry(id: string, input: TradeEntryInput) {
+  validateUUID(id, "Trade entry ID");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
   const totalValue = input.quantity * input.price;
 
   // Capture before snapshot
@@ -100,6 +103,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
     .from("trade_entries")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
@@ -116,7 +120,8 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
       total_value: Math.round(totalValue * 100) / 100,
       notes: input.notes?.trim() || null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 
@@ -125,6 +130,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
     .from("trade_entries")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 

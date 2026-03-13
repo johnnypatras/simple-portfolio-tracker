@@ -144,7 +144,8 @@ export async function updateBrokerDeposit(
       last_was_adjustment: opts?.isAdjustment ?? false,
       last_was_transfer: opts?.transferGroupId != null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) {
     if (error.code === "23505") {
@@ -215,7 +216,8 @@ export async function deleteBrokerDeposit(id: string, opts?: { isAdjustment?: bo
   const { error } = await supabase
     .from("broker_deposits")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 

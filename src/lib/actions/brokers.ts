@@ -147,7 +147,10 @@ export async function updateBroker(
     also_bank?: boolean;
   }
 ) {
+  validateUUID(id, "Broker ID");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
   const trimmedName = input.name.trim();
 
   // Capture before snapshot
@@ -155,13 +158,15 @@ export async function updateBroker(
     .from("brokers")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
     .from("brokers")
     .update({ name: trimmedName })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 

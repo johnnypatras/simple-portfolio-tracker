@@ -135,7 +135,10 @@ export async function updateCryptoAsset(
   id: string,
   fields: { chain?: string | null; subcategory?: string | null }
 ) {
+  validateUUID(id, "Crypto asset ID");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Build dynamic payload — only include fields that were explicitly passed
   const updatePayload: Record<string, unknown> = {};
@@ -148,13 +151,15 @@ export async function updateCryptoAsset(
     .from("crypto_assets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
     .from("crypto_assets")
     .update(updatePayload)
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 
@@ -163,6 +168,7 @@ export async function updateCryptoAsset(
     .from("crypto_assets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 

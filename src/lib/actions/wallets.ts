@@ -304,6 +304,8 @@ export async function updateWallet(
 export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }) {
   validateUUID(id, "Wallet ID");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Delete child crypto positions individually so each gets an activity_log entry
   const { deletePosition } = await import("@/lib/actions/crypto");
@@ -344,7 +346,8 @@ export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }
   const { error } = await supabase
     .from("wallets")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
   await logActivity({

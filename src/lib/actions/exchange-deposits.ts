@@ -157,7 +157,8 @@ export async function updateExchangeDeposit(
       last_was_adjustment: opts?.isAdjustment ?? false,
       last_was_transfer: opts?.transferGroupId != null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) {
     if (error.code === "23505") {
@@ -228,7 +229,8 @@ export async function deleteExchangeDeposit(id: string, opts?: { isAdjustment?: 
   const { error } = await supabase
     .from("exchange_deposits")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
   const walletName =
