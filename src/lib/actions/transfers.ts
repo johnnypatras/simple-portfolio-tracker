@@ -26,6 +26,12 @@ import type {
   TransferSide,
 } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  validateUUID,
+  validateQuantity,
+  validateAmount,
+  validateCurrency,
+} from "@/lib/validation";
 
 // ─── Types for cleanup tracking ─────────────────────────────
 
@@ -55,6 +61,42 @@ interface TransferPrices {
   destination: SidePrices;
 }
 
+// ─── Transfer Side Validation ────────────────────────────────
+
+function validateTransferSide(side: TransferSide, label: string): void {
+  switch (side.type) {
+    case "crypto_position":
+      validateUUID(side.assetId, `${label} asset ID`);
+      validateUUID(side.walletId, `${label} wallet ID`);
+      validateQuantity(side.quantity, `${label} quantity`);
+      if (side.quantity <= 0) throw new Error(`${label} quantity must be positive`);
+      break;
+    case "stock_position":
+      validateUUID(side.assetId, `${label} asset ID`);
+      validateUUID(side.brokerId, `${label} broker ID`);
+      validateQuantity(side.quantity, `${label} quantity`);
+      if (side.quantity <= 0) throw new Error(`${label} quantity must be positive`);
+      break;
+    case "exchange_deposit":
+      validateUUID(side.walletId, `${label} wallet ID`);
+      validateCurrency(side.currency);
+      validateAmount(side.amount, `${label} amount`);
+      if (side.amount <= 0) throw new Error(`${label} amount must be positive`);
+      break;
+    case "broker_deposit":
+      validateUUID(side.brokerId, `${label} broker ID`);
+      validateCurrency(side.currency);
+      validateAmount(side.amount, `${label} amount`);
+      if (side.amount <= 0) throw new Error(`${label} amount must be positive`);
+      break;
+    case "bank_account":
+      validateUUID(side.accountId, `${label} account ID`);
+      validateAmount(side.amount, `${label} amount`);
+      if (side.amount <= 0) throw new Error(`${label} amount must be positive`);
+      break;
+  }
+}
+
 // ─── Main Transfer Action ────────────────────────────────────
 
 export async function executeTransfer(input: TransferInput): Promise<TransferResult> {
@@ -62,6 +104,15 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
+
+  // ── Validate transfer sides (reject negative/zero quantities/amounts) ──
+  validateTransferSide(input.destination, "Destination");
+  if (input.source) validateTransferSide(input.source, "Source");
+  if (input.newCashDeposit) {
+    validateAmount(input.newCashDeposit.amount, "Cash deposit amount");
+    if (input.newCashDeposit.amount <= 0) throw new Error("Cash deposit amount must be positive");
+    validateCurrency(input.newCashDeposit.currency);
+  }
 
   // Use a local destination variable to avoid mutating input
   let destination: TransferSide = input.destination;
