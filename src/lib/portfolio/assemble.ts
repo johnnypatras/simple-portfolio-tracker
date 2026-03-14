@@ -125,8 +125,14 @@ export async function assemblePortfolioView(
     primaryCurrency, pathPrefix,
   });
 
+  // FX markets close Friday ~22:00 UTC, reopen Sunday ~22:00 UTC.
+  // Use 48h on weekends (Sat/Sun) to avoid false positives; 24h on weekdays.
+  const now = new Date();
+  const dayOfWeek = now.getUTCDay(); // 0=Sun, 6=Sat
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  const fxStaleThreshold = isWeekend ? 48 * 3600 : 24 * 3600;
   const fxStale = eurUsdData?.regularMarketTime != null
-    ? Date.now() / 1000 - eurUsdData.regularMarketTime > 86400
+    ? Date.now() / 1000 - eurUsdData.regularMarketTime > fxStaleThreshold
     : false;
   const fxUnavailable = !eurUsdData?.price;
 
