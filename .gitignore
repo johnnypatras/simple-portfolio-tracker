@@ -43,6 +43,7 @@ firebase-debug.log*
 next-env.d.ts
 
 # tooling / local-only
+.worktrees/
 .serena/
 .claude/
 .firecrawl/
