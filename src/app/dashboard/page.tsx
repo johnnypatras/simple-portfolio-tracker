@@ -4,13 +4,10 @@ import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
-import { getPrices } from "@/lib/prices/coingecko";
-import { getStockAndIndexPrices, fetchIndexHistory } from "@/lib/prices/yahoo";
+import { fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
-import { getFXRatesSafe } from "@/lib/prices/fx";
-import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
-import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
+import { assemblePortfolioView } from "@/lib/portfolio/assemble";
 import {
   saveSnapshot,
   getSnapshots,
@@ -18,7 +15,6 @@ import {
 } from "@/lib/actions/snapshots";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { MobileMenuButton } from "@/components/sidebar";
-import { buildPaletteHoldings } from "@/lib/portfolio/holdings";
 import { RegisterHoldings } from "@/components/ui/command-palette-provider";
 import dynamic from "next/dynamic";
 
@@ -55,101 +51,14 @@ export default async function DashboardPage() {
 
   const primaryCurrency = profile.primary_currency;
 
-  // Build ticker/coin ID lists for price fetching
-  // Always include "bitcoin" for BTC market price on dashboard
-  const coinIds = [
-    ...new Set(["bitcoin", "ethereum", "solana", ...cryptoAssets.map((a) => a.coingecko_id)]),
-  ];
-  const yahooTickers = stockAssets
-    .map((a) => a.yahoo_ticker || a.ticker)
-    .filter(Boolean);
-
-  // Collect all unique currencies that need FX conversion
-  const allCurrencies = [
-    ...new Set([
-      "EUR", "USD", // always include for EUR/USD cross rate in market panel
-      ...stockAssets.map((a) => a.currency),
-      ...bankAccounts.map((a) => a.currency),
-      ...exchangeDeposits.map((a) => a.currency),
-      ...brokerDeposits.map((a) => a.currency),
-    ]),
-  ];
-
-  // ── Round 2: Prices (stocks + indices in one batch) ─────
-  const [cryptoPrices, { stockPrices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur] =
-    await Promise.all([
-      getPrices(coinIds),
-      getStockAndIndexPrices(yahooTickers),
-      getFXRatesSafe(primaryCurrency, allCurrencies),
-      getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
-      getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
-    ]);
-
-  const sp500Data = indexPrices["^GSPC"] ?? null;
-  const goldData = indexPrices["GC=F"] ?? null;
-  const nasdaqData = indexPrices["^IXIC"] ?? null;
-  const dowData = indexPrices["^DJI"] ?? null;
-  const eurUsdData = indexPrices["EURUSD=X"] ?? null;
-  const stoxx50Data = indexPrices["^STOXX50E"] ?? null;
-  const silverData = indexPrices["SI=F"] ?? null;
-  const oilData = indexPrices["BZ=F"] ?? null;
-  const treasury10yData = indexPrices["^TNX"] ?? null;
-  const vixData = indexPrices["^VIX"] ?? null;
-
-  // ── Aggregate into portfolio summary ──────────────────
-  const summary = aggregatePortfolio({
-    cryptoAssets,
-    cryptoPrices,
-    stockAssets,
-    stockPrices,
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
-    primaryCurrency,
-    fxRates,
-    fxRatesUsd,
-    fxRatesEur,
-    eurUsdChange24h: eurUsdData?.change24h ?? 0,
-  });
-
-  // ── Compute dashboard insights ────────────────────────
-  const insights = computeDashboardInsights({
-    cryptoAssets,
-    cryptoPrices,
-    stockAssets,
-    stockPrices,
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
-    primaryCurrency,
-    fxRates,
-    summary,
-    sp500Price: sp500Data?.price ?? 0,
-    sp500Change24h: sp500Data?.change24h ?? 0,
-    goldPrice: goldData?.price ?? 0,
-    goldChange24h: goldData?.change24h ?? 0,
-    nasdaqPrice: nasdaqData?.price ?? 0,
-    nasdaqChange24h: nasdaqData?.change24h ?? 0,
-    dowPrice: dowData?.price ?? 0,
-    dowChange24h: dowData?.change24h ?? 0,
-    eurUsdChange24h: eurUsdData?.change24h ?? 0,
-    solPriceUsd: cryptoPrices["solana"]?.usd ?? 0,
-    solChange24h: cryptoPrices["solana"]?.usd_24h_change ?? 0,
-    stoxx50Price: stoxx50Data?.price ?? 0,
-    stoxx50Change24h: stoxx50Data?.change24h ?? 0,
-    silverPrice: silverData?.price ?? 0,
-    silverChange24h: silverData?.change24h ?? 0,
-    oilPrice: oilData?.price ?? 0,
-    oilChange24h: oilData?.change24h ?? 0,
-    treasury10yPrice: treasury10yData?.price ?? 0,
-    treasury10yChange24h: treasury10yData?.change24h ?? 0,
-    vixPrice: vixData?.price ?? 0,
-    vixChange24h: vixData?.change24h ?? 0,
-    dividends,
-  });
+  // ── Round 2: Prices, aggregation, insights ─────────────
+  const { summary, insights, paletteHoldings } =
+    await assemblePortfolioView(
+      { cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits, primaryCurrency },
+      "/dashboard",
+    );
 
   // ── Save today's snapshot (fire-and-forget) ───────────
-  // Don't await — this shouldn't block rendering
   saveSnapshot({
     totalValueUsd: summary.totalValueUsd,
     totalValueEur: summary.totalValueEur,
@@ -163,19 +72,12 @@ export default async function DashboardPage() {
     cashHomeCurrencyEur: summary.cashHomeCurrencyEur,
   }).catch((err) => console.error("[snapshots] fire-and-forget save failed:", err));
 
-  // Build past-snapshot map for the change card
   const pastSnapshots = {
-    "24h": null,  // 24h uses real-time API data, not snapshots
+    "24h": null,
     "7d": snap7d,
     "30d": snap30d,
     "1y": snap1y,
   };
-
-  const paletteHoldings = buildPaletteHoldings({
-    cryptoAssets, cryptoPrices, stockAssets, stockPrices,
-    bankAccounts, exchangeDeposits, brokerDeposits, fxRates,
-    primaryCurrency, pathPrefix: "/dashboard",
-  });
 
   return (
     <div>
