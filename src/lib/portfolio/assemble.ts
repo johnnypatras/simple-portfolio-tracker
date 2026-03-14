@@ -38,6 +38,8 @@ export interface AssembledPortfolio {
   fxRatesUsd: FXRates;
   fxRatesEur: FXRates;
   paletteHoldings: HoldingItem[];
+  fxStale: boolean;
+  fxUnavailable: boolean;
 }
 
 export async function assemblePortfolioView(
@@ -123,5 +125,10 @@ export async function assemblePortfolioView(
     primaryCurrency, pathPrefix,
   });
 
-  return { summary, insights, cryptoPrices, stockPrices, dividends, fxRates, fxRatesUsd, fxRatesEur, paletteHoldings };
+  const fxStale = eurUsdData?.regularMarketTime != null
+    ? Date.now() / 1000 - eurUsdData.regularMarketTime > 86400
+    : false;
+  const fxUnavailable = !eurUsdData?.price;
+
+  return { summary, insights, cryptoPrices, stockPrices, dividends, fxRates, fxRatesUsd, fxRatesEur, paletteHoldings, fxStale, fxUnavailable };
 }

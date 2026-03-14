@@ -144,6 +144,7 @@ type QuoteResult = {
   name: string;
   trailingYield: number;
   annualDividend: number;
+  regularMarketTime?: number;
 };
 
 /**
@@ -199,6 +200,7 @@ async function fetchQuotesBatch(
         name: (q.longName as string) ?? (q.shortName as string) ?? symbol,
         trailingYield: ((q.trailingAnnualDividendYield as number) ?? 0) * 100,
         annualDividend: (q.trailingAnnualDividendRate as number) ?? 0,
+        regularMarketTime: (q.regularMarketTime as number) ?? undefined,
       });
     }
   } catch (err) {

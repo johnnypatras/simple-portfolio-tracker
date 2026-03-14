@@ -410,6 +410,7 @@ export interface YahooStockPriceData {
     change24h: number;
     currency: string;
     name: string;
+    regularMarketTime?: number;
   };
 }
 
