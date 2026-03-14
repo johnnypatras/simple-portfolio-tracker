@@ -539,6 +539,13 @@ export interface ActivityLog {
   delta_eur: number | null;
   transfer_group_id: string | null;
   compensates_for: string | null;
+  cashflow_amount_usd: number | null;
+  cashflow_amount_eur: number | null;
+  cashflow_asset_class: string | null;
+  cashflow_status: string | null;
+  delta_status: string | null;
+  cashflow_attempted_at: string | null;
+  delta_attempted_at: string | null;
   created_at: string;
 }
 
