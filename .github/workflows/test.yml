@@ -31,6 +31,7 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-build
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: npm run build
 
       - name: Unit tests
