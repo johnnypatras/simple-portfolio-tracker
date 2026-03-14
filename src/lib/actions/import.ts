@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { exportFullJson } from "@/lib/actions/export";
 import type { PortfolioBackup } from "@/lib/actions/export";
 import {
   validateAmount,
@@ -46,6 +47,7 @@ export interface ImportResult {
 export interface ImportError {
   ok: false;
   error: string;
+  backup?: PortfolioBackup;
 }
 
 // ─── Validation ─────────────────────────────────────────
@@ -196,6 +198,22 @@ export async function importFromJson(
     if (!check.ok) return { ok: false, error: check.error };
   }
 
+  // ── Safety backup before destructive replace ──
+  let safetyBackup: PortfolioBackup | undefined;
+  if (isReplace) {
+    try {
+      safetyBackup = await exportFullJson();
+    } catch {
+      return { ok: false, error: "Failed to create safety backup — aborting replace to protect your data." };
+    }
+  }
+
+  const fail = (error: string): ImportError => ({
+    ok: false as const,
+    error,
+    ...(safetyBackup ? { backup: safetyBackup } : {}),
+  });
+
   // ── Replace mode: clear all existing data first ──
   // Children before parents. crypto_positions, stock_positions, and
   // goal_prices don't have user_id — they're cascade-deleted when their
@@ -210,7 +228,7 @@ export async function importFromJson(
     ];
     for (const table of tables) {
       const { error } = await supabase.from(table).delete().eq("user_id", uid);
-      if (error) return { ok: false, error: `Failed to clear ${table}: ${error.message}` };
+      if (error) return fail(`Failed to clear ${table}: ${error.message}`);
     }
   }
 
@@ -258,7 +276,7 @@ export async function importFromJson(
         .insert({ user_id: uid, name: inst.name })
         .select("id")
         .single();
-      if (error) return { ok: false, error: `Institution "${inst.name}": ${error.message}` };
+      if (error) return fail(`Institution "${inst.name}": ${error.message}`);
       instMap.set(inst.id, created.id);
       counts.institutions++;
     }
@@ -297,7 +315,7 @@ export async function importFromJson(
         })
         .select("id")
         .single();
-      if (error) return { ok: false, error: `Wallet "${w.name}": ${error.message}` };
+      if (error) return fail(`Wallet "${w.name}": ${error.message}`);
       walletMap.set(w.id, created.id);
       counts.wallets++;
     }
@@ -333,7 +351,7 @@ export async function importFromJson(
         })
         .select("id")
         .single();
-      if (error) return { ok: false, error: `Broker "${b.name}": ${error.message}` };
+      if (error) return fail(`Broker "${b.name}": ${error.message}`);
       brokerMap.set(b.id, created.id);
       counts.brokers++;
     }
@@ -379,7 +397,7 @@ export async function importFromJson(
 
     if (newRows.length > 0) {
       const { error } = await supabase.from("bank_accounts").insert(newRows);
-      if (error) return { ok: false, error: `Bank accounts batch: ${error.message}` };
+      if (error) return fail(`Bank accounts batch: ${error.message}`);
       counts.bankAccounts = newRows.length;
     }
   }
@@ -431,7 +449,7 @@ export async function importFromJson(
         })
         .select("id")
         .single();
-      if (error) return { ok: false, error: `Crypto asset "${asset.ticker}": ${error.message}` };
+      if (error) return fail(`Crypto asset "${asset.ticker}": ${error.message}`);
       newAssetId = created.id;
       cryptoAssetMap.set(asset.id, newAssetId);
       counts.cryptoAssets++;
@@ -458,7 +476,7 @@ export async function importFromJson(
 
     if (posRows.length > 0) {
       const { error } = await supabase.from("crypto_positions").insert(posRows);
-      if (error) return { ok: false, error: `Crypto positions for ${asset.ticker}: ${error.message}` };
+      if (error) return fail(`Crypto positions for ${asset.ticker}: ${error.message}`);
       counts.cryptoPositions += posRows.length;
     }
   }
@@ -539,7 +557,7 @@ export async function importFromJson(
         })
         .select("id")
         .single();
-      if (error) return { ok: false, error: `Stock asset "${asset.ticker}": ${error.message}` };
+      if (error) return fail(`Stock asset "${asset.ticker}": ${error.message}`);
       newAssetId = created.id;
       stockAssetMap.set(asset.id, newAssetId);
       counts.stockAssets++;
@@ -564,7 +582,7 @@ export async function importFromJson(
 
     if (posRows.length > 0) {
       const { error } = await supabase.from("stock_positions").insert(posRows);
-      if (error) return { ok: false, error: `Stock positions for ${asset.ticker}: ${error.message}` };
+      if (error) return fail(`Stock positions for ${asset.ticker}: ${error.message}`);
       counts.stockPositions += posRows.length;
     }
   }
@@ -607,7 +625,7 @@ export async function importFromJson(
 
     if (newRows.length > 0) {
       const { error } = await supabase.from("exchange_deposits").insert(newRows);
-      if (error) return { ok: false, error: `Exchange deposits batch: ${error.message}` };
+      if (error) return fail(`Exchange deposits batch: ${error.message}`);
       counts.exchangeDeposits = newRows.length;
     }
   }
@@ -650,7 +668,7 @@ export async function importFromJson(
 
     if (newRows.length > 0) {
       const { error } = await supabase.from("broker_deposits").insert(newRows);
-      if (error) return { ok: false, error: `Broker deposits batch: ${error.message}` };
+      if (error) return fail(`Broker deposits batch: ${error.message}`);
       counts.brokerDeposits = newRows.length;
     }
   }
@@ -677,7 +695,7 @@ export async function importFromJson(
       const { error } = await supabase
         .from("trade_entries")
         .upsert(tradeRows, { onConflict: "id" });
-      if (error) return { ok: false, error: `Trade entries batch: ${error.message}` };
+      if (error) return fail(`Trade entries batch: ${error.message}`);
       counts.tradeEntries = tradeRows.length;
     }
   }
