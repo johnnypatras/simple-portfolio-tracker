@@ -61,6 +61,12 @@ export async function logActivity(params: {
   delta_eur?: number | null;
   transfer_group_id?: string;
   created_at?: string;
+  // Cashflow tracking (pre-computed at write time)
+  cashflow_amount_usd?: number | null;
+  cashflow_amount_eur?: number | null;
+  cashflow_asset_class?: string | null;
+  cashflow_status?: "complete" | "pending" | null;
+  delta_status?: "complete" | "pending" | null;
 }): Promise<void> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -85,6 +91,11 @@ export async function logActivity(params: {
       delta_eur: params.delta_eur ?? null,
       transfer_group_id: params.transfer_group_id ?? null,
       ...(params.created_at ? { created_at: params.created_at } : {}),
+      cashflow_amount_usd: params.cashflow_amount_usd ?? null,
+      cashflow_amount_eur: params.cashflow_amount_eur ?? null,
+      cashflow_asset_class: params.cashflow_asset_class ?? null,
+      cashflow_status: params.cashflow_status ?? null,
+      delta_status: params.delta_status ?? null,
     });
   } catch (err) {
     console.error("[activity-log] Failed to log activity:", err);
@@ -255,8 +266,8 @@ async function computeDeltaFromSnapshots(
 }
 
 // ─── Toggle adjustment flag ─────────────────────────────
-// When toggling ON: compute deltas from snapshots and store.
-// When toggling OFF: clear deltas.
+// When toggling ON (becomes adjustment): compute delta, clear cashflow.
+// When toggling OFF (becomes non-adjustment): compute cashflow, clear delta.
 
 export async function toggleActivityAdjustment(
   logId: string,
@@ -265,19 +276,26 @@ export async function toggleActivityAdjustment(
   validateUUID(logId, "Activity log ID");
   const supabase = await createServerSupabaseClient();
 
+  // Fetch full row to access snapshots
+  const { data: row, error: fetchErr } = await supabase
+    .from("activity_log")
+    .select("*")
+    .eq("id", logId)
+    .single();
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!row) throw new Error("Activity log entry not found");
+
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
+  let deltaStatus: string | null = null;
+  let cashflowUsd: number | null = null;
+  let cashflowEur: number | null = null;
+  let cashflowAssetClass: string | null = null;
+  let cashflowStatus: string | null = null;
 
   if (isAdjustment) {
-    // Fetch full row to access snapshots
-    const { data: row, error: fetchErr } = await supabase
-      .from("activity_log")
-      .select("*")
-      .eq("id", logId)
-      .single();
-    if (fetchErr) throw new Error(fetchErr.message);
-
-    if (row) {
+    // Toggling ON (becomes adjustment) → compute delta, clear cashflow
+    try {
       const deltas = await computeDeltaFromSnapshots(
         row.entity_type,
         row.action,
@@ -287,12 +305,69 @@ export async function toggleActivityAdjustment(
       );
       deltaUsd = Math.round(deltas.usd * 100) / 100;
       deltaEur = Math.round(deltas.eur * 100) / 100;
+      deltaStatus = "complete";
+    } catch (err) {
+      console.error("[activity-log] Delta computation failed on toggle:", err instanceof Error ? err.message : err);
+      deltaStatus = "pending";
     }
+    // Clear cashflow (no longer a real money flow)
+    cashflowUsd = null;
+    cashflowEur = null;
+    cashflowAssetClass = null;
+    cashflowStatus = null;
+  } else {
+    // Toggling OFF (becomes non-adjustment) → compute cashflow, clear delta
+    try {
+      const values = await computeDeltaFromSnapshots(
+        row.entity_type,
+        row.action,
+        row.created_at,
+        row.before_snapshot as Record<string, unknown> | null,
+        row.after_snapshot as Record<string, unknown> | null
+      );
+      cashflowUsd = Math.round(values.usd * 100) / 100;
+      cashflowEur = Math.round(values.eur * 100) / 100;
+
+      // Determine asset class
+      const { classifyAssetClass } = await import("@/lib/cashflow");
+      // Check stablecoin status for crypto positions
+      let isStablecoin = false;
+      if (row.entity_type === "crypto_position") {
+        const snap = (row.after_snapshot ?? row.before_snapshot) as Record<string, unknown> | null;
+        const assetId = snap?.crypto_asset_id as string | undefined;
+        if (assetId) {
+          const { data: asset } = await supabase
+            .from("crypto_assets")
+            .select("subcategory")
+            .eq("id", assetId)
+            .single();
+          isStablecoin = asset?.subcategory?.toLowerCase() === "stablecoin";
+        }
+      }
+      cashflowAssetClass = classifyAssetClass(row.entity_type, isStablecoin);
+      cashflowStatus = "complete";
+    } catch (err) {
+      console.error("[activity-log] Cashflow computation failed on toggle:", err instanceof Error ? err.message : err);
+      cashflowStatus = "pending";
+    }
+    // Clear delta (no longer an adjustment)
+    deltaUsd = null;
+    deltaEur = null;
+    deltaStatus = null;
   }
 
   const { error } = await supabase
     .from("activity_log")
-    .update({ is_adjustment: isAdjustment, delta_usd: deltaUsd, delta_eur: deltaEur })
+    .update({
+      is_adjustment: isAdjustment,
+      delta_usd: deltaUsd,
+      delta_eur: deltaEur,
+      delta_status: deltaStatus,
+      cashflow_amount_usd: cashflowUsd,
+      cashflow_amount_eur: cashflowEur,
+      cashflow_asset_class: cashflowAssetClass,
+      cashflow_status: cashflowStatus,
+    })
     .eq("id", logId);
   if (error) throw new Error(error.message);
 }
