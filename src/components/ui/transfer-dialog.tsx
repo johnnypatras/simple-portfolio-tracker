@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { ArrowDown, Loader2, Search } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
@@ -118,6 +118,7 @@ export function TransferDialog({
   const [effectiveDate, setEffectiveDate] = useState("");
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const id = useId();
 
   // ── Source picker state (generic transfer — no initialSource) ──
   const [srcLocationId, setSrcLocationId] = useState("");
@@ -909,10 +910,11 @@ export function TransferDialog({
               <>
                 <div className="text-sm text-zinc-200">{prefilledLabel}</div>
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1">
+                  <label htmlFor={`${id}-src-qty`} className="block text-xs text-zinc-500 mb-1">
                     Quantity
                   </label>
                   <input
+                    id={`${id}-src-qty`}
                     type="number"
                     step="any"
                     min="0"
@@ -937,10 +939,11 @@ export function TransferDialog({
               <>
                 {/* Single grouped source dropdown */}
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1">
+                  <label htmlFor={`${id}-src-location`} className="block text-xs text-zinc-500 mb-1">
                     Position / Account
                   </label>
                   <select
+                    id={`${id}-src-location`}
                     value={srcLocationId}
                     onChange={(e) => {
                       setSrcLocationId(e.target.value);
@@ -967,10 +970,11 @@ export function TransferDialog({
                 {/* Amount / Quantity input — only shown after selection */}
                 {srcSelected && (
                   <div>
-                    <label className="block text-xs text-zinc-500 mb-1">
+                    <label htmlFor={`${id}-src-amount`} className="block text-xs text-zinc-500 mb-1">
                       {srcIsCash ? "Amount" : "Quantity"}
                     </label>
                     <input
+                      id={`${id}-src-amount`}
                       type="number"
                       step="any"
                       min="0"
@@ -1051,6 +1055,7 @@ export function TransferDialog({
                         type="text"
                         value={buySearchQuery}
                         onChange={(e) => setBuySearchQuery(e.target.value)}
+                        aria-label={buyAssetType === "stock" ? "Search stocks or ETFs" : "Search crypto"}
                         placeholder={buyAssetType === "stock" ? "Search stocks or ETFs..." : "Search crypto..."}
                         className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
                       />
@@ -1092,12 +1097,13 @@ export function TransferDialog({
                 {buySelectedAsset && (
                   <>
                     <div>
-                      <label className="block text-xs text-zinc-500 mb-1">
+                      <label htmlFor={`${id}-buy-location`} className="block text-xs text-zinc-500 mb-1">
                         {buyAssetType === "stock" ? "Broker" : "Exchange / Wallet"}
                       </label>
                       {buyCreatingNew ? (
                         <div className="flex items-center gap-2">
                           <input
+                            id={`${id}-buy-location`}
                             type="text"
                             value={buyNewLocationName}
                             onChange={(e) => setBuyNewLocationName(e.target.value)}
@@ -1118,6 +1124,7 @@ export function TransferDialog({
                       ) : (
                         <div className="flex items-center gap-2">
                           <select
+                            id={`${id}-buy-location`}
                             value={buyLocationId}
                             onChange={(e) => setBuyLocationId(e.target.value)}
                             className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -1140,8 +1147,9 @@ export function TransferDialog({
 
                     {/* Quantity */}
                     <div>
-                      <label className="block text-xs text-zinc-500 mb-1">Quantity</label>
+                      <label htmlFor={`${id}-buy-qty`} className="block text-xs text-zinc-500 mb-1">Quantity</label>
                       <input
+                        id={`${id}-buy-qty`}
                         type="number"
                         step="any"
                         min="0"
@@ -1185,10 +1193,11 @@ export function TransferDialog({
                   {prefilled?.assetTicker} (same asset, different location)
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1">
+                  <label htmlFor={`${id}-move-location`} className="block text-xs text-zinc-500 mb-1">
                     New {prefilled?.type === "crypto_position" ? "Wallet" : "Broker"}
                   </label>
                   <select
+                    id={`${id}-move-location`}
                     value={moveLocationId}
                     onChange={(e) => setMoveLocationId(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -1237,10 +1246,11 @@ export function TransferDialog({
                       No {buyAssetCurrency} cash tracked at {buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "this institution"}.
                     </p>
                     <div>
-                      <label className="block text-xs text-zinc-500 mb-1">
+                      <label htmlFor={`${id}-cash-balance`} className="block text-xs text-zinc-500 mb-1">
                         Current {buyAssetCurrency} balance
                       </label>
                       <input
+                        id={`${id}-cash-balance`}
                         type="number"
                         step="any"
                         min="0"
@@ -1252,12 +1262,13 @@ export function TransferDialog({
                     </div>
                     <div className="flex items-center gap-1">
                       <input
+                        id={`${id}-cash-adj`}
                         type="checkbox"
                         checked={cashIsAdjustment}
                         onChange={(e) => setCashIsAdjustment(e.target.checked)}
                         className="accent-amber-500"
                       />
-                      <label className="text-[10px] text-zinc-400" title="Not a real transaction — portfolio balance correction">
+                      <label htmlFor={`${id}-cash-adj`} className="text-[10px] text-zinc-400" title="Not a real transaction — portfolio balance correction">
                         Portfolio adjustment (existing money, not a new deposit)
                       </label>
                     </div>
@@ -1301,10 +1312,11 @@ export function TransferDialog({
 
                 {/* Location picker */}
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1">
+                  <label htmlFor={`${id}-dest-location`} className="block text-xs text-zinc-500 mb-1">
                     {destType === "bank_account" ? "Account" : "Location"}
                   </label>
                   <select
+                    id={`${id}-dest-location`}
                     value={destLocationId}
                     onChange={(e) => setDestLocationId(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -1321,10 +1333,11 @@ export function TransferDialog({
                 {/* Currency for cash destinations */}
                 {(destType === "broker_deposit" || destType === "exchange_deposit") && (
                   <div>
-                    <label className="block text-xs text-zinc-500 mb-1">
+                    <label htmlFor={`${id}-dest-currency`} className="block text-xs text-zinc-500 mb-1">
                       Currency
                     </label>
                     <select
+                      id={`${id}-dest-currency`}
                       value={destCurrency}
                       onChange={(e) => setDestCurrency(e.target.value)}
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -1338,12 +1351,13 @@ export function TransferDialog({
 
                 {/* Amount / quantity */}
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1">
+                  <label htmlFor={`${id}-dest-amount`} className="block text-xs text-zinc-500 mb-1">
                     {destType === "crypto_position" || destType === "stock_position"
                       ? "Quantity"
                       : "Amount"}
                   </label>
                   <input
+                    id={`${id}-dest-amount`}
                     type="number"
                     step="any"
                     min="0"
@@ -1401,8 +1415,9 @@ export function TransferDialog({
 
           {/* ── Date picker ── */}
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Date</label>
+            <label htmlFor={`${id}-date`} className="block text-xs text-zinc-500 mb-1">Date</label>
             <input
+              id={`${id}-date`}
               type="date"
               value={effectiveDate}
               max={new Date().toISOString().split("T")[0]}

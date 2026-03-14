@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useId } from "react";
 import { Plus, BookOpen, Pencil, Trash2 } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Modal } from "@/components/ui/modal";
@@ -93,6 +93,7 @@ export function TradeTable({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const id = useId();
   // Form state
   const [tradeDate, setTradeDate] = useState(toLocalDatetime());
   const [assetType, setAssetType] = useState<TradeAssetType>("crypto");
@@ -182,10 +183,11 @@ export function TradeTable({
         {/* Row 1: Date + Buy/Sell */}
         <div className="grid grid-cols-[1fr_120px] gap-3">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-trade-date`} className="block text-xs text-zinc-500 mb-1">
               Trade Date
             </label>
             <input
+              id={`${id}-trade-date`}
               type="datetime-local"
               value={tradeDate}
               onChange={(e) => setTradeDate(e.target.value)}
@@ -194,10 +196,10 @@ export function TradeTable({
             />
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <span id={`${id}-side`} className="block text-xs text-zinc-500 mb-1">
               Side
-            </label>
-            <div className="grid grid-cols-2 gap-1">
+            </span>
+            <div role="group" aria-labelledby={`${id}-side`} className="grid grid-cols-2 gap-1">
               <button
                 type="button"
                 onClick={() => setAction("buy")}
@@ -227,10 +229,11 @@ export function TradeTable({
         {/* Row 2: Asset type + name */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-asset-type`} className="block text-xs text-zinc-500 mb-1">
               Asset Type
             </label>
             <select
+              id={`${id}-asset-type`}
               value={assetType}
               onChange={(e) => {
                 const newType = e.target.value as TradeAssetType;
@@ -246,11 +249,12 @@ export function TradeTable({
             </select>
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-asset-name`} className="block text-xs text-zinc-500 mb-1">
               Asset Name
             </label>
             {assetType === "crypto" && assetOptions.crypto.length > 0 ? (
               <select
+                id={`${id}-asset-name`}
                 value={assetName}
                 onChange={(e) => setAssetName(e.target.value)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -265,6 +269,7 @@ export function TradeTable({
               </select>
             ) : assetType === "stock" && assetOptions.stock.length > 0 ? (
               <select
+                id={`${id}-asset-name`}
                 value={assetName}
                 onChange={(e) => {
                   setAssetName(e.target.value);
@@ -285,6 +290,7 @@ export function TradeTable({
               </select>
             ) : assetType === "cash" && assetOptions.cash.length > 0 ? (
               <select
+                id={`${id}-asset-name`}
                 value={assetName}
                 onChange={(e) => {
                   setAssetName(e.target.value);
@@ -302,6 +308,7 @@ export function TradeTable({
               </select>
             ) : (
               <input
+                id={`${id}-asset-name`}
                 type="text"
                 value={assetName}
                 onChange={(e) => setAssetName(e.target.value)}
@@ -316,10 +323,11 @@ export function TradeTable({
         {/* Row 3: Quantity + Price + Currency */}
         <div className="grid grid-cols-[1fr_1fr_70px] gap-3">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-quantity`} className="block text-xs text-zinc-500 mb-1">
               Quantity
             </label>
             <input
+              id={`${id}-quantity`}
               type="number"
               step="any"
               value={quantity}
@@ -330,10 +338,11 @@ export function TradeTable({
             />
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-price`} className="block text-xs text-zinc-500 mb-1">
               Price
             </label>
             <input
+              id={`${id}-price`}
               type="number"
               step="any"
               value={price}
@@ -344,10 +353,11 @@ export function TradeTable({
             />
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-ccy`} className="block text-xs text-zinc-500 mb-1">
               Ccy
             </label>
             <input
+              id={`${id}-ccy`}
               type="text"
               value={currency}
               onChange={(e) => setCurrency(e.target.value.toUpperCase())}
@@ -360,11 +370,12 @@ export function TradeTable({
 
         {/* Notes — single line on mobile */}
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">
+          <label htmlFor={`${id}-notes`} className="block text-xs text-zinc-500 mb-1">
             Notes{" "}
             <span className="text-zinc-600 font-normal">(optional)</span>
           </label>
           <input
+            id={`${id}-notes`}
             type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
