@@ -2,11 +2,15 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { classifyAssetClass } from "@/lib/cashflow";
-import { computeDeltaFromSnapshots } from "./activity-log";
+import { cashAmountField, cashDelta } from "@/lib/deltas";
+import type { CashEntityType } from "@/lib/deltas";
+import { toUsdAndEur, computeDeltaFromSnapshots } from "./activity-log";
 
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 10; // Small batch to stay within Vercel 10s timeout
 const THROTTLE_MS = 24 * 60 * 60 * 1000; // 24 hours between retries
 const MAX_DAYS_BEFORE_EXHAUSTED = 3; // 3 days minimum before escalating to failed
+
+const CASH_ENTITY_TYPES = ["exchange_deposit", "broker_deposit", "bank_account"];
 
 export async function backfillCashflowsAndDeltas(): Promise<{
   processed: number;
@@ -71,25 +75,44 @@ export async function backfillCashflowsAndDeltas(): Promise<{
 
   for (const row of allRows) {
     const isCashflow = (cashflowRows ?? []).some((r) => r.id === row.id);
+    const entityType = row.entity_type as string;
+    const isCashEntity = CASH_ENTITY_TYPES.includes(entityType);
 
     try {
-      // Use computeDeltaFromSnapshots for both cashflow and delta computation
-      const values = await computeDeltaFromSnapshots(
-        row.entity_type as string,
-        row.action as string,
-        row.created_at as string,
-        row.before_snapshot as Record<string, unknown> | null,
-        row.after_snapshot as Record<string, unknown> | null
-      );
+      let values: { usd: number; eur: number };
+
+      if (isCashEntity) {
+        // Cash entities: compute directly from snapshots — no price API needed.
+        // Just extract amount delta and convert currency via Frankfurter.
+        const field = cashAmountField(entityType as CashEntityType);
+        const before = row.before_snapshot as Record<string, unknown> | null;
+        const after = row.after_snapshot as Record<string, unknown> | null;
+        const beforeAmt = (before?.[field] as number) ?? 0;
+        const afterAmt = (after?.[field] as number) ?? 0;
+        const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
+        const delta = cashDelta(row.action as string, beforeAmt, afterAmt);
+
+        if (delta === 0) {
+          values = { usd: 0, eur: 0 };
+        } else {
+          values = await toUsdAndEur(delta, currency, (row.created_at as string).split("T")[0]);
+        }
+      } else {
+        // Position entities: need historical price lookup via CoinGecko/Yahoo
+        values = await computeDeltaFromSnapshots(
+          entityType,
+          row.action as string,
+          row.created_at as string,
+          row.before_snapshot as Record<string, unknown> | null,
+          row.after_snapshot as Record<string, unknown> | null
+        );
+      }
 
       if (isCashflow) {
-        // Determine asset class
+        // Determine asset class (with stablecoin check for crypto)
         let isStablecoin = false;
-        if (row.entity_type === "crypto_position") {
-          const snap = (row.after_snapshot ?? row.before_snapshot) as Record<
-            string,
-            unknown
-          > | null;
+        if (entityType === "crypto_position") {
+          const snap = (row.after_snapshot ?? row.before_snapshot) as Record<string, unknown> | null;
           const assetId = snap?.crypto_asset_id as string | undefined;
           if (assetId) {
             const { data: asset } = await supabase
@@ -100,7 +123,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             isStablecoin = asset?.subcategory?.toLowerCase() === "stablecoin";
           }
         }
-        const assetClass = classifyAssetClass(row.entity_type as string, isStablecoin);
+        const assetClass = classifyAssetClass(entityType, isStablecoin);
 
         await supabase
           .from("activity_log")
@@ -126,12 +149,11 @@ export async function backfillCashflowsAndDeltas(): Promise<{
       succeeded++;
     } catch (err) {
       console.error(
-        `[backfill] Failed row ${row.id as string}:`,
+        `[backfill] Failed row ${row.id as string} (${entityType}):`,
         err instanceof Error ? err.message : err
       );
 
       // Check if retries exhausted via attempted_at timestamps
-      // Access via index because allRows is a union of two differently-shaped types
       const rowAny = row as Record<string, unknown>;
       const attemptedAt = isCashflow
         ? (rowAny.cashflow_attempted_at as string | null)
@@ -171,7 +193,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             .single();
 
           if (snapBefore && snapAfter) {
-            const assetClass = classifyAssetClass(row.entity_type as string);
+            const assetClass = classifyAssetClass(entityType);
             const classKey =
               assetClass === "crypto"
                 ? "crypto"
@@ -191,7 +213,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         }
 
         if (isCashflow) {
-          const assetClass = classifyAssetClass(row.entity_type as string);
+          const assetClass = classifyAssetClass(entityType);
           await supabase
             .from("activity_log")
             .update({
