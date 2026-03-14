@@ -39,7 +39,7 @@ export function ChangeTooltip({
   const base = startValue && startValue > 0 ? startValue : undefined;
 
   return (
-    <div className={`absolute right-0 sm:right-auto sm:left-0 top-full mt-1 z-50 ${open ? "block" : "hidden group-hover/tip:block"}`}>
+    <div className={`absolute right-0 sm:right-auto sm:left-0 top-full mt-1 z-50 ${open ? "block" : "hidden group-hover/tip:block group-focus-within/tip:block"}`}>
       <div className="bg-zinc-800/95 backdrop-blur border border-zinc-700 rounded-lg shadow-xl px-2.5 py-2 text-[10px] tabular-nums grid grid-cols-[auto_auto_auto] gap-x-2.5 gap-y-0.5 w-max max-w-[min(320px,calc(100vw-3rem))]">
         {/* Market row: price + FX performance, excluding deposits — only when deposits exist */}
         {hasDeposits && (

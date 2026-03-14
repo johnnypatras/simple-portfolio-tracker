@@ -804,6 +804,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
           {/* ── Desktop table layout ── */}
           <div className="hidden md:block bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-x-auto">
             <table className="w-full [&_td:first-child:not([colspan])]:max-w-0 [&_td:first-child:not([colspan])]:overflow-hidden">
+              <caption className="sr-only">Stock and ETF holdings</caption>
               <thead>
                 <tr className="border-b border-zinc-800/50">
                   {orderedColumns.map((col) => {
@@ -816,10 +817,15 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                     return (
                       <th
                         key={col.key}
+                        scope="col"
                         className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width} ${
                           isSortable ? "cursor-pointer select-none hover:text-zinc-300 transition-colors" : ""
                         }`}
                         onClick={isSortable ? () => handleSort(colSortKey) : undefined}
+                        onKeyDown={isSortable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort(colSortKey); } } : undefined}
+                        tabIndex={isSortable ? 0 : undefined}
+                        role={isSortable ? "button" : undefined}
+                        aria-sort={isActiveSort ? (sortDir === "desc" ? "descending" : "ascending") : undefined}
                       >
                         <span className={`inline-flex items-center gap-1 ${align === "text-right" ? "justify-end" : align === "text-center" ? "justify-center" : ""}`}>
                           {col.renderHeader ? col.renderHeader(ctx) : col.header}
@@ -848,6 +854,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                           <tr
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.category)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGroupExpand(group.category); } }}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isGroupOpen}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
@@ -904,6 +914,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                           <tr
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.brokerName)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGroupExpand(group.brokerName); } }}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isGroupOpen}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
@@ -1014,6 +1028,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                           <tr
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.currency)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGroupExpand(group.currency); } }}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isGroupOpen}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
@@ -1105,6 +1123,10 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                           <tr
                             className="border-b border-zinc-800/30 border-l-2 border-l-blue-500/40 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
                             onClick={() => toggleGroupExpand(group.subcategory)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGroupExpand(group.subcategory); } }}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isGroupOpen}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">

@@ -1,6 +1,6 @@
 export default function DashboardLoading() {
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 animate-pulse">
+    <div className="mx-auto max-w-7xl px-4 py-8 animate-pulse" role="status" aria-label="Loading dashboard">
       {/* Header skeleton */}
       <div className="h-8 w-48 rounded bg-zinc-800 mb-8" />
 

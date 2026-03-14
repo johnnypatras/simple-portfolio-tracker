@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Wallet,
   TrendingUp,
@@ -112,6 +112,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
   const [exposureInBase, setExposureInBase] = useState(false);
   const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
   const { shareToken, isReadOnly } = useSharedView();
+  const router = useRouter();
   const basePath = shareToken ? `/share/${shareToken}` : "/dashboard";
 
   const {
@@ -222,6 +223,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                   <span
                     ref={openTooltip === "total" ? tooltipRef : undefined}
                     onClick={(e) => toggleTooltip("total", e)}
+                    tabIndex={0}
                     className={`relative group/tip cursor-pointer text-sm font-medium tabular-nums whitespace-nowrap ${changeColorClass(c.percent)}`}
                   >
                     {c.valueChange !== 0 ? (
@@ -399,8 +401,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             {/* ── FX ──────────────────────────────────── */}
             <div className="border-t border-zinc-800 py-3 md:py-2">
               {insights.eurUsdRate > 0 && (
-                <div
-                  className="flex items-center gap-2 cursor-pointer select-none hover:bg-zinc-800/40 -mx-1 px-1 rounded transition-colors"
+                <button
+                  type="button"
+                  aria-label="Toggle EUR/USD display"
+                  className="flex items-center gap-2 w-full select-none hover:bg-zinc-800/40 -mx-1 px-1 rounded transition-colors"
                   onClick={() => setFxFlipped((f) => !f)}
                 >
                   <div className="flex items-center gap-1.5 flex-1">
@@ -421,7 +425,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                   ) : (
                     <span className="w-14" />
                   )}
-                </div>
+                </button>
               )}
             </div>
 
@@ -444,9 +448,19 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
       {/* ─── ROW 2: Crypto ────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Crypto Summary */}
-        <Link
-          href={`${basePath}/crypto`}
-          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
+        <div
+          role="link"
+          tabIndex={0}
+          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest("button")) return;
+            router.push(`${basePath}/crypto`);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !(e.target as HTMLElement).closest("button")) {
+              router.push(`${basePath}/crypto`);
+            }
+          }}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -459,7 +473,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setChangePeriod(p); }}
+                  onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
                   className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
@@ -483,6 +497,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     <span
                       ref={openTooltip === "crypto" ? tooltipRef : undefined}
                       onClick={(e) => toggleTooltip("crypto", e)}
+                      tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
@@ -531,7 +546,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
               </>
             );
           })()}
-        </Link>
+        </div>
 
         {/* Crypto Breakdown — spans 2 columns for wider bars */}
         <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
@@ -613,9 +628,19 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
       {/* ─── ROW 3: Equities ──────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Equities Summary */}
-        <Link
-          href={`${basePath}/stocks`}
-          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
+        <div
+          role="link"
+          tabIndex={0}
+          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest("button")) return;
+            router.push(`${basePath}/stocks`);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !(e.target as HTMLElement).closest("button")) {
+              router.push(`${basePath}/stocks`);
+            }
+          }}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -628,7 +653,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setChangePeriod(p); }}
+                  onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
                   className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
@@ -652,6 +677,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     <span
                       ref={openTooltip === "equities" ? tooltipRef : undefined}
                       onClick={(e) => toggleTooltip("equities", e)}
+                      tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
@@ -715,7 +741,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
               </>
             );
           })()}
-        </Link>
+        </div>
 
         {/* Breakdown — spans 2 columns for wider bars */}
         <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
@@ -807,9 +833,19 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
       {/* ─── ROW 4: Cash ──────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Cash Summary (with APY income integrated) */}
-        <Link
-          href={`${basePath}/cash`}
-          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors"
+        <div
+          role="link"
+          tabIndex={0}
+          className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest("button")) return;
+            router.push(`${basePath}/cash`);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !(e.target as HTMLElement).closest("button")) {
+              router.push(`${basePath}/cash`);
+            }
+          }}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -822,7 +858,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setChangePeriod(p); }}
+                  onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
                   className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
@@ -846,6 +882,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     <span
                       ref={openTooltip === "cash" ? tooltipRef : undefined}
                       onClick={(e) => toggleTooltip("cash", e)}
+                      tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
@@ -895,7 +932,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       {APY_PERIODS.map((p) => (
                         <button
                           key={p}
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setApyPeriod(p); }}
+                          onClick={(e) => { e.stopPropagation(); setApyPeriod(p); }}
                           className={`px-1 py-0.5 text-[9px] rounded transition-colors ${
                             p === apyPeriod
                               ? "bg-emerald-600/30 text-emerald-400"
@@ -919,7 +956,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
               </>
             );
           })()}
-        </Link>
+        </div>
 
         {/* Currency Breakdown — spans 2 columns for wider bars */}
         <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">

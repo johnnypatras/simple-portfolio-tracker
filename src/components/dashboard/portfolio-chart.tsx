@@ -374,7 +374,11 @@ export function PortfolioChart({
           onChange={setPeriodIdx}
         />
       </div>
-      <div className="h-48">
+      <p className="sr-only">
+        Portfolio chart showing {returnMode ? "cumulative percentage return" : "value over time"}.
+        {" "}Period: {period.label}. Current value: {fmtCurrencyCompact(liveValue, primaryCurrency)}.
+      </p>
+      <div className="h-48" role="img" aria-label={`${returnMode ? `${VIEW_MODE_LABELS[viewMode]} Return` : CHART_TITLES[viewMode]} chart showing historical performance over ${period.label}`}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={finalData}>
             <defs>

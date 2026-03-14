@@ -750,6 +750,7 @@ export function CashTable({
           {/* ── Desktop table layout ── */}
           <div className="hidden md:block bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-x-auto">
             <table className="w-full min-w-[600px]">
+              <caption className="sr-only">Bank accounts and deposits</caption>
               <thead>
                 <tr className="border-b border-zinc-800/50">
                   {orderedColumns.map((col) => {
@@ -757,7 +758,7 @@ export function CashTable({
                     const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                     const width = col.width ?? "";
                     return (
-                      <th key={col.key} className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}>
+                      <th key={col.key} scope="col" className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}>
                         {col.renderHeader ? col.renderHeader(ctx) : col.header}
                       </th>
                     );

@@ -54,6 +54,9 @@ export function ColumnSettingsPopover({
         onClick={() => setOpen((prev) => !prev)}
         className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
         title="Configure columns"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label="Column settings"
       >
         <Settings2 className="w-3.5 h-3.5" />
       </button>
@@ -61,6 +64,8 @@ export function ColumnSettingsPopover({
       {open && (
         <div
           ref={popoverRef}
+          role="dialog"
+          aria-label="Column settings"
           className="absolute left-0 top-full mt-1 z-50 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl"
         >
           {/* Header */}
