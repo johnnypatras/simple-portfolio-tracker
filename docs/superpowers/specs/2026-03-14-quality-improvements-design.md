@@ -126,8 +126,9 @@ export async function backfillSingleRow(rowId: string): Promise<{
 
 - Validates UUID.
 - Queries the specific row (with auth — `user_id` must match).
-- Runs the same computation logic as the batch backfill (cash entities: direct from snapshots, position entities: `computeDeltaFromSnapshots`).
-- Updates status to `'complete'` on success, keeps `'pending'`/`'failed'` on failure.
+- Runs the same computation logic as the batch backfill (cash entities: direct from snapshots via `cashDelta` + `toUsdAndEur`, position entities: `computeDeltaFromSnapshots`).
+- **Skips throttle and exhaustion gates** — no 24h cooldown, no 3-day exhaustion. User clicking "Retry" is explicit intent to try now. Simply attempt the computation and report the result.
+- Updates status to `'complete'` on success, keeps current status on failure.
 - Returns success/failure for UI feedback.
 
 ### UI changes
@@ -238,16 +239,20 @@ if (isReplace) {
 
 Import `exportFullJson` and `PortfolioBackup` from `@/lib/actions/export`.
 
-**Error response change:**
+**Type change:**
 
-Current: `{ ok: false, error: string }`
-New: `{ ok: false, error: string, backup?: PortfolioBackup }`
+The `ImportResult` type (used by `importFromJson` and consumed by `import-export-settings.tsx`) needs the backup field:
+
+```typescript
+// Add to existing type
+backup?: PortfolioBackup;
+```
 
 Any `return { ok: false, error: ... }` after the delete loop includes `backup: safetyBackup`.
 
 Note: The backup is serialized as part of the server action response. For this app's scale (~20 assets, <100KB) this is fine. No separate download endpoint needed.
 
-**Client-side handler** (wherever import results are processed):
+**Client-side handler** (`src/components/settings/import-export-settings.tsx` — where `importFromJson` result is consumed):
 
 ```typescript
 if (!result.ok && result.backup) {
