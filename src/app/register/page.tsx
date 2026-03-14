@@ -34,6 +34,11 @@ function InviteForm() {
       return;
     }
 
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
+      setError("Password must include uppercase, lowercase, and a number");
+      return;
+    }
+
     setLoading(true);
 
     try {

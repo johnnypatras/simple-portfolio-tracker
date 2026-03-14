@@ -123,13 +123,22 @@ export async function deleteAccount(): Promise<void> {
  * Supabase sends a verification link to the new address automatically.
  */
 export async function changeEmail(newEmail: string): Promise<void> {
+  const trimmed = newEmail.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    throw new Error("Invalid email address");
+  }
+
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await supabase.auth.updateUser({ email: newEmail });
+  if (user.email === trimmed) {
+    throw new Error("New email is the same as current email");
+  }
+
+  const { error } = await supabase.auth.updateUser({ email: trimmed });
   if (error) throw new Error(error.message);
 }
 

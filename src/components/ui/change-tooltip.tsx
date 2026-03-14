@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { fmtCurrencyCompact, fmtPct, changeColorClass } from "@/lib/format";
 
 function TooltipRow({
@@ -20,7 +21,7 @@ function TooltipRow({
   );
 }
 
-export function ChangeTooltip({
+export const ChangeTooltip = memo(function ChangeTooltip({
   valueChange, fxValueChange, deposits, depositBreakdown, startValue, cur, open,
 }: {
   valueChange: number; fxValueChange: number; deposits: number;
@@ -63,4 +64,4 @@ export function ChangeTooltip({
       </div>
     </div>
   );
-}
+});

@@ -12,28 +12,36 @@ interface RateLimitOptions {
  */
 export function rateLimit({ windowMs, max }: RateLimitOptions) {
   const hits = new Map<string, number[]>();
-
-  // Periodically purge stale entries to prevent memory leaks
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, timestamps] of hits) {
-      const valid = timestamps.filter((t) => now - t < windowMs);
-      if (valid.length === 0) hits.delete(key);
-      else hits.set(key, valid);
-    }
-  }, 60_000).unref();
+  let lastPurge = Date.now();
 
   return function check(req: NextRequest): NextResponse | null {
     const ip =
       req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
     const now = Date.now();
 
-    const timestamps = hits.get(ip) ?? [];
-    const valid = timestamps.filter((t) => now - t < windowMs);
-    valid.push(now);
-    hits.set(ip, valid);
+    // Lazy purge: clean this key's stale entries
+    const existing = hits.get(ip);
+    if (existing) {
+      const fresh = existing.filter((t) => now - t < windowMs);
+      if (fresh.length === 0) hits.delete(ip);
+      else hits.set(ip, fresh);
+    }
 
-    if (valid.length > max) {
+    // Full purge every 60s (piggyback on check calls)
+    if (now - lastPurge > 60_000) {
+      lastPurge = now;
+      for (const [key, ts] of hits) {
+        const fresh = ts.filter((t) => now - t < windowMs);
+        if (fresh.length === 0) hits.delete(key);
+        else hits.set(key, fresh);
+      }
+    }
+
+    const timestamps = hits.get(ip) ?? [];
+    timestamps.push(now);
+    hits.set(ip, timestamps);
+
+    if (timestamps.length > max) {
       return NextResponse.json(
         { error: "Too many requests" },
         {

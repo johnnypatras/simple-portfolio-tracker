@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import Image from "next/image";
 import { Search, Loader2, ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
@@ -244,12 +245,17 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 onClick={() => handleSelect(coin)}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition-colors text-left"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={coin.thumb}
-                  alt={coin.name}
-                  className="w-6 h-6 rounded-full bg-zinc-800"
-                />
+                {coin.thumb ? (
+                  <Image
+                    src={coin.thumb}
+                    alt={coin.name}
+                    width={24}
+                    height={24}
+                    className="w-6 h-6 rounded-full bg-zinc-800"
+                  />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-zinc-800" />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-zinc-200 truncate">
@@ -306,12 +312,17 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           {/* Selected coin summary */}
           <div className="bg-zinc-800/30 border border-zinc-800/50 rounded-lg px-3 py-2 mb-4">
             <div className="flex items-center gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={selectedCoin.thumb}
-                alt={selectedCoin.name}
-                className="w-6 h-6 rounded-full bg-zinc-800"
-              />
+              {selectedCoin.thumb ? (
+                <Image
+                  src={selectedCoin.thumb}
+                  alt={selectedCoin.name}
+                  width={24}
+                  height={24}
+                  className="w-6 h-6 rounded-full bg-zinc-800"
+                />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-zinc-800" />
+              )}
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-zinc-200">
                   {selectedCoin.name}
