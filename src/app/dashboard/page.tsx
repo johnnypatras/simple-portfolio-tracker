@@ -54,6 +54,13 @@ export default async function DashboardPage() {
 
   const primaryCurrency = profile.primary_currency;
 
+  // Compute how stale the latest snapshot is (excluding today's live snapshot).
+  // The daily cron runs at 23:59 UTC, so a gap >26h means it likely failed.
+  const latestSnap = chartSnapshots[chartSnapshots.length - 1];
+  const snapshotStaleHours = latestSnap?.snapshot_date
+    ? (Date.now() - new Date(latestSnap.snapshot_date as string).getTime()) / 3_600_000
+    : null;
+
   // ── Round 2: Prices, aggregation, insights ─────────────
   const { summary, insights, paletteHoldings } =
     await assemblePortfolioView(
@@ -123,6 +130,7 @@ export default async function DashboardPage() {
           }}
           pendingCount={cfPendingCount}
           failedCount={cfFailedCount}
+          snapshotStaleHours={snapshotStaleHours != null && snapshotStaleHours > 26 ? Math.round(snapshotStaleHours) : null}
         />
       </div>
     </div>
