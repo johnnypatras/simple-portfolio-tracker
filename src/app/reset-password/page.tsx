@@ -25,6 +25,11 @@ export default function ResetPasswordPage() {
       return;
     }
 
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
+      setError("Password must include uppercase, lowercase, and a number");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;

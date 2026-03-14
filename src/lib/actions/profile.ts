@@ -163,7 +163,11 @@ export async function changePassword(
   });
   if (signInError) throw new Error("Current password is incorrect");
 
-  // Apply new password
+  if (newPassword.length < 8) throw new Error("Password must be at least 8 characters");
+  if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+    throw new Error("Password must include uppercase, lowercase, and a number");
+  }
+
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw new Error(error.message);
 }

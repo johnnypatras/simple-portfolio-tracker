@@ -25,6 +25,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
+      return NextResponse.json(
+        { error: "Password must include uppercase, lowercase, and a number" },
+        { status: 400 }
+      );
+    }
+
     const admin = createAdminClient();
     const hasCode = typeof code === "string" && code.trim().length > 0;
     let inviteId: string | null = null;

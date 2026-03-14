@@ -2,7 +2,7 @@ import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getBrokers } from "@/lib/actions/brokers";
 import { getProfile } from "@/lib/actions/profile";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
-import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
+import { getStockAndIndexPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
@@ -25,16 +25,11 @@ export default async function StocksPage() {
   // Fetch prices + FX rates in parallel (EURUSD=X folded into stock batch)
   const cur = profile.primary_currency;
   const uniqueCurrencies = [...new Set(["USD", "EUR", ...assets.map((a) => a.currency)])];
-  const allTickers = [...new Set([...yahooTickers, "EURUSD=X"])];
-  const [allPrices, fxRates, dividends] = await Promise.all([
-    getStockPrices(allTickers),
+  const [{ stockPrices: prices, indexPrices, dividends }, fxRates] = await Promise.all([
+    getStockAndIndexPrices(yahooTickers),
     getFXRatesSafe(cur, uniqueCurrencies),
-    getDividendYields(yahooTickers),
   ]);
-  const eurUsdData = allPrices["EURUSD=X"] ?? null;
-  const prices = Object.fromEntries(
-    Object.entries(allPrices).filter(([k]) => k !== "EURUSD=X")
-  );
+  const eurUsdData = indexPrices["EURUSD=X"] ?? null;
 
   // Compute stocks-only aggregate for summary header enrichment
   const summary = aggregatePortfolio({

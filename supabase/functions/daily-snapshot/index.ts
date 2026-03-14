@@ -12,6 +12,18 @@ const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 const COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price";
 const FRANKFURTER_URL = "https://api.frankfurter.dev/v1/latest";
 
+// ─── Fetch timeout (matches app-side fetchWithTimeout pattern) ──
+
+async function fetchT(url: string | URL | Request, init?: RequestInit, timeoutMs = 15_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── Types ─────────────────────────────────────────────────
 
 interface UserHoldings {
@@ -334,7 +346,12 @@ async function fetchCoinGeckoPrices(
     const headers: Record<string, string> = {};
     if (COINGECKO_API_KEY) headers["x-cg-demo-api-key"] = COINGECKO_API_KEY;
 
-    const res = await fetch(url, { headers });
+    let res = await fetchT(url, { headers });
+    if (res.status === 429) {
+      console.warn("[daily-snapshot] CoinGecko 429, retrying in 2s…");
+      await new Promise((r) => setTimeout(r, 2000));
+      res = await fetchT(url, { headers });
+    }
     if (!res.ok) {
       console.error("[daily-snapshot] CoinGecko error:", res.status);
       return {};
@@ -349,7 +366,7 @@ async function fetchCoinGeckoPrices(
 async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null> {
   try {
     // Step 1: Get session cookies
-    const cookieRes = await fetch("https://fc.yahoo.com/", {
+    const cookieRes = await fetchT("https://fc.yahoo.com/", {
       headers: { "User-Agent": "Mozilla/5.0" },
       redirect: "manual",
     });
@@ -358,7 +375,7 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null
     if (!cookie) return null;
 
     // Step 2: Exchange cookies for crumb
-    const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+    const crumbRes = await fetchT("https://query2.finance.yahoo.com/v1/test/getcrumb", {
       headers: { "User-Agent": "Mozilla/5.0", Cookie: cookie },
     });
     if (!crumbRes.ok) return null;
@@ -385,11 +402,16 @@ async function fetchYahooBatch(
     }
 
     const url = `${YAHOO_QUOTE_URL}?symbols=${symbols.join(",")}&crumb=${encodeURIComponent(auth.crumb)}`;
-    const res = await fetch(url, {
+    const res = await fetchT(url, {
       headers: { "User-Agent": "Mozilla/5.0", Cookie: auth.cookie },
     });
     if (!res.ok) {
       console.error("[daily-snapshot] Yahoo error:", res.status);
+      return map;
+    }
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+      console.warn("[daily-snapshot] Yahoo batch returned non-JSON (captcha?), content-type:", ct);
       return map;
     }
     const json = await res.json();
@@ -412,10 +434,12 @@ async function fetchYahooBatch(
 async function fetchYahooSingle(ticker: string): Promise<YahooQuote | null> {
   try {
     const url = `${YAHOO_CHART_URL}/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
-    const res = await fetch(url, {
+    const res = await fetchT(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
     });
     if (!res.ok) return null;
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) return null;
     const json = await res.json();
     const meta = json?.chart?.result?.[0]?.meta;
     if (!meta) return null;
@@ -440,7 +464,7 @@ async function fetchFxRates(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const url = `${FRANKFURTER_URL}?base=${base}&symbols=${symbols.join(",")}`;
-      const res = await fetch(url);
+      const res = await fetchT(url);
       if (!res.ok) {
         if (attempt === 0) {
           console.warn(`[daily-snapshot] Frankfurter ${res.status}, retrying...`);

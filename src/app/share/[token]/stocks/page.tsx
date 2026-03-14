@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireScope } from "../scope-gate";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
-import { getStockPrices, getDividendYields } from "@/lib/prices/yahoo";
+import { getStockAndIndexPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
@@ -27,17 +27,12 @@ export default async function SharedStocksPage({
     .filter(Boolean);
 
   const uniqueCurrencies = [...new Set(["USD", "EUR", ...stockAssets.map((a) => a.currency)])];
-  const allTickers = [...new Set([...yahooTickers, "EURUSD=X"])];
-  const [allPrices, fxRates, dividends, cashFlows] = await Promise.all([
-    getStockPrices(allTickers),
+  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, cashFlows] = await Promise.all([
+    getStockAndIndexPrices(yahooTickers),
     getFXRatesSafe(cur, uniqueCurrencies),
-    getDividendYields(yahooTickers),
     deriveCashFlows(share.owner_id),
   ]);
-  const eurUsdData = allPrices["EURUSD=X"] ?? null;
-  const prices = Object.fromEntries(
-    Object.entries(allPrices).filter(([k]) => k !== "EURUSD=X")
-  );
+  const eurUsdData = indexPrices["EURUSD=X"] ?? null;
 
   const summary = aggregatePortfolio({
     cryptoAssets: [],

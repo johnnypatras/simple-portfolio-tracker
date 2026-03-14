@@ -95,7 +95,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
     if (error.code === "23505") {
       // Asset already exists — return existing ID so position creation can proceed
       if (
-        error.message?.includes("stock_assets_user_yahoo_ticker_unique") &&
+        error.message?.includes("uq_stock_assets_yahoo_active") &&
         input.yahoo_ticker
       ) {
         const { data: existing } = await supabase
@@ -107,7 +107,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
           .single();
         if (existing) return existing.id;
       }
-      if (error.message?.includes("stock_assets_user_ticker_no_yahoo_unique")) {
+      if (error.message?.includes("uq_stock_assets_ticker_active")) {
         const { data: existing } = await supabase
           .from("stock_assets")
           .select("id")
@@ -182,7 +182,7 @@ export async function updateStockAsset(
     .eq("user_id", user.id);
 
   if (error) {
-    if (error.code === "23505" && error.message?.includes("stock_assets_user_yahoo_ticker_unique")) {
+    if (error.code === "23505" && error.message?.includes("uq_stock_assets_yahoo_active")) {
       throw new Error("Another asset already uses this Yahoo ticker");
     }
     throw new Error(error.message);
