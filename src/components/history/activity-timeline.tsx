@@ -28,6 +28,7 @@ import { CashflowStatusIcon } from "@/components/ui/cashflow-status-icon";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 import { exportActivityLogsCsv, toggleActivityAdjustment } from "@/lib/actions/activity-log";
 import { undoActivity } from "@/lib/actions/undo";
+import { backfillSingleRow } from "@/lib/actions/backfill";
 import { useSharedView } from "@/components/shared-view-context";
 
 // ─── Props ──────────────────────────────────────────────
@@ -744,6 +745,13 @@ export function ActivityTimeline({
                           <CashflowStatusIcon
                             cashflowStatus={log.cashflow_status}
                             deltaStatus={log.delta_status}
+                            onRetry={!isReadOnly ? async () => {
+                              const result = await backfillSingleRow(log.id);
+                              if (result.success) {
+                                router.refresh();
+                              }
+                              return result;
+                            } : undefined}
                           />
                           <span className="text-xs text-zinc-600">
                             {getTimeLabel(log.created_at)}
