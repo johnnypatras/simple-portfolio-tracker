@@ -27,11 +27,13 @@ export default async function SharedStocksPage({
     .filter(Boolean);
 
   const uniqueCurrencies = [...new Set(["USD", "EUR", ...stockAssets.map((a) => a.currency)])];
-  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, cashFlows] = await Promise.all([
+  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, cashFlowResult] = await Promise.all([
     getStockAndIndexPrices(yahooTickers),
     getFXRatesSafe(cur, uniqueCurrencies),
     deriveCashFlows(share.owner_id),
   ]);
+
+  const cashFlows = cashFlowResult.events;
   const eurUsdData = indexPrices["EURUSD=X"] ?? null;
 
   const summary = aggregatePortfolio({

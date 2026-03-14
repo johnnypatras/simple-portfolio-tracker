@@ -30,7 +30,7 @@ export default async function SharedOverviewPage({
   const primaryCurrency = profile.primary_currency;
 
   // Prices, aggregation, insights + benchmark data (parallelized)
-  const [assembled, sp500TRHistory, cashFlows, adjustmentDeltas] = await Promise.all([
+  const [assembled, sp500TRHistory, cashFlowResult, adjustmentDeltas] = await Promise.all([
     assemblePortfolioView(
       { cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits, primaryCurrency },
       `/share/${token}`,
@@ -39,6 +39,8 @@ export default async function SharedOverviewPage({
     deriveCashFlows(data.share.owner_id),
     getAdjustmentDeltas(data.share.owner_id),
   ]);
+
+  const cashFlows = cashFlowResult.events;
 
   const { summary, insights, paletteHoldings } = assembled;
 

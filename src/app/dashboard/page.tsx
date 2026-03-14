@@ -31,7 +31,7 @@ export default async function DashboardPage() {
     profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits,
     chartSnapshots, snap7d, snap30d, snap1y,
     sp500TRHistory,
-    cashFlows,
+    cashFlowResult,
     adjustmentDeltas,
   ] = await Promise.all([
     getProfile(),
@@ -48,6 +48,8 @@ export default async function DashboardPage() {
     deriveCashFlows(),
     getAdjustmentDeltas(),
   ]);
+
+  const { events: cashFlows, pendingCount: _cfPendingCount, failedCount: _cfFailedCount } = cashFlowResult;
 
   const primaryCurrency = profile.primary_currency;
 

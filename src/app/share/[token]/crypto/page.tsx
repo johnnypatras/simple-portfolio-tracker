@@ -24,12 +24,14 @@ export default async function SharedCryptoPage({
   const cur = profile.primary_currency;
 
   const coinIds = cryptoAssets.map((a) => a.coingecko_id);
-  const [prices, fxRates, eurUsdBatch, cashFlows] = await Promise.all([
+  const [prices, fxRates, eurUsdBatch, cashFlowResult] = await Promise.all([
     getPrices(coinIds),
     getFXRatesSafe(cur, ["USD", "EUR"]),
     getStockPrices(["EURUSD=X"]),
     deriveCashFlows(share.owner_id),
   ]);
+
+  const cashFlows = cashFlowResult.events;
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
   const summary = aggregatePortfolio({

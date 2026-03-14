@@ -10,12 +10,14 @@ import { StockTable } from "@/components/stocks/stock-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function StocksPage() {
-  const [assets, brokers, profile, cashFlows] = await Promise.all([
+  const [assets, brokers, profile, cashFlowResult] = await Promise.all([
     getStockAssetsWithPositions(),
     getBrokers(),
     getProfile(),
     deriveCashFlows(),
   ]);
+
+  const cashFlows = cashFlowResult.events;
 
   // Build Yahoo ticker list: use yahoo_ticker if set, otherwise fall back to ticker
   const yahooTickers = assets

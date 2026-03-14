@@ -15,7 +15,7 @@ import { CashTable } from "@/components/cash/cash-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function CashPage() {
-  const [bankAccounts, exchangeDeposits, brokerDeposits, wallets, brokers, profile, cryptoAssets, cashFlows] =
+  const [bankAccounts, exchangeDeposits, brokerDeposits, wallets, brokers, profile, cryptoAssets, cashFlowResult] =
     await Promise.all([
       getBankAccounts(),
       getExchangeDeposits(),
@@ -26,6 +26,8 @@ export default async function CashPage() {
       getCryptoAssetsWithPositions(),
       deriveCashFlows(),
     ]);
+
+  const cashFlows = cashFlowResult.events;
 
   // Stablecoins are reclassified as cash — fetch their CoinGecko prices
   const stablecoins = cryptoAssets.filter((a) => a.subcategory?.toLowerCase() === "stablecoin");

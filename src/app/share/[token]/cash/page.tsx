@@ -35,7 +35,7 @@ export default async function SharedCashPage({
     ]),
   ];
 
-  const [stablecoinPrices, fxRates, eurUsdBatch, cashFlows] = await Promise.all([
+  const [stablecoinPrices, fxRates, eurUsdBatch, cashFlowResult] = await Promise.all([
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
@@ -43,6 +43,8 @@ export default async function SharedCashPage({
     getStockPrices(["EURUSD=X"]),
     deriveCashFlows(share.owner_id),
   ]);
+
+  const cashFlows = cashFlowResult.events;
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
   const summary = aggregatePortfolio({

@@ -11,12 +11,14 @@ import { CryptoTable } from "@/components/crypto/crypto-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function CryptoPage() {
-  const [assets, wallets, profile, cashFlows] = await Promise.all([
+  const [assets, wallets, profile, cashFlowResult] = await Promise.all([
     getCryptoAssetsWithPositions(),
     getWallets(),
     getProfile(),
     deriveCashFlows(),
   ]);
+
+  const cashFlows = cashFlowResult.events;
 
   const cur = profile.primary_currency;
 
