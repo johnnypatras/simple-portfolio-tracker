@@ -19,17 +19,28 @@ export async function getStockAssetsWithPositions(): Promise<
 > {
   const supabase = await createServerSupabaseClient();
 
-  // Fetch assets (exclude soft-deleted)
-  const { data: assets, error: assetsErr } = await supabase
-    .from("stock_assets")
-    .select("*")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+  // Round 1: fetch assets and all user brokers in parallel
+  const [assetsResult, brokersResult] = await Promise.all([
+    supabase
+      .from("stock_assets")
+      .select("*")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("brokers")
+      .select("id, name")
+      .is("deleted_at", null),
+  ]);
 
-  if (assetsErr) throw new Error(assetsErr.message);
+  if (assetsResult.error) throw new Error(assetsResult.error.message);
+  const assets = assetsResult.data;
   if (!assets || assets.length === 0) return [];
 
-  // Fetch all positions for these assets (exclude soft-deleted)
+  const brokersMap: Record<string, string> = Object.fromEntries(
+    (brokersResult.data ?? []).map((b: Pick<Broker, "id" | "name">) => [b.id, b.name])
+  );
+
+  // Round 2: fetch positions (depends on asset IDs from round 1)
   const assetIds = assets.map((a) => a.id);
   const { data: positions, error: posErr } = await supabase
     .from("stock_positions")
@@ -38,20 +49,6 @@ export async function getStockAssetsWithPositions(): Promise<
     .is("deleted_at", null);
 
   if (posErr) throw new Error(posErr.message);
-
-  // Fetch broker names for display (exclude soft-deleted)
-  const brokerIds = [...new Set((positions ?? []).map((p) => p.broker_id))];
-  let brokersMap: Record<string, string> = {};
-  if (brokerIds.length > 0) {
-    const { data: brokers } = await supabase
-      .from("brokers")
-      .select("id, name")
-      .in("id", brokerIds)
-      .is("deleted_at", null);
-    brokersMap = Object.fromEntries(
-      (brokers ?? []).map((b: Pick<Broker, "id" | "name">) => [b.id, b.name])
-    );
-  }
 
   // Merge (normalize old category values so all consumers see current enum)
   return assets.map((asset) => ({

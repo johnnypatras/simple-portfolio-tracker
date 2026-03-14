@@ -5,7 +5,7 @@ import { getBankAccounts } from "@/lib/actions/bank-accounts";
 import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
 import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { getPrices } from "@/lib/prices/coingecko";
-import { getStockAndIndexPrices, getDividendYields, fetchIndexHistory } from "@/lib/prices/yahoo";
+import { getStockAndIndexPrices, fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { getFXRatesSafe } from "@/lib/prices/fx";
@@ -76,14 +76,13 @@ export default async function DashboardPage() {
   ];
 
   // ── Round 2: Prices (stocks + indices in one batch) ─────
-  const [cryptoPrices, { stockPrices, indexPrices }, fxRates, fxRatesUsd, fxRatesEur, dividends] =
+  const [cryptoPrices, { stockPrices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur] =
     await Promise.all([
       getPrices(coinIds),
       getStockAndIndexPrices(yahooTickers),
       getFXRatesSafe(primaryCurrency, allCurrencies),
       getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
       getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
-      getDividendYields(yahooTickers), // trailing 12-month yields (6h cache)
     ]);
 
   const sp500Data = indexPrices["^GSPC"] ?? null;

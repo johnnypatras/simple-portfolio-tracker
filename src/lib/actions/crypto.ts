@@ -18,17 +18,32 @@ export async function getCryptoAssetsWithPositions(): Promise<
 > {
   const supabase = await createServerSupabaseClient();
 
-  // Fetch assets (exclude soft-deleted)
-  const { data: assets, error: assetsErr } = await supabase
-    .from("crypto_assets")
-    .select("*")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+  // Round 1: fetch assets and all user wallets in parallel
+  const [assetsResult, walletsResult] = await Promise.all([
+    supabase
+      .from("crypto_assets")
+      .select("*")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("wallets")
+      .select("id, name, wallet_type")
+      .is("deleted_at", null),
+  ]);
 
-  if (assetsErr) throw new Error(assetsErr.message);
+  if (assetsResult.error) throw new Error(assetsResult.error.message);
+  const assets = assetsResult.data;
   if (!assets || assets.length === 0) return [];
 
-  // Fetch all positions for these assets (exclude soft-deleted)
+  const walletsMap: Record<string, { name: string; wallet_type: Wallet["wallet_type"] }> =
+    Object.fromEntries(
+      (walletsResult.data ?? []).map((w: Pick<Wallet, "id" | "name" | "wallet_type">) => [
+        w.id,
+        { name: w.name, wallet_type: w.wallet_type },
+      ])
+    );
+
+  // Round 2: fetch positions (depends on asset IDs from round 1)
   const assetIds = assets.map((a) => a.id);
   const { data: positions, error: posErr } = await supabase
     .from("crypto_positions")
@@ -37,23 +52,6 @@ export async function getCryptoAssetsWithPositions(): Promise<
     .is("deleted_at", null);
 
   if (posErr) throw new Error(posErr.message);
-
-  // Fetch wallet names + types for display (exclude soft-deleted)
-  const walletIds = [...new Set((positions ?? []).map((p) => p.wallet_id))];
-  let walletsMap: Record<string, { name: string; wallet_type: Wallet["wallet_type"] }> = {};
-  if (walletIds.length > 0) {
-    const { data: wallets } = await supabase
-      .from("wallets")
-      .select("id, name, wallet_type")
-      .in("id", walletIds)
-      .is("deleted_at", null);
-    walletsMap = Object.fromEntries(
-      (wallets ?? []).map((w: Pick<Wallet, "id" | "name" | "wallet_type">) => [
-        w.id,
-        { name: w.name, wallet_type: w.wallet_type },
-      ])
-    );
-  }
 
   // Merge
   return assets.map((asset) => ({

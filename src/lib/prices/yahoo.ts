@@ -142,6 +142,8 @@ type QuoteResult = {
   change24h: number;
   currency: string;
   name: string;
+  trailingYield: number;
+  annualDividend: number;
 };
 
 /**
@@ -195,6 +197,8 @@ async function fetchQuotesBatch(
         change24h,
         currency: (q.currency as string) ?? "USD",
         name: (q.longName as string) ?? (q.shortName as string) ?? symbol,
+        trailingYield: ((q.trailingAnnualDividendYield as number) ?? 0) * 100,
+        annualDividend: (q.trailingAnnualDividendRate as number) ?? 0,
       });
     }
   } catch (err) {
@@ -267,14 +271,32 @@ export async function getIndexPrices(): Promise<IndexPrices> {
   return data;
 }
 
+function extractDividendsFromBatch(
+  batch: Map<string, QuoteResult>,
+  tickers: string[]
+): YahooDividendMap {
+  const dividends: YahooDividendMap = {};
+  for (const ticker of tickers) {
+    const q = batch.get(ticker);
+    if (!q) continue;
+    dividends[ticker] = {
+      trailingYield: q.trailingYield,
+      annualDividend: q.annualDividend,
+      dividendCount: 0,
+      currency: q.currency,
+    };
+  }
+  return dividends;
+}
+
 /**
  * Fetch stock prices + index prices in a single combined batch.
  * Deduplicates overlapping symbols (e.g. if EURUSD=X is also in user tickers).
- * Returns split result: { stockPrices, indexPrices }.
+ * Returns split result: { stockPrices, indexPrices, dividends }.
  */
 export async function getStockAndIndexPrices(
   yahooTickers: string[]
-): Promise<{ stockPrices: YahooStockPriceData; indexPrices: IndexPrices }> {
+): Promise<{ stockPrices: YahooStockPriceData; indexPrices: IndexPrices; dividends: YahooDividendMap }> {
   // Merge all symbols, deduplicating
   const allSymbols = [...new Set([...yahooTickers, ...INDEX_SYMBOLS])];
 
@@ -306,18 +328,14 @@ export async function getStockAndIndexPrices(
     if (quote) indexPrices[sym] = quote;
   }
 
-  return { stockPrices, indexPrices };
+  const dividends = extractDividendsFromBatch(batch, yahooTickers);
+
+  return { stockPrices, indexPrices, dividends };
 }
 
 // ─── Single-ticker (v8/chart) ──────────────────────────────
 
-async function fetchSinglePrice(ticker: string): Promise<{
-  price: number;
-  previousClose: number;
-  change24h: number;
-  currency: string;
-  name: string;
-} | null> {
+async function fetchSinglePrice(ticker: string): Promise<QuoteResult | null> {
   try {
     const url = `${CHART_URL}/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
     const res = await fetchWithTimeout(url, {
@@ -354,6 +372,8 @@ async function fetchSinglePrice(ticker: string): Promise<{
       change24h,
       currency: meta.currency ?? "USD",
       name: meta.longName ?? meta.shortName ?? ticker,
+      trailingYield: 0,
+      annualDividend: 0,
     };
   } catch (err) {
     console.error(`[yahoo] Error fetching ${ticker}:`, err);

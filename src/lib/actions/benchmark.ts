@@ -1,5 +1,6 @@
 "use server";
 
+import { cache } from "react";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
@@ -62,7 +63,7 @@ function getPrice(map: PriceMap, date: string): number | undefined {
  * For positions (crypto, stocks): use quantity × historical market price.
  * EUR and other non-USD currencies: converted using actual FX rate on date.
  */
-export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]> {
+export const deriveCashFlows = cache(async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]> {
   // When userId is provided (share page), use admin client to bypass RLS
   const supabase = userId ? createAdminClient() : await createServerSupabaseClient();
 
@@ -384,4 +385,4 @@ export async function deriveCashFlows(userId?: string): Promise<CashFlowEvent[]>
     }
     return ev;
   });
-}
+});

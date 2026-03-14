@@ -1,5 +1,6 @@
 "use server";
 
+import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateShareToken, type ValidatedShare } from "./shares";
 import type {
@@ -41,7 +42,7 @@ export interface SharedPortfolioData {
  * Returns null if the token is invalid/expired/revoked.
  * Uses service-role client to bypass RLS.
  */
-export async function getSharedPortfolio(
+export const getSharedPortfolio = cache(async function getSharedPortfolio(
   token: string
 ): Promise<SharedPortfolioData | null> {
   const share = await validateShareToken(token);
@@ -213,4 +214,4 @@ export async function getSharedPortfolio(
     snap30d: findSnapshotAt(30),
     snap1y: findSnapshotAt(365),
   };
-}
+});
