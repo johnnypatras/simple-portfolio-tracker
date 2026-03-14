@@ -142,7 +142,7 @@ export async function getActivityLogs(filters?: {
 // Cash entities: extract amount + currency from snapshots.
 // Position entities: extract quantity, look up historical price.
 
-async function computeDeltaFromSnapshots(
+export async function computeDeltaFromSnapshots(
   entityType: string,
   action: string,
   date: string,

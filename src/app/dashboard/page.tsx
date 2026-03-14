@@ -7,6 +7,7 @@ import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
+import { backfillCashflowsAndDeltas } from "@/lib/actions/backfill";
 import { assemblePortfolioView } from "@/lib/portfolio/assemble";
 import {
   saveSnapshot,
@@ -73,6 +74,11 @@ export default async function DashboardPage() {
     stocksHomeCurrencyEur: summary.stocksHomeCurrencyEur,
     cashHomeCurrencyEur: summary.cashHomeCurrencyEur,
   }).catch((err) => console.error("[snapshots] fire-and-forget save failed:", err));
+
+  // ── Backfill legacy cashflow/delta rows (fire-and-forget) ─
+  backfillCashflowsAndDeltas().catch((err) =>
+    console.error("[backfill] fire-and-forget failed:", err)
+  );
 
   const pastSnapshots = {
     "24h": null,
