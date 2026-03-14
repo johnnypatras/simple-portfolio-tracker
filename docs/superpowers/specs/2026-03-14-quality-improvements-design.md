@@ -168,8 +168,10 @@ Check the EUR/USD quote's `regularMarketTime` timestamp. Show a subtle indicator
 
 **Data flow:**
 1. `dashboard/page.tsx` and `cash/page.tsx` already fetch `getStockPrices(["EURUSD=X"])`.
-2. The `YahooStockPriceData` type includes `regularMarketTime?: number` (Unix seconds).
-3. Extract this timestamp alongside the price. Compute staleness: `Date.now()/1000 - regularMarketTime > 86400` (>24h).
+2. The `YahooStockPriceData` type does NOT currently include `regularMarketTime`. Two changes needed:
+   - In `src/lib/prices/yahoo.ts`: extract `regularMarketTime` from the Yahoo v7 `QuoteResult` (the raw API returns it) and include in the returned data.
+   - In `src/lib/types.ts`: add `regularMarketTime?: number` to `YahooStockPriceData`.
+3. Compute staleness: `Date.now()/1000 - regularMarketTime > 86400` (>24h).
 4. Pass `fxStale?: boolean` and `fxUnavailable?: boolean` to the summary display components.
 
 **`dashboard/page.tsx`:**
@@ -220,11 +222,12 @@ Before the delete loop:
 ```typescript
 if (isReplace) {
   // Safety net: capture full backup before destructive operation
-  const backupResult = await exportBackup();
-  if (!backupResult.ok || !backupResult.data) {
+  let safetyBackup: PortfolioBackup;
+  try {
+    safetyBackup = await exportFullJson();
+  } catch (err) {
     return { ok: false, error: "Failed to create safety backup — aborting replace to protect your data." };
   }
-  const safetyBackup = backupResult.data;
 
   // ... existing delete loop ...
   // ... existing import logic ...
@@ -233,12 +236,16 @@ if (isReplace) {
 }
 ```
 
+Import `exportFullJson` and `PortfolioBackup` from `@/lib/actions/export`.
+
 **Error response change:**
 
 Current: `{ ok: false, error: string }`
-New: `{ ok: false, error: string, backup?: BackupData }`
+New: `{ ok: false, error: string, backup?: PortfolioBackup }`
 
 Any `return { ok: false, error: ... }` after the delete loop includes `backup: safetyBackup`.
+
+Note: The backup is serialized as part of the server action response. For this app's scale (~20 assets, <100KB) this is fine. No separate download endpoint needed.
 
 **Client-side handler** (wherever import results are processed):
 
@@ -259,13 +266,13 @@ if (!result.ok && result.backup) {
 
 ### Edge cases
 
-- **`exportBackup()` fails**: Abort before deleting anything. Return error immediately — never delete without a safety net.
+- **`exportFullJson()` throws**: Caught by try/catch, abort before deleting anything. Return error immediately — never delete without a safety net.
 - **Backup blob size**: For this invite-only app with ~20 assets, the backup JSON is small (<100KB). No memory concerns.
 - **Merge mode**: Unaffected — merge mode doesn't delete, so no backup needed.
 
 ### Testing
 
-Unit test: verify `exportBackup` is called before delete in replace mode. Verify abort if backup fails. Verify backup included in error response on import failure.
+Unit test: verify `exportFullJson` is called before delete in replace mode. Verify abort if export throws. Verify backup included in error response on import failure.
 
 ---
 
