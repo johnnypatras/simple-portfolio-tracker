@@ -68,6 +68,8 @@ interface AccountsViewProps {
   stockPrices: YahooStockPriceData;
   fxRates: FXRates;
   primaryCurrency: string;
+  /** Live EUR/USD rate for write-time cashflow computation */
+  eurUsdRate?: number;
 }
 
 // ── Component ────────────────────────────────────────────
@@ -85,6 +87,7 @@ export function AccountsView({
   stockPrices,
   fxRates,
   primaryCurrency,
+  eurUsdRate,
 }: AccountsViewProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [editingInstitution, setEditingInstitution] = useState<InstitutionWithRoles | null>(null);
@@ -928,6 +931,7 @@ export function AccountsView({
               onClose={() => { setEditingBankAccount(null); setShowAddBankAccount(null); }}
               editing={editingBankAccount}
               existingBankNames={existingBankNames}
+              fxRate={eurUsdRate}
             />
           )}
           {(editingExchangeDeposit !== null || showAddExchangeDeposit !== null) && (
@@ -936,6 +940,7 @@ export function AccountsView({
               onClose={() => { setEditingExchangeDeposit(null); setShowAddExchangeDeposit(null); }}
               editing={editingExchangeDeposit}
               wallets={(showAddExchangeDeposit ? walletsForInstitution(showAddExchangeDeposit) : wallets).filter((w) => w.wallet_type === "custodial")}
+              fxRate={eurUsdRate}
             />
           )}
           {(editingBrokerDeposit !== null || showAddBrokerDeposit !== null) && (
@@ -944,6 +949,7 @@ export function AccountsView({
               onClose={() => { setEditingBrokerDeposit(null); setShowAddBrokerDeposit(null); }}
               editing={editingBrokerDeposit}
               brokers={showAddBrokerDeposit ? brokersForInstitution(showAddBrokerDeposit) : brokers}
+              fxRate={eurUsdRate}
             />
           )}
 

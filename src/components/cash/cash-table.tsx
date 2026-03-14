@@ -82,6 +82,8 @@ interface CashTableProps {
   fxValueChange24h?: number;
   deposits?: number;
   depositBreakdown?: { name: string; value: number }[];
+  /** Live EUR/USD rate for write-time cashflow computation */
+  eurUsdRate?: number;
 }
 
 export function CashTable({
@@ -99,6 +101,7 @@ export function CashTable({
   fxValueChange24h = 0,
   deposits = 0,
   depositBreakdown,
+  eurUsdRate,
 }: CashTableProps) {
   const { isReadOnly } = useSharedView();
   const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
@@ -1083,6 +1086,7 @@ export function CashTable({
             onClose={() => setBankModalOpen(false)}
             editing={editingBank}
             existingBankNames={[...new Set(bankAccounts.map((b) => b.bank_name))]}
+            fxRate={eurUsdRate}
           />
 
           {/* ── Exchange Deposit Modal ─────────────────────────── */}
@@ -1091,6 +1095,7 @@ export function CashTable({
             onClose={() => setExchModalOpen(false)}
             editing={editingExch}
             wallets={wallets.filter((w) => w.wallet_type === "custodial")}
+            fxRate={eurUsdRate}
           />
 
           {/* ── Broker Deposit Modal ──────────────────────────── */}
@@ -1099,6 +1104,7 @@ export function CashTable({
             onClose={() => setBrokerDepModalOpen(false)}
             editing={editingBrokerDep}
             brokers={brokers}
+            fxRate={eurUsdRate}
           />
         </>
       )}

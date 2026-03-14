@@ -94,6 +94,7 @@ export default async function CashPage() {
         fxValueChange24h={summary.cashTotalFxValueChange24h}
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
+        eurUsdRate={eurUsdData?.price ?? undefined}
       />
     </div>
   );

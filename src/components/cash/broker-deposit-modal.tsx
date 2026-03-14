@@ -14,6 +14,7 @@ interface BrokerDepositModalProps {
   onClose: () => void;
   editing: BrokerDeposit | null;
   brokers: Broker[];
+  fxRate?: number;
 }
 
 export function BrokerDepositModal({
@@ -21,6 +22,7 @@ export function BrokerDepositModal({
   onClose,
   editing,
   brokers,
+  fxRate,
 }: BrokerDepositModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,9 +67,9 @@ export function BrokerDepositModal({
 
     try {
       if (editing) {
-        await updateBrokerDeposit(editing.id, input, { isAdjustment });
+        await updateBrokerDeposit(editing.id, input, { isAdjustment, fxRate });
       } else {
-        await createBrokerDeposit(input, { isAdjustment });
+        await createBrokerDeposit(input, { isAdjustment, fxRate });
       }
       onClose();
       const adjLabel = isAdjustment ? " (adjustment)" : "";

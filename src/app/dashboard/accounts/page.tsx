@@ -51,11 +51,13 @@ export default async function AccountsPage() {
   ];
 
   // ── Round 2: Price fetches that depend on Round 1 data ──
-  const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
+  const [cryptoPrices, stockPrices, eurUsdBatch, fxRates] = await Promise.all([
     getPrices(coinIds),
     getStockPrices(yahooTickers),
+    getStockPrices(["EURUSD=X"]),
     getFXRatesSafe(primaryCurrency, allCurrencies),
   ]);
+  const eurUsdRate = eurUsdBatch["EURUSD=X"]?.price;
 
   return (
     <div>
@@ -81,6 +83,7 @@ export default async function AccountsPage() {
         stockPrices={stockPrices}
         fxRates={fxRates}
         primaryCurrency={primaryCurrency}
+        eurUsdRate={eurUsdRate}
       />
     </div>
   );

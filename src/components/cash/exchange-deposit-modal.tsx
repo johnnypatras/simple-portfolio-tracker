@@ -14,6 +14,7 @@ interface ExchangeDepositModalProps {
   onClose: () => void;
   editing: ExchangeDeposit | null;
   wallets: Wallet[];
+  fxRate?: number;
 }
 
 export function ExchangeDepositModal({
@@ -21,6 +22,7 @@ export function ExchangeDepositModal({
   onClose,
   editing,
   wallets,
+  fxRate,
 }: ExchangeDepositModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,9 +71,9 @@ export function ExchangeDepositModal({
 
     try {
       if (editing) {
-        await updateExchangeDeposit(editing.id, input, { isAdjustment });
+        await updateExchangeDeposit(editing.id, input, { isAdjustment, fxRate });
       } else {
-        await createExchangeDeposit(input, { isAdjustment });
+        await createExchangeDeposit(input, { isAdjustment, fxRate });
       }
       onClose();
       const adjLabel = isAdjustment ? " (adjustment)" : "";

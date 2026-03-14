@@ -16,6 +16,7 @@ interface BankAccountModalProps {
   onClose: () => void;
   editing: BankAccount | null;
   existingBankNames?: string[];
+  fxRate?: number;
 }
 
 export function BankAccountModal({
@@ -23,6 +24,7 @@ export function BankAccountModal({
   onClose,
   editing,
   existingBankNames = [],
+  fxRate,
 }: BankAccountModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,9 +78,9 @@ export function BankAccountModal({
 
     try {
       if (editing) {
-        await updateBankAccount(editing.id, input, { isAdjustment });
+        await updateBankAccount(editing.id, input, { isAdjustment, fxRate });
       } else {
-        await createBankAccount(input, { isAdjustment });
+        await createBankAccount(input, { isAdjustment, fxRate });
       }
       onClose();
       const adjLabel = isAdjustment ? " (adjustment)" : "";
