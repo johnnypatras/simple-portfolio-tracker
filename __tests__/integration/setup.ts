@@ -71,11 +71,22 @@ export async function createTestUser(email?: string): Promise<{
 
   const userClient = createClient(config.API_URL, config.ANON_KEY);
 
-  // signUp creates the user and auto-confirms email on local Supabase
-  const { data, error } = await userClient.auth.signUp({
-    email: testEmail,
-    password,
-  });
+  // signUp creates the user and auto-confirms email on local Supabase.
+  // Retry once on "Database error" — concurrent signups in parallel test files
+  // can transiently fail under load.
+  let data, error;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    ({ data, error } = await userClient.auth.signUp({
+      email: testEmail,
+      password,
+    }));
+    if (!error) break;
+    if (attempt === 0 && error.message.includes("Database error")) {
+      await new Promise((r) => setTimeout(r, 500));
+      continue;
+    }
+    throw new Error("Failed to sign up test user: " + error.message);
+  }
   if (error) throw new Error("Failed to sign up test user: " + error.message);
   if (!data.user) throw new Error("signUp returned no user");
   const userId = data.user.id;
