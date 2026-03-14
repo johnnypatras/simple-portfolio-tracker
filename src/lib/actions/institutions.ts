@@ -361,7 +361,8 @@ export async function deleteInstitution(institutionId: string, opts?: { isAdjust
   const { error } = await supabase
     .from("institutions")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", institutionId);
+    .eq("id", institutionId)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 

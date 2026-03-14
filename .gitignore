@@ -71,6 +71,9 @@ backup_*.json
 # Sentry Config File
 .env.sentry-build-plugin
 
+# Archived migrations (local reference only, contain old secrets)
+supabase/migrations-archive/
+
 # MCP / IDE configs (contain org-specific URLs)
 .mcp.json
 .vscode/

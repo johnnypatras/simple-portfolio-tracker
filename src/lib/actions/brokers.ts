@@ -315,10 +315,14 @@ export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }
     .is("deleted_at", null)
     .single();
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const { error } = await supabase
     .from("brokers")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
   await logActivity({

@@ -86,8 +86,8 @@ export async function logActivity(params: {
       transfer_group_id: params.transfer_group_id ?? null,
       ...(params.created_at ? { created_at: params.created_at } : {}),
     });
-  } catch {
-    // Swallow — audit logging is best-effort
+  } catch (err) {
+    console.error("[activity-log] Failed to log activity:", err);
   }
 }
 

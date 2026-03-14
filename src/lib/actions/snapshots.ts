@@ -1,5 +1,6 @@
 "use server";
 
+import * as Sentry from "@sentry/nextjs";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { PortfolioSnapshot } from "@/lib/types";
 
@@ -53,9 +54,9 @@ export async function saveSnapshot(values: {
   const componentSum = round2(cryptoUsd + stocksUsd + cashUsd);
   const drift = Math.abs(totalUsd - componentSum);
   if (drift > 1) {
-    console.error(
-      `[snapshots] VALIDATION FAILED: total_usd ($${totalUsd}) ≠ crypto ($${cryptoUsd}) + stocks ($${stocksUsd}) + cash ($${cashUsd}) = $${componentSum} (drift: $${drift})`
-    );
+    const msg = `[snapshots] VALIDATION FAILED: total_usd ($${totalUsd}) ≠ crypto ($${cryptoUsd}) + stocks ($${stocksUsd}) + cash ($${cashUsd}) = $${componentSum} (drift: $${drift})`;
+    console.error(msg);
+    Sentry.captureMessage(msg, "warning");
   }
 
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
@@ -71,16 +72,16 @@ export async function saveSnapshot(values: {
 
   if (prev?.total_value_usd && prev.total_value_usd > 0) {
     if (totalUsd === 0) {
-      console.warn(
-        `[snapshots] SKIPPING: $0 total but previous snapshot was $${prev.total_value_usd} (${prev.snapshot_date}) — likely API failure`
-      );
+      const msg = `[snapshots] SKIPPING: $0 total but previous snapshot was $${prev.total_value_usd} (${prev.snapshot_date}) — likely API failure`;
+      console.warn(msg);
+      Sentry.captureMessage(msg, "warning");
       return;
     }
     const changePct = Math.abs((totalUsd - prev.total_value_usd) / prev.total_value_usd) * 100;
     if (changePct > 15) {
-      console.warn(
-        `[snapshots] LARGE CHANGE: ${changePct.toFixed(1)}% from $${prev.total_value_usd} (${prev.snapshot_date}) to $${totalUsd} (${today})`
-      );
+      const msg = `[snapshots] LARGE CHANGE: ${changePct.toFixed(1)}% from $${prev.total_value_usd} (${prev.snapshot_date}) to $${totalUsd} (${today})`;
+      console.warn(msg);
+      Sentry.captureMessage(msg, "warning");
     }
   }
 

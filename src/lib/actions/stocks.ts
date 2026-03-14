@@ -150,6 +150,7 @@ export async function updateStockAsset(
     tags?: string[];
   }
 ) {
+  validateUUID(id, "Stock asset ID");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
