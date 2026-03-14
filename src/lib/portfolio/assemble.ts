@@ -125,8 +125,9 @@ export async function assemblePortfolioView(
     primaryCurrency, pathPrefix,
   });
 
+  // 48h threshold covers weekends (FX markets close Friday ~22:00 UTC, reopen Sunday ~22:00 UTC)
   const fxStale = eurUsdData?.regularMarketTime != null
-    ? Date.now() / 1000 - eurUsdData.regularMarketTime > 86400
+    ? Date.now() / 1000 - eurUsdData.regularMarketTime > 48 * 3600
     : false;
   const fxUnavailable = !eurUsdData?.price;
 
