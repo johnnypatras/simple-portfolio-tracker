@@ -19,6 +19,7 @@ import { fmtCurrencyCompact } from "@/lib/format";
 import { enrichChartData } from "@/lib/portfolio/chart-enrichment";
 import type { ChartViewMode, ChartPoint } from "@/lib/portfolio/chart-enrichment";
 import { ChartWarningBanner } from "./chart-warning-banner";
+import { StaleSnapshotBanner } from "./stale-snapshot-banner";
 
 interface PortfolioChartProps {
   snapshots: PortfolioSnapshot[];
@@ -33,6 +34,7 @@ interface PortfolioChartProps {
   defaultReturnMode?: boolean;
   pendingCount?: number;
   failedCount?: number;
+  latestSnapshotDate?: string;
 }
 
 const PERIODS = [
@@ -104,6 +106,7 @@ export function PortfolioChart({
   defaultReturnMode = false,
   pendingCount = 0,
   failedCount = 0,
+  latestSnapshotDate,
 }: PortfolioChartProps) {
   const [periodIdx, setPeriodIdx] = useState(3); // default to 30D
   const [showAllocation, setShowAllocation] = useState(false);
@@ -382,6 +385,7 @@ export function PortfolioChart({
           onChange={setPeriodIdx}
         />
       </div>
+      <StaleSnapshotBanner latestSnapshotDate={latestSnapshotDate} />
       <ChartWarningBanner pendingCount={pendingCount} failedCount={failedCount} />
       <p className="sr-only">
         Portfolio chart showing {returnMode ? "cumulative percentage return" : "value over time"}.

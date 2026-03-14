@@ -201,6 +201,15 @@ export function ImportExportSettings() {
     try {
       const result = await importFromJson(previewData, importMode);
       if (!result.ok) {
+        // Auto-download safety backup if present
+        if ("backup" in result && result.backup) {
+          downloadBlob(
+            JSON.stringify(result.backup, null, 2),
+            `portfolio-backup-${datestamp()}.json`,
+            "application/json"
+          );
+          toast.error("Import failed. Your previous data has been downloaded as a backup.");
+        }
         setImportError(result.error);
         setImportStage("previewing");
         return;

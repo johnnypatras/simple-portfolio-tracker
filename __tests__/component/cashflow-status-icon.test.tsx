@@ -22,4 +22,18 @@ describe("CashflowStatusIcon", () => {
     const { container } = render(<CashflowStatusIcon cashflowStatus="failed" deltaStatus={null} />);
     expect(container.querySelector(".text-red-400")).toBeTruthy();
   });
+
+  it("renders retry button when onRetry provided", () => {
+    const { container } = render(
+      <CashflowStatusIcon cashflowStatus="pending" deltaStatus={null} onRetry={async () => ({ success: true })} />
+    );
+    expect(container.querySelector("button")).toBeTruthy();
+  });
+
+  it("does not render retry button when onRetry omitted", () => {
+    const { container } = render(
+      <CashflowStatusIcon cashflowStatus="pending" deltaStatus={null} />
+    );
+    expect(container.querySelector("button")).toBeNull();
+  });
 });

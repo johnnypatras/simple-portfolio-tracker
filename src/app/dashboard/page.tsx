@@ -17,6 +17,7 @@ import {
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { MobileMenuButton } from "@/components/sidebar";
 import { RegisterHoldings } from "@/components/ui/command-palette-provider";
+import { FxStatusIndicator } from "@/components/ui/fx-status-indicator";
 import dynamic from "next/dynamic";
 
 const PortfolioChart = dynamic(
@@ -54,8 +55,11 @@ export default async function DashboardPage() {
 
   const primaryCurrency = profile.primary_currency;
 
+  // Pass the latest snapshot date to the chart — the banner computes staleness client-side.
+  const latestSnapshotDate = chartSnapshots[chartSnapshots.length - 1]?.snapshot_date as string | undefined;
+
   // ── Round 2: Prices, aggregation, insights ─────────────
-  const { summary, insights, paletteHoldings } =
+  const { summary, insights, paletteHoldings, fxStale, fxUnavailable } =
     await assemblePortfolioView(
       { cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits, primaryCurrency },
       "/dashboard",
@@ -94,6 +98,7 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-3">
           <MobileMenuButton />
           <h1 className="text-2xl font-semibold text-zinc-100">Dashboard</h1>
+          <FxStatusIndicator stale={fxStale} unavailable={fxUnavailable} />
         </div>
         <p className="text-sm text-zinc-500 mt-1">
           Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
@@ -123,6 +128,7 @@ export default async function DashboardPage() {
           }}
           pendingCount={cfPendingCount}
           failedCount={cfFailedCount}
+          latestSnapshotDate={latestSnapshotDate}
         />
       </div>
     </div>

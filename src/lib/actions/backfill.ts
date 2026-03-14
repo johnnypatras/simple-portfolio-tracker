@@ -254,3 +254,105 @@ export async function backfillCashflowsAndDeltas(): Promise<{
 
   return { processed: allRows.length, succeeded, pending, failed };
 }
+
+/**
+ * Retry computation for a single activity_log row.
+ * Called by the UI retry button — skips throttle/exhaustion gates.
+ */
+export async function backfillSingleRow(rowId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const { validateUUID } = await import("@/lib/validation");
+  validateUUID(rowId, "Activity log row ID");
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Not authenticated" };
+
+  const { data: row, error: fetchErr } = await supabase
+    .from("activity_log")
+    .select("id, action, entity_type, entity_id, before_snapshot, after_snapshot, created_at, is_adjustment, cashflow_status, delta_status")
+    .eq("id", rowId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (fetchErr || !row) return { success: false, error: "Row not found" };
+
+  const entityType = row.entity_type as string;
+  const isCashEntity = CASH_ENTITY_TYPES.includes(entityType);
+  const needsCashflow = !row.is_adjustment && (row.cashflow_status === "pending" || row.cashflow_status === "failed");
+  const needsDelta = row.is_adjustment && (row.delta_status === "pending" || row.delta_status === "failed");
+
+  if (!needsCashflow && !needsDelta) {
+    return { success: true }; // Nothing to retry
+  }
+
+  try {
+    let values: { usd: number; eur: number };
+
+    if (isCashEntity) {
+      const field = cashAmountField(entityType as CashEntityType);
+      const before = row.before_snapshot as Record<string, unknown> | null;
+      const after = row.after_snapshot as Record<string, unknown> | null;
+      const beforeAmt = (before?.[field] as number) ?? 0;
+      const afterAmt = (after?.[field] as number) ?? 0;
+      const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
+      const delta = cashDelta(row.action as string, beforeAmt, afterAmt);
+
+      if (delta === 0) {
+        values = { usd: 0, eur: 0 };
+      } else {
+        values = await toUsdAndEur(delta, currency, (row.created_at as string).split("T")[0]);
+      }
+    } else {
+      values = await computeDeltaFromSnapshots(
+        entityType,
+        row.action as string,
+        row.created_at as string,
+        row.before_snapshot as Record<string, unknown> | null,
+        row.after_snapshot as Record<string, unknown> | null
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    if (needsCashflow) {
+      let isStablecoin = false;
+      if (entityType === "crypto_position") {
+        const snap = (row.after_snapshot ?? row.before_snapshot) as Record<string, unknown> | null;
+        const assetId = snap?.crypto_asset_id as string | undefined;
+        if (assetId) {
+          const { data: asset } = await supabase
+            .from("crypto_assets")
+            .select("subcategory")
+            .eq("id", assetId)
+            .single();
+          isStablecoin = asset?.subcategory?.toLowerCase() === "stablecoin";
+        }
+      }
+      const assetClass = classifyAssetClass(entityType, isStablecoin);
+      await supabase.from("activity_log").update({
+        cashflow_amount_usd: Math.round(values.usd * 100) / 100,
+        cashflow_amount_eur: Math.round(values.eur * 100) / 100,
+        cashflow_asset_class: assetClass,
+        cashflow_status: "complete",
+        cashflow_attempted_at: now,
+      }).eq("id", rowId);
+    } else {
+      await supabase.from("activity_log").update({
+        delta_usd: Math.round(values.usd * 100) / 100,
+        delta_eur: Math.round(values.eur * 100) / 100,
+        delta_status: "complete",
+        delta_attempted_at: now,
+      }).eq("id", rowId);
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error(`[backfill] Single row retry failed ${rowId}:`, err instanceof Error ? err.message : err);
+    return { success: false, error: err instanceof Error ? err.message : "Computation failed" };
+  }
+}
