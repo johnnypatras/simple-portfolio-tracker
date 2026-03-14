@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useId } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Save, Trash2, Loader2, X, Check, ArrowRightLeft, TrendingDown, TrendingUp } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -43,6 +43,7 @@ export function StockPositionEditor({
   existingTags,
   prices,
 }: StockPositionEditorProps) {
+  const id = useId();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
@@ -248,8 +249,9 @@ export function StockPositionEditor({
         {/* Asset identity fields */}
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Name</label>
+            <label htmlFor={`${id}-name`} className="block text-xs text-zinc-500 mb-1">Name</label>
             <input
+              id={`${id}-name`}
               type="text"
               value={localName}
               onChange={(e) => setLocalName(e.target.value)}
@@ -258,8 +260,9 @@ export function StockPositionEditor({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">Yahoo Ticker</label>
+              <label htmlFor={`${id}-yahoo-ticker`} className="block text-xs text-zinc-500 mb-1">Yahoo Ticker</label>
               <input
+                id={`${id}-yahoo-ticker`}
                 type="text"
                 value={localYahooTicker}
                 onChange={(e) => setLocalYahooTicker(e.target.value)}
@@ -268,8 +271,9 @@ export function StockPositionEditor({
               />
             </div>
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">ISIN</label>
+              <label htmlFor={`${id}-isin`} className="block text-xs text-zinc-500 mb-1">ISIN</label>
               <input
+                id={`${id}-isin`}
                 type="text"
                 value={localIsin}
                 onChange={(e) => setLocalIsin(e.target.value)}
@@ -285,8 +289,9 @@ export function StockPositionEditor({
           <div className="grid grid-cols-2 gap-3">
             {/* Type dropdown */}
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">Type</label>
+              <label htmlFor={`${id}-type`} className="block text-xs text-zinc-500 mb-1">Type</label>
               <select
+                id={`${id}-type`}
                 value={category}
                 onChange={(e) => setCategory(e.target.value as AssetCategory)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -299,10 +304,11 @@ export function StockPositionEditor({
 
             {/* Subtype combobox */}
             <div className="relative">
-              <label className="block text-xs text-zinc-500 mb-1">
+              <label htmlFor={`${id}-subtype`} className="block text-xs text-zinc-500 mb-1">
                 Subtype
               </label>
               <input
+                id={`${id}-subtype`}
                 type="text"
                 value={subcategory}
                 onChange={(e) => {
@@ -348,7 +354,7 @@ export function StockPositionEditor({
 
           {/* Tags (chip input with autocomplete) */}
           <div className="relative">
-            <label className="block text-xs text-zinc-500 mb-1">Tags</label>
+            <label htmlFor={`${id}-tags`} className="block text-xs text-zinc-500 mb-1">Tags</label>
             <div className="w-full min-h-[38px] px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-wrap items-center gap-1 focus-within:ring-2 focus-within:ring-blue-500/40">
               {tags.map((tag) => (
                 <span
@@ -366,6 +372,7 @@ export function StockPositionEditor({
                 </span>
               ))}
               <input
+                id={`${id}-tags`}
                 type="text"
                 value={tagInput}
                 onChange={(e) => {

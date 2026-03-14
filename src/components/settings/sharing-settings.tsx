@@ -196,10 +196,11 @@ export function SharingSettings() {
 
         {/* Expiry */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label htmlFor="share-expiry" className="block text-sm text-zinc-400 mb-1.5">
             Link expiry
           </label>
           <select
+            id="share-expiry"
             value={expiresInDays}
             onChange={(e) => setExpiresInDays(e.target.value)}
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -214,10 +215,11 @@ export function SharingSettings() {
 
         {/* Label */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label htmlFor="share-label" className="block text-sm text-zinc-400 mb-1.5">
             Label <span className="text-zinc-600">(optional)</span>
           </label>
           <input
+            id="share-label"
             type="text"
             value={label}
             onChange={(e) => setLabel(e.target.value)}

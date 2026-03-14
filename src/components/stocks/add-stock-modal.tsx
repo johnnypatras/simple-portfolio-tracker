@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { Search, Loader2, ArrowLeft, ChevronDown, ChevronRight, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
@@ -69,6 +69,8 @@ const SEEDED_SUBTYPES: Record<AssetCategory, string[]> = {
 };
 
 export function AddStockModal({ open, onClose, brokers, existingSubcategories, existingTags }: AddStockModalProps) {
+  const id = useId();
+
   // ─── Search phase state ──────────────────────────────────
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<YahooSearchResult[]>([]);
@@ -347,10 +349,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
             {/* Ticker + Name row */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-ticker`} className="block text-xs text-zinc-500 mb-1">
                   Ticker *
                 </label>
                 <input
+                  id={`${id}-ticker`}
                   type="text"
                   value={ticker}
                   onChange={(e) => setTicker(e.target.value)}
@@ -359,10 +362,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 />
               </div>
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-name`} className="block text-xs text-zinc-500 mb-1">
                   Name *
                 </label>
                 <input
+                  id={`${id}-name`}
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -375,10 +379,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
             {/* Yahoo Ticker + ISIN row */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-yahoo-ticker`} className="block text-xs text-zinc-500 mb-1">
                   Yahoo Ticker
                 </label>
                 <input
+                  id={`${id}-yahoo-ticker`}
                   type="text"
                   value={yahooTicker}
                   onChange={(e) => setYahooTicker(e.target.value)}
@@ -387,11 +392,12 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 />
               </div>
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-isin`} className="block text-xs text-zinc-500 mb-1">
                   ISIN{" "}
                   <span className="text-zinc-600">(optional)</span>
                 </label>
                 <input
+                  id={`${id}-isin`}
                   type="text"
                   value={isin}
                   onChange={(e) => setIsin(e.target.value)}
@@ -404,10 +410,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
             {/* Type + Currency row */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-type`} className="block text-xs text-zinc-500 mb-1">
                   Type
                 </label>
                 <select
+                  id={`${id}-type`}
                   value={category}
                   onChange={(e) =>
                     setCategory(e.target.value as AssetCategory)
@@ -422,10 +429,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-500 mb-1">
                   Currency
                 </label>
                 <input
+                  id={`${id}-currency`}
                   type="text"
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value.toUpperCase())}
@@ -440,10 +448,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
             <div className="grid grid-cols-2 gap-3">
               {/* Subtype (autocomplete with seeded suggestions) */}
               <div className="relative">
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-subtype`} className="block text-xs text-zinc-500 mb-1">
                   Subtype
                 </label>
                 <input
+                  id={`${id}-subtype`}
                   type="text"
                   value={subcategory}
                   onChange={(e) => {
@@ -487,7 +496,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
 
               {/* Tags (chip input with autocomplete) */}
               <div className="relative">
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-tags`} className="block text-xs text-zinc-500 mb-1">
                   Tags
                 </label>
                 <div className="w-full min-h-[38px] px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-wrap items-center gap-1 focus-within:ring-2 focus-within:ring-blue-500/40">
@@ -507,6 +516,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                     </span>
                   ))}
                   <input
+                    id={`${id}-tags`}
                     type="text"
                     value={tagInput}
                     onChange={(e) => {
@@ -582,10 +592,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   <div className="px-3 pb-3 pt-1 border-t border-zinc-800/50">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-broker`} className="block text-xs text-zinc-500 mb-1">
                           Broker
                         </label>
                         <select
+                          id={`${id}-broker`}
                           value={positionBrokerId}
                           onChange={(e) => setPositionBrokerId(e.target.value)}
                           className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -599,10 +610,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-shares`} className="block text-xs text-zinc-500 mb-1">
                           Shares
                         </label>
                         <input
+                          id={`${id}-shares`}
                           type="number"
                           value={positionQuantity}
                           onChange={(e) => setPositionQuantity(e.target.value)}

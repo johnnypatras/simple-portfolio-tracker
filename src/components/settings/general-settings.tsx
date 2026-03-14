@@ -57,10 +57,11 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
         {/* First / Last Name */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label htmlFor="settings-first-name" className="block text-sm text-zinc-400 mb-1.5">
               First Name
             </label>
             <input
+              id="settings-first-name"
               type="text"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
@@ -69,10 +70,11 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
             />
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">
+            <label htmlFor="settings-last-name" className="block text-sm text-zinc-400 mb-1.5">
               Last Name
             </label>
             <input
+              id="settings-last-name"
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
@@ -84,10 +86,11 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
 
         {/* Display Name */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label htmlFor="settings-display-name" className="block text-sm text-zinc-400 mb-1.5">
             Display Name
           </label>
           <input
+            id="settings-display-name"
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
@@ -101,10 +104,11 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
 
         {/* Primary Currency */}
         <div>
-          <label className="block text-sm text-zinc-400 mb-1.5">
+          <label htmlFor="settings-currency" className="block text-sm text-zinc-400 mb-1.5">
             Primary Currency
           </label>
           <select
+            id="settings-currency"
             value={currency}
             onChange={(e) => setCurrency(e.target.value as BaseCurrency)}
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"

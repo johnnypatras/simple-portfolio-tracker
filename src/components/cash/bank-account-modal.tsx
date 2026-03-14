@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import {
@@ -35,6 +35,7 @@ export function BankAccountModal({
   const [balance, setBalance] = useState("");
   const [apy, setApy] = useState("");
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
+  const id = useId();
 
   // Sync form when editing changes
   useEffect(() => {
@@ -110,7 +111,7 @@ export function BankAccountModal({
         )}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-account-label`} className="block text-xs text-zinc-500 mb-1">
               Account Label
             </label>
             <input

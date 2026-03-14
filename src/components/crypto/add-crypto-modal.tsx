@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useId } from "react";
 import Image from "next/image";
 import { Search, Loader2, ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -18,6 +18,8 @@ interface AddCryptoModalProps {
 }
 
 export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, existingChains }: AddCryptoModalProps) {
+  const id = useId();
+
   // ─── Search phase state ──────────────────────────────────
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CoinGeckoSearchResult[]>([]);
@@ -369,11 +371,12 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               {/* Chain — dropdown from available platforms (hidden for exchanges) */}
               {!isExchange && (
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-chain`} className="block text-xs text-zinc-500 mb-1">
                   Chain <span className="text-zinc-600">(optional)</span>
                 </label>
                 {chainOptions.length > 0 ? (
                   <select
+                    id={`${id}-chain`}
                     value={chain}
                     onChange={(e) => setChain(e.target.value)}
                     className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -387,6 +390,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                   </select>
                 ) : (
                   <input
+                    id={`${id}-chain`}
                     type="text"
                     value={chain}
                     onChange={(e) => setChain(e.target.value)}
@@ -399,10 +403,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
 
               {/* Type */}
               <div className="relative">
-                <label className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-type`} className="block text-xs text-zinc-500 mb-1">
                   Type <span className="text-zinc-600">(optional)</span>
                 </label>
                 <input
+                  id={`${id}-type`}
                   type="text"
                   value={subcategory}
                   onChange={(e) => {
@@ -466,10 +471,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                   <div className="px-3 pb-3 pt-1 border-t border-zinc-800/50">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-wallet`} className="block text-xs text-zinc-500 mb-1">
                           Wallet / Exchange
                         </label>
                         <select
+                          id={`${id}-wallet`}
                           value={positionWalletId}
                           onChange={(e) => setPositionWalletId(e.target.value)}
                           className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -504,10 +510,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                         )}
                       </div>
                       <div>
-                        <label className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-quantity`} className="block text-xs text-zinc-500 mb-1">
                           Quantity
                         </label>
                         <input
+                          id={`${id}-quantity`}
                           type="number"
                           value={positionQuantity}
                           onChange={(e) => setPositionQuantity(e.target.value)}
@@ -520,10 +527,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                     </div>
                     <div className="grid grid-cols-2 gap-3 mt-3">
                       <div>
-                        <label className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-acquisition`} className="block text-xs text-zinc-500 mb-1">
                           How was this acquired?
                         </label>
                         <select
+                          id={`${id}-acquisition`}
                           value={acquisitionType}
                           onChange={(e) => setAcquisitionType(e.target.value)}
                           className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -536,10 +544,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-500 mb-1">
                           APY % <span className="text-zinc-600">(optional)</span>
                         </label>
                         <input
+                          id={`${id}-apy`}
                           type="number"
                           step="0.01"
                           min="0"

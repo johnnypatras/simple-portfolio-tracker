@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useId } from "react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { createStandaloneWallet } from "@/lib/actions/wallets";
@@ -13,6 +13,7 @@ interface AddWalletModalProps {
 }
 
 export function AddWalletModal({ open, onClose }: AddWalletModalProps) {
+  const id = useId();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,10 +62,11 @@ export function AddWalletModal({ open, onClose }: AddWalletModalProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name */}
         <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+          <label htmlFor={`${id}-name`} className="block text-sm font-medium text-zinc-300 mb-1.5">
             Wallet Name
           </label>
           <input
+            id={`${id}-name`}
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -76,10 +78,11 @@ export function AddWalletModal({ open, onClose }: AddWalletModalProps) {
 
         {/* Privacy */}
         <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+          <label htmlFor={`${id}-privacy`} className="block text-sm font-medium text-zinc-300 mb-1.5">
             Privacy
           </label>
           <select
+            id={`${id}-privacy`}
             value={privacyLabel}
             onChange={(e) => setPrivacyLabel(e.target.value as PrivacyLabel | "")}
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"

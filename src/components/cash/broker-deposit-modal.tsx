@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import {
@@ -26,6 +26,7 @@ export function BrokerDepositModal({
   const [error, setError] = useState<string | null>(null);
   const [isAdjustment, setIsAdjustment] = useState(false);
 
+  const id = useId();
   const [brokerId, setBrokerId] = useState("");
   const [currency, setCurrency] = useState<CurrencyType>("EUR");
   const [amount, setAmount] = useState("");
@@ -98,10 +99,10 @@ export function BrokerDepositModal({
           </div>
         )}
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">
+          <label htmlFor={`${id}-broker`} className="block text-xs text-zinc-500 mb-1">
             Broker
           </label>
-          <select
+          <select id={`${id}-broker`}
             value={brokerId}
             onChange={(e) => setBrokerId(e.target.value)}
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -117,10 +118,10 @@ export function BrokerDepositModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-500 mb-1">
               Currency
             </label>
-            <select
+            <select id={`${id}-currency`}
               value={currency}
               onChange={(e) => setCurrency(e.target.value as CurrencyType)}
               className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -130,10 +131,10 @@ export function BrokerDepositModal({
             </select>
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-amount`} className="block text-xs text-zinc-500 mb-1">
               Amount
             </label>
-            <input
+            <input id={`${id}-amount`}
               type="number"
               step="0.01"
               value={amount}
@@ -146,10 +147,10 @@ export function BrokerDepositModal({
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">
+          <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-500 mb-1">
             APY % <span className="text-zinc-600">(optional)</span>
           </label>
-          <input
+          <input id={`${id}-apy`}
             type="number"
             step="0.01"
             value={apy}

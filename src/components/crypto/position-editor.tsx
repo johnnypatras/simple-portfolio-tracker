@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useId } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Save, Trash2, Loader2, Check, ArrowRightLeft, TrendingDown, TrendingUp } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -36,6 +36,7 @@ export function PositionEditor({
   existingChains,
   prices,
 }: PositionEditorProps) {
+  const id = useId();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
@@ -284,8 +285,9 @@ export function PositionEditor({
           <div className="flex items-end gap-2">
             {/* Chain combobox */}
             <div className="relative flex-1">
-              <label className="block text-xs text-zinc-500 mb-1">Chain</label>
+              <label htmlFor={`${id}-chain`} className="block text-xs text-zinc-500 mb-1">Chain</label>
               <input
+                id={`${id}-chain`}
                 type="text"
                 value={chain}
                 onChange={(e) => {
@@ -327,10 +329,11 @@ export function PositionEditor({
 
             {/* Type combobox */}
             <div className="relative flex-1">
-              <label className="block text-xs text-zinc-500 mb-1">
+              <label htmlFor={`${id}-type`} className="block text-xs text-zinc-500 mb-1">
                 Type
               </label>
               <input
+                id={`${id}-type`}
                 type="text"
                 value={subcategory}
                 onChange={(e) => {
