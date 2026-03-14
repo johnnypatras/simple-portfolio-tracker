@@ -50,7 +50,7 @@ export default async function DashboardPage() {
     getAdjustmentDeltas(),
   ]);
 
-  const { events: cashFlows, pendingCount: _cfPendingCount, failedCount: _cfFailedCount } = cashFlowResult;
+  const { events: cashFlows, pendingCount: cfPendingCount, failedCount: cfFailedCount } = cashFlowResult;
 
   const primaryCurrency = profile.primary_currency;
 
@@ -121,6 +121,8 @@ export default async function DashboardPage() {
             stocks: summary.stocksValueUsd,
             cash: summary.cashValueUsd,
           }}
+          pendingCount={cfPendingCount}
+          failedCount={cfFailedCount}
         />
       </div>
     </div>

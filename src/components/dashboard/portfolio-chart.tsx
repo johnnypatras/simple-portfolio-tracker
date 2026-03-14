@@ -18,6 +18,7 @@ import type { AdjustmentDelta } from "@/lib/actions/activity-log";
 import { fmtCurrencyCompact } from "@/lib/format";
 import { enrichChartData } from "@/lib/portfolio/chart-enrichment";
 import type { ChartViewMode, ChartPoint } from "@/lib/portfolio/chart-enrichment";
+import { ChartWarningBanner } from "./chart-warning-banner";
 
 interface PortfolioChartProps {
   snapshots: PortfolioSnapshot[];
@@ -30,6 +31,8 @@ interface PortfolioChartProps {
   liveSlicesUsd?: { crypto: number; stocks: number; cash: number };
   /** When true, chart defaults to cumulative % return mode */
   defaultReturnMode?: boolean;
+  pendingCount?: number;
+  failedCount?: number;
 }
 
 const PERIODS = [
@@ -99,6 +102,8 @@ export function PortfolioChart({
   adjustmentDeltas = [],
   liveSlicesUsd,
   defaultReturnMode = false,
+  pendingCount = 0,
+  failedCount = 0,
 }: PortfolioChartProps) {
   const [periodIdx, setPeriodIdx] = useState(3); // default to 30D
   const [showAllocation, setShowAllocation] = useState(false);
@@ -377,6 +382,7 @@ export function PortfolioChart({
           onChange={setPeriodIdx}
         />
       </div>
+      <ChartWarningBanner pendingCount={pendingCount} failedCount={failedCount} />
       <p className="sr-only">
         Portfolio chart showing {returnMode ? "cumulative percentage return" : "value over time"}.
         {" "}Period: {period.label}. Current value: {fmtCurrencyCompact(liveValue, primaryCurrency)}.
