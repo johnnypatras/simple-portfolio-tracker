@@ -250,14 +250,15 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
 
   const supabase = await createServerSupabaseClient();
 
-  // Fetch asset ticker for logging
+  // Fetch asset ticker and subcategory for logging and cashflow classification
   const { data: asset } = await supabase
     .from("crypto_assets")
-    .select("ticker")
+    .select("ticker, subcategory")
     .eq("id", input.crypto_asset_id)
     .is("deleted_at", null)
     .single();
   const ticker = asset?.ticker ?? "Unknown";
+  const isStablecoin = asset?.subcategory?.toLowerCase() === "stablecoin";
 
   if (input.quantity <= 0) {
     // Soft-delete the position if quantity is zero or negative
@@ -278,10 +279,28 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
 
       let deltaUsd: number | null = null;
       let deltaEur: number | null = null;
-      if (opts?.isAdjustment && (opts.currentPriceUsd || opts.currentPriceEur)) {
+      let cashflowUsd: number | null = null;
+      let cashflowEur: number | null = null;
+      let cashflowAssetClass: string | null = null;
+      let cashflowStatus: "complete" | "pending" | null = null;
+      let deltaStatus: "complete" | "pending" | null = null;
+
+      if (opts?.currentPriceUsd || opts?.currentPriceEur) {
         const qty = (existing.quantity as number) ?? 0;
-        deltaUsd = -(qty * (opts.currentPriceUsd ?? 0));
-        deltaEur = -(qty * (opts.currentPriceEur ?? 0));
+        const valUsd = -(qty * (opts.currentPriceUsd ?? 0));
+        const valEur = -(qty * (opts.currentPriceEur ?? 0));
+
+        if (opts?.isAdjustment) {
+          deltaUsd = valUsd;
+          deltaEur = valEur;
+          deltaStatus = "complete";
+        } else {
+          const { classifyAssetClass } = await import("@/lib/cashflow");
+          cashflowUsd = valUsd;
+          cashflowEur = valEur;
+          cashflowAssetClass = classifyAssetClass("crypto_position", isStablecoin);
+          cashflowStatus = "complete";
+        }
       }
 
       await logActivity({
@@ -296,6 +315,11 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         is_adjustment: opts?.isAdjustment,
         delta_usd: deltaUsd,
         delta_eur: deltaEur,
+        delta_status: deltaStatus,
+        cashflow_amount_usd: cashflowUsd,
+        cashflow_amount_eur: cashflowEur,
+        cashflow_asset_class: cashflowAssetClass,
+        cashflow_status: cashflowStatus,
         transfer_group_id: opts?.transferGroupId,
         created_at: opts?.effectiveDate,
       });
@@ -363,12 +387,30 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
 
     let deltaUsd: number | null = null;
     let deltaEur: number | null = null;
-    if (opts?.isAdjustment && (opts.currentPriceUsd || opts.currentPriceEur)) {
+    let cashflowUsd: number | null = null;
+    let cashflowEur: number | null = null;
+    let cashflowAssetClass: string | null = null;
+    let cashflowStatus: "complete" | "pending" | null = null;
+    let deltaStatus: "complete" | "pending" | null = null;
+
+    if (opts?.currentPriceUsd || opts?.currentPriceEur) {
       const beforeQty = (before?.quantity as number) ?? 0;
       const afterQty = input.quantity;
       const qtyDelta = afterQty - beforeQty;
-      deltaUsd = qtyDelta * (opts.currentPriceUsd ?? 0);
-      deltaEur = qtyDelta * (opts.currentPriceEur ?? 0);
+      const valUsd = qtyDelta * (opts.currentPriceUsd ?? 0);
+      const valEur = qtyDelta * (opts.currentPriceEur ?? 0);
+
+      if (opts?.isAdjustment) {
+        deltaUsd = valUsd;
+        deltaEur = valEur;
+        deltaStatus = "complete";
+      } else {
+        const { classifyAssetClass } = await import("@/lib/cashflow");
+        cashflowUsd = valUsd;
+        cashflowEur = valEur;
+        cashflowAssetClass = classifyAssetClass("crypto_position", isStablecoin);
+        cashflowStatus = "complete";
+      }
     }
 
     await logActivity({
@@ -383,6 +425,11 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       is_adjustment: opts?.isAdjustment,
       delta_usd: deltaUsd,
       delta_eur: deltaEur,
+      delta_status: deltaStatus,
+      cashflow_amount_usd: cashflowUsd,
+      cashflow_amount_eur: cashflowEur,
+      cashflow_asset_class: cashflowAssetClass,
+      cashflow_status: cashflowStatus,
       transfer_group_id: opts?.transferGroupId,
       created_at: opts?.effectiveDate,
     });
@@ -406,12 +453,13 @@ export async function deletePosition(positionId: string, opts?: {
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase
     .from("crypto_positions")
-    .select("*, crypto_assets(ticker)")
+    .select("*, crypto_assets(ticker, subcategory)")
     .eq("id", positionId)
     .is("deleted_at", null)
     .single();
   const ticker =
     (snapshot?.crypto_assets as unknown as { ticker: string } | null)?.ticker ?? "Unknown";
+  const isStablecoin = (snapshot?.crypto_assets as { subcategory?: string } | null)?.subcategory?.toLowerCase() === "stablecoin";
 
   const { error } = await supabase
     .from("crypto_positions")
@@ -422,10 +470,28 @@ export async function deletePosition(positionId: string, opts?: {
 
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
-  if (opts?.isAdjustment && snapshot) {
+  let cashflowUsd: number | null = null;
+  let cashflowEur: number | null = null;
+  let cashflowAssetClass: string | null = null;
+  let cashflowStatus: "complete" | "pending" | null = null;
+  let deltaStatus: "complete" | "pending" | null = null;
+
+  if (snapshot && (opts?.currentPriceUsd || opts?.currentPriceEur)) {
     const qty = (snapshot.quantity as number) ?? 0;
-    deltaUsd = -(qty * (opts.currentPriceUsd ?? 0));
-    deltaEur = -(qty * (opts.currentPriceEur ?? 0));
+    const valUsd = -(qty * (opts?.currentPriceUsd ?? 0));
+    const valEur = -(qty * (opts?.currentPriceEur ?? 0));
+
+    if (opts?.isAdjustment) {
+      deltaUsd = valUsd;
+      deltaEur = valEur;
+      deltaStatus = "complete";
+    } else {
+      const { classifyAssetClass } = await import("@/lib/cashflow");
+      cashflowUsd = valUsd;
+      cashflowEur = valEur;
+      cashflowAssetClass = classifyAssetClass("crypto_position", isStablecoin);
+      cashflowStatus = "complete";
+    }
   }
 
   await logActivity({
@@ -440,6 +506,11 @@ export async function deletePosition(positionId: string, opts?: {
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    delta_status: deltaStatus,
+    cashflow_amount_usd: cashflowUsd,
+    cashflow_amount_eur: cashflowEur,
+    cashflow_asset_class: cashflowAssetClass,
+    cashflow_status: cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
     created_at: opts?.effectiveDate,
   });
