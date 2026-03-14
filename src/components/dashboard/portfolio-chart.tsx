@@ -325,6 +325,7 @@ export function PortfolioChart({
             </button>
             <button
               onClick={() => setShowAllocation(!showAllocation)}
+              aria-pressed={showAllocation}
               disabled={returnMode}
               className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
                 returnMode
@@ -341,6 +342,7 @@ export function PortfolioChart({
             {sp500History.length > 0 && (
               <button
                 onClick={() => setShowBenchmark(!showBenchmark)}
+                aria-pressed={showBenchmark}
                 className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
                   showBenchmark
                     ? "bg-zinc-700 text-zinc-200"
@@ -356,6 +358,7 @@ export function PortfolioChart({
             )}
             <button
               onClick={() => setReturnMode(!returnMode)}
+              aria-pressed={returnMode}
               className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
                 returnMode
                   ? "bg-zinc-700 text-zinc-200"

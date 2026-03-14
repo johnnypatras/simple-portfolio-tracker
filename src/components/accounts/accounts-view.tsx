@@ -344,6 +344,7 @@ export function AccountsView({
             <div
               role="button"
               tabIndex={0}
+              aria-expanded={isExpanded}
               onClick={() => toggleExpand(institution.id)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpand(institution.id); } }}
               className="w-full px-4 py-2.5 hover:bg-zinc-800/30 transition-colors cursor-pointer"

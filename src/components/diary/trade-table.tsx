@@ -407,7 +407,7 @@ export function TradeTable({
         </div>
 
         {error && (
-          <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+          <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
             {error}
           </p>
         )}
@@ -464,30 +464,31 @@ export function TradeTable({
       {/* Desktop table */}
       <div className="hidden md:block bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
         <table className="w-full">
+          <caption className="sr-only">Trade diary entries</caption>
           <thead>
             <tr className="border-b border-zinc-800/50">
-              <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
                 Date
               </th>
-              <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
                 Asset
               </th>
-              <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
                 Action
               </th>
-              <th className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
                 Quantity
               </th>
-              <th className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
                 Price
               </th>
-              <th className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
                 Total
               </th>
-              <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
                 Notes
               </th>
-              <th className="w-20" />
+              <th scope="col" className="w-20" />
             </tr>
           </thead>
           <tbody>

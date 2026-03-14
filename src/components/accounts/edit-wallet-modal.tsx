@@ -146,7 +146,7 @@ export function EditWalletModal({ open, onClose, wallet }: EditWalletModalProps)
 
         {/* Error */}
         {error && (
-          <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+          <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
             {error}
           </p>
         )}

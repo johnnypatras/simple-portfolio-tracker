@@ -159,7 +159,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
           />
         </div>
         {emailError && (
-          <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+          <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
             {emailError}
           </p>
         )}
@@ -223,7 +223,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
           />
         </div>
         {pwError && (
-          <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+          <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
             {pwError}
           </p>
         )}
@@ -242,7 +242,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
       </form>
 
       {error && (
-        <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg max-w-md">
+        <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg max-w-md">
           {error}
         </p>
       )}

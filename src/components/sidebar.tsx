@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -54,6 +55,15 @@ export function Sidebar({ email }: { email: string }) {
   const supabase = createClient();
   const { mobileOpen, setMobileOpen } = useSidebar();
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMobileOpen(false);
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [mobileOpen, setMobileOpen]);
+
   async function handleLogout() {
     try { localStorage.removeItem(HOLDINGS_CACHE_KEY); } catch { /* ignore */ }
     await supabase.auth.signOut();
@@ -82,7 +92,7 @@ export function Sidebar({ email }: { email: string }) {
       </div>
 
       {/* Main nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav aria-label="Main navigation" className="flex-1 px-3 py-4 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);

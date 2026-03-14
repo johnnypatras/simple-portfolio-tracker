@@ -41,6 +41,7 @@ export function CurrencyToggle({
           <button
             key={opt.value}
             onClick={() => handleSwitch(opt.value)}
+            aria-pressed={isActive}
             disabled={isPending}
             className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
               isActive

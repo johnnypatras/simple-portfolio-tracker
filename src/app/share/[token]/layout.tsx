@@ -39,13 +39,14 @@ export default async function ShareLayout({ params, children }: Props) {
       <CommandPaletteProvider primaryCurrency={profile?.primary_currency ?? "EUR"}>
         <ThemeSync profileTheme={profile?.theme ?? null} />
         <div className="min-h-screen bg-zinc-950 text-zinc-100">
+          <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:top-4 focus:left-4 focus:px-4 focus:py-2 focus:bg-zinc-800 focus:text-zinc-100 focus:rounded-lg">Skip to content</a>
           <ComparisonTrigger
             token={token}
             scope={share.scope}
             ownerName={ownerName}
             isAuthenticated={!!user}
           >
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 overflow-x-hidden">
+            <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 overflow-x-hidden">
               {children}
             </main>
           </ComparisonTrigger>

@@ -103,6 +103,7 @@ export default function ResetPasswordPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
                 >
                   {showPassword ? (
@@ -133,7 +134,7 @@ export default function ResetPasswordPage() {
             </div>
 
             {error && (
-              <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+              <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
                 {error}
               </p>
             )}
