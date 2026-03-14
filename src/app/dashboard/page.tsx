@@ -55,12 +55,8 @@ export default async function DashboardPage() {
 
   const primaryCurrency = profile.primary_currency;
 
-  // Compute how stale the latest snapshot is (excluding today's live snapshot).
-  // The daily cron runs at 23:59 UTC, so a gap >26h means it likely failed.
-  const latestSnap = chartSnapshots[chartSnapshots.length - 1];
-  const snapshotStaleHours = latestSnap?.snapshot_date
-    ? (Date.now() - new Date(latestSnap.snapshot_date as string).getTime()) / 3_600_000
-    : null;
+  // Pass the latest snapshot date to the chart — the banner computes staleness client-side.
+  const latestSnapshotDate = chartSnapshots[chartSnapshots.length - 1]?.snapshot_date as string | undefined;
 
   // ── Round 2: Prices, aggregation, insights ─────────────
   const { summary, insights, paletteHoldings, fxStale, fxUnavailable } =
@@ -132,7 +128,7 @@ export default async function DashboardPage() {
           }}
           pendingCount={cfPendingCount}
           failedCount={cfFailedCount}
-          snapshotStaleHours={snapshotStaleHours != null && snapshotStaleHours > 26 ? Math.round(snapshotStaleHours) : null}
+          latestSnapshotDate={latestSnapshotDate}
         />
       </div>
     </div>

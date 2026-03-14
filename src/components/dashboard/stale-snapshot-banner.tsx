@@ -1,11 +1,19 @@
 import { Clock } from "lucide-react";
 
 interface StaleSnapshotBannerProps {
-  staleHours: number | null;
+  latestSnapshotDate?: string;
 }
 
-export function StaleSnapshotBanner({ staleHours }: StaleSnapshotBannerProps) {
-  if (staleHours == null || staleHours <= 26) return null;
+/** Compute hours since snapshot — plain function, not a component render. */
+function getStaleHours(dateStr: string): number {
+  return (Date.now() - new Date(dateStr).getTime()) / 3_600_000;
+}
+
+export function StaleSnapshotBanner({ latestSnapshotDate }: StaleSnapshotBannerProps) {
+  if (!latestSnapshotDate) return null;
+
+  const staleHours = getStaleHours(latestSnapshotDate);
+  if (staleHours <= 26) return null;
 
   return (
     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-xs mb-3">

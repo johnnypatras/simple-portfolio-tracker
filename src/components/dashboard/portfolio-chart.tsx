@@ -34,7 +34,7 @@ interface PortfolioChartProps {
   defaultReturnMode?: boolean;
   pendingCount?: number;
   failedCount?: number;
-  snapshotStaleHours?: number | null;
+  latestSnapshotDate?: string;
 }
 
 const PERIODS = [
@@ -106,7 +106,7 @@ export function PortfolioChart({
   defaultReturnMode = false,
   pendingCount = 0,
   failedCount = 0,
-  snapshotStaleHours = null,
+  latestSnapshotDate,
 }: PortfolioChartProps) {
   const [periodIdx, setPeriodIdx] = useState(3); // default to 30D
   const [showAllocation, setShowAllocation] = useState(false);
@@ -385,7 +385,7 @@ export function PortfolioChart({
           onChange={setPeriodIdx}
         />
       </div>
-      <StaleSnapshotBanner staleHours={snapshotStaleHours ?? null} />
+      <StaleSnapshotBanner latestSnapshotDate={latestSnapshotDate} />
       <ChartWarningBanner pendingCount={pendingCount} failedCount={failedCount} />
       <p className="sr-only">
         Portfolio chart showing {returnMode ? "cumulative percentage return" : "value over time"}.
