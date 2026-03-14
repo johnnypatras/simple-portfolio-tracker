@@ -33,6 +33,26 @@ export function validateName(s: string, maxLen = 100, label = "Name"): void {
   }
 }
 
+// CoinGecko IDs: lowercase alphanumeric, hyphens, digits (e.g., "bitcoin", "usd-coin", "0x-protocol")
+const COINGECKO_ID_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+
+export function validateCoinGeckoId(s: string): void {
+  if (!s || s.length > 100) throw new Error("CoinGecko ID is invalid");
+  if (!COINGECKO_ID_RE.test(s)) {
+    throw new Error(`CoinGecko ID contains invalid characters: "${s}"`);
+  }
+}
+
+// Yahoo tickers: alphanumeric, dots, hyphens, carets, equals (e.g., "AAPL", "VUSA.AS", "^GSPC", "EURUSD=X")
+const YAHOO_TICKER_RE = /^[A-Z0-9][A-Z0-9.^=-]*$/;
+
+export function validateYahooTicker(s: string): void {
+  if (!s || s.length > 20) throw new Error("Yahoo ticker is invalid");
+  if (!YAHOO_TICKER_RE.test(s)) {
+    throw new Error(`Yahoo ticker contains invalid characters: "${s}"`);
+  }
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

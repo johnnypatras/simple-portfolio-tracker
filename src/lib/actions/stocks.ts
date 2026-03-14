@@ -10,7 +10,7 @@ import type {
   Broker,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateQuantity, validateUUID } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateYahooTicker } from "@/lib/validation";
 import { normalizeCategory } from "@/lib/stock-categories";
 
 /** Get all stock assets with their positions and broker names */
@@ -71,6 +71,8 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  if (input.yahoo_ticker) validateYahooTicker(input.yahoo_ticker);
 
   const category = input.category ?? "individual_stock";
   const tags = input.tags ?? [];
@@ -159,7 +161,10 @@ export async function updateStockAsset(
 
   const updatePayload: Record<string, unknown> = {};
   if (fields.name !== undefined) updatePayload.name = fields.name.trim();
-  if (fields.yahoo_ticker !== undefined) updatePayload.yahoo_ticker = fields.yahoo_ticker?.trim() || null;
+  if (fields.yahoo_ticker !== undefined) {
+    if (fields.yahoo_ticker?.trim()) validateYahooTicker(fields.yahoo_ticker.trim());
+    updatePayload.yahoo_ticker = fields.yahoo_ticker?.trim() || null;
+  }
   if (fields.isin !== undefined) updatePayload.isin = fields.isin?.trim() || null;
   if (fields.category !== undefined) updatePayload.category = fields.category;
   if (fields.tags !== undefined) updatePayload.tags = fields.tags;

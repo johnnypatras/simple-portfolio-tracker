@@ -10,7 +10,7 @@ import type {
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
-import { validateQuantity, validateUUID } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateCoinGeckoId } from "@/lib/validation";
 
 /** Get all crypto assets with their positions and wallet names */
 export async function getCryptoAssetsWithPositions(): Promise<
@@ -78,6 +78,8 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  validateCoinGeckoId(input.coingecko_id);
 
   const { data, error } = await supabase
     .from("crypto_assets")
