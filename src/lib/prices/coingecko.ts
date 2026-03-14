@@ -53,7 +53,13 @@ export async function getPrices(
 
   const ids = coinIds.join(",");
   const url = `${BASE_URL}/simple/price?ids=${ids}&vs_currencies=usd,eur&include_24hr_change=true`;
-  const res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
+  let res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
+
+  if (res.status === 429) {
+    console.warn("[coingecko] Rate limited (429), retrying in 2s…");
+    await new Promise((r) => setTimeout(r, 2000));
+    res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
+  }
 
   if (!res.ok) {
     console.error("[coingecko] Price fetch failed:", res.status);

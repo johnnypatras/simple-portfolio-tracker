@@ -67,3 +67,11 @@ backup_*.json
 
 # spreadsheets
 *.xlsx
+
+# Sentry Config File
+.env.sentry-build-plugin
+
+# MCP / IDE configs (contain org-specific URLs)
+.mcp.json
+.vscode/
+opencode.json

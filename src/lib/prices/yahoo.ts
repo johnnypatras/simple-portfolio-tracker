@@ -171,6 +171,12 @@ async function fetchQuotesBatch(
       return map;
     }
 
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      console.warn("[yahoo] Batch quote returned non-JSON (captcha?), content-type:", contentType);
+      return map;
+    }
+
     const json = await res.json();
     const quotes = json?.quoteResponse?.result;
     if (!Array.isArray(quotes)) return map;
@@ -321,6 +327,12 @@ async function fetchSinglePrice(ticker: string): Promise<{
 
     if (!res.ok) {
       console.warn(`[yahoo] No data for ${ticker} (${res.status}${res.status === 404 ? " — may be delisted" : ""})`);
+      return null;
+    }
+
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      console.warn(`[yahoo] Non-JSON response for ${ticker} (captcha?), content-type: ${contentType}`);
       return null;
     }
 

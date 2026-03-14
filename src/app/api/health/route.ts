@@ -30,11 +30,13 @@ export async function GET() {
     const ageHours = lastSnapshot
       ? (Date.now() - new Date(lastSnapshot).getTime()) / 3_600_000
       : null;
+    const snapshotStale = ageHours != null && ageHours > 26;
 
     return NextResponse.json({
-      status: "ok",
+      status: snapshotStale ? "warning" : "ok",
       lastSnapshot,
       snapshotAgeHours: ageHours ? Math.round(ageHours) : null,
+      snapshotStale,
       ms: Date.now() - start,
     });
   } catch {
