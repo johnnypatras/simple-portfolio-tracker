@@ -24,6 +24,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import { CashflowStatusIcon } from "@/components/ui/cashflow-status-icon";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 import { exportActivityLogsCsv, toggleActivityAdjustment } from "@/lib/actions/activity-log";
 import { undoActivity } from "@/lib/actions/undo";
@@ -739,6 +740,11 @@ export function ActivityTimeline({
                               <Undo2 className="w-3.5 h-3.5" />
                             </ConfirmButton>
                           ) : null}
+                          {/* Status icon for pending/failed cashflows */}
+                          <CashflowStatusIcon
+                            cashflowStatus={log.cashflow_status}
+                            deltaStatus={log.delta_status}
+                          />
                           <span className="text-xs text-zinc-600">
                             {getTimeLabel(log.created_at)}
                           </span>
