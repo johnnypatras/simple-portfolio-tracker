@@ -33,7 +33,7 @@ export async function getBrokerDeposits(): Promise<BrokerDeposit[]> {
 
 export async function createBrokerDeposit(
   input: BrokerDepositInput,
-  opts?: { isAdjustment?: boolean; transferGroupId?: string; effectiveDate?: string }
+  opts?: { isAdjustment?: boolean; transferGroupId?: string; effectiveDate?: string; fxRate?: number }
 ): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -74,15 +74,52 @@ export async function createBrokerDeposit(
   const label = `${input.amount} ${input.currency} on ${broker?.name ?? "Unknown"}`;
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
-  if (opts?.isAdjustment && created) {
-    try {
-      const converted = await toUsdAndEur(created.amount ?? 0, created.currency, opts?.effectiveDate?.split("T")[0]);
-      deltaUsd = Math.round(converted.usd * 100) / 100;
-      deltaEur = Math.round(converted.eur * 100) / 100;
-    } catch (err) {
-      console.error("[broker-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+  let cashflowUsd: number | null = null;
+  let cashflowEur: number | null = null;
+  let cashflowAssetClass: string | null = null;
+  let cashflowStatus: "complete" | "pending" | null = null;
+  let deltaStatus: "complete" | "pending" | null = null;
+
+  if (created) {
+    const amount = created.amount ?? 0;
+    const currency = created.currency ?? "USD";
+
+    if (opts?.isAdjustment) {
+      try {
+        const converted = await toUsdAndEur(amount, currency, opts?.effectiveDate?.split("T")[0]);
+        deltaUsd = Math.round(converted.usd * 100) / 100;
+        deltaEur = Math.round(converted.eur * 100) / 100;
+        deltaStatus = "complete";
+      } catch (err) {
+        console.error("[broker-deposits] FX delta failed, marked pending:", err instanceof Error ? err.message : err);
+        deltaStatus = "pending";
+      }
+    } else {
+      const { computeCashflowFromPrices, classifyAssetClass } = await import("@/lib/cashflow");
+      if (opts?.fxRate) {
+        const cf = computeCashflowFromPrices({
+          action: "created", beforeQty: 0, afterQty: amount,
+          entityCurrency: currency, fxRate: opts.fxRate,
+        });
+        cashflowUsd = Math.round(cf.usd * 100) / 100;
+        cashflowEur = Math.round(cf.eur * 100) / 100;
+        cashflowStatus = "complete";
+      } else {
+        // Fallback: use FX API
+        try {
+          const converted = await toUsdAndEur(amount, currency);
+          cashflowUsd = Math.round(converted.usd * 100) / 100;
+          cashflowEur = Math.round(converted.eur * 100) / 100;
+          cashflowStatus = "complete";
+        } catch (err) {
+          console.error("[broker-deposits] FX cashflow failed, marked pending:", err instanceof Error ? err.message : err);
+          cashflowStatus = "pending";
+        }
+      }
+      cashflowAssetClass = classifyAssetClass("broker_deposit");
     }
   }
+
   await logActivity({
     action: "created",
     entity_type: "broker_deposit",
@@ -95,6 +132,11 @@ export async function createBrokerDeposit(
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    delta_status: deltaStatus,
+    cashflow_amount_usd: cashflowUsd,
+    cashflow_amount_eur: cashflowEur,
+    cashflow_asset_class: cashflowAssetClass,
+    cashflow_status: cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
     created_at: opts?.effectiveDate,
   });
@@ -107,7 +149,7 @@ export async function createBrokerDeposit(
 export async function updateBrokerDeposit(
   id: string,
   input: BrokerDepositInput,
-  opts?: { isAdjustment?: boolean; transferGroupId?: string; effectiveDate?: string }
+  opts?: { isAdjustment?: boolean; transferGroupId?: string; effectiveDate?: string; fxRate?: number }
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -167,6 +209,12 @@ export async function updateBrokerDeposit(
   const label = `${input.amount} ${input.currency} on ${broker?.name ?? "Unknown"}`;
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
+  let cashflowUsd: number | null = null;
+  let cashflowEur: number | null = null;
+  let cashflowAssetClass: string | null = null;
+  let cashflowStatus: "complete" | "pending" | null = null;
+  let deltaStatus: "complete" | "pending" | null = null;
+
   if (opts?.isAdjustment) {
     try {
       const beforeAmt = (before?.amount as number) ?? 0;
@@ -175,10 +223,39 @@ export async function updateBrokerDeposit(
       const converted = await toUsdAndEur(afterAmt - beforeAmt, currency, opts?.effectiveDate?.split("T")[0]);
       deltaUsd = Math.round(converted.usd * 100) / 100;
       deltaEur = Math.round(converted.eur * 100) / 100;
+      deltaStatus = "complete";
     } catch (err) {
-      console.error("[broker-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+      console.error("[broker-deposits] FX delta failed, marked pending:", err instanceof Error ? err.message : err);
+      deltaStatus = "pending";
     }
+  } else {
+    const { computeCashflowFromPrices, classifyAssetClass } = await import("@/lib/cashflow");
+    const beforeAmt = (before?.amount as number) ?? 0;
+    const afterAmt = (after?.amount as number) ?? 0;
+    const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
+    if (opts?.fxRate) {
+      const cf = computeCashflowFromPrices({
+        action: "updated", beforeQty: beforeAmt, afterQty: afterAmt,
+        entityCurrency: currency, fxRate: opts.fxRate,
+      });
+      cashflowUsd = Math.round(cf.usd * 100) / 100;
+      cashflowEur = Math.round(cf.eur * 100) / 100;
+      cashflowStatus = "complete";
+    } else {
+      // Fallback: use FX API
+      try {
+        const converted = await toUsdAndEur(afterAmt - beforeAmt, currency);
+        cashflowUsd = Math.round(converted.usd * 100) / 100;
+        cashflowEur = Math.round(converted.eur * 100) / 100;
+        cashflowStatus = "complete";
+      } catch (err) {
+        console.error("[broker-deposits] FX cashflow failed, marked pending:", err instanceof Error ? err.message : err);
+        cashflowStatus = "pending";
+      }
+    }
+    cashflowAssetClass = classifyAssetClass("broker_deposit");
   }
+
   await logActivity({
     action: "updated",
     entity_type: "broker_deposit",
@@ -191,6 +268,11 @@ export async function updateBrokerDeposit(
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    delta_status: deltaStatus,
+    cashflow_amount_usd: cashflowUsd,
+    cashflow_amount_eur: cashflowEur,
+    cashflow_asset_class: cashflowAssetClass,
+    cashflow_status: cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
     created_at: opts?.effectiveDate,
   });
@@ -198,7 +280,7 @@ export async function updateBrokerDeposit(
   revalidatePath("/dashboard");
 }
 
-export async function deleteBrokerDeposit(id: string, opts?: { isAdjustment?: boolean }): Promise<void> {
+export async function deleteBrokerDeposit(id: string, opts?: { isAdjustment?: boolean; fxRate?: number }): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -228,15 +310,52 @@ export async function deleteBrokerDeposit(id: string, opts?: { isAdjustment?: bo
     : "Unknown";
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
-  if (opts?.isAdjustment && snapshot) {
-    try {
-      const converted = await toUsdAndEur(-(snapshot.amount ?? 0), snapshot.currency ?? "USD");
-      deltaUsd = Math.round(converted.usd * 100) / 100;
-      deltaEur = Math.round(converted.eur * 100) / 100;
-    } catch (err) {
-      console.error("[broker-deposits] FX delta failed, will be null (backfillable):", err instanceof Error ? err.message : err);
+  let cashflowUsd: number | null = null;
+  let cashflowEur: number | null = null;
+  let cashflowAssetClass: string | null = null;
+  let cashflowStatus: "complete" | "pending" | null = null;
+  let deltaStatus: "complete" | "pending" | null = null;
+
+  if (snapshot) {
+    const amount = snapshot.amount ?? 0;
+    const currency = snapshot.currency ?? "USD";
+
+    if (opts?.isAdjustment) {
+      try {
+        const converted = await toUsdAndEur(-amount, currency);
+        deltaUsd = Math.round(converted.usd * 100) / 100;
+        deltaEur = Math.round(converted.eur * 100) / 100;
+        deltaStatus = "complete";
+      } catch (err) {
+        console.error("[broker-deposits] FX delta failed, marked pending:", err instanceof Error ? err.message : err);
+        deltaStatus = "pending";
+      }
+    } else {
+      const { computeCashflowFromPrices, classifyAssetClass } = await import("@/lib/cashflow");
+      if (opts?.fxRate) {
+        const cf = computeCashflowFromPrices({
+          action: "removed", beforeQty: amount, afterQty: 0,
+          entityCurrency: currency, fxRate: opts.fxRate,
+        });
+        cashflowUsd = Math.round(cf.usd * 100) / 100;
+        cashflowEur = Math.round(cf.eur * 100) / 100;
+        cashflowStatus = "complete";
+      } else {
+        // Fallback: use FX API
+        try {
+          const converted = await toUsdAndEur(-amount, currency);
+          cashflowUsd = Math.round(converted.usd * 100) / 100;
+          cashflowEur = Math.round(converted.eur * 100) / 100;
+          cashflowStatus = "complete";
+        } catch (err) {
+          console.error("[broker-deposits] FX cashflow failed, marked pending:", err instanceof Error ? err.message : err);
+          cashflowStatus = "pending";
+        }
+      }
+      cashflowAssetClass = classifyAssetClass("broker_deposit");
     }
   }
+
   await logActivity({
     action: "removed",
     entity_type: "broker_deposit",
@@ -249,6 +368,11 @@ export async function deleteBrokerDeposit(id: string, opts?: { isAdjustment?: bo
     is_adjustment: opts?.isAdjustment,
     delta_usd: deltaUsd,
     delta_eur: deltaEur,
+    delta_status: deltaStatus,
+    cashflow_amount_usd: cashflowUsd,
+    cashflow_amount_eur: cashflowEur,
+    cashflow_asset_class: cashflowAssetClass,
+    cashflow_status: cashflowStatus,
   });
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard");
