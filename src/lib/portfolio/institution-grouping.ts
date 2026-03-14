@@ -132,10 +132,32 @@ export function buildInstitutionGroups(input: GroupingInput): InstitutionGroup[]
     }
   }
 
-  // broker_id → institution_id
+  // broker_id → group key (institution_id or synthetic __broker__<id>)
   const brokerToInst = new Map<string, string>();
+  const brokerVirtualGroups = new Map<string, InstitutionGroup>();
+
   for (const b of brokers) {
-    if (b.institution_id) brokerToInst.set(b.id, b.institution_id);
+    if (b.institution_id) {
+      brokerToInst.set(b.id, b.institution_id);
+    } else {
+      const virtualId = `__broker__${b.id}`;
+      brokerToInst.set(b.id, virtualId);
+      brokerVirtualGroups.set(virtualId, {
+        institution: {
+          id: virtualId,
+          user_id: b.user_id,
+          name: b.name,
+          roles: ["broker"],
+          created_at: b.created_at,
+          updated_at: b.created_at,
+        },
+        crypto: [],
+        stocks: [],
+        cash: [],
+        totalValue: 0,
+        change24h: { valueChange: 0, percentChange: 0 },
+      });
+    }
   }
 
   // Initialize groups per real institution
@@ -153,7 +175,7 @@ export function buildInstitutionGroups(input: GroupingInput): InstitutionGroup[]
 
   function getGroup(instId: string | undefined): InstitutionGroup | undefined {
     if (!instId) return undefined;
-    return groupMap.get(instId) ?? walletVirtualGroups.get(instId);
+    return groupMap.get(instId) ?? walletVirtualGroups.get(instId) ?? brokerVirtualGroups.get(instId);
   }
 
   // ── Crypto positions ─────────────────────────────────
@@ -276,7 +298,7 @@ export function buildInstitutionGroups(input: GroupingInput): InstitutionGroup[]
   }
 
   // ── Compute 24h change per group ─────────────────────
-  const allGroupMaps = [groupMap, walletVirtualGroups];
+  const allGroupMaps = [groupMap, walletVirtualGroups, brokerVirtualGroups];
   for (const map of allGroupMaps) {
     for (const group of map.values()) {
       let totalPrev = 0;
@@ -311,6 +333,7 @@ export function buildInstitutionGroups(input: GroupingInput): InstitutionGroup[]
   const allGroups = [
     ...Array.from(groupMap.values()),
     ...Array.from(walletVirtualGroups.values()),
+    ...Array.from(brokerVirtualGroups.values()),
   ];
 
   return allGroups.sort(

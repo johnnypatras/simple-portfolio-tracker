@@ -70,6 +70,12 @@ export async function saveSnapshot(values: {
     .maybeSingle();
 
   if (prev?.total_value_usd && prev.total_value_usd > 0) {
+    if (totalUsd === 0) {
+      console.warn(
+        `[snapshots] SKIPPING: $0 total but previous snapshot was $${prev.total_value_usd} (${prev.snapshot_date}) — likely API failure`
+      );
+      return;
+    }
     const changePct = Math.abs((totalUsd - prev.total_value_usd) / prev.total_value_usd) * 100;
     if (changePct > 15) {
       console.warn(

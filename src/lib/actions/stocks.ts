@@ -336,7 +336,6 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       });
     }
   } else {
-    // Capture before state if updating
     const { data: before } = await supabase
       .from("stock_positions")
       .select("*")
@@ -345,20 +344,42 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       .is("deleted_at", null)
       .single();
 
-    const { error } = before
-      ? await supabase.from("stock_positions").update({
-          quantity: input.quantity,
-          last_was_adjustment: opts?.isAdjustment ?? false,
-          last_was_transfer: opts?.transferGroupId != null,
-        }).eq("id", before.id)
-      : await supabase.from("stock_positions").insert({
-          stock_asset_id: input.stock_asset_id,
-          broker_id: input.broker_id,
-          quantity: input.quantity,
-          last_was_adjustment: opts?.isAdjustment ?? false,
-          last_was_transfer: opts?.transferGroupId != null,
-        });
-    if (error) throw new Error(error.message);
+    if (before) {
+      const { error } = await supabase.from("stock_positions").update({
+        quantity: input.quantity,
+        last_was_adjustment: opts?.isAdjustment ?? false,
+        last_was_transfer: opts?.transferGroupId != null,
+      }).eq("id", before.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase.from("stock_positions").insert({
+        stock_asset_id: input.stock_asset_id,
+        broker_id: input.broker_id,
+        quantity: input.quantity,
+        last_was_adjustment: opts?.isAdjustment ?? false,
+        last_was_transfer: opts?.transferGroupId != null,
+      });
+      if (error) {
+        if (error.code === "23505") {
+          const { data: existing } = await supabase
+            .from("stock_positions")
+            .select("*")
+            .eq("stock_asset_id", input.stock_asset_id)
+            .eq("broker_id", input.broker_id)
+            .is("deleted_at", null)
+            .single();
+          if (!existing) throw new Error(error.message);
+          const { error: updateErr } = await supabase.from("stock_positions").update({
+            quantity: input.quantity,
+            last_was_adjustment: opts?.isAdjustment ?? false,
+            last_was_transfer: opts?.transferGroupId != null,
+          }).eq("id", existing.id);
+          if (updateErr) throw new Error(updateErr.message);
+        } else {
+          throw new Error(error.message);
+        }
+      }
+    }
 
     // Capture after state
     const { data: after } = await supabase

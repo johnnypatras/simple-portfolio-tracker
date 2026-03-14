@@ -32,10 +32,6 @@ interface PortfolioChartProps {
   defaultReturnMode?: boolean;
 }
 
-// Module-level constant: today's date string (stable for the lifetime of the page)
-const TODAY = new Date().toISOString().split("T")[0];
-const TODAY_MS = new Date(TODAY + "T00:00:00").getTime();
-
 const PERIODS = [
   { label: "24H", days: 1 },
   { label: "3D", days: 3 },
@@ -118,6 +114,8 @@ export function PortfolioChart({
 
   // Filter snapshots to selected period + append today's live value
   const data = useMemo(() => {
+    const TODAY = new Date().toISOString().split("T")[0];
+    const TODAY_MS = new Date(TODAY + "T00:00:00").getTime();
     const cutoff =
       period.days === Infinity
         ? null

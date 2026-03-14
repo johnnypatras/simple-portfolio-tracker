@@ -692,6 +692,11 @@ export async function importFromJson(
       crypto_value_usd: s.crypto_value_usd,
       stocks_value_usd: s.stocks_value_usd,
       cash_value_usd: s.cash_value_usd,
+      crypto_value_eur: s.crypto_value_eur ?? null,
+      stocks_value_eur: s.stocks_value_eur ?? null,
+      cash_value_eur: s.cash_value_eur ?? null,
+      stocks_eur_denominated_value: s.stocks_eur_denominated_value ?? null,
+      cash_eur_denominated_value: s.cash_eur_denominated_value ?? null,
     }));
 
     if (snapshotRows.length > 0) {

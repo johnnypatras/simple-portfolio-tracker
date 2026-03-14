@@ -114,6 +114,7 @@ export interface CoinGeckoDetail {
   categories: string[];
   /** Map of platform ID → contract address (for multi-chain tokens) */
   platforms: Record<string, string>;
+  image_thumb: string | null;
 }
 
 /**
@@ -142,6 +143,7 @@ export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | n
     asset_platform_id: data.asset_platform_id ?? null,
     categories: Array.isArray(data.categories) ? data.categories : [],
     platforms,
+    image_thumb: (data.image?.thumb as string) ?? null,
   };
 }
 
@@ -150,16 +152,8 @@ export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | n
  * Used to backfill image_url for assets created before icon storage was added.
  */
 export async function getCoinImage(coinId: string): Promise<string | null> {
-  const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`;
-  const res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 86400 } });
-
-  if (!res.ok) {
-    console.error("[coingecko] Image fetch failed for", coinId, res.status);
-    return null;
-  }
-
-  const data = await res.json();
-  return (data.image?.thumb as string) ?? null;
+  const detail = await getCoinDetail(coinId);
+  return detail?.image_thumb ?? null;
 }
 
 // ── Mapping helpers ───────────────────────────────────────

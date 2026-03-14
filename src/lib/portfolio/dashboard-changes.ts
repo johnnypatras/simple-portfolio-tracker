@@ -95,7 +95,7 @@ export function deriveClassFx(
   const primaryReturn = primaryCurrency === "EUR" ? eurReturn : usdReturn;
   const otherReturn = primaryCurrency === "EUR" ? usdReturn : eurReturn;
   const fxPct = primaryReturn - otherReturn;
-  let fxAbs = fxPct !== 0 ? currentClassValue - currentClassValue / (1 + fxPct / 100) : 0;
+  let fxAbs = fxPct !== 0 && fxPct > -100 ? currentClassValue - currentClassValue / (1 + fxPct / 100) : 0;
 
   // Scale FX amount: only the foreign-currency (non-home) portion is FX-sensitive
   if (currentHomeCurrencyEur != null && pastHomeCurrencyEur != null
@@ -142,7 +142,7 @@ export function getChangeForPeriod(
     const otherReturn = ((currentValueOther - pastOther) / pastOther) * 100;
     fxPct = primaryReturn - otherReturn;
   }
-  const fxAbs = fxPct !== 0
+  const fxAbs = fxPct !== 0 && fxPct > -100
     ? ctx.totalValue - ctx.totalValue / (1 + fxPct / 100)
     : 0;
 
@@ -260,6 +260,7 @@ export function computeDeposits(
     "24h": 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000, "1y": 365 * 86400000,
   };
   const cutoff = new Date(now.getTime() - msMap[period]);
+  cutoff.setUTCHours(0, 0, 0, 0);
   const filtered = cashFlows.filter(
     f => new Date(f.date) >= cutoff && (!filterClass || f.asset_class === filterClass)
   );

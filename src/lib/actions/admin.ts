@@ -57,7 +57,14 @@ export async function rejectUser(userId: string): Promise<void> {
   await requireAdmin();
   const admin = createAdminClient();
 
-  // Delete auth user — profile cascade should handle the rest
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("status")
+    .eq("id", userId)
+    .single();
+  if (!profile) throw new Error("User not found");
+  if (profile.status !== "pending") throw new Error("Can only reject users with pending status");
+
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");

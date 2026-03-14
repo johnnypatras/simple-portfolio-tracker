@@ -277,6 +277,14 @@ Deno.serve(async (req: Request) => {
         );
       }
 
+      const hasHoldings = holdings.cryptoAssets.length > 0 || holdings.stockAssets.length > 0 || holdings.cashItems.length > 0;
+      if (totalValueUsd === 0 && hasHoldings) {
+        console.warn(
+          `[daily-snapshot] SKIPPING ${userId}: $0 total but has holdings (crypto=${holdings.cryptoAssets.length}, stocks=${holdings.stockAssets.length}, cash=${holdings.cashItems.length}) — likely API failure`
+        );
+        continue;
+      }
+
       snapshots.push({
         user_id: userId,
         snapshot_date: today,

@@ -218,8 +218,8 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
 
     if (currentSource) {
       originalState = await fetchSourceState(supabase, currentSource);
-      validateSufficientBalance(currentSource, originalState);
       prices = await fetchPrices(supabase, currentSource, destination);
+      validateSufficientBalance(currentSource, originalState);
       await executeSourceLeg(currentSource, originalState, transferGroupId!, prices.source, input.effectiveDate);
     }
 

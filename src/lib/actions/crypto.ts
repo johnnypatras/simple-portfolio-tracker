@@ -303,7 +303,6 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       });
     }
   } else {
-    // Capture before state if updating
     const { data: before } = await supabase
       .from("crypto_positions")
       .select("*")
@@ -312,24 +311,48 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       .is("deleted_at", null)
       .single();
 
-    const { error } = before
-      ? await supabase.from("crypto_positions").update({
-          quantity: input.quantity,
-          acquisition_method: input.acquisition_method ?? "bought",
-          apy: input.apy ?? 0,
-          last_was_adjustment: opts?.isAdjustment ?? false,
-          last_was_transfer: opts?.transferGroupId != null,
-        }).eq("id", before.id)
-      : await supabase.from("crypto_positions").insert({
-          crypto_asset_id: input.crypto_asset_id,
-          wallet_id: input.wallet_id,
-          quantity: input.quantity,
-          acquisition_method: input.acquisition_method ?? "bought",
-          apy: input.apy ?? 0,
-          last_was_adjustment: opts?.isAdjustment ?? false,
-          last_was_transfer: opts?.transferGroupId != null,
-        });
-    if (error) throw new Error(error.message);
+    if (before) {
+      const { error } = await supabase.from("crypto_positions").update({
+        quantity: input.quantity,
+        acquisition_method: input.acquisition_method ?? "bought",
+        apy: input.apy ?? 0,
+        last_was_adjustment: opts?.isAdjustment ?? false,
+        last_was_transfer: opts?.transferGroupId != null,
+      }).eq("id", before.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase.from("crypto_positions").insert({
+        crypto_asset_id: input.crypto_asset_id,
+        wallet_id: input.wallet_id,
+        quantity: input.quantity,
+        acquisition_method: input.acquisition_method ?? "bought",
+        apy: input.apy ?? 0,
+        last_was_adjustment: opts?.isAdjustment ?? false,
+        last_was_transfer: opts?.transferGroupId != null,
+      });
+      if (error) {
+        if (error.code === "23505") {
+          const { data: existing } = await supabase
+            .from("crypto_positions")
+            .select("*")
+            .eq("crypto_asset_id", input.crypto_asset_id)
+            .eq("wallet_id", input.wallet_id)
+            .is("deleted_at", null)
+            .single();
+          if (!existing) throw new Error(error.message);
+          const { error: updateErr } = await supabase.from("crypto_positions").update({
+            quantity: input.quantity,
+            acquisition_method: input.acquisition_method ?? "bought",
+            apy: input.apy ?? 0,
+            last_was_adjustment: opts?.isAdjustment ?? false,
+            last_was_transfer: opts?.transferGroupId != null,
+          }).eq("id", existing.id);
+          if (updateErr) throw new Error(updateErr.message);
+        } else {
+          throw new Error(error.message);
+        }
+      }
+    }
 
     // Capture after state
     const { data: after } = await supabase
