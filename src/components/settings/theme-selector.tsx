@@ -35,7 +35,7 @@ export function ThemeSelector() {
     <div>
       <label className="block text-sm text-zinc-400 mb-3">Theme</label>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-md">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl">
         {THEMES.map((t) => {
           const isActive = activeTheme === t.id;
           return (

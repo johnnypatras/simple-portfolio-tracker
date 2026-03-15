@@ -4,6 +4,8 @@ export type ThemeId =
   | "zinc-dark"
   | "slate-dark"
   | "neutral-dark"
+  | "oxocarbon"
+  | "gruvbox"
   | "dim"
   | "light"
   | "warm-light";
@@ -28,6 +30,8 @@ export const THEME_IDS: ThemeId[] = [
   "zinc-dark",
   "slate-dark",
   "neutral-dark",
+  "oxocarbon",
+  "gruvbox",
   "dim",
   "light",
   "warm-light",
@@ -51,9 +55,23 @@ export const THEMES: ThemeDefinition[] = [
   {
     id: "neutral-dark",
     label: "Neutral",
-    description: "Pure black, OLED-friendly",
+    description: "Pure black, OLED",
     group: "dark",
     preview: { bg: "#000000", card: "#171717", text: "#fafafa", accent: "#3b82f6" },
+  },
+  {
+    id: "oxocarbon",
+    label: "Oxocarbon",
+    description: "IBM Carbon-inspired",
+    group: "dark",
+    preview: { bg: "#161616", card: "#262626", text: "#f2f4f8", accent: "#78a9ff" },
+  },
+  {
+    id: "gruvbox",
+    label: "Gruvbox",
+    description: "Retro warm contrast",
+    group: "dark",
+    preview: { bg: "#1d2021", card: "#3c3836", text: "#ebdbb2", accent: "#fabd2f" },
   },
   {
     id: "dim",

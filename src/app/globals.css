@@ -92,6 +92,52 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   Theme: Oxocarbon — IBM Carbon-inspired, achromatic dark grays
+   Based on nyoom-engineering/oxocarbon (base16 palette).
+   Neutral grays with very slight blue tint in lightest shades.
+   ═══════════════════════════════════════════════════════════════ */
+
+[data-theme="oxocarbon"] {
+  --color-zinc-50: oklch(96.7% 0.006 264);
+  --color-zinc-100: oklch(90.8% 0.008 254);
+  --color-zinc-200: oklch(82.7% 0 0);
+  --color-zinc-300: oklch(73.2% 0 0);
+  --color-zinc-400: oklch(64.3% 0 0);
+  --color-zinc-500: oklch(54.2% 0 0);
+  --color-zinc-600: oklch(43.9% 0 0);
+  --color-zinc-700: oklch(34.5% 0 0);
+  --color-zinc-800: oklch(26.9% 0 0);
+  --color-zinc-900: oklch(20% 0 0);
+  --color-zinc-950: oklch(14.5% 0 0);
+  --scrollbar-thumb: #393939;
+  --chart-tick: #6f6f6f;
+  --color-blue-500: oklch(68% 0.12 256);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Theme: Gruvbox Dark Hard — retro warm palette with earthy tones
+   Based on morhetz/gruvbox "hard" contrast variant.
+   Warm chroma throughout the gray scale (golden-brown hue).
+   ═══════════════════════════════════════════════════════════════ */
+
+[data-theme="gruvbox"] {
+  --color-zinc-50: oklch(95.6% 0.055 96);
+  --color-zinc-100: oklch(89.4% 0.057 89);
+  --color-zinc-200: oklch(82.5% 0.051 85);
+  --color-zinc-300: oklch(75.6% 0.041 82);
+  --color-zinc-400: oklch(61.9% 0.029 67);
+  --color-zinc-500: oklch(48.2% 0.018 61);
+  --color-zinc-600: oklch(41.1% 0.012 52);
+  --color-zinc-700: oklch(34.4% 0.007 49);
+  --color-zinc-800: oklch(27.7% 0.005 49);
+  --color-zinc-900: oklch(24.1% 0.005 220);
+  --color-zinc-950: oklch(20.5% 0.005 49);
+  --scrollbar-thumb: #504945;
+  --chart-tick: #928374;
+  --color-blue-500: oklch(69% 0.042 170);
+}
+
+/* ═══════════════════════════════════════════════════════════════
    Theme: Dim — softer contrast for daytime use
    Shifts the zinc scale ~15% brighter, reducing eye strain.
    ═══════════════════════════════════════════════════════════════ */
