@@ -126,11 +126,9 @@ export async function assemblePortfolioView(
   });
 
   // FX markets close Friday ~22:00 UTC, reopen Sunday ~22:00 UTC.
-  // Use 48h on weekends (Sat/Sun) to avoid false positives; 24h on weekdays.
-  const now = new Date();
-  const dayOfWeek = now.getUTCDay(); // 0=Sun, 6=Sat
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-  const fxStaleThreshold = isWeekend ? 48 * 3600 : 24 * 3600;
+  // Weekend: 48h threshold (normal freeze). Weekday: 24h (catches Yahoo silently serving stale data).
+  const dayOfWeek = new Date().getUTCDay(); // 0=Sun, 6=Sat
+  const fxStaleThreshold = (dayOfWeek === 0 || dayOfWeek === 6) ? 48 * 3600 : 24 * 3600;
   const fxStale = eurUsdData?.regularMarketTime != null
     ? Date.now() / 1000 - eurUsdData.regularMarketTime > fxStaleThreshold
     : false;
