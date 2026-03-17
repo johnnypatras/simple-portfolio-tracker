@@ -27,26 +27,20 @@ import { PositionEditor } from "@/components/crypto/position-editor";
 import { AddCryptoModal } from "@/components/crypto/add-crypto-modal";
 import { StockPositionEditor } from "@/components/stocks/stock-position-editor";
 import { AddStockModal } from "@/components/stocks/add-stock-modal";
-import { BankAccountModal } from "@/components/cash/bank-account-modal";
-import { ExchangeDepositModal } from "@/components/cash/exchange-deposit-modal";
-import { BrokerDepositModal } from "@/components/cash/broker-deposit-modal";
+import { CashAccountModal } from "@/components/cash/cash-account-modal";
 import { Modal } from "@/components/ui/modal";
 import { useRouter } from "next/navigation";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
 import { deleteStockAsset } from "@/lib/actions/stocks";
-import { deleteBankAccount } from "@/lib/actions/bank-accounts";
-import { deleteExchangeDeposit } from "@/lib/actions/exchange-deposits";
-import { deleteBrokerDeposit } from "@/lib/actions/broker-deposits";
+import { deleteCashAccount } from "@/lib/actions/cash-accounts";
 import type {
   InstitutionWithRoles,
   CryptoAssetWithPositions,
   StockAssetWithPositions,
   Wallet,
   Broker,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
   CoinGeckoPriceData,
   YahooStockPriceData,
   TransferMode,
@@ -61,9 +55,7 @@ interface AccountsViewProps {
   stockAssets: StockAssetWithPositions[];
   wallets: Wallet[];
   brokers: Broker[];
-  bankAccounts: BankAccount[];
-  exchangeDeposits: ExchangeDeposit[];
-  brokerDeposits: BrokerDeposit[];
+  cashAccounts: CashAccount[];
   cryptoPrices: CoinGeckoPriceData;
   stockPrices: YahooStockPriceData;
   fxRates: FXRates;
@@ -80,9 +72,7 @@ export function AccountsView({
   stockAssets,
   wallets,
   brokers,
-  bankAccounts,
-  exchangeDeposits,
-  brokerDeposits,
+  cashAccounts,
   cryptoPrices,
   stockPrices,
   fxRates,
@@ -104,13 +94,9 @@ export function AccountsView({
   const [editingStockAsset, setEditingStockAsset] = useState<StockAssetWithPositions | null>(null);
   const [showAddStock, setShowAddStock] = useState<string | null>(null);
 
-  // Cash
-  const [editingBankAccount, setEditingBankAccount] = useState<BankAccount | null>(null);
-  const [showAddBankAccount, setShowAddBankAccount] = useState<string | null>(null);
-  const [editingExchangeDeposit, setEditingExchangeDeposit] = useState<ExchangeDeposit | null>(null);
-  const [showAddExchangeDeposit, setShowAddExchangeDeposit] = useState<string | null>(null);
-  const [editingBrokerDeposit, setEditingBrokerDeposit] = useState<BrokerDeposit | null>(null);
-  const [showAddBrokerDeposit, setShowAddBrokerDeposit] = useState<string | null>(null);
+  // Cash (unified)
+  const [editingCashAccount, setEditingCashAccount] = useState<CashAccount | null>(null);
+  const [showAddCash, setShowAddCash] = useState<{ institutionId: string; walletId?: string; brokerId?: string } | null>(null);
   const [showAllInstitutions, setShowAllInstitutions] = useState(false);
 
   // Transfer
@@ -121,7 +107,7 @@ export function AccountsView({
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<{
-    type: "crypto" | "stock" | "bank" | "exchange_deposit" | "broker_deposit";
+    type: "crypto" | "stock" | "cash";
     id: string;
     label: string;
   } | null>(null);
@@ -152,10 +138,7 @@ export function AccountsView({
     [stockAssets]
   );
 
-  const existingBankNames = useMemo(
-    () => [...new Set(bankAccounts.map((b) => b.bank_name).filter(Boolean))] as string[],
-    [bankAccounts]
-  );
+  // (existingBankNames removed — CashAccountModal doesn't need it)
 
   // ── Institution-scoped lookups ─────────────────────────
   function walletsForInstitution(instId: string): Wallet[] {
@@ -179,9 +162,7 @@ export function AccountsView({
       const deleteFns: Record<string, (id: string, opts?: { isAdjustment?: boolean }) => Promise<unknown>> = {
         crypto: deleteCryptoAsset,
         stock: deleteStockAsset,
-        bank: deleteBankAccount,
-        exchange_deposit: deleteExchangeDeposit,
-        broker_deposit: deleteBrokerDeposit,
+        cash: deleteCashAccount,
       };
       await deleteFns[deleteTarget.type](deleteTarget.id, adjOpts);
       toast.success(`Deleted ${deleteTarget.label}`);
@@ -198,12 +179,12 @@ export function AccountsView({
   const groups = useMemo(
     () => buildInstitutionGroups({
       institutions, cryptoAssets, stockAssets, wallets, brokers,
-      bankAccounts, exchangeDeposits, brokerDeposits,
+      cashAccounts,
       cryptoPrices, stockPrices, fxRates, primaryCurrency,
     }),
     [
       institutions, cryptoAssets, stockAssets, wallets, brokers,
-      bankAccounts, exchangeDeposits, brokerDeposits,
+      cashAccounts,
       cryptoPrices, stockPrices, fxRates, primaryCurrency,
     ],
   );
@@ -714,16 +695,8 @@ export function AccountsView({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (row.type === "bank") {
-                                      const acct = bankAccounts.find((b) => b.id === row.id);
-                                      if (acct) setEditingBankAccount(acct);
-                                    } else if (row.type === "exchange_deposit") {
-                                      const dep = exchangeDeposits.find((d) => d.id === row.id);
-                                      if (dep) setEditingExchangeDeposit(dep);
-                                    } else {
-                                      const dep = brokerDeposits.find((d) => d.id === row.id);
-                                      if (dep) setEditingBrokerDeposit(dep);
-                                    }
+                                    const acct = cashAccounts.find((c) => c.id === row.id);
+                                    if (acct) setEditingCashAccount(acct);
                                   }}
                                   className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                                   title="Edit"
@@ -733,7 +706,7 @@ export function AccountsView({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setDeleteTarget({ type: row.type, id: row.id, label: row.label });
+                                    setDeleteTarget({ type: "cash", id: row.id, label: row.label });
                                   }}
                                   className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                                   title="Remove"
@@ -766,16 +739,8 @@ export function AccountsView({
                                   <button
                                     onClick={() => {
                                       setActiveRowId(null);
-                                      if (row.type === "bank") {
-                                        const acct = bankAccounts.find((b) => b.id === row.id);
-                                        if (acct) setEditingBankAccount(acct);
-                                      } else if (row.type === "exchange_deposit") {
-                                        const dep = exchangeDeposits.find((d) => d.id === row.id);
-                                        if (dep) setEditingExchangeDeposit(dep);
-                                      } else {
-                                        const dep = brokerDeposits.find((d) => d.id === row.id);
-                                        if (dep) setEditingBrokerDeposit(dep);
-                                      }
+                                      const acct = cashAccounts.find((c) => c.id === row.id);
+                                      if (acct) setEditingCashAccount(acct);
                                     }}
                                     className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
                                   >
@@ -783,7 +748,7 @@ export function AccountsView({
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => { setActiveRowId(null); setDeleteTarget({ type: row.type, id: row.id, label: row.label }); }}
+                                    onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "cash", id: row.id, label: row.label }); }}
                                     className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
                                   >
                                     <Trash2 className="w-3 h-3" />
@@ -812,9 +777,7 @@ export function AccountsView({
                     isSelfCustody={isSelfCustody}
                     onAddCrypto={() => setShowAddCrypto(institution.id)}
                     onAddStock={() => setShowAddStock(institution.id)}
-                    onAddBankAccount={() => setShowAddBankAccount(institution.id)}
-                    onAddExchangeDeposit={() => setShowAddExchangeDeposit(institution.id)}
-                    onAddBrokerDeposit={() => setShowAddBrokerDeposit(institution.id)}
+                    onAddCash={(opts) => setShowAddCash({ institutionId: institution.id, ...opts })}
                   />
                 )}
               </div>
@@ -924,32 +887,18 @@ export function AccountsView({
             />
           )}
 
-          {/* Cash modals */}
-          {(editingBankAccount !== null || showAddBankAccount !== null) && (
-            <BankAccountModal
-              open
-              onClose={() => { setEditingBankAccount(null); setShowAddBankAccount(null); }}
-              editing={editingBankAccount}
-              existingBankNames={existingBankNames}
-              fxRate={eurUsdRate}
-            />
-          )}
-          {(editingExchangeDeposit !== null || showAddExchangeDeposit !== null) && (
-            <ExchangeDepositModal
-              open
-              onClose={() => { setEditingExchangeDeposit(null); setShowAddExchangeDeposit(null); }}
-              editing={editingExchangeDeposit}
-              wallets={(showAddExchangeDeposit ? walletsForInstitution(showAddExchangeDeposit) : wallets).filter((w) => w.wallet_type === "custodial")}
-              fxRate={eurUsdRate}
-            />
-          )}
-          {(editingBrokerDeposit !== null || showAddBrokerDeposit !== null) && (
-            <BrokerDepositModal
-              open
-              onClose={() => { setEditingBrokerDeposit(null); setShowAddBrokerDeposit(null); }}
-              editing={editingBrokerDeposit}
-              brokers={showAddBrokerDeposit ? brokersForInstitution(showAddBrokerDeposit) : brokers}
-              fxRate={eurUsdRate}
+          {/* Cash modal (unified) */}
+          {(editingCashAccount !== null || showAddCash !== null) && (
+            <CashAccountModal
+              isOpen
+              onClose={() => { setEditingCashAccount(null); setShowAddCash(null); }}
+              cashAccount={editingCashAccount}
+              institutionId={editingCashAccount?.institution_id ?? showAddCash?.institutionId}
+              institutionName={editingCashAccount?.institution_name ?? undefined}
+              walletId={editingCashAccount?.wallet_id ?? showAddCash?.walletId}
+              walletName={editingCashAccount?.wallet_name ?? undefined}
+              brokerId={editingCashAccount?.broker_id ?? showAddCash?.brokerId}
+              brokerName={editingCashAccount?.broker_name ?? undefined}
             />
           )}
 
@@ -1051,17 +1000,13 @@ function AddAssetDropdown({
   isSelfCustody,
   onAddCrypto,
   onAddStock,
-  onAddBankAccount,
-  onAddExchangeDeposit,
-  onAddBrokerDeposit,
+  onAddCash,
 }: {
   institution: InstitutionWithRoles;
   isSelfCustody: boolean;
   onAddCrypto: () => void;
   onAddStock: () => void;
-  onAddBankAccount: () => void;
-  onAddExchangeDeposit: () => void;
-  onAddBrokerDeposit: () => void;
+  onAddCash: (opts?: { walletId?: string; brokerId?: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1088,26 +1033,17 @@ function AddAssetDropdown({
 
   // Build available options based on roles
   const options: { label: string; onClick: () => void }[] = [];
-  const hasBothDepositRoles = !isSelfCustody && roles.includes("wallet") && roles.includes("broker");
 
   if (isSelfCustody || roles.includes("wallet")) {
     options.push({ label: "Add Crypto Asset", onClick: onAddCrypto });
   }
-  if (!isSelfCustody && roles.includes("wallet")) {
-    options.push({
-      label: hasBothDepositRoles ? "Add Exchange Deposit" : "Add Fiat Deposit",
-      onClick: onAddExchangeDeposit,
-    });
-  }
   if (roles.includes("broker")) {
     options.push({ label: "Add Stock Asset", onClick: onAddStock });
-    options.push({
-      label: hasBothDepositRoles ? "Add Broker Deposit" : "Add Fiat Deposit",
-      onClick: onAddBrokerDeposit,
-    });
   }
-  if (roles.includes("bank")) {
-    options.push({ label: "Add Bank Account", onClick: onAddBankAccount });
+  // Single "Add Cash" option for any cash-capable role
+  const hasCashRole = !isSelfCustody && (roles.includes("wallet") || roles.includes("broker") || roles.includes("bank"));
+  if (hasCashRole) {
+    options.push({ label: "Add Cash", onClick: () => onAddCash() });
   }
 
   if (options.length === 0) return null;

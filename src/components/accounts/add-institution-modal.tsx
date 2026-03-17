@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { createWallet } from "@/lib/actions/wallets";
 import { createBroker } from "@/lib/actions/brokers";
-import { createBankAccount } from "@/lib/actions/bank-accounts";
+import { createCashAccount } from "@/lib/actions/cash-accounts";
 import type { PrivacyLabel, CurrencyType } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains } from "@/lib/types";
 
@@ -79,10 +79,10 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
           { also_bank: wantBank }
         );
       } else if (wantBank) {
-        await createBankAccount({
+        await createCashAccount({
           name: bankAccountName || "Main Account",
-          bank_name: name,
           currency: bankCurrency,
+          balance: 0,
         });
       }
 

@@ -7,9 +7,7 @@ import { toast } from "sonner";
 import { executeTransfer } from "@/lib/actions/transfers";
 import { getWallets } from "@/lib/actions/wallets";
 import { getBrokers } from "@/lib/actions/brokers";
-import { getBankAccounts } from "@/lib/actions/bank-accounts";
-import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
-import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
+import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import type {
@@ -18,9 +16,7 @@ import type {
   TransferInput,
   Wallet,
   Broker,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
   CryptoAssetWithPositions,
   StockAssetWithPositions,
   YahooSearchResult,
@@ -33,16 +29,12 @@ import type {
 // ─── Destination type tabs ──────────────────────────────────
 
 type DestType =
-  | "broker_deposit"
-  | "exchange_deposit"
-  | "bank_account"
+  | "cash_account"
   | "crypto_position"
   | "stock_position";
 
 const DEST_TABS: { value: DestType; label: string }[] = [
-  { value: "broker_deposit", label: "Broker Cash" },
-  { value: "exchange_deposit", label: "Exchange Cash" },
-  { value: "bank_account", label: "Bank" },
+  { value: "cash_account", label: "Cash" },
   { value: "crypto_position", label: "Crypto" },
   { value: "stock_position", label: "Stock" },
 ];
@@ -101,16 +93,14 @@ export function TransferDialog({
   // ── Data state ──
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [exchangeDeposits, setExchangeDeposits] = useState<ExchangeDeposit[]>([]);
-  const [brokerDeposits, setBrokerDeposits] = useState<BrokerDeposit[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [cryptoAssets, setCryptoAssets] = useState<CryptoAssetWithPositions[]>([]);
   const [stockAssets, setStockAssets] = useState<StockAssetWithPositions[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   // ── Form state ──
   const [sourceQty, setSourceQty] = useState("");
-  const [destType, setDestType] = useState<DestType>("broker_deposit");
+  const [destType, setDestType] = useState<DestType>("cash_account");
   const [destLocationId, setDestLocationId] = useState("");
   const [destCurrency, setDestCurrency] = useState("EUR");
   const [destAmount, setDestAmount] = useState("");
@@ -183,18 +173,14 @@ export function TransferDialog({
     Promise.all([
       getWallets(),
       getBrokers(),
-      getBankAccounts(),
-      getExchangeDeposits(),
-      getBrokerDeposits(),
+      getCashAccounts(),
       getCryptoAssetsWithPositions(),
       getStockAssetsWithPositions(),
-    ]).then(([w, b, ba, ed, bd, ca, sa]) => {
+    ]).then(([w, b, cash, ca, sa]) => {
       if (cancelled) return;
       setWallets(w ?? []);
       setBrokers(b ?? []);
-      setBankAccounts(ba ?? []);
-      setExchangeDeposits(ed ?? []);
-      setBrokerDeposits(bd ?? []);
+      setCashAccounts(cash ?? []);
       setCryptoAssets(ca ?? []);
       setStockAssets(sa ?? []);
       setDataLoading(false);
@@ -211,7 +197,7 @@ export function TransferDialog({
   useEffect(() => {
     if (!open) return;
     setSourceQty(currentQtyRef.current?.toString() ?? "");
-    setDestType("broker_deposit");
+    setDestType("cash_account");
     setDestLocationId("");
     setDestCurrency("EUR");
     setDestAmount("");
@@ -318,30 +304,19 @@ export function TransferDialog({
       if (mode === "buy") setCashState("prompt");
       return;
     }
-    if (buyAssetType === "stock") {
-      const deposit = brokerDeposits.find(
-        (d) => d.broker_id === buyLocationId && d.currency === buyAssetCurrency
-      );
-      if (deposit) {
-        setExistingCashAmount(deposit.amount);
-        setCashState("auto");
-      } else {
-        setExistingCashAmount(null);
-        setCashState("prompt");
-      }
+    // Find matching cash account by broker/wallet + currency
+    const matchingCash = cashAccounts.find((ca) => {
+      if (buyAssetType === "stock") return ca.broker_id === buyLocationId && ca.currency === buyAssetCurrency;
+      return ca.wallet_id === buyLocationId && ca.currency === buyAssetCurrency;
+    });
+    if (matchingCash) {
+      setExistingCashAmount(matchingCash.balance);
+      setCashState("auto");
     } else {
-      const deposit = exchangeDeposits.find(
-        (d) => d.wallet_id === buyLocationId && d.currency === buyAssetCurrency
-      );
-      if (deposit) {
-        setExistingCashAmount(deposit.amount);
-        setCashState("auto");
-      } else {
-        setExistingCashAmount(null);
-        setCashState("prompt");
-      }
+      setExistingCashAmount(null);
+      setCashState("prompt");
     }
-  }, [buyLocationId, buyAssetCurrency, buyAssetType, brokerDeposits, exchangeDeposits, mode, buyCreatingNew]);
+  }, [buyLocationId, buyAssetCurrency, buyAssetType, cashAccounts, mode, buyCreatingNew]);
 
   // ── Buy mode: auto-calculated value ──
   const buyValue = useMemo(() => {
@@ -404,44 +379,31 @@ export function TransferDialog({
       }
     }
 
-    // Bank accounts
-    for (const ba of bankAccounts) {
-      if (ba.balance <= 0) continue;
-      if (initialInstitutionId && ba.institution_id !== initialInstitutionId) continue;
+    // Cash accounts (unified)
+    for (const ca of cashAccounts) {
+      if (ca.balance <= 0) continue;
+      // Filter by institution for scoped transfers
+      if (initialInstitutionId && ca.institution_id !== initialInstitutionId) {
+        // Also match via wallet/broker indirection
+        if (instWalletIds && ca.wallet_id && !instWalletIds.has(ca.wallet_id)) continue;
+        if (instBrokerIds && ca.broker_id && !instBrokerIds.has(ca.broker_id)) continue;
+        if (!ca.wallet_id && !ca.broker_id) continue;
+      }
+      const displayName = ca.wallet_name
+        ? `${ca.wallet_name} - ${ca.currency}`
+        : ca.broker_name
+          ? `${ca.broker_name} - ${ca.currency}`
+          : `${ca.name ?? "Account"} (${ca.currency})`;
       push("Cash", {
-        id: `bank|${ba.id}`,
-        name: `${ba.name} (${ba.currency})`,
-        available: ba.balance,
-        unit: ba.currency,
-      });
-    }
-
-    // Exchange deposits
-    for (const ed of exchangeDeposits) {
-      if (ed.amount <= 0) continue;
-      if (instWalletIds && !instWalletIds.has(ed.wallet_id)) continue;
-      push("Cash", {
-        id: `exchange|${ed.wallet_id}|${ed.currency}`,
-        name: `${ed.wallet_name} - ${ed.currency}`,
-        available: ed.amount,
-        unit: ed.currency,
-      });
-    }
-
-    // Broker deposits
-    for (const bd of brokerDeposits) {
-      if (bd.amount <= 0) continue;
-      if (instBrokerIds && !instBrokerIds.has(bd.broker_id)) continue;
-      push("Cash", {
-        id: `broker|${bd.broker_id}|${bd.currency}`,
-        name: `${bd.broker_name} - ${bd.currency}`,
-        available: bd.amount,
-        unit: bd.currency,
+        id: `cash|${ca.id}`,
+        name: displayName,
+        available: ca.balance,
+        unit: ca.currency,
       });
     }
 
     return groups;
-  }, [needsPicker, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits, instWalletIds, instBrokerIds, initialInstitutionId]);
+  }, [needsPicker, cryptoAssets, stockAssets, cashAccounts, instWalletIds, instBrokerIds, initialInstitutionId]);
 
   const srcSelected = useMemo(() => {
     for (const opts of srcGroupedOptions.values()) {
@@ -452,12 +414,12 @@ export function TransferDialog({
   }, [srcGroupedOptions, srcLocationId]);
 
   // ── Auto-calculate destination amount ──
-  const srcIsCash = srcLocationId.startsWith("bank|") || srcLocationId.startsWith("exchange|") || srcLocationId.startsWith("broker|");
+  const srcIsCash = srcLocationId.startsWith("cash|");
   const autoCalcValue = useMemo(() => {
     // Generic picker: cash→cash mirrors amount directly
     if (needsPicker && srcIsCash) {
       const amt = parseFloat(srcAmount);
-      if (!isNaN(amt) && amt > 0 && (destType === "broker_deposit" || destType === "exchange_deposit" || destType === "bank_account")) {
+      if (!isNaN(amt) && amt > 0 && (destType === "cash_account")) {
         return amt;
       }
     }
@@ -470,7 +432,7 @@ export function TransferDialog({
     // Asset -> Cash: pick price matching destination currency
     if (
       mode === "sell" &&
-      (destType === "broker_deposit" || destType === "exchange_deposit" || destType === "bank_account")
+      (destType === "cash_account")
     ) {
       const priceForDest =
         destCurrency === "USD" ? (prefilled.currentPriceUsd ?? prefilled.currentPrice) :
@@ -521,20 +483,10 @@ export function TransferDialog({
           if (!assetId || !brokerId) return null;
           return { type: "stock_position", assetId, brokerId, quantity: amt };
         }
-        case "bank": {
+        case "cash": {
           const [, accountId] = parts;
           if (!accountId) return null;
-          return { type: "bank_account", accountId, amount: amt };
-        }
-        case "exchange": {
-          const [, walletId, currency] = parts;
-          if (!walletId || !currency) return null;
-          return { type: "exchange_deposit", walletId, currency, amount: amt };
-        }
-        case "broker": {
-          const [, brokerId, currency] = parts;
-          if (!brokerId || !currency) return null;
-          return { type: "broker_deposit", brokerId, currency, amount: amt };
+          return { type: "cash_account", accountId, amount: amt };
         }
         default:
           return null;
@@ -588,28 +540,10 @@ export function TransferDialog({
     if (isNaN(amt) || amt <= 0) return null;
 
     switch (destType) {
-      case "broker_deposit": {
+      case "cash_account": {
         if (!destLocationId) return null;
         return {
-          type: "broker_deposit",
-          brokerId: destLocationId,
-          currency: destCurrency,
-          amount: amt,
-        };
-      }
-      case "exchange_deposit": {
-        if (!destLocationId) return null;
-        return {
-          type: "exchange_deposit",
-          walletId: destLocationId,
-          currency: destCurrency,
-          amount: amt,
-        };
-      }
-      case "bank_account": {
-        if (!destLocationId) return null;
-        return {
-          type: "bank_account",
+          type: "cash_account",
           accountId: destLocationId,
           amount: amt,
         };
@@ -658,17 +592,15 @@ export function TransferDialog({
   // ── Destination location options ──
   const destLocationOptions = useMemo(() => {
     switch (destType) {
-      case "broker_deposit":
-        return brokers.map((b) => ({ id: b.id, name: b.name }));
-      case "exchange_deposit":
-        return wallets
-          .filter((w) => w.wallet_type === "custodial")
-          .map((w) => ({ id: w.id, name: w.name }));
-      case "bank_account":
-        return bankAccounts.map((ba) => ({
-          id: ba.id,
-          name: `${ba.name} (${ba.bank_name}) - ${ba.currency}`,
-        }));
+      case "cash_account":
+        return cashAccounts.map((ca) => {
+          const displayName = ca.wallet_name
+            ? `${ca.wallet_name} - ${ca.currency}`
+            : ca.broker_name
+              ? `${ca.broker_name} - ${ca.currency}`
+              : `${ca.name ?? "Account"} (${ca.institution_name ?? ""}) - ${ca.currency}`;
+          return { id: ca.id, name: displayName };
+        });
       case "crypto_position": {
         const opts: { id: string; name: string }[] = [];
         for (const ca of cryptoAssets) {
@@ -713,7 +645,7 @@ export function TransferDialog({
         return opts;
       }
     }
-  }, [destType, brokers, wallets, bankAccounts, cryptoAssets, stockAssets]);
+  }, [destType, brokers, wallets, cashAccounts, cryptoAssets, stockAssets]);
 
   // ── Execute ──
   async function handleExecute() {
@@ -788,12 +720,16 @@ export function TransferDialog({
           ? buyValue ?? 0
           : 0;
 
-      if (cashState !== "skipped") {
-        if (buyAssetType === "stock") {
-          source = { type: "broker_deposit", brokerId: destLocId, currency: buyAssetCurrency, amount: cashAmount };
-        } else {
-          source = { type: "exchange_deposit", walletId: destLocId, currency: buyAssetCurrency, amount: cashAmount };
+      if (cashState !== "skipped" && cashAmount > 0) {
+        // Find existing cash account at this location/currency, or pass a placeholder
+        const matchingCash = cashAccounts.find((ca) => {
+          if (buyAssetType === "stock") return ca.broker_id === destLocId && ca.currency === buyAssetCurrency;
+          return ca.wallet_id === destLocId && ca.currency === buyAssetCurrency;
+        });
+        if (matchingCash) {
+          source = { type: "cash_account", accountId: matchingCash.id, amount: cashAmount };
         }
+        // If no existing cash account, the transfer will create one via newCashDeposit
       }
 
       const transferInput: TransferInput = {
@@ -1176,7 +1112,7 @@ export function TransferDialog({
             {autoCalcValue !== null && mode !== "move" && (
               <span className="text-xs text-zinc-400">
                 ~{parseFloat(destAmount || "0").toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                {" "}{destType === "bank_account" ? "" : destCurrency}
+                {" "}{destCurrency}
               </span>
             )}
             <div className="h-px flex-1 bg-zinc-800" />
@@ -1313,7 +1249,7 @@ export function TransferDialog({
                 {/* Location picker */}
                 <div>
                   <label htmlFor={`${id}-dest-location`} className="block text-xs text-zinc-500 mb-1">
-                    {destType === "bank_account" ? "Account" : "Location"}
+                    {"Location"}
                   </label>
                   <select
                     id={`${id}-dest-location`}
@@ -1331,7 +1267,7 @@ export function TransferDialog({
                 </div>
 
                 {/* Currency for cash destinations */}
-                {(destType === "broker_deposit" || destType === "exchange_deposit") && (
+                {destType === "cash_account" && (
                   <div>
                     <label htmlFor={`${id}-dest-currency`} className="block text-xs text-zinc-500 mb-1">
                       Currency
@@ -1431,7 +1367,7 @@ export function TransferDialog({
             <p className="text-xs text-amber-400">
               Fee / difference: {feeAmount > 0 ? "+" : ""}
               {feeAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              {" "}{destType === "bank_account" ? "" : destCurrency}
+              {" "}{destCurrency}
             </p>
           )}
 
