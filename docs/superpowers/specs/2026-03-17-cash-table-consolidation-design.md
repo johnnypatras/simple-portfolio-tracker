@@ -136,28 +136,94 @@ BEGIN
 END $$;
 ```
 
-### Step 1b: Pre-flight orphan check
+### Step 1b: Pre-flight safety checks
 
 ```sql
--- Verify no exchange_deposits reference hard-deleted wallets
 DO $$
-DECLARE orphan_count int;
+DECLARE cnt int;
 BEGIN
-  SELECT count(*) INTO orphan_count
-  FROM exchange_deposits ed
-  LEFT JOIN wallets w ON w.id = ed.wallet_id
-  WHERE w.id IS NULL;
-  IF orphan_count > 0 THEN
-    RAISE EXCEPTION 'Migration blocked: % exchange_deposits have orphaned wallet_id', orphan_count;
-  END IF;
+  -- 1. No exchange_deposits with hard-deleted wallets
+  SELECT count(*) INTO cnt FROM exchange_deposits ed
+    LEFT JOIN wallets w ON w.id = ed.wallet_id WHERE w.id IS NULL;
+  IF cnt > 0 THEN RAISE EXCEPTION 'Blocked: % exchange_deposits have orphaned wallet_id', cnt; END IF;
 
-  SELECT count(*) INTO orphan_count
-  FROM broker_deposits bd
-  LEFT JOIN brokers b ON b.id = bd.broker_id
-  WHERE b.id IS NULL;
-  IF orphan_count > 0 THEN
-    RAISE EXCEPTION 'Migration blocked: % broker_deposits have orphaned broker_id', orphan_count;
-  END IF;
+  -- 2. No broker_deposits with hard-deleted brokers
+  SELECT count(*) INTO cnt FROM broker_deposits bd
+    LEFT JOIN brokers b ON b.id = bd.broker_id WHERE b.id IS NULL;
+  IF cnt > 0 THEN RAISE EXCEPTION 'Blocked: % broker_deposits have orphaned broker_id', cnt; END IF;
+
+  -- 3. No wallets with NULL institution_id (would produce NULL-institution cash_accounts)
+  SELECT count(*) INTO cnt FROM wallets w
+    JOIN exchange_deposits ed ON ed.wallet_id = w.id AND ed.deleted_at IS NULL
+    WHERE w.institution_id IS NULL AND w.deleted_at IS NULL;
+  IF cnt > 0 THEN RAISE EXCEPTION 'Blocked: % active exchange_deposits have wallet with NULL institution_id', cnt; END IF;
+
+  -- 4. No brokers with NULL institution_id
+  SELECT count(*) INTO cnt FROM brokers b
+    JOIN broker_deposits bd ON bd.broker_id = b.id AND bd.deleted_at IS NULL
+    WHERE b.institution_id IS NULL AND b.deleted_at IS NULL;
+  IF cnt > 0 THEN RAISE EXCEPTION 'Blocked: % active broker_deposits have broker with NULL institution_id', cnt; END IF;
+END $$;
+```
+
+### Step 1c: Merge cross-table duplicates before migration
+
+If a user has both an exchange_deposit EUR and broker_deposit EUR at the same institution, both would get `name=NULL` and collide on the unique index. Detect and merge these BEFORE creating the new table.
+
+```sql
+-- Detect cross-table duplicates: deposits at same institution+currency that would collide
+-- (both get name=NULL → COALESCE to '' → identical unique index tuple)
+-- Strategy: keep the one with the higher balance, absorb the other's amount, soft-delete it
+DO $$
+DECLARE
+  dup RECORD;
+BEGIN
+  FOR dup IN
+    WITH deposit_institutions AS (
+      -- Exchange deposits with their institution
+      SELECT ed.id, ed.user_id, w.institution_id, ed.currency, ed.amount, 'exchange' AS origin, ed.deleted_at
+      FROM exchange_deposits ed JOIN wallets w ON w.id = ed.wallet_id
+      WHERE ed.deleted_at IS NULL
+      UNION ALL
+      -- Broker deposits with their institution
+      SELECT bd.id, bd.user_id, b.institution_id, bd.currency, bd.amount, 'broker' AS origin, bd.deleted_at
+      FROM broker_deposits bd JOIN brokers b ON b.id = bd.broker_id
+      WHERE bd.deleted_at IS NULL
+    ),
+    duplicates AS (
+      SELECT user_id, institution_id, currency, count(*) AS cnt
+      FROM deposit_institutions
+      GROUP BY user_id, institution_id, currency
+      HAVING count(*) > 1
+    )
+    SELECT d.user_id, d.institution_id, d.currency
+    FROM duplicates d
+  LOOP
+    -- Log for manual review (these will be auto-merged)
+    RAISE NOTICE 'Merging duplicate deposits: user=%, institution=%, currency=%',
+      dup.user_id, dup.institution_id, dup.currency;
+
+    -- Merge: add broker_deposit amount to exchange_deposit, soft-delete broker_deposit
+    -- (prefer exchange_deposit as survivor — it has wallet_id which is more useful)
+    UPDATE exchange_deposits ed SET amount = ed.amount + (
+      SELECT COALESCE(SUM(bd.amount), 0) FROM broker_deposits bd
+      JOIN brokers b ON b.id = bd.broker_id
+      WHERE b.institution_id = dup.institution_id AND bd.currency = dup.currency
+        AND bd.user_id = dup.user_id AND bd.deleted_at IS NULL
+    )
+    FROM wallets w
+    WHERE ed.wallet_id = w.id AND w.institution_id = dup.institution_id
+      AND ed.currency = dup.currency AND ed.user_id = dup.user_id AND ed.deleted_at IS NULL;
+
+    UPDATE broker_deposits bd SET deleted_at = now()
+    FROM brokers b
+    WHERE bd.broker_id = b.id AND b.institution_id = dup.institution_id
+      AND bd.currency = dup.currency AND bd.user_id = dup.user_id AND bd.deleted_at IS NULL;
+  END LOOP;
+
+  -- Also check: bank_account (unnamed) + deposit at same institution+currency
+  -- Bank accounts always have names (NOT NULL), so their COALESCE differs from deposits (NULL→'').
+  -- These will NOT collide on the unique index. No merge needed for bank+deposit pairs.
 END $$;
 ```
 
@@ -251,7 +317,8 @@ DROP TRIGGER IF EXISTS update_broker_deposits_updated_at ON broker_deposits_depr
 Three remapping layers applied at the start of `undoSingleEntry`:
 
 ```typescript
-// Table resolution — apply before all 5 .from() call sites
+// Table resolution — apply before all 6 dynamic .from() call sites
+// (5 × log.entity_table + 1 × comp.entity_table in rollbackCompensation)
 const TABLE_REMAP: Record<string, string> = {
   bank_accounts: "cash_accounts",
   exchange_deposits: "cash_accounts",
@@ -324,7 +391,11 @@ type TransferSide =
 
 // SourceOriginalState: collapse 3 cash variants into 1
 // Old bank_account variant had: id, balance, name, bank_name, currency
-// New cash_account variant: id, balance (no bank_name — institution name via JOIN)
+// New cash_account variant: id, balance only.
+// Dropped fields:
+//   - bank_name: institution name via JOIN, not stored on cash_accounts
+//   - name: not needed for rollback (rollback only reverses balance delta)
+//   - currency: not needed for rollback (FX conversion uses prices fetched separately)
 type SourceOriginalState =
   | { type: "crypto_position"; quantity: number }
   | { type: "stock_position"; quantity: number }
@@ -526,6 +597,19 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 - Add Cash — form shows name field for bank role, blocks duplicate
 - Merge banner — appears for invalid states, merge action works
 
+### Existing Test Files Requiring Updates (8 files, ~25 cases)
+
+| File | Layer | Action | Cases |
+|------|-------|--------|-------|
+| `institution-grouping.test.ts` | Unit | **Rewrite** factories + assertions. Replace `BankAccount`/`ExchangeDeposit`/`BrokerDeposit` with `CashAccount`. Update `.type` string assertions. | ~8 |
+| `holdings.test.ts` | Unit | Update type import, inline object shapes, call-site prop names | ~4 |
+| `activity-log.test.ts` | Unit | Update/collapse `cashAmountField` string literal tests. May delete 2 of 3 if function simplifies. | ~3 |
+| `cashflow.test.ts` | Unit | Update/collapse `classifyAssetClass` string literal tests. May delete 2 of 3. | ~3 |
+| `migration-bootstrap.test.ts` | Integration | Replace 3 old table names with `cash_accounts` in expected-tables array | 1 |
+| `cascade-delete.test.ts` | Integration | **Partial rewrite** of 3 cascade test cases (institution→bank, wallet→exchange, broker→broker_deposit). Table names + trigger behavior changed. | 3 |
+| `cashflow-write.test.ts` | Integration | Change `entity_type: "bank_account"` → `"cash_account"` | 1 |
+| `transfer-rollback.test.ts` | Integration | Change `entity_type: "exchange_deposit"` → `"cash_account"` (2 string literals) | 1 |
+
 ## 9. Risks and Mitigations
 
 | Risk | Mitigation |
@@ -533,7 +617,7 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 | Migration fails on unique constraint (existing duplicates) | Pre-migration query to detect and merge duplicates before applying constraint |
 | NULL institution_id on legacy bank_accounts | Backfill step with verification assertion before data migration |
 | Orphaned deposits (wallet/broker hard-deleted) silently dropped by INNER JOIN | Pre-flight orphan check: `LEFT JOIN ... WHERE w.id IS NULL` must return 0 for both exchange_deposits and broker_deposits |
-| Undo breaks for historical entries | TABLE_REMAP + SNAPSHOT_FIELD_REMAP at all dynamic `.from(variable)` call sites (6+), tested with real historical data |
+| Undo breaks for historical entries | TABLE_REMAP + SNAPSHOT_FIELD_REMAP at all 6 dynamic `.from()` sites (5 × `log.entity_table` + 1 × `comp.entity_table`), tested with real historical data |
 | Import of old backup creates duplicates | Cross-table dedup via `findExistingCash()` during import |
 | Import v3 backup rejected by old validation | Version-conditional `validateBackup`: v1/v2 require old 3 arrays, v3 requires `cashAccounts` |
 | cascade_soft_delete references old tables | Updated in same migration transaction |
@@ -547,9 +631,13 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 | Reviewer | Focus | Key Findings |
 |----------|-------|-------------|
 | Software Architect | Schema design, approach validation | Confirmed Approach B, dropped `origin` column, added `chk_cash_origin` |
-| Database Optimizer | Indexes, constraints, query patterns | Composite institution+currency index, `chk_name_not_empty`, `chk_bank_has_name`, updated_at trigger |
+| Database Optimizer | Indexes, constraints, query patterns | Composite institution+currency index, `chk_name_not_empty`, `chk_bank_requires_name`, updated_at trigger |
 | Security Engineer | RLS, grants, triggers, FKs | Critical: cascade_soft_delete + sync_institution_name triggers, GRANTs required, FK ON DELETE SET NULL for wallet/broker |
 | Backend Architect | Undo, import/export, migration | 5 `.from()` remap sites, snapshot field mismatch, break client immediately, cashAmountField update |
 | Spec Reviewer (Code Reviewer) | Completeness, correctness, consistency | institution_id NOT NULL vs ON DELETE SET NULL conflict, entity_type enum permanence, currency type doc, backfill verification, migration JOIN safety, findExistingCash user_id filter |
 | App Code Auditor (code-explorer) | Line-by-line audit of all 36 files | 12 gaps: SourceOriginalState bank_name, validateBackup v3, CashEntityType union, undo .from() count, HoldingItem type naming, ENTITY_FILTER_OPTIONS, import label text |
 | DB Layer Auditor (code-explorer) | Full migration inventory: tables, indexes, triggers, functions, FKs, grants, RLS, edge function | Pre-flight orphan check, bank_name drop documentation, FK behavior change, deprecated table index cleanup |
+| Undo Scenario Tracer | End-to-end trace of historical exchange_deposit undo | Confirmed 6 .from() sites, verified TABLE_REMAP + SNAPSHOT_FIELD_REMAP design works at each step, flagged compensation entity_table must use resolved name |
+| Test Auditor | All test files under __tests__/ | 8 files / ~25 cases need updating. institution-grouping.test.ts needs full rewrite, cascade-delete.test.ts needs partial rewrite |
+| SQL Verification | Migration SQL correctness against PG 15 | **Critical**: cross-table duplicate merge step missing (exchange+broker at same inst+currency collide on unique index). Also: wallets/brokers NULL institution_id pre-flight check |
+| Spec Coherence Reviewer | Internal consistency after 3 rounds of edits | .from() count mismatch, stale constraint name, SourceOriginalState currency drop undocumented |
