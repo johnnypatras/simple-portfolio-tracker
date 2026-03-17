@@ -524,7 +524,7 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 |------|--------|
 | **Server Actions** | |
 | `transfers.ts` | 5 branches → 3 per function, unified cash_account handling, `findExistingCash()` |
-| `undo.ts` | TABLE_REMAP, SNAPSHOT_FIELD_REMAP at all 5 `.from()` sites |
+| `undo.ts` | TABLE_REMAP, SNAPSHOT_FIELD_REMAP at all 6 dynamic `.from()` sites |
 | `institutions.ts` | `also_bank` cross-check, role removal migration |
 | `import.ts` | 3 blocks → 1, v3 format, v1/v2 normalization |
 | `export.ts` | 3 sections → 1, dual-format output for backward compat |
