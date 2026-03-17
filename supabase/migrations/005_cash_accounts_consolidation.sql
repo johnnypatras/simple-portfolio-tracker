@@ -57,7 +57,39 @@ $$;
 -- 2. Pre-flight safety checks
 -- ────────────────────────────────────────────────────────────────────────────
 
--- Check for orphaned exchange_deposits (wallet_id → wallet with NULL institution_id)
+-- Check for exchange_deposits referencing hard-deleted wallets (would be dropped by INNER JOIN)
+DO $$
+DECLARE
+  orphan_count integer;
+BEGIN
+  SELECT count(*) INTO orphan_count
+  FROM exchange_deposits ed
+  LEFT JOIN wallets w ON w.id = ed.wallet_id
+  WHERE w.id IS NULL;
+
+  IF orphan_count > 0 THEN
+    RAISE EXCEPTION '% exchange_deposit(s) reference non-existent wallets — fix before migrating', orphan_count;
+  END IF;
+END;
+$$;
+
+-- Check for broker_deposits referencing hard-deleted brokers
+DO $$
+DECLARE
+  orphan_count integer;
+BEGIN
+  SELECT count(*) INTO orphan_count
+  FROM broker_deposits bd
+  LEFT JOIN brokers b ON b.id = bd.broker_id
+  WHERE b.id IS NULL;
+
+  IF orphan_count > 0 THEN
+    RAISE EXCEPTION '% broker_deposit(s) reference non-existent brokers — fix before migrating', orphan_count;
+  END IF;
+END;
+$$;
+
+-- Check for active exchange_deposits whose wallet has NULL institution_id
 DO $$
 DECLARE
   orphan_count integer;
@@ -75,7 +107,7 @@ BEGIN
 END;
 $$;
 
--- Check for orphaned broker_deposits (broker_id → broker with NULL institution_id)
+-- Check for active broker_deposits whose broker has NULL institution_id
 DO $$
 DECLARE
   orphan_count integer;
