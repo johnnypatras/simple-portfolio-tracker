@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildPaletteHoldings } from "@/lib/portfolio/holdings";
 import type {
   CryptoAssetWithPositions,
-  BankAccount,
+  CashAccount,
 } from "@/lib/types";
 
 describe("buildPaletteHoldings", () => {
@@ -34,19 +34,23 @@ describe("buildPaletteHoldings", () => {
       },
     ];
 
-    const bankAccounts: BankAccount[] = [
+    const cashAccounts: CashAccount[] = [
       {
         id: "ba1",
-        name: "Alpha Bank",
-        bank_name: "Alpha Bank",
-        region: "GR",
-        balance: 5000,
-        currency: "EUR",
-        apy: 0,
-        institution_id: null,
         user_id: "u",
+        institution_id: null,
+        name: "Alpha Bank",
+        currency: "EUR",
+        balance: 5000,
+        apy: 0,
+        region: "GR",
+        wallet_id: null,
+        broker_id: null,
+        last_was_adjustment: false,
+        last_was_transfer: false,
         created_at: "",
         updated_at: "",
+        deleted_at: null,
       },
     ];
 
@@ -57,17 +61,15 @@ describe("buildPaletteHoldings", () => {
       },
       stockAssets: [],
       stockPrices: {},
-      bankAccounts,
-      exchangeDeposits: [],
-      brokerDeposits: [],
+      cashAccounts,
       fxRates: { USD: 1.09, EUR: 1 },
       primaryCurrency: "EUR",
       pathPrefix: "/dashboard",
     });
 
-    expect(result).toHaveLength(2); // 1 crypto + 1 bank
+    expect(result).toHaveLength(2); // 1 crypto + 1 cash
     expect(result.find((h) => h.ticker === "BTC")?.type).toBe("crypto");
-    expect(result.find((h) => h.type === "bank")?.detailPath).toBe(
+    expect(result.find((h) => h.type === "cash")?.detailPath).toBe(
       "/dashboard/cash"
     );
   });
@@ -78,9 +80,7 @@ describe("buildPaletteHoldings", () => {
       cryptoPrices: {},
       stockAssets: [],
       stockPrices: {},
-      bankAccounts: [],
-      exchangeDeposits: [],
-      brokerDeposits: [],
+      cashAccounts: [],
       fxRates: {},
       primaryCurrency: "EUR",
       pathPrefix: "/dashboard",
@@ -94,23 +94,25 @@ describe("buildPaletteHoldings", () => {
       cryptoPrices: {},
       stockAssets: [],
       stockPrices: {},
-      bankAccounts: [
+      cashAccounts: [
         {
           id: "ba1",
-          name: "USD Account",
-          bank_name: "Test",
-          region: "US",
-          balance: 109,
-          currency: "USD",
-          apy: 0,
-          institution_id: null,
           user_id: "u",
+          institution_id: null,
+          name: "USD Account",
+          currency: "USD",
+          balance: 109,
+          apy: 0,
+          region: "US",
+          wallet_id: null,
+          broker_id: null,
+          last_was_adjustment: false,
+          last_was_transfer: false,
           created_at: "",
           updated_at: "",
+          deleted_at: null,
         },
       ],
-      exchangeDeposits: [],
-      brokerDeposits: [],
       // 1 EUR = 1.09 USD → $109 = €100
       fxRates: { USD: 1.09, EUR: 1 },
       primaryCurrency: "EUR",
@@ -121,19 +123,23 @@ describe("buildPaletteHoldings", () => {
   });
 
   it("applies pathPrefix correctly for share pages", () => {
-    const bankAccounts: BankAccount[] = [
+    const cashAccounts: CashAccount[] = [
       {
         id: "ba1",
-        name: "T",
-        bank_name: "Test Bank",
-        region: "US",
-        balance: 100,
-        currency: "USD",
-        apy: 0,
-        institution_id: null,
         user_id: "u",
+        institution_id: null,
+        name: "T",
+        currency: "USD",
+        balance: 100,
+        apy: 0,
+        region: "US",
+        wallet_id: null,
+        broker_id: null,
+        last_was_adjustment: false,
+        last_was_transfer: false,
         created_at: "",
         updated_at: "",
+        deleted_at: null,
       },
     ];
 
@@ -142,9 +148,7 @@ describe("buildPaletteHoldings", () => {
       cryptoPrices: {},
       stockAssets: [],
       stockPrices: {},
-      bankAccounts,
-      exchangeDeposits: [],
-      brokerDeposits: [],
+      cashAccounts,
       fxRates: { USD: 1 },
       primaryCurrency: "USD",
       pathPrefix: "/share/abc123",

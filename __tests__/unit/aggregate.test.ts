@@ -51,7 +51,7 @@ describe("aggregatePortfolio", () => {
       }],
       cryptoPrices: { "usd-coin": { usd: 1, eur: 0.92, usd_24h_change: 0, eur_24h_change: 0 } },
       stockAssets: [], stockPrices: {},
-      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      cashAccounts: [],
       primaryCurrency: "USD", fxRates: { USD: 1 },
     });
     expect(result.cryptoValue).toBe(0);
@@ -63,7 +63,7 @@ describe("aggregatePortfolio", () => {
     const result = aggregatePortfolio({
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [], stockPrices: {},
-      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      cashAccounts: [],
       primaryCurrency: "EUR", fxRates: { EUR: 1 },
     });
     expect(result.totalValue).toBe(0);
@@ -80,13 +80,13 @@ describe("aggregatePortfolio", () => {
       }],
       cryptoPrices: { bitcoin: { usd: 50000, eur: 46000, usd_24h_change: 2, eur_24h_change: 1.5 } },
       stockAssets: [], stockPrices: {},
-      bankAccounts: [{
-        id: "ba1", name: "Bank", bank_name: "TestBank", region: "EU",
-        balance: 5000, currency: "EUR", apy: 0, institution_id: null,
-        user_id: "u1", created_at: "", updated_at: "", deleted_at: null,
+      cashAccounts: [{
+        id: "ba1", user_id: "u1", institution_id: null, name: "Bank",
+        currency: "EUR", balance: 5000, apy: 0, region: "EU",
+        wallet_id: null, broker_id: null,
         last_was_adjustment: false, last_was_transfer: false,
+        created_at: "", updated_at: "", deleted_at: null,
       }],
-      exchangeDeposits: [], brokerDeposits: [],
       primaryCurrency: "EUR", fxRates: { EUR: 1, USD: 1.09 },
     });
     const sum = result.cryptoValue + result.stocksValue + result.cashValue;
@@ -105,7 +105,7 @@ describe("aggregatePortfolio", () => {
         positions: [stockPos(10, "sa1")],
       }],
       stockPrices: { AAPL: { price: 200, change24h: 1, currency: "GBP" } },
-      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      cashAccounts: [],
       primaryCurrency: "USD", fxRates: { USD: 1 }, // GBP missing
     });
     expect(result.stocksValue).toBe(2000); // unconverted, not zero
@@ -122,7 +122,7 @@ describe("aggregatePortfolio", () => {
         positions: [stockPos(5, "sa1")],
       }],
       stockPrices: { AAPL: { price: 200, change24h: 1 } },
-      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      cashAccounts: [],
       primaryCurrency: "EUR", fxRates: { EUR: 1, USD: 1.10 },
     });
     // 5 × $200 = $1000 → EUR: $1000 / 1.10 ≈ €909.09
@@ -139,13 +139,13 @@ describe("aggregatePortfolio", () => {
       }],
       cryptoPrices: { bitcoin: { usd: 50000, eur: 50000, usd_24h_change: 0, eur_24h_change: 0 } },
       stockAssets: [], stockPrices: {},
-      bankAccounts: [{
-        id: "ba1", name: "Bank", bank_name: "TestBank", region: "EU",
-        balance: 50000, currency: "USD", apy: 0, institution_id: null,
-        user_id: "u1", created_at: "", updated_at: "", deleted_at: null,
+      cashAccounts: [{
+        id: "ba1", user_id: "u1", institution_id: null, name: "Bank",
+        currency: "USD", balance: 50000, apy: 0, region: "EU",
+        wallet_id: null, broker_id: null,
         last_was_adjustment: false, last_was_transfer: false,
+        created_at: "", updated_at: "", deleted_at: null,
       }],
-      exchangeDeposits: [], brokerDeposits: [],
       primaryCurrency: "USD", fxRates: { USD: 1 },
     });
     // 50k crypto + 50k cash = 100k total → 50/50
@@ -167,13 +167,13 @@ describe("aggregatePortfolio", () => {
       }],
       cryptoPrices: { bitcoin: { usd: 50000, eur: 50000, usd_24h_change: 2, eur_24h_change: 2 } },
       stockAssets: [], stockPrices: {},
-      bankAccounts: [{
-        id: "ba1", name: "Bank", bank_name: "TestBank", region: "EU",
-        balance: 50000, currency: "USD", apy: 0, institution_id: null,
-        user_id: "u1", created_at: "", updated_at: "", deleted_at: null,
+      cashAccounts: [{
+        id: "ba1", user_id: "u1", institution_id: null, name: "Bank",
+        currency: "USD", balance: 50000, apy: 0, region: "EU",
+        wallet_id: null, broker_id: null,
         last_was_adjustment: false, last_was_transfer: false,
+        created_at: "", updated_at: "", deleted_at: null,
       }],
-      exchangeDeposits: [], brokerDeposits: [],
       primaryCurrency: "USD", fxRates: { USD: 1 },
     });
     expect(result.change24hPercent).toBeCloseTo(1, 1);
@@ -186,17 +186,22 @@ describe("aggregatePortfolio", () => {
     const result = aggregatePortfolio({
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [], stockPrices: {},
-      bankAccounts: [],
-      exchangeDeposits: [{
-        id: "ed1", user_id: "u1", wallet_id: "w1",
-        currency: "EUR", amount: 1000, apy: 0,
-        created_at: "",
-      }],
-      brokerDeposits: [{
-        id: "bd1", user_id: "u1", broker_id: "b1",
-        currency: "EUR", amount: 2000, apy: 0,
-        created_at: "",
-      }],
+      cashAccounts: [
+        {
+          id: "ed1", user_id: "u1", institution_id: null, name: null,
+          currency: "EUR", balance: 1000, apy: 0, region: null,
+          wallet_id: "w1", broker_id: null,
+          last_was_adjustment: false, last_was_transfer: false,
+          created_at: "", updated_at: "", deleted_at: null,
+        },
+        {
+          id: "bd1", user_id: "u1", institution_id: null, name: null,
+          currency: "EUR", balance: 2000, apy: 0, region: null,
+          wallet_id: null, broker_id: "b1",
+          last_was_adjustment: false, last_was_transfer: false,
+          created_at: "", updated_at: "", deleted_at: null,
+        },
+      ],
       primaryCurrency: "EUR", fxRates: { EUR: 1 },
     });
     expect(result.cashValue).toBe(3000);
@@ -220,7 +225,7 @@ describe("aggregatePortfolio", () => {
         positions: [stockPos(10, "sa1")],
       }],
       stockPrices: { "VWCE.DE": { price: 100, change24h: 0 } },
-      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      cashAccounts: [],
       primaryCurrency: "EUR",
       fxRates: { EUR: 1, USD: 1.11 },
       fxRatesUsd: { USD: 1, EUR: 0.90 },
@@ -260,13 +265,13 @@ describe("aggregatePortfolio", () => {
         "VWCE.DE": { price: 100, change24h: 0 },
         AAPL: { price: 200, change24h: 0 },
       },
-      bankAccounts: [{
-        id: "ba1", name: "Savings", bank_name: "Alpha", region: "EU",
-        balance: 5000, currency: "EUR", apy: 0, institution_id: null,
-        user_id: "u1", created_at: "", updated_at: "", deleted_at: null,
+      cashAccounts: [{
+        id: "ba1", user_id: "u1", institution_id: null, name: "Savings",
+        currency: "EUR", balance: 5000, apy: 0, region: "EU",
+        wallet_id: null, broker_id: null,
         last_was_adjustment: false, last_was_transfer: false,
+        created_at: "", updated_at: "", deleted_at: null,
       }],
-      exchangeDeposits: [], brokerDeposits: [],
       primaryCurrency: "EUR",
       fxRates: { EUR: 1, USD: 1.10 },
       fxRatesUsd: { USD: 1, EUR: 0.91 },
@@ -290,7 +295,7 @@ describe("aggregatePortfolio", () => {
       // usd_24h_change = eur_24h_change → no FX difference
       cryptoPrices: { bitcoin: { usd: 50000, eur: 46000, usd_24h_change: 3, eur_24h_change: 3 } },
       stockAssets: [], stockPrices: {},
-      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      cashAccounts: [],
       primaryCurrency: "USD", fxRates: { USD: 1 },
     });
     // No FX impact when USD changes equal EUR changes
@@ -309,7 +314,7 @@ describe("aggregatePortfolio", () => {
       // EUR change differs from USD change → FX component exists
       cryptoPrices: { bitcoin: { usd: 50000, eur: 46000, usd_24h_change: 2, eur_24h_change: 1.5 } },
       stockAssets: [], stockPrices: {},
-      bankAccounts: [], exchangeDeposits: [], brokerDeposits: [],
+      cashAccounts: [],
       primaryCurrency: "EUR", fxRates: { EUR: 1, USD: 1.09 },
     });
     // FX = EUR change - USD change = 1.5 - 2 = -0.5

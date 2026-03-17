@@ -7,9 +7,7 @@ import type {
   StockAssetWithPositions,
   Wallet,
   Broker,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
   CoinGeckoPriceData,
   YahooStockPriceData,
 } from "@/lib/types";
@@ -101,43 +99,23 @@ function makeStockAsset(overrides: Partial<StockAssetWithPositions> = {}): Stock
   };
 }
 
-function makeBankAccount(overrides: Partial<BankAccount> = {}): BankAccount {
+function makeCashAccount(overrides: Partial<CashAccount> = {}): CashAccount {
   return {
-    id: "ba1",
+    id: "ca1",
     user_id: "u1",
     institution_id: "inst-1",
     name: "Savings",
-    bank_name: "Alpha Bank",
     currency: "EUR",
     balance: 5000,
     apy: 1.5,
+    region: null,
+    wallet_id: null,
+    broker_id: null,
+    last_was_adjustment: false,
+    last_was_transfer: false,
     created_at: "2026-01-01T00:00:00Z",
-    ...overrides,
-  };
-}
-
-function makeExchangeDeposit(overrides: Partial<ExchangeDeposit> = {}): ExchangeDeposit {
-  return {
-    id: "ed1",
-    user_id: "u1",
-    wallet_id: "w1",
-    currency: "EUR",
-    amount: 500,
-    apy: 0,
-    created_at: "2026-01-01T00:00:00Z",
-    ...overrides,
-  };
-}
-
-function makeBrokerDeposit(overrides: Partial<BrokerDeposit> = {}): BrokerDeposit {
-  return {
-    id: "bd1",
-    user_id: "u1",
-    broker_id: "b1",
-    currency: "EUR",
-    amount: 1000,
-    apy: 0,
-    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    deleted_at: null,
     ...overrides,
   };
 }
@@ -159,9 +137,7 @@ function makeInput(overrides: Partial<GroupingInput> = {}): GroupingInput {
     stockAssets: [],
     wallets: [makeWallet()],
     brokers: [],
-    bankAccounts: [],
-    exchangeDeposits: [],
-    brokerDeposits: [],
+    cashAccounts: [],
     cryptoPrices: defaultPrices,
     stockPrices: defaultStockPrices,
     fxRates: defaultFxRates,
@@ -199,7 +175,7 @@ describe("buildInstitutionGroups", () => {
 
   it("groups bank accounts under their institution", () => {
     const result = buildInstitutionGroups(makeInput({
-      bankAccounts: [makeBankAccount()],
+      cashAccounts: [makeCashAccount()],
     }));
     expect(result).toHaveLength(1);
     expect(result[0].cash).toHaveLength(1);
@@ -209,7 +185,10 @@ describe("buildInstitutionGroups", () => {
 
   it("groups exchange deposits via wallet→institution", () => {
     const result = buildInstitutionGroups(makeInput({
-      exchangeDeposits: [makeExchangeDeposit()],
+      cashAccounts: [makeCashAccount({
+        id: "ed1", name: null, balance: 500, apy: 0,
+        wallet_id: "w1", broker_id: null,
+      })],
     }));
     expect(result).toHaveLength(1);
     expect(result[0].cash).toHaveLength(1);
@@ -220,7 +199,10 @@ describe("buildInstitutionGroups", () => {
   it("groups broker deposits via broker→institution", () => {
     const result = buildInstitutionGroups(makeInput({
       brokers: [makeBroker()],
-      brokerDeposits: [makeBrokerDeposit()],
+      cashAccounts: [makeCashAccount({
+        id: "bd1", name: null, balance: 1000, apy: 0,
+        wallet_id: null, broker_id: "b1",
+      })],
     }));
     expect(result).toHaveLength(1);
     expect(result[0].cash).toHaveLength(1);
@@ -318,7 +300,7 @@ describe("buildInstitutionGroups", () => {
 
   it("treats cash as unchanged for 24h calculation", () => {
     const result = buildInstitutionGroups(makeInput({
-      bankAccounts: [makeBankAccount({ balance: 10000 })],
+      cashAccounts: [makeCashAccount({ balance: 10000 })],
     }));
     // Cash doesn't change in 24h → valueChange should be 0
     expect(result[0].change24h.valueChange).toBe(0);
@@ -330,8 +312,13 @@ describe("buildInstitutionGroups", () => {
       cryptoAssets: [makeCryptoAsset()],
       stockAssets: [makeStockAsset()],
       brokers: [makeBroker()],
-      bankAccounts: [makeBankAccount()],
-      exchangeDeposits: [makeExchangeDeposit()],
+      cashAccounts: [
+        makeCashAccount(), // bank account: 5000 EUR
+        makeCashAccount({
+          id: "ed1", name: null, balance: 500, apy: 0,
+          wallet_id: "w1", broker_id: null,
+        }), // exchange deposit: 500 EUR
+      ],
     }));
     expect(result).toHaveLength(1);
     expect(result[0].crypto).toHaveLength(1);
