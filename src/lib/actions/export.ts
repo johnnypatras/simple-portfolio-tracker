@@ -4,9 +4,7 @@ import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getWallets } from "@/lib/actions/wallets";
 import { getBrokers } from "@/lib/actions/brokers";
-import { getBankAccounts } from "@/lib/actions/bank-accounts";
-import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
-import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
+import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { getInstitutionsWithRoles } from "@/lib/actions/institutions";
 import { getTradeEntries } from "@/lib/actions/trades";
 import { getSnapshots } from "@/lib/actions/snapshots";
@@ -24,6 +22,7 @@ import type {
   BankAccount,
   ExchangeDeposit,
   BrokerDeposit,
+  CashAccount,
   TradeEntry,
   PortfolioSnapshot,
   DiaryEntry,
@@ -43,11 +42,14 @@ export interface PortfolioBackup {
   brokers: Broker[];
   cryptoAssets: CryptoAssetWithPositions[];
   stockAssets: StockAssetWithPositions[];
-  bankAccounts: BankAccount[];
-  exchangeDeposits: ExchangeDeposit[];
-  brokerDeposits: BrokerDeposit[];
   tradeEntries: TradeEntry[];
   snapshots: PortfolioSnapshot[];
+  // ── v3: unified cash accounts ──
+  cashAccounts?: CashAccount[];
+  // ── v1/v2 legacy (kept for backward compat import) ──
+  bankAccounts?: BankAccount[];
+  exchangeDeposits?: ExchangeDeposit[];
+  brokerDeposits?: BrokerDeposit[];
   // ── v2 additions (optional for backward compat) ──
   diaryEntries?: DiaryEntry[];
   goalPrices?: GoalPrice[];
@@ -69,9 +71,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     brokers,
     cryptoAssets,
     stockAssets,
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
+    cashAccounts,
     tradeEntries,
     snapshots,
     shares,
@@ -84,9 +84,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     getBrokers(),
     getCryptoAssetsWithPositions(),
     getStockAssetsWithPositions(),
-    getBankAccounts(),
-    getExchangeDeposits(),
-    getBrokerDeposits(),
+    getCashAccounts(),
     getTradeEntries(),
     getSnapshots(ALL_SNAPSHOTS_DAYS),
     getMyShares(),
@@ -117,7 +115,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
   }
 
   return {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     primaryCurrency: profile.primary_currency,
     institutions,
@@ -125,9 +123,11 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     brokers,
     cryptoAssets,
     stockAssets,
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
+    cashAccounts,
+    // Legacy arrays for backward compat with v1/v2 importers
+    bankAccounts: cashAccounts.filter((c) => !c.wallet_id && !c.broker_id) as unknown as BankAccount[],
+    exchangeDeposits: cashAccounts.filter((c) => c.wallet_id != null) as unknown as ExchangeDeposit[],
+    brokerDeposits: cashAccounts.filter((c) => c.broker_id != null) as unknown as BrokerDeposit[],
     tradeEntries,
     snapshots,
     diaryEntries: (diaryRows ?? []) as DiaryEntry[],
@@ -215,14 +215,10 @@ export async function exportStocksCsv(): Promise<string> {
   return toCsv(headers, rows);
 }
 
-// ─── CSV: Cash (Banks + Exchange Deposits + Broker Deposits) ──
+// ─── CSV: Cash Accounts ─────────────────────────────────
 
 export async function exportCashCsv(): Promise<string> {
-  const [banks, exDeps, brDeps] = await Promise.all([
-    getBankAccounts(),
-    getExchangeDeposits(),
-    getBrokerDeposits(),
-  ]);
+  const cashAccounts = await getCashAccounts();
 
   const headers = [
     "Type", "Account Name", "Institution", "Currency", "Amount", "APY %",
@@ -232,14 +228,15 @@ export async function exportCashCsv(): Promise<string> {
 
   const rows: (string | number | null)[][] = [];
 
-  for (const b of banks) {
-    rows.push(["Bank Account", b.name, b.bank_name, b.currency, b.balance, b.apy, b.region, b.last_was_adjustment ? "Yes" : "No", b.last_was_transfer ? "Yes" : "No", b.created_at, b.updated_at]);
-  }
-  for (const d of exDeps) {
-    rows.push(["Fiat Deposit (Exchange)", null, d.wallet_name, d.currency, d.amount, d.apy, null, d.last_was_adjustment ? "Yes" : "No", d.last_was_transfer ? "Yes" : "No", d.created_at, d.updated_at]);
-  }
-  for (const d of brDeps) {
-    rows.push(["Fiat Deposit (Broker)", null, d.broker_name, d.currency, d.amount, d.apy, null, d.last_was_adjustment ? "Yes" : "No", d.last_was_transfer ? "Yes" : "No", d.created_at, d.updated_at]);
+  for (const c of cashAccounts) {
+    // Derive origin type from FK presence
+    const type = c.wallet_id ? "Exchange Deposit" : c.broker_id ? "Broker Deposit" : "Bank Account";
+    const institution = c.wallet_name ?? c.broker_name ?? c.institution_name ?? null;
+    rows.push([
+      type, c.name, institution, c.currency, c.balance, c.apy,
+      c.region, c.last_was_adjustment ? "Yes" : "No", c.last_was_transfer ? "Yes" : "No",
+      c.created_at, c.updated_at,
+    ]);
   }
 
   return toCsv(headers, rows);
