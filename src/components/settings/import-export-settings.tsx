@@ -60,8 +60,8 @@ const csvExports = [
   },
   {
     id: "cash",
-    label: "Cash & Deposits",
-    desc: "Bank accounts and fiat deposits",
+    label: "Cash Accounts",
+    desc: "All cash accounts (bank, exchange, and broker deposits)",
     action: exportCashCsv,
   },
   {
@@ -89,17 +89,19 @@ const csvExports = [
 // ─── Import preview helpers ─────────────────────────────
 
 function countEntities(data: PortfolioBackup) {
+  // v3 format uses cashAccounts; legacy uses bankAccounts + exchangeDeposits + brokerDeposits
+  const cashCount = data.cashAccounts?.length ??
+    ((data.bankAccounts?.length ?? 0) + (data.exchangeDeposits?.length ?? 0) + (data.brokerDeposits?.length ?? 0));
+
   return [
     { label: "Institutions", count: data.institutions.length },
     { label: "Wallets", count: data.wallets.length },
     { label: "Brokers", count: data.brokers.length },
-    { label: "Bank Accounts", count: data.bankAccounts.length },
+    { label: "Cash Accounts", count: cashCount },
     { label: "Crypto Assets", count: data.cryptoAssets.length },
     { label: "Crypto Positions", count: data.cryptoAssets.reduce((s, a) => s + a.positions.length, 0) },
     { label: "Stock Assets", count: data.stockAssets.length },
     { label: "Stock Positions", count: data.stockAssets.reduce((s, a) => s + a.positions.length, 0) },
-    { label: "Fiat Deposits (Exchanges)", count: data.exchangeDeposits.length },
-    { label: "Fiat Deposits (Brokers)", count: data.brokerDeposits.length },
     { label: "Trade Entries", count: data.tradeEntries.length },
     { label: "Snapshots", count: data.snapshots.length },
   ].filter((e) => e.count > 0);
@@ -244,7 +246,7 @@ export function ImportExportSettings() {
               </p>
               <p className="text-xs text-zinc-500 mt-0.5">
                 Complete portfolio export — all assets, positions, wallets, brokers,
-                bank accounts, deposits, trades, and daily snapshots in a single file
+                cash accounts, trades, and daily snapshots in a single file
               </p>
             </div>
             <button
@@ -445,8 +447,8 @@ export function ImportExportSettings() {
             </div>
             <p className="text-xs text-zinc-400">
               This will <span className="text-red-300 font-medium">permanently delete</span> all
-              your existing portfolio data — assets, positions, wallets, brokers, bank accounts,
-              deposits, trades, and snapshots — then replace it with the backup file.
+              your existing portfolio data — assets, positions, wallets, brokers, cash accounts,
+              trades, and snapshots — then replace it with the backup file.
               This action cannot be undone.
             </p>
             <div className="flex gap-2">

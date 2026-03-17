@@ -49,6 +49,7 @@ const ENTITY_LABELS: Record<string, string> = {
   stock_asset: "Stock",
   wallet: "Wallet",
   broker: "Broker",
+  cash_account: "Cash Account",
   bank_account: "Bank",
   exchange_deposit: "Exchange",
   broker_deposit: "Broker Dep.",
@@ -68,6 +69,7 @@ const ENTITY_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "stock_position", label: "Stock Positions" },
   { value: "wallet", label: "Wallets" },
   { value: "broker", label: "Brokers" },
+  { value: "cash_account", label: "Cash Accounts" },
   { value: "bank_account", label: "Bank Accounts" },
   { value: "exchange_deposit", label: "Fiat Deposits" },
   { value: "trade_entry", label: "Trades" },
@@ -83,6 +85,7 @@ const ACTION_FILTER_OPTIONS: { value: string; label: string }[] = [
 
 // Entity types that affect cash flow derivation
 const CASH_FLOW_ENTITIES: EntityType[] = [
+  "cash_account",
   "exchange_deposit", "broker_deposit", "bank_account",
   "crypto_position", "stock_position",
 ];
@@ -102,6 +105,7 @@ function getEntityIcon(type: EntityType) {
     case "broker":
     case "broker_deposit":
       return Building2;
+    case "cash_account":
     case "bank_account":
       return Landmark;
     case "exchange_deposit":
@@ -154,6 +158,7 @@ function getEntityBadgeColor(type: EntityType) {
     case "broker":
     case "broker_deposit":
       return "bg-cyan-500/15 text-cyan-400";
+    case "cash_account":
     case "bank_account":
       return "bg-green-500/15 text-green-400";
     case "exchange_deposit":
