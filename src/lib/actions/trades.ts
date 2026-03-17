@@ -14,7 +14,7 @@ export async function getAssetOptions(): Promise<{
 }> {
   const supabase = await createServerSupabaseClient();
 
-  const [cryptoRes, stockRes, bankRes] = await Promise.all([
+  const [cryptoRes, stockRes, cashRes] = await Promise.all([
     supabase
       .from("crypto_assets")
       .select("ticker, name")
@@ -26,14 +26,14 @@ export async function getAssetOptions(): Promise<{
       .is("deleted_at", null)
       .order("ticker"),
     supabase
-      .from("bank_accounts")
+      .from("cash_accounts")
       .select("currency")
       .is("deleted_at", null),
   ]);
 
-  // Deduplicate bank currencies into a sorted list
+  // Deduplicate cash currencies into a sorted list
   const cashCurrencies = [
-    ...new Set((bankRes.data ?? []).map((b) => b.currency as string)),
+    ...new Set((cashRes.data ?? []).map((c) => c.currency as string)),
   ].sort();
 
   return {

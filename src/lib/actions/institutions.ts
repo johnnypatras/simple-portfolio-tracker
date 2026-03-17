@@ -18,7 +18,7 @@ export async function getInstitutionsWithRoles(): Promise<InstitutionWithRoles[]
     supabase.from("institutions").select("*").is("deleted_at", null).order("name"),
     supabase.from("wallets").select("institution_id").is("deleted_at", null),
     supabase.from("brokers").select("institution_id").is("deleted_at", null),
-    supabase.from("bank_accounts").select("institution_id").is("deleted_at", null),
+    supabase.from("cash_accounts").select("institution_id").is("deleted_at", null),
   ]);
 
   if (instRes.error) throw new Error(instRes.error.message);
@@ -80,7 +80,7 @@ export async function findOrCreateInstitution(name: string): Promise<string> {
 
 /**
  * Rename an institution. The DB trigger will propagate the name
- * change to all linked wallets, brokers, and bank_accounts.
+ * change to all linked wallets, brokers, and cash_accounts.
  */
 export async function renameInstitution(id: string, newName: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
@@ -129,7 +129,7 @@ export async function updateInstitutionRoles(
 
   const instName = opts.newName?.trim() || inst.name;
 
-  // Rename if changed (DB trigger propagates to wallets, brokers, bank_accounts)
+  // Rename if changed (DB trigger propagates to wallets, brokers, cash_accounts)
   if (opts.newName && opts.newName.trim() !== inst.name) {
     await renameInstitution(institutionId, opts.newName.trim());
     const { data: afterRename } = await supabase
@@ -150,10 +150,10 @@ export async function updateInstitutionRoles(
     });
   }
 
-  // Propagate country to all linked bank accounts
+  // Propagate country to all linked cash accounts
   if (opts.country !== undefined) {
     await supabase
-      .from("bank_accounts")
+      .from("cash_accounts")
       .update({ region: opts.country })
       .eq("institution_id", institutionId)
       .is("deleted_at", null);
@@ -222,37 +222,24 @@ export async function updateInstitutionRoles(
     }
   }
 
-  // Create sibling bank account if requested
+  // Create sibling cash account if requested
   if (opts.also_bank) {
     const { data: existing } = await supabase
-      .from("bank_accounts")
+      .from("cash_accounts")
       .select("id")
       .eq("institution_id", institutionId)
+      .eq("currency", opts.bank_currency ?? "EUR")
       .is("deleted_at", null)
       .limit(1);
 
     if (!existing?.length) {
-      const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
-        user_id: user.id,
+      const { createCashAccount } = await import("@/lib/actions/cash-accounts");
+      await createCashAccount({
+        institution_id: institutionId,
         name: instName,
-        bank_name: instName,
         currency: opts.bank_currency ?? "EUR",
         balance: 0,
-        apy: 0,
-        institution_id: institutionId,
-      }).select("*").single();
-      if (!bankErr && bankCreated) {
-        await logActivity({
-          action: "created",
-          entity_type: "bank_account",
-          entity_name: instName,
-          description: `Added bank account "${instName}" (via institution edit)`,
-          entity_id: bankCreated.id,
-          entity_table: "bank_accounts",
-          before_snapshot: null,
-          after_snapshot: bankCreated,
-        });
-      }
+      });
     }
   }
 
@@ -305,15 +292,15 @@ export async function removeInstitutionRole(
     }
   } else if (role === "bank") {
     const { data: banks } = await supabase
-      .from("bank_accounts")
+      .from("cash_accounts")
       .select("id")
       .eq("institution_id", institutionId)
       .is("deleted_at", null);
 
     if (banks?.length) {
-      const { deleteBankAccount } = await import("@/lib/actions/bank-accounts");
+      const { deleteCashAccount } = await import("@/lib/actions/cash-accounts");
       for (const ba of banks) {
-        await deleteBankAccount(ba.id, opts);
+        await deleteCashAccount(ba.id, opts);
       }
     }
   }
@@ -347,16 +334,16 @@ export async function deleteInstitution(institutionId: string, opts?: { isAdjust
     .from("wallets").select("id").eq("institution_id", institutionId).is("deleted_at", null);
   const { data: instBrokers } = await supabase
     .from("brokers").select("id").eq("institution_id", institutionId).is("deleted_at", null);
-  const { data: instBanks } = await supabase
-    .from("bank_accounts").select("id").eq("institution_id", institutionId).is("deleted_at", null);
+  const { data: instCashAccounts } = await supabase
+    .from("cash_accounts").select("id").eq("institution_id", institutionId).is("deleted_at", null);
 
   const { deleteWallet } = await import("@/lib/actions/wallets");
   const { deleteBroker } = await import("@/lib/actions/brokers");
-  const { deleteBankAccount } = await import("@/lib/actions/bank-accounts");
+  const { deleteCashAccount } = await import("@/lib/actions/cash-accounts");
 
   for (const w of instWallets ?? []) await deleteWallet(w.id, opts);
   for (const b of instBrokers ?? []) await deleteBroker(b.id, opts);
-  for (const ba of instBanks ?? []) await deleteBankAccount(ba.id, opts);
+  for (const ca of instCashAccounts ?? []) await deleteCashAccount(ca.id, opts);
 
   const { error } = await supabase
     .from("institutions")

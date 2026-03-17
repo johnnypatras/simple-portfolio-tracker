@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { BrokerInput, WalletType, PrivacyLabel } from "@/lib/types";
-import { DEFAULT_COUNTRY } from "@/lib/constants";
 import { logActivity } from "@/lib/actions/activity-log";
 import {
   findOrCreateInstitution,
@@ -93,38 +92,24 @@ export async function createBroker(
     }
   }
 
-  // Create sibling bank account if requested (with sensible defaults)
+  // Create sibling cash account if requested (with sensible defaults)
   if (opts?.also_bank) {
-    const { data: existingBank } = await supabase
-      .from("bank_accounts")
+    const { data: existingCash } = await supabase
+      .from("cash_accounts")
       .select("id")
       .eq("institution_id", institutionId)
+      .eq("currency", "EUR")
       .is("deleted_at", null)
       .limit(1);
 
-    if (!existingBank?.length) {
-      const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
-        user_id: user.id,
+    if (!existingCash?.length) {
+      const { createCashAccount } = await import("@/lib/actions/cash-accounts");
+      await createCashAccount({
+        institution_id: institutionId,
         name: trimmedName,
-        bank_name: trimmedName,
-        region: DEFAULT_COUNTRY,
         currency: "EUR",
         balance: 0,
-        apy: 0,
-        institution_id: institutionId,
-      }).select("*").single();
-      if (!bankErr && bankCreated) {
-        await logActivity({
-          action: "created",
-          entity_type: "bank_account",
-          entity_name: trimmedName,
-          description: `Added bank account "${trimmedName}" (via broker creation)`,
-          entity_id: bankCreated.id,
-          entity_table: "bank_accounts",
-          before_snapshot: null,
-          after_snapshot: bankCreated,
-        });
-      }
+      });
     }
   }
 
@@ -212,43 +197,24 @@ export async function updateBroker(
     }
   }
 
-  // Role extension: create sibling bank account if requested
+  // Role extension: create sibling cash account if requested
   if (opts?.also_bank && before?.institution_id) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      const { data: existingBank } = await supabase
-        .from("bank_accounts")
-        .select("id")
-        .eq("institution_id", before.institution_id)
-        .is("deleted_at", null)
-        .limit(1);
+    const { data: existingCash } = await supabase
+      .from("cash_accounts")
+      .select("id")
+      .eq("institution_id", before.institution_id)
+      .eq("currency", "EUR")
+      .is("deleted_at", null)
+      .limit(1);
 
-      if (!existingBank?.length) {
-        const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
-          user_id: user.id,
-          name: trimmedName,
-          bank_name: trimmedName,
-          region: DEFAULT_COUNTRY,
-          currency: "EUR",
-          balance: 0,
-          apy: 0,
-          institution_id: before.institution_id,
-        }).select("*").single();
-        if (!bankErr && bankCreated) {
-          await logActivity({
-            action: "created",
-            entity_type: "bank_account",
-            entity_name: trimmedName,
-            description: `Added bank account "${trimmedName}" (via broker edit)`,
-            entity_id: bankCreated.id,
-            entity_table: "bank_accounts",
-            before_snapshot: null,
-            after_snapshot: bankCreated,
-          });
-        }
-      }
+    if (!existingCash?.length) {
+      const { createCashAccount } = await import("@/lib/actions/cash-accounts");
+      await createCashAccount({
+        institution_id: before.institution_id,
+        name: trimmedName,
+        currency: "EUR",
+        balance: 0,
+      });
     }
   }
 
@@ -293,17 +259,17 @@ export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }
     }
   }
 
-  // Delete child broker deposits individually so each gets an activity_log entry
-  const { deleteBrokerDeposit } = await import("@/lib/actions/broker-deposits");
-  const { data: brokerDeps } = await supabase
-    .from("broker_deposits")
+  // Delete child cash accounts (broker deposits) individually so each gets an activity_log entry
+  const { deleteCashAccount } = await import("@/lib/actions/cash-accounts");
+  const { data: brokerCashAccounts } = await supabase
+    .from("cash_accounts")
     .select("id")
     .eq("broker_id", id)
     .is("deleted_at", null);
 
-  if (brokerDeps?.length) {
-    for (const dep of brokerDeps) {
-      await deleteBrokerDeposit(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
+  if (brokerCashAccounts?.length) {
+    for (const dep of brokerCashAccounts) {
+      await deleteCashAccount(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
     }
   }
 

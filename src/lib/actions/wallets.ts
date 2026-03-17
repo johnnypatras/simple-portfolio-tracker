@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { WalletInput } from "@/lib/types";
-import { DEFAULT_COUNTRY } from "@/lib/constants";
 import { logActivity } from "@/lib/actions/activity-log";
 import {
   findOrCreateInstitution,
@@ -91,38 +90,24 @@ export async function createWallet(
     }
   }
 
-  // Create sibling bank account if requested (with sensible defaults)
+  // Create sibling cash account if requested (with sensible defaults)
   if (opts?.also_bank) {
-    const { data: existingBank } = await supabase
-      .from("bank_accounts")
+    const { data: existingCash } = await supabase
+      .from("cash_accounts")
       .select("id")
       .eq("institution_id", institutionId)
+      .eq("currency", "EUR")
       .is("deleted_at", null)
       .limit(1);
 
-    if (!existingBank?.length) {
-      const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
-        user_id: user.id,
+    if (!existingCash?.length) {
+      const { createCashAccount } = await import("@/lib/actions/cash-accounts");
+      await createCashAccount({
+        institution_id: institutionId,
         name: trimmedName,
-        bank_name: trimmedName,
-        region: DEFAULT_COUNTRY,
         currency: "EUR",
         balance: 0,
-        apy: 0,
-        institution_id: institutionId,
-      }).select("*").single();
-      if (!bankErr && bankCreated) {
-        await logActivity({
-          action: "created",
-          entity_type: "bank_account",
-          entity_name: trimmedName,
-          description: `Added bank account "${trimmedName}" (via wallet creation)`,
-          entity_id: bankCreated.id,
-          entity_table: "bank_accounts",
-          before_snapshot: null,
-          after_snapshot: bankCreated,
-        });
-      }
+      });
     }
   }
 
@@ -243,38 +228,24 @@ export async function updateWallet(
     }
   }
 
-  // Role extension: create sibling bank account if requested
+  // Role extension: create sibling cash account if requested
   if (opts?.also_bank && before?.institution_id) {
-    const { data: existingBank } = await supabase
-      .from("bank_accounts")
+    const { data: existingCash } = await supabase
+      .from("cash_accounts")
       .select("id")
       .eq("institution_id", before.institution_id)
+      .eq("currency", "EUR")
       .is("deleted_at", null)
       .limit(1);
 
-    if (!existingBank?.length) {
-      const { data: bankCreated, error: bankErr } = await supabase.from("bank_accounts").insert({
-        user_id: user.id,
+    if (!existingCash?.length) {
+      const { createCashAccount } = await import("@/lib/actions/cash-accounts");
+      await createCashAccount({
+        institution_id: before.institution_id,
         name: trimmedName,
-        bank_name: trimmedName,
-        region: DEFAULT_COUNTRY,
         currency: "EUR",
         balance: 0,
-        apy: 0,
-        institution_id: before.institution_id,
-      }).select("*").single();
-      if (!bankErr && bankCreated) {
-        await logActivity({
-          action: "created",
-          entity_type: "bank_account",
-          entity_name: trimmedName,
-          description: `Added bank account "${trimmedName}" (via wallet edit)`,
-          entity_id: bankCreated.id,
-          entity_table: "bank_accounts",
-          before_snapshot: null,
-          after_snapshot: bankCreated,
-        });
-      }
+      });
     }
   }
 
@@ -321,17 +292,17 @@ export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }
     }
   }
 
-  // Delete child exchange deposits individually so each gets an activity_log entry
-  const { deleteExchangeDeposit } = await import("@/lib/actions/exchange-deposits");
-  const { data: exchDeposits } = await supabase
-    .from("exchange_deposits")
+  // Delete child cash accounts (exchange deposits) individually so each gets an activity_log entry
+  const { deleteCashAccount } = await import("@/lib/actions/cash-accounts");
+  const { data: walletCashAccounts } = await supabase
+    .from("cash_accounts")
     .select("id")
     .eq("wallet_id", id)
     .is("deleted_at", null);
 
-  if (exchDeposits?.length) {
-    for (const dep of exchDeposits) {
-      await deleteExchangeDeposit(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
+  if (walletCashAccounts?.length) {
+    for (const dep of walletCashAccounts) {
+      await deleteCashAccount(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
     }
   }
 
