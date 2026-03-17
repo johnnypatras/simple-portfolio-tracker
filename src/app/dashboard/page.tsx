@@ -1,9 +1,7 @@
 import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
-import { getBankAccounts } from "@/lib/actions/bank-accounts";
-import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
-import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
+import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
@@ -30,7 +28,7 @@ export default async function DashboardPage() {
   // Snapshots and benchmark history don't depend on asset data,
   // so they run alongside DB queries.
   const [
-    profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits,
+    profile, cryptoAssets, stockAssets, cashAccounts,
     chartSnapshots, snap7d, snap30d, snap1y,
     sp500TRHistory,
     cashFlowResult,
@@ -39,9 +37,7 @@ export default async function DashboardPage() {
     getProfile(),
     getCryptoAssetsWithPositions(),
     getStockAssetsWithPositions(),
-    getBankAccounts(),
-    getExchangeDeposits(),
-    getBrokerDeposits(),
+    getCashAccounts(),
     getSnapshots(365),           // up to 1 year of history for the chart
     getSnapshotAt(7),            // for 7d change
     getSnapshotAt(30),           // for 30d change
@@ -61,7 +57,7 @@ export default async function DashboardPage() {
   // ── Round 2: Prices, aggregation, insights ─────────────
   const { summary, insights, paletteHoldings, fxStale, fxUnavailable } =
     await assemblePortfolioView(
-      { cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits, primaryCurrency },
+      { cryptoAssets, stockAssets, cashAccounts, primaryCurrency },
       "/dashboard",
     );
 

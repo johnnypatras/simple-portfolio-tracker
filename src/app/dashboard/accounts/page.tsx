@@ -4,9 +4,7 @@ import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getWallets } from "@/lib/actions/wallets";
 import { getBrokers } from "@/lib/actions/brokers";
-import { getBankAccounts } from "@/lib/actions/bank-accounts";
-import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
-import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
+import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
@@ -17,8 +15,7 @@ export default async function AccountsPage() {
   // ── Round 1: DB records + independent fetches in parallel ──
   const [
     profile, institutions, cryptoAssets, stockAssets,
-    wallets, brokers, bankAccounts,
-    exchangeDeposits, brokerDeposits,
+    wallets, brokers, cashAccounts,
   ] = await Promise.all([
     getProfile(),
     getInstitutionsWithRoles(),
@@ -26,9 +23,7 @@ export default async function AccountsPage() {
     getStockAssetsWithPositions(),
     getWallets(),
     getBrokers(),
-    getBankAccounts(),
-    getExchangeDeposits(),
-    getBrokerDeposits(),
+    getCashAccounts(),
   ]);
 
   const primaryCurrency = profile.primary_currency;
@@ -44,9 +39,7 @@ export default async function AccountsPage() {
     ...new Set([
       "EUR", "USD",
       ...stockAssets.map((a) => a.currency),
-      ...bankAccounts.map((a) => a.currency),
-      ...exchangeDeposits.map((a) => a.currency),
-      ...brokerDeposits.map((a) => a.currency),
+      ...cashAccounts.map((a) => a.currency),
     ]),
   ];
 
@@ -76,9 +69,7 @@ export default async function AccountsPage() {
         stockAssets={stockAssets}
         wallets={wallets}
         brokers={brokers}
-        bankAccounts={bankAccounts}
-        exchangeDeposits={exchangeDeposits}
-        brokerDeposits={brokerDeposits}
+        cashAccounts={cashAccounts}
         cryptoPrices={cryptoPrices}
         stockPrices={stockPrices}
         fxRates={fxRates}

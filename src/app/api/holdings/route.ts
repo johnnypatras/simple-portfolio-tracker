@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
-import { getBankAccounts } from "@/lib/actions/bank-accounts";
-import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
-import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
+import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockAndIndexPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
@@ -27,14 +25,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [profile, cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits] =
+    const [profile, cryptoAssets, stockAssets, cashAccounts] =
       await Promise.all([
         getProfile(),
         getCryptoAssetsWithPositions(),
         getStockAssetsWithPositions(),
-        getBankAccounts(),
-        getExchangeDeposits(),
-        getBrokerDeposits(),
+        getCashAccounts(),
       ]);
 
     const primaryCurrency = profile.primary_currency;
@@ -46,9 +42,7 @@ export async function GET(req: NextRequest) {
         "EUR",
         "USD",
         ...stockAssets.map((a) => a.currency),
-        ...bankAccounts.map((a) => a.currency),
-        ...exchangeDeposits.map((a) => a.currency),
-        ...brokerDeposits.map((a) => a.currency),
+        ...cashAccounts.map((a) => a.currency),
       ]),
     ];
 
@@ -60,7 +54,7 @@ export async function GET(req: NextRequest) {
 
     const holdings = buildPaletteHoldings({
       cryptoAssets, cryptoPrices, stockAssets, stockPrices,
-      bankAccounts, exchangeDeposits, brokerDeposits, fxRates,
+      cashAccounts, fxRates,
       primaryCurrency, pathPrefix: "/dashboard",
     });
 

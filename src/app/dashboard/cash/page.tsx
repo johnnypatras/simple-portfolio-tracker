@@ -1,6 +1,4 @@
-import { getBankAccounts } from "@/lib/actions/bank-accounts";
-import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
-import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
+import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { getWallets } from "@/lib/actions/wallets";
 import { getBrokers } from "@/lib/actions/brokers";
 import { getProfile } from "@/lib/actions/profile";
@@ -15,11 +13,9 @@ import { CashTable } from "@/components/cash/cash-table";
 import { MobileMenuButton } from "@/components/sidebar";
 
 export default async function CashPage() {
-  const [bankAccounts, exchangeDeposits, brokerDeposits, wallets, brokers, profile, cryptoAssets, cashFlowResult] =
+  const [cashAccounts, wallets, brokers, profile, cryptoAssets, cashFlowResult] =
     await Promise.all([
-      getBankAccounts(),
-      getExchangeDeposits(),
-      getBrokerDeposits(),
+      getCashAccounts(),
       getWallets(),
       getBrokers(),
       getProfile(),
@@ -36,9 +32,7 @@ export default async function CashPage() {
   const allCurrencies = [
     ...new Set([
       "USD", "EUR", // always include for EUR/USD cross rate
-      ...bankAccounts.map((b) => b.currency),
-      ...exchangeDeposits.map((d) => d.currency),
-      ...brokerDeposits.map((d) => d.currency),
+      ...cashAccounts.map((a) => a.currency),
     ]),
   ];
 
@@ -58,9 +52,7 @@ export default async function CashPage() {
     cryptoPrices: stablecoinPrices,
     stockAssets: [],
     stockPrices: {},
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
+    cashAccounts,
     primaryCurrency: profile.primary_currency,
     fxRates,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
@@ -82,9 +74,7 @@ export default async function CashPage() {
         </p>
       </div>
       <CashTable
-        bankAccounts={bankAccounts}
-        exchangeDeposits={exchangeDeposits}
-        brokerDeposits={brokerDeposits}
+        cashAccounts={cashAccounts}
         wallets={wallets}
         brokers={brokers}
         primaryCurrency={profile.primary_currency}
