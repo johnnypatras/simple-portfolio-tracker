@@ -6,6 +6,38 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActivityLog } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 
+// ─── Cash consolidation backward-compat ───────────────────
+// Historical activity_log entries reference old table/field names.
+
+const TABLE_REMAP: Record<string, string> = {
+  bank_accounts: "cash_accounts",
+  exchange_deposits: "cash_accounts",
+  broker_deposits: "cash_accounts",
+};
+
+const SNAPSHOT_FIELD_REMAP: Record<string, Record<string, string>> = {
+  exchange_deposits: { amount: "balance" },
+  broker_deposits: { amount: "balance" },
+};
+
+function resolveTable(entityTable: string): string {
+  return TABLE_REMAP[entityTable] ?? entityTable;
+}
+
+function remapSnapshotFields(
+  entityTable: string,
+  snapshot: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!snapshot) return null;
+  const remap = SNAPSHOT_FIELD_REMAP[entityTable];
+  if (!remap) return snapshot;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(snapshot)) {
+    result[remap[key] ?? key] = value;
+  }
+  return result;
+}
+
 // ─── Field classification ─────────────────────────────────
 // Controls how each snapshot field is handled during compensation.
 
@@ -24,6 +56,7 @@ const BADGE_COLUMNS = new Set([
  * All other mutable fields are treated as identity (restore-if-unchanged).
  */
 const VALUE_FIELDS: Record<string, string[]> = {
+  cash_accounts: ["balance"],
   bank_accounts: ["balance"],
   exchange_deposits: ["amount"],
   broker_deposits: ["amount"],
@@ -35,8 +68,10 @@ const VALUE_FIELDS: Record<string, string[]> = {
 const ALLOWED_UNDO_TABLES = new Set([
   "crypto_assets", "crypto_positions",
   "stock_assets", "stock_positions",
-  "wallets", "brokers", "bank_accounts",
-  "exchange_deposits", "broker_deposits",
+  "wallets", "brokers",
+  "cash_accounts",
+  // Keep old names — historical activity_log entries still reference them
+  "bank_accounts", "exchange_deposits", "broker_deposits",
   "trade_entries",
 ]);
 
@@ -135,9 +170,14 @@ async function undoSingleEntry(
     return { success: false, message: "Undo not supported for this entity type" };
   }
 
+  // ── Resolve legacy table/field names (cash consolidation) ─
+  const effectiveTable = resolveTable(log.entity_table);
+  const beforeSnapshot = remapSnapshotFields(log.entity_table, log.before_snapshot);
+  const afterSnapshot = remapSnapshotFields(log.entity_table, log.after_snapshot);
+
   // ── Fetch current entity state ─
   const { data: existing } = await supabase
-    .from(log.entity_table)
+    .from(effectiveTable)
     .select("*")
     .eq("id", log.entity_id)
     .single();
@@ -169,7 +209,7 @@ async function undoSingleEntry(
     switch (log.action) {
       case "created": {
         const { error } = await supabase
-          .from(log.entity_table)
+          .from(effectiveTable)
           .update({ deleted_at: new Date().toISOString() })
           .eq("id", log.entity_id);
         if (error) throw error;
@@ -178,7 +218,7 @@ async function undoSingleEntry(
 
       case "removed": {
         const { error } = await supabase
-          .from(log.entity_table)
+          .from(effectiveTable)
           .update({ deleted_at: null })
           .eq("id", log.entity_id);
         if (error) throw error;
@@ -186,15 +226,15 @@ async function undoSingleEntry(
       }
 
       case "updated": {
-        if (!log.before_snapshot || !log.after_snapshot) {
+        if (!beforeSnapshot || !afterSnapshot) {
           return { success: false, message: "No snapshots available for compensation" };
         }
 
         const compensatingFields = computeCompensatingUpdate(
-          log.entity_table,
+          effectiveTable,
           entity,
-          log.before_snapshot,
-          log.after_snapshot,
+          beforeSnapshot,
+          afterSnapshot,
         );
 
         if (Object.keys(compensatingFields).length === 0) {
@@ -206,14 +246,14 @@ async function undoSingleEntry(
 
         // Apply the compensating update
         const { error } = await supabase
-          .from(log.entity_table)
+          .from(effectiveTable)
           .update(compensatingFields)
           .eq("id", log.entity_id);
         if (error) throw error;
 
         // Read entity after compensation for the after_snapshot
         const { data: afterEntity } = await supabase
-          .from(log.entity_table)
+          .from(effectiveTable)
           .select("*")
           .eq("id", log.entity_id)
           .single();
@@ -237,7 +277,7 @@ async function undoSingleEntry(
               entity_name: log.entity_name,
               description,
               entity_id: log.entity_id,
-              entity_table: log.entity_table,
+              entity_table: effectiveTable,
               before_snapshot: entity,
               after_snapshot: afterEntity,
               compensates_for: log.id,
@@ -326,7 +366,7 @@ async function rollbackCompensation(
 
   if (Object.keys(restoreFields).length > 0) {
     await supabase
-      .from(comp.entity_table as string)
+      .from(resolveTable(comp.entity_table as string))
       .update(restoreFields)
       .eq("id", comp.entity_id as string);
   }
