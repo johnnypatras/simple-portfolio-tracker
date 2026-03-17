@@ -599,9 +599,7 @@ export type TransferMode = "sell" | "buy" | "move";
 export type TransferSide =
   | { type: "crypto_position"; assetId: string; walletId: string; quantity: number }
   | { type: "stock_position";  assetId: string; brokerId: string; quantity: number }
-  | { type: "exchange_deposit"; walletId: string; currency: string; amount: number }
-  | { type: "broker_deposit";   brokerId: string; currency: string; amount: number }
-  | { type: "bank_account";     accountId: string; amount: number };
+  | { type: "cash_account";    accountId: string; amount: number };
 
 export interface TransferInput {
   mode: TransferMode;

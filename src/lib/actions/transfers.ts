@@ -7,15 +7,7 @@ import {
   upsertStockPosition,
   createStockAsset,
 } from "@/lib/actions/stocks";
-import {
-  createExchangeDeposit,
-  updateExchangeDeposit,
-} from "@/lib/actions/exchange-deposits";
-import {
-  createBrokerDeposit,
-  updateBrokerDeposit,
-} from "@/lib/actions/broker-deposits";
-import { updateBankAccount } from "@/lib/actions/bank-accounts";
+import { createCashAccount, updateCashAccount } from "@/lib/actions/cash-accounts";
 import { createBroker } from "@/lib/actions/brokers";
 import { createWallet } from "@/lib/actions/wallets";
 import { getPrices } from "@/lib/prices/coingecko";
@@ -44,9 +36,7 @@ interface CreatedEntity { table: string; id: string }
 type SourceOriginalState =
   | { type: "crypto_position"; quantity: number }
   | { type: "stock_position"; quantity: number }
-  | { type: "exchange_deposit"; id: string; amount: number }
-  | { type: "broker_deposit"; id: string; amount: number }
-  | { type: "bank_account"; id: string; balance: number; name: string; bank_name: string; currency: string };
+  | { type: "cash_account"; id: string; balance: number; currency: string };
 
 /** Per-side prices for delta calculation */
 interface SidePrices {
@@ -77,19 +67,7 @@ function validateTransferSide(side: TransferSide, label: string): void {
       validateQuantity(side.quantity, `${label} quantity`);
       if (side.quantity <= 0) throw new Error(`${label} quantity must be positive`);
       break;
-    case "exchange_deposit":
-      validateUUID(side.walletId, `${label} wallet ID`);
-      validateCurrency(side.currency);
-      validateAmount(side.amount, `${label} amount`);
-      if (side.amount <= 0) throw new Error(`${label} amount must be positive`);
-      break;
-    case "broker_deposit":
-      validateUUID(side.brokerId, `${label} broker ID`);
-      validateCurrency(side.currency);
-      validateAmount(side.amount, `${label} amount`);
-      if (side.amount <= 0) throw new Error(`${label} amount must be positive`);
-      break;
-    case "bank_account":
+    case "cash_account":
       validateUUID(side.accountId, `${label} account ID`);
       validateAmount(side.amount, `${label} amount`);
       if (side.amount <= 0) throw new Error(`${label} amount must be positive`);
@@ -125,7 +103,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
 
   try {
     // Use a mutable copy of input so we can patch source IDs
-    let currentSource = input.source;
+    const currentSource = input.source;
 
     // ── Early validation: check source balance BEFORE creating any entities.
     // When newCashDeposit is involved, the source IS the deposit being created
@@ -144,9 +122,6 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       if (destination.type === "stock_position") {
         destination = { ...destination, brokerId };
       }
-      if (currentSource?.type === "broker_deposit") {
-        currentSource = { ...currentSource, brokerId };
-      }
     }
 
     if (input.newWallet) {
@@ -158,39 +133,25 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       if (destination.type === "crypto_position") {
         destination = { ...destination, walletId };
       }
-      if (currentSource?.type === "exchange_deposit") {
-        currentSource = { ...currentSource, walletId };
-      }
     }
 
-    if (input.newCashDeposit && currentSource) {
-      if (currentSource.type === "broker_deposit") {
-        const depositId = await createBrokerDeposit(
-          {
-            broker_id: currentSource.brokerId,
-            currency: input.newCashDeposit.currency,
-            amount: input.newCashDeposit.amount,
-          },
-          {
-            isAdjustment: input.newCashDeposit.isAdjustment,
-            effectiveDate: input.effectiveDate,
-          }
-        );
-        createdEntities.push({ table: "broker_deposits", id: depositId });
-      } else if (currentSource.type === "exchange_deposit") {
-        const depositId = await createExchangeDeposit(
-          {
-            wallet_id: currentSource.walletId,
-            currency: input.newCashDeposit.currency,
-            amount: input.newCashDeposit.amount,
-          },
-          {
-            isAdjustment: input.newCashDeposit.isAdjustment,
-            effectiveDate: input.effectiveDate,
-          }
-        );
-        createdEntities.push({ table: "exchange_deposits", id: depositId });
-      }
+    if (input.newCashDeposit && currentSource && currentSource.type === "cash_account") {
+      // Derive wallet/broker linkage from the destination asset
+      const walletId = destination.type === "crypto_position" ? destination.walletId : undefined;
+      const brokerId = destination.type === "stock_position" ? destination.brokerId : undefined;
+      const accountId = await createCashAccount(
+        {
+          currency: input.newCashDeposit.currency,
+          balance: input.newCashDeposit.amount,
+          wallet_id: walletId ?? null,
+          broker_id: brokerId ?? null,
+        },
+        {
+          isAdjustment: input.newCashDeposit.isAdjustment,
+          effectiveDate: input.effectiveDate,
+        }
+      );
+      createdEntities.push({ table: "cash_accounts", id: accountId });
     }
 
     // Generate a transfer group ID only for two-legged transfers
@@ -283,19 +244,10 @@ function validateSufficientBalance(source: TransferSide, state: SourceOriginalSt
         throw new Error(`Insufficient stock balance: have ${state.quantity}, need ${source.quantity}`);
       }
       break;
-    case "exchange_deposit":
-      if (state.type === "exchange_deposit" && source.amount > state.amount) {
-        throw new Error(`Insufficient exchange deposit: have ${state.amount}, need ${source.amount}`);
-      }
-      break;
-    case "broker_deposit":
-      if (state.type === "broker_deposit" && source.amount > state.amount) {
-        throw new Error(`Insufficient broker deposit: have ${state.amount}, need ${source.amount}`);
-      }
-      break;
-    case "bank_account":
-      if (state.type === "bank_account" && source.amount > state.balance) {
-        throw new Error(`Insufficient bank balance: have ${state.balance}, need ${source.amount}`);
+    case "cash_account":
+      if (state.type !== "cash_account") throw new Error("State type mismatch");
+      if (source.amount > state.balance) {
+        throw new Error(`Insufficient cash balance: have ${state.balance}, need ${source.amount}`);
       }
       break;
   }
@@ -330,44 +282,15 @@ async function fetchSourceState(
       if (error || !data) throw new Error(`Source stock position not found: ${error?.message ?? "no data"}`);
       return { type: "stock_position", quantity: Number(data.quantity) };
     }
-    case "exchange_deposit": {
+    case "cash_account": {
       const { data, error } = await supabase
-        .from("exchange_deposits")
-        .select("id, amount")
-        .eq("wallet_id", source.walletId)
-        .eq("currency", source.currency)
-        .is("deleted_at", null)
-        .single();
-      if (error || !data) throw new Error(`Source exchange deposit not found: ${error?.message ?? "no data"}`);
-      return { type: "exchange_deposit", id: data.id, amount: Number(data.amount) };
-    }
-    case "broker_deposit": {
-      const { data, error } = await supabase
-        .from("broker_deposits")
-        .select("id, amount")
-        .eq("broker_id", source.brokerId)
-        .eq("currency", source.currency)
-        .is("deleted_at", null)
-        .single();
-      if (error || !data) throw new Error(`Source broker deposit not found: ${error?.message ?? "no data"}`);
-      return { type: "broker_deposit", id: data.id, amount: Number(data.amount) };
-    }
-    case "bank_account": {
-      const { data, error } = await supabase
-        .from("bank_accounts")
-        .select("id, balance, name, bank_name, currency")
+        .from("cash_accounts")
+        .select("id, balance, currency")
         .eq("id", source.accountId)
         .is("deleted_at", null)
         .single();
-      if (error || !data) throw new Error(`Source bank account not found: ${error?.message ?? "no data"}`);
-      return {
-        type: "bank_account",
-        id: data.id,
-        balance: Number(data.balance),
-        name: data.name,
-        bank_name: data.bank_name,
-        currency: data.currency,
-      };
+      if (error || !data) throw new Error("Source cash account not found");
+      return { type: "cash_account", id: data.id, balance: Number(data.balance), currency: data.currency };
     }
   }
 }
@@ -490,45 +413,12 @@ async function executeSourceLeg(
       );
       break;
     }
-    case "exchange_deposit": {
-      if (originalState.type !== "exchange_deposit") throw new Error("State type mismatch");
-      const newAmount = originalState.amount - source.amount;
-      await updateExchangeDeposit(
-        originalState.id,
-        {
-          wallet_id: source.walletId,
-          currency: source.currency,
-          amount: newAmount,
-        },
-        { isAdjustment: true, transferGroupId, effectiveDate }
-      );
-      break;
-    }
-    case "broker_deposit": {
-      if (originalState.type !== "broker_deposit") throw new Error("State type mismatch");
-      const newAmount = originalState.amount - source.amount;
-      await updateBrokerDeposit(
-        originalState.id,
-        {
-          broker_id: source.brokerId,
-          currency: source.currency,
-          amount: newAmount,
-        },
-        { isAdjustment: true, transferGroupId, effectiveDate }
-      );
-      break;
-    }
-    case "bank_account": {
-      if (originalState.type !== "bank_account") throw new Error("State type mismatch");
+    case "cash_account": {
+      if (originalState.type !== "cash_account") throw new Error("State type mismatch");
       const newBalance = originalState.balance - source.amount;
-      await updateBankAccount(
+      await updateCashAccount(
         originalState.id,
-        {
-          name: originalState.name,
-          bank_name: originalState.bank_name,
-          currency: originalState.currency,
-          balance: newBalance,
-        },
+        { currency: originalState.currency, balance: newBalance },
         { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
@@ -597,84 +487,17 @@ async function executeDestLeg(
       );
       break;
     }
-    case "exchange_deposit": {
-      const { data: existing } = await supabase
-        .from("exchange_deposits")
-        .select("id, amount")
-        .eq("wallet_id", destination.walletId)
-        .eq("currency", destination.currency)
-        .is("deleted_at", null)
-        .single();
-
-      if (existing) {
-        await updateExchangeDeposit(
-          existing.id,
-          {
-            wallet_id: destination.walletId,
-            currency: destination.currency,
-            amount: Number(existing.amount) + destination.amount,
-          },
-          { isAdjustment: true, transferGroupId, effectiveDate }
-        );
-      } else {
-        await createExchangeDeposit(
-          {
-            wallet_id: destination.walletId,
-            currency: destination.currency,
-            amount: destination.amount,
-          },
-          { isAdjustment: true, transferGroupId, effectiveDate }
-        );
-      }
-      break;
-    }
-    case "broker_deposit": {
-      const { data: existing } = await supabase
-        .from("broker_deposits")
-        .select("id, amount")
-        .eq("broker_id", destination.brokerId)
-        .eq("currency", destination.currency)
-        .is("deleted_at", null)
-        .single();
-
-      if (existing) {
-        await updateBrokerDeposit(
-          existing.id,
-          {
-            broker_id: destination.brokerId,
-            currency: destination.currency,
-            amount: Number(existing.amount) + destination.amount,
-          },
-          { isAdjustment: true, transferGroupId, effectiveDate }
-        );
-      } else {
-        await createBrokerDeposit(
-          {
-            broker_id: destination.brokerId,
-            currency: destination.currency,
-            amount: destination.amount,
-          },
-          { isAdjustment: true, transferGroupId, effectiveDate }
-        );
-      }
-      break;
-    }
-    case "bank_account": {
+    case "cash_account": {
       const { data: existing, error } = await supabase
-        .from("bank_accounts")
-        .select("id, balance, name, bank_name, currency")
+        .from("cash_accounts")
+        .select("id, balance, currency")
         .eq("id", destination.accountId)
         .is("deleted_at", null)
         .single();
-      if (error || !existing) throw new Error("Destination bank account not found");
-      await updateBankAccount(
-        destination.accountId,
-        {
-          name: existing.name,
-          bank_name: existing.bank_name,
-          currency: existing.currency,
-          balance: Number(existing.balance) + destination.amount,
-        },
+      if (error || !existing) throw new Error("Destination cash account not found");
+      await updateCashAccount(
+        existing.id,
+        { currency: existing.currency, balance: Number(existing.balance) + destination.amount },
         { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
@@ -728,42 +551,11 @@ async function rollbackSource(
       );
       break;
     }
-    case "exchange_deposit": {
-      if (originalState.type !== "exchange_deposit") throw new Error("State type mismatch");
-      await updateExchangeDeposit(
+    case "cash_account": {
+      if (originalState.type !== "cash_account") throw new Error("State type mismatch");
+      await updateCashAccount(
         originalState.id,
-        {
-          wallet_id: source.walletId,
-          currency: source.currency,
-          amount: originalState.amount,
-        },
-        { isAdjustment: true, transferGroupId, effectiveDate }
-      );
-      break;
-    }
-    case "broker_deposit": {
-      if (originalState.type !== "broker_deposit") throw new Error("State type mismatch");
-      await updateBrokerDeposit(
-        originalState.id,
-        {
-          broker_id: source.brokerId,
-          currency: source.currency,
-          amount: originalState.amount,
-        },
-        { isAdjustment: true, transferGroupId, effectiveDate }
-      );
-      break;
-    }
-    case "bank_account": {
-      if (originalState.type !== "bank_account") throw new Error("State type mismatch");
-      await updateBankAccount(
-        originalState.id,
-        {
-          name: originalState.name,
-          bank_name: originalState.bank_name,
-          currency: originalState.currency,
-          balance: originalState.balance,
-        },
+        { currency: originalState.currency, balance: originalState.balance },
         { isAdjustment: true, transferGroupId, effectiveDate }
       );
       break;
