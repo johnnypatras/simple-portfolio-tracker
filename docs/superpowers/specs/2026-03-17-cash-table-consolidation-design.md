@@ -136,6 +136,31 @@ BEGIN
 END $$;
 ```
 
+### Step 1b: Pre-flight orphan check
+
+```sql
+-- Verify no exchange_deposits reference hard-deleted wallets
+DO $$
+DECLARE orphan_count int;
+BEGIN
+  SELECT count(*) INTO orphan_count
+  FROM exchange_deposits ed
+  LEFT JOIN wallets w ON w.id = ed.wallet_id
+  WHERE w.id IS NULL;
+  IF orphan_count > 0 THEN
+    RAISE EXCEPTION 'Migration blocked: % exchange_deposits have orphaned wallet_id', orphan_count;
+  END IF;
+
+  SELECT count(*) INTO orphan_count
+  FROM broker_deposits bd
+  LEFT JOIN brokers b ON b.id = bd.broker_id
+  WHERE b.id IS NULL;
+  IF orphan_count > 0 THEN
+    RAISE EXCEPTION 'Migration blocked: % broker_deposits have orphaned broker_id', orphan_count;
+  END IF;
+END $$;
+```
+
 ### Step 2: Create cash_accounts table
 
 Full CREATE TABLE + constraints + indexes + triggers + RLS + grants as specified above.
@@ -296,6 +321,14 @@ type TransferSide =
   | { type: "cash_account"; accountId: string; amount: number }
   | { type: "crypto_position"; assetId: string; walletId: string; quantity: number }
   | { type: "stock_position"; assetId: string; brokerId: string; quantity: number };
+
+// SourceOriginalState: collapse 3 cash variants into 1
+// Old bank_account variant had: id, balance, name, bank_name, currency
+// New cash_account variant: id, balance (no bank_name — institution name via JOIN)
+type SourceOriginalState =
+  | { type: "crypto_position"; quantity: number }
+  | { type: "stock_position"; quantity: number }
+  | { type: "cash_account"; id: string; balance: number };
 ```
 
 ### 4.5 Import/Export
@@ -306,17 +339,19 @@ type TransferSide =
 | Import v1/v2 | Normalize three arrays into unified `cashAccounts` at parse time, then process as v3 |
 | Import v3 | Single `cashAccounts` array directly |
 | Cross-table dedup | `findExistingCash(institutionId, currency)` during import |
+| Validation | `validateBackup` needs version-conditional: v1/v2 require `bankAccounts`/`exchangeDeposits`/`brokerDeposits`, v3 requires `cashAccounts` |
+| Settings labels | `import-export-settings.tsx`: replace "Fiat Deposits (Exchanges)" + "Fiat Deposits (Brokers)" with single "Cash Accounts" row |
 
 ### 4.6 Helper Functions
 
 | Function | File | Change |
 |----------|------|--------|
 | `classifyAssetClass()` | `cashflow.ts` | Add `"cash_account"` to cash branch |
-| `cashAmountField()` | `deltas.ts` | Add `"cash_account" → "balance"` |
+| `cashAmountField()` | `deltas.ts` | Add `"cash_account" → "balance"`. Also update exported `CashEntityType` union to include `"cash_account"` (keep old 3 for compat). |
 | `getAssetClass()` | `activity-log.ts` | Add `"cash_account"` mapping |
 | Backfill constants | `backfill.ts` | Add `"cash_account"` to `CASH_ENTITY_TYPES` |
-| Timeline labels | `activity-timeline.tsx` | Add `cash_account: "Cash"` |
-| `HoldingItem.type` | `types.ts` | Replace 3 types with `"cash"` |
+| Timeline labels | `activity-timeline.tsx` | Add `cash_account: "Cash"` to `ENTITY_LABELS`. Update `ENTITY_FILTER_OPTIONS`: add `cash_account`, remove old 3 entries (note: `broker_deposit` was already missing — existing bug). Update `CASH_FLOW_ENTITIES` array. |
+| `HoldingItem.type` | `types.ts` | Replace `"bank"` + `"exchange_deposit"` + `"broker_deposit"` → `"cash"` (note: bank uses `"bank"` not `"bank_account"`) |
 
 ## 5. UX Changes
 
@@ -496,11 +531,16 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 | Risk | Mitigation |
 |------|-----------|
 | Migration fails on unique constraint (existing duplicates) | Pre-migration query to detect and merge duplicates before applying constraint |
-| NULL institution_id on legacy bank_accounts | Backfill step before data migration |
-| Undo breaks for historical entries | TABLE_REMAP + SNAPSHOT_FIELD_REMAP, tested with real historical data |
+| NULL institution_id on legacy bank_accounts | Backfill step with verification assertion before data migration |
+| Orphaned deposits (wallet/broker hard-deleted) silently dropped by INNER JOIN | Pre-flight orphan check: `LEFT JOIN ... WHERE w.id IS NULL` must return 0 for both exchange_deposits and broker_deposits |
+| Undo breaks for historical entries | TABLE_REMAP + SNAPSHOT_FIELD_REMAP at all dynamic `.from(variable)` call sites (6+), tested with real historical data |
 | Import of old backup creates duplicates | Cross-table dedup via `findExistingCash()` during import |
+| Import v3 backup rejected by old validation | Version-conditional `validateBackup`: v1/v2 require old 3 arrays, v3 requires `cashAccounts` |
 | cascade_soft_delete references old tables | Updated in same migration transaction |
 | Concurrent operations bypass findExistingCash | Unique index is the safety net — insert fails with 23505 |
+| FK behavior change: wallet_id/broker_id ON DELETE CASCADE → SET NULL | Intentional: app uses soft-deletes, hard cascade was never triggered. Documented for awareness. |
+| `bank_name` column dropped from schema | Intentional: institution name accessed via JOIN to `institutions.name`. No data loss — `bank_name` was kept in sync by `sync_institution_name()` trigger. |
+| NULL institution_id not protected by unique index post-migration | Application enforces via `findExistingCash()` requiring institution_id. Backfill blocks NULL at migration time. |
 
 ## 10. Review History
 
@@ -511,3 +551,5 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 | Security Engineer | RLS, grants, triggers, FKs | Critical: cascade_soft_delete + sync_institution_name triggers, GRANTs required, FK ON DELETE SET NULL for wallet/broker |
 | Backend Architect | Undo, import/export, migration | 5 `.from()` remap sites, snapshot field mismatch, break client immediately, cashAmountField update |
 | Spec Reviewer (Code Reviewer) | Completeness, correctness, consistency | institution_id NOT NULL vs ON DELETE SET NULL conflict, entity_type enum permanence, currency type doc, backfill verification, migration JOIN safety, findExistingCash user_id filter |
+| App Code Auditor (code-explorer) | Line-by-line audit of all 36 files | 12 gaps: SourceOriginalState bank_name, validateBackup v3, CashEntityType union, undo .from() count, HoldingItem type naming, ENTITY_FILTER_OPTIONS, import label text |
+| DB Layer Auditor (code-explorer) | Full migration inventory: tables, indexes, triggers, functions, FKs, grants, RLS, edge function | Pre-flight orphan check, bank_name drop documentation, FK behavior change, deprecated table index cleanup |
