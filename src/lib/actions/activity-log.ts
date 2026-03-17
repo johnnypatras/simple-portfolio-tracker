@@ -154,7 +154,8 @@ export async function computeDeltaFromSnapshots(
   if (
     entityType === "bank_account" ||
     entityType === "exchange_deposit" ||
-    entityType === "broker_deposit"
+    entityType === "broker_deposit" ||
+    entityType === "cash_account"
   ) {
     const field = cashAmountField(entityType as CashEntityType);
     const beforeAmt = (before?.[field] as number) ?? 0;
@@ -433,7 +434,7 @@ export async function getAdjustmentDeltas(
       return "crypto";
     }
     if (entityType === "stock_position") return "stocks";
-    if (entityType === "bank_account" || entityType === "exchange_deposit" || entityType === "broker_deposit") return "cash";
+    if (entityType === "bank_account" || entityType === "exchange_deposit" || entityType === "broker_deposit" || entityType === "cash_account") return "cash";
     return null;
   };
 

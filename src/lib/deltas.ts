@@ -6,13 +6,15 @@
 export type CashEntityType =
   | "bank_account"
   | "exchange_deposit"
-  | "broker_deposit";
+  | "broker_deposit"
+  | "cash_account";
 
 /** Which snapshot field holds the monetary value for a given cash entity type. */
 export function cashAmountField(
   entityType: CashEntityType
 ): "balance" | "amount" {
-  return entityType === "bank_account" ? "balance" : "amount";
+  if (entityType === "exchange_deposit" || entityType === "broker_deposit") return "amount";
+  return "balance"; // bank_account and cash_account both use "balance"
 }
 
 /**

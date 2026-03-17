@@ -10,7 +10,7 @@ const BATCH_SIZE = 10; // Small batch to stay within Vercel 10s timeout
 const THROTTLE_MS = 24 * 60 * 60 * 1000; // 24 hours between retries
 const MAX_DAYS_BEFORE_EXHAUSTED = 3; // 3 days minimum before escalating to failed
 
-const CASH_ENTITY_TYPES = ["exchange_deposit", "broker_deposit", "bank_account"];
+const CASH_ENTITY_TYPES = ["exchange_deposit", "broker_deposit", "bank_account", "cash_account"];
 
 export async function backfillCashflowsAndDeltas(): Promise<{
   processed: number;
@@ -44,6 +44,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
       "exchange_deposit",
       "broker_deposit",
       "bank_account",
+      "cash_account",
     ])
     .or(
       `cashflow_status.is.null,and(cashflow_status.eq.pending,or(cashflow_attempted_at.is.null,cashflow_attempted_at.lt.${throttleDate}))`
