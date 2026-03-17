@@ -13,9 +13,7 @@ import type {
   StockAssetWithPositions,
   Wallet,
   Broker,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
   CoinGeckoPriceData,
   YahooStockPriceData,
 } from "@/lib/types";
@@ -79,9 +77,7 @@ export interface GroupingInput {
   stockAssets: StockAssetWithPositions[];
   wallets: Wallet[];
   brokers: Broker[];
-  bankAccounts: BankAccount[];
-  exchangeDeposits: ExchangeDeposit[];
-  brokerDeposits: BrokerDeposit[];
+  cashAccounts: CashAccount[];
   cryptoPrices: CoinGeckoPriceData;
   stockPrices: YahooStockPriceData;
   fxRates: FXRates;
@@ -97,7 +93,7 @@ export interface GroupingInput {
 export function buildInstitutionGroups(input: GroupingInput): InstitutionGroup[] {
   const {
     institutions, cryptoAssets, stockAssets, wallets, brokers,
-    bankAccounts, exchangeDeposits, brokerDeposits,
+    cashAccounts,
     cryptoPrices, stockPrices, fxRates, primaryCurrency,
   } = input;
 
@@ -240,59 +236,27 @@ export function buildInstitutionGroups(input: GroupingInput): InstitutionGroup[]
     }
   }
 
-  // ── Bank accounts ────────────────────────────────────
-  for (const bank of bankAccounts) {
-    if (!bank.institution_id) continue;
-    const group = getGroup(bank.institution_id);
-    if (!group) continue;
-
-    const valueBase = convertToBase(bank.balance, bank.currency, primaryCurrency, fxRates);
-    group.cash.push({
-      id: bank.id,
-      type: "bank",
-      label: bank.name,
-      currency: bank.currency,
-      amount: bank.balance,
-      valueBase,
-      apy: bank.apy,
-    });
-    group.totalValue += valueBase;
-  }
-
-  // ── Exchange deposits ────────────────────────────────
-  for (const dep of exchangeDeposits) {
-    const instId = walletToInst.get(dep.wallet_id);
+  // ── Cash accounts ───────────────────────────────────
+  for (const cash of cashAccounts) {
+    // Derive institution group: use institution_id directly,
+    // or fall back to wallet/broker indirection for exchange/broker deposits
+    const instId = cash.institution_id
+      ?? (cash.wallet_id ? walletToInst.get(cash.wallet_id) : undefined)
+      ?? (cash.broker_id ? brokerToInst.get(cash.broker_id) : undefined);
     const group = getGroup(instId);
     if (!group) continue;
 
-    const valueBase = convertToBase(dep.amount, dep.currency, primaryCurrency, fxRates);
+    const type: "bank" | "exchange_deposit" | "broker_deposit" =
+      cash.wallet_id ? "exchange_deposit" : cash.broker_id ? "broker_deposit" : "bank";
+    const valueBase = convertToBase(cash.balance, cash.currency, primaryCurrency, fxRates);
     group.cash.push({
-      id: dep.id,
-      type: "exchange_deposit",
-      label: "Fiat deposit",
-      currency: dep.currency,
-      amount: dep.amount,
+      id: cash.id,
+      type,
+      label: cash.name ?? "Fiat deposit",
+      currency: cash.currency,
+      amount: cash.balance,
       valueBase,
-      apy: dep.apy,
-    });
-    group.totalValue += valueBase;
-  }
-
-  // ── Broker deposits ──────────────────────────────────
-  for (const dep of brokerDeposits) {
-    const instId = brokerToInst.get(dep.broker_id);
-    const group = getGroup(instId);
-    if (!group) continue;
-
-    const valueBase = convertToBase(dep.amount, dep.currency, primaryCurrency, fxRates);
-    group.cash.push({
-      id: dep.id,
-      type: "broker_deposit",
-      label: "Fiat deposit",
-      currency: dep.currency,
-      amount: dep.amount,
-      valueBase,
-      apy: dep.apy,
+      apy: cash.apy,
     });
     group.totalValue += valueBase;
   }

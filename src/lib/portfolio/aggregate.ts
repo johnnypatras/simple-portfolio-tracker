@@ -12,9 +12,7 @@ import type {
   CoinGeckoPriceData,
   StockAssetWithPositions,
   YahooStockPriceData,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
 } from "@/lib/types";
 
 export interface PortfolioSummary {
@@ -73,9 +71,7 @@ interface AggregateParams {
   cryptoPrices: CoinGeckoPriceData;
   stockAssets: StockAssetWithPositions[];
   stockPrices: YahooStockPriceData;
-  bankAccounts: BankAccount[];
-  exchangeDeposits: ExchangeDeposit[];
-  brokerDeposits: BrokerDeposit[];
+  cashAccounts: CashAccount[];
   primaryCurrency: string;
   fxRates: FXRates;
   /** Dual FX rate sets for accurate snapshot storage.
@@ -103,9 +99,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     cryptoPrices,
     stockAssets,
     stockPrices,
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
+    cashAccounts,
     primaryCurrency,
     fxRates,
     fxRatesUsd,
@@ -178,26 +172,14 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     stocksWeightedChange += valueBase * change;
   }
 
-  // ── Cash (bank accounts + exchange deposits + broker deposits) ──
+  // ── Cash (unified cash accounts) ──
   let cashValue = 0;
   let fiatCashWeightedChange = 0; // FX-only change for foreign-currency cash
 
-  for (const bank of bankAccounts) {
-    const valueBase = convertToBase(bank.balance, bank.currency, primaryCurrency, fxRates);
+  for (const cash of cashAccounts) {
+    const valueBase = convertToBase(cash.balance, cash.currency, primaryCurrency, fxRates);
     cashValue += valueBase;
-    fiatCashWeightedChange += valueBase * fxChangeForCurrency(bank.currency);
-  }
-
-  for (const deposit of exchangeDeposits) {
-    const valueBase = convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
-    cashValue += valueBase;
-    fiatCashWeightedChange += valueBase * fxChangeForCurrency(deposit.currency);
-  }
-
-  for (const deposit of brokerDeposits) {
-    const valueBase = convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
-    cashValue += valueBase;
-    fiatCashWeightedChange += valueBase * fxChangeForCurrency(deposit.currency);
+    fiatCashWeightedChange += valueBase * fxChangeForCurrency(cash.currency);
   }
 
   // Add stablecoins to cash
@@ -288,25 +270,11 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
         stocksHomeCurrencyEur += convertToBase(valueNative, asset.currency, "EUR", fxRatesEur);
       }
     }
-    for (const bank of bankAccounts) {
-      fiatCashValueUsd += convertToBase(bank.balance, bank.currency, "USD", fxRatesUsd);
-      fiatCashValueEur += convertToBase(bank.balance, bank.currency, "EUR", fxRatesEur);
-      if (bank.currency === primaryCurrency) {
-        cashHomeCurrencyEur += convertToBase(bank.balance, bank.currency, "EUR", fxRatesEur);
-      }
-    }
-    for (const deposit of exchangeDeposits) {
-      fiatCashValueUsd += convertToBase(deposit.amount, deposit.currency, "USD", fxRatesUsd);
-      fiatCashValueEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
-      if (deposit.currency === primaryCurrency) {
-        cashHomeCurrencyEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
-      }
-    }
-    for (const deposit of brokerDeposits) {
-      fiatCashValueUsd += convertToBase(deposit.amount, deposit.currency, "USD", fxRatesUsd);
-      fiatCashValueEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
-      if (deposit.currency === primaryCurrency) {
-        cashHomeCurrencyEur += convertToBase(deposit.amount, deposit.currency, "EUR", fxRatesEur);
+    for (const cash of cashAccounts) {
+      fiatCashValueUsd += convertToBase(cash.balance, cash.currency, "USD", fxRatesUsd);
+      fiatCashValueEur += convertToBase(cash.balance, cash.currency, "EUR", fxRatesEur);
+      if (cash.currency === primaryCurrency) {
+        cashHomeCurrencyEur += convertToBase(cash.balance, cash.currency, "EUR", fxRatesEur);
       }
     }
   } else {

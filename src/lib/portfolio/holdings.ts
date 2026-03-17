@@ -1,9 +1,7 @@
 import type {
   CryptoAssetWithPositions,
   StockAssetWithPositions,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
   HoldingItem,
   CoinGeckoPriceData,
   YahooStockPriceData,
@@ -15,9 +13,7 @@ interface BuildPaletteHoldingsInput {
   cryptoPrices: CoinGeckoPriceData;
   stockAssets: StockAssetWithPositions[];
   stockPrices: YahooStockPriceData;
-  bankAccounts: BankAccount[];
-  exchangeDeposits: ExchangeDeposit[];
-  brokerDeposits: BrokerDeposit[];
+  cashAccounts: CashAccount[];
   fxRates: Record<string, number>;
   primaryCurrency: string;
   /** Path prefix for detail links, e.g. "/dashboard" or "/share/abc123" */
@@ -33,9 +29,7 @@ export function buildPaletteHoldings({
   cryptoPrices,
   stockAssets,
   stockPrices,
-  bankAccounts,
-  exchangeDeposits,
-  brokerDeposits,
+  cashAccounts,
   fxRates,
   primaryCurrency,
   pathPrefix,
@@ -81,26 +75,16 @@ export function buildPaletteHoldings({
         currency: a.currency,
       };
     }),
-    ...bankAccounts.map((a) => ({
-      id: a.id,
-      type: "bank" as const,
-      name: `${a.name} (${a.currency})`,
-      value: convertToBase(a.balance, a.currency, primaryCurrency, fxRates),
+    ...cashAccounts.map((ca) => ({
+      id: ca.id,
+      type: "cash" as const,
+      name: ca.name ?? `${ca.currency} Cash`,
+      ticker: ca.currency,
+      value: convertToBase(ca.balance, ca.currency, primaryCurrency, fxRates),
       detailPath: `${pathPrefix}/cash`,
-    })),
-    ...exchangeDeposits.map((d) => ({
-      id: d.id,
-      type: "exchange_deposit" as const,
-      name: `${d.wallet_name} ${d.currency}`,
-      value: convertToBase(d.amount, d.currency, primaryCurrency, fxRates),
-      detailPath: `${pathPrefix}/cash`,
-    })),
-    ...brokerDeposits.map((d) => ({
-      id: d.id,
-      type: "broker_deposit" as const,
-      name: `${d.broker_name} ${d.currency}`,
-      value: convertToBase(d.amount, d.currency, primaryCurrency, fxRates),
-      detailPath: `${pathPrefix}/cash`,
+      quantity: undefined,
+      pricePerUnit: undefined,
+      currency: ca.currency,
     })),
   ];
 }

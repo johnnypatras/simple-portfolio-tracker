@@ -13,18 +13,14 @@ import type {
   StockAssetWithPositions,
   YahooStockPriceData,
   YahooDividendMap,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
   HoldingItem,
 } from "@/lib/types";
 
 interface PortfolioAssets {
   cryptoAssets: CryptoAssetWithPositions[];
   stockAssets: StockAssetWithPositions[];
-  bankAccounts: BankAccount[];
-  exchangeDeposits: ExchangeDeposit[];
-  brokerDeposits: BrokerDeposit[];
+  cashAccounts: CashAccount[];
   primaryCurrency: string;
 }
 
@@ -46,7 +42,7 @@ export async function assemblePortfolioView(
   assets: PortfolioAssets,
   pathPrefix: string,
 ): Promise<AssembledPortfolio> {
-  const { cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits, primaryCurrency } = assets;
+  const { cryptoAssets, stockAssets, cashAccounts, primaryCurrency } = assets;
 
   const coinIds = [
     ...new Set(["bitcoin", "ethereum", "solana", ...cryptoAssets.map((a) => a.coingecko_id)]),
@@ -59,9 +55,7 @@ export async function assemblePortfolioView(
     ...new Set([
       "EUR", "USD",
       ...stockAssets.map((a) => a.currency),
-      ...bankAccounts.map((a) => a.currency),
-      ...exchangeDeposits.map((a) => a.currency),
-      ...brokerDeposits.map((a) => a.currency),
+      ...cashAccounts.map((a) => a.currency),
     ]),
   ];
 
@@ -81,9 +75,7 @@ export async function assemblePortfolioView(
     cryptoPrices,
     stockAssets,
     stockPrices,
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
+    cashAccounts,
     primaryCurrency,
     fxRates,
     fxRatesUsd,
@@ -93,7 +85,7 @@ export async function assemblePortfolioView(
 
   const insights = computeDashboardInsights({
     cryptoAssets, cryptoPrices, stockAssets, stockPrices,
-    bankAccounts, exchangeDeposits, brokerDeposits,
+    cashAccounts,
     primaryCurrency, fxRates, summary,
     sp500Price: indexPrices["^GSPC"]?.price ?? 0,
     sp500Change24h: indexPrices["^GSPC"]?.change24h ?? 0,
@@ -121,8 +113,7 @@ export async function assemblePortfolioView(
 
   const paletteHoldings = buildPaletteHoldings({
     cryptoAssets, cryptoPrices, stockAssets, stockPrices,
-    bankAccounts, exchangeDeposits, brokerDeposits, fxRates,
-    primaryCurrency, pathPrefix,
+    cashAccounts, fxRates, primaryCurrency, pathPrefix,
   });
 
   // FX markets close Friday ~22:00 UTC, reopen Sunday ~22:00 UTC.

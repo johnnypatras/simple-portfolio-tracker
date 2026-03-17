@@ -15,9 +15,7 @@ import type {
   StockAssetWithPositions,
   YahooStockPriceData,
   YahooDividendMap,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
 } from "@/lib/types";
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -130,9 +128,7 @@ interface InsightsParams {
   cryptoPrices: CoinGeckoPriceData;
   stockAssets: StockAssetWithPositions[];
   stockPrices: YahooStockPriceData;
-  bankAccounts: BankAccount[];
-  exchangeDeposits: ExchangeDeposit[];
-  brokerDeposits: BrokerDeposit[];
+  cashAccounts: CashAccount[];
   primaryCurrency: string;
   fxRates: FXRates;
   summary: PortfolioSummary;
@@ -168,9 +164,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
     cryptoPrices,
     stockAssets,
     stockPrices,
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
+    cashAccounts,
     primaryCurrency,
     fxRates,
     summary,
@@ -454,28 +448,10 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   let apyTotalValue = 0;
   let cashAccountCount = 0;
 
-  for (const bank of bankAccounts) {
-    const valueBase = convertToBase(bank.balance, bank.currency, primaryCurrency, fxRates);
-    if (bank.apy > 0) {
-      apyWeightedSum += valueBase * bank.apy;
-      apyTotalValue += valueBase;
-    }
-    cashAccountCount++;
-  }
-
-  for (const deposit of exchangeDeposits) {
-    const valueBase = convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
-    if (deposit.apy > 0) {
-      apyWeightedSum += valueBase * deposit.apy;
-      apyTotalValue += valueBase;
-    }
-    cashAccountCount++;
-  }
-
-  for (const deposit of brokerDeposits) {
-    const valueBase = convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
-    if (deposit.apy > 0) {
-      apyWeightedSum += valueBase * deposit.apy;
+  for (const cash of cashAccounts) {
+    const valueBase = convertToBase(cash.balance, cash.currency, primaryCurrency, fxRates);
+    if (cash.apy > 0) {
+      apyWeightedSum += valueBase * cash.apy;
       apyTotalValue += valueBase;
     }
     cashAccountCount++;
@@ -512,19 +488,9 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   const fiatMap = new Map<string, number>();
   const stableMap = new Map<string, number>();
 
-  for (const bank of bankAccounts) {
-    const valueBase = convertToBase(bank.balance, bank.currency, primaryCurrency, fxRates);
-    const key = bank.currency.toUpperCase();
-    fiatMap.set(key, (fiatMap.get(key) ?? 0) + valueBase);
-  }
-  for (const deposit of exchangeDeposits) {
-    const valueBase = convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
-    const key = deposit.currency.toUpperCase();
-    fiatMap.set(key, (fiatMap.get(key) ?? 0) + valueBase);
-  }
-  for (const deposit of brokerDeposits) {
-    const valueBase = convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
-    const key = deposit.currency.toUpperCase();
+  for (const cash of cashAccounts) {
+    const valueBase = convertToBase(cash.balance, cash.currency, primaryCurrency, fxRates);
+    const key = cash.currency.toUpperCase();
     fiatMap.set(key, (fiatMap.get(key) ?? 0) + valueBase);
   }
   // Stablecoins → grouped by inferred peg currency
@@ -576,23 +542,11 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   };
 
   // Cash: fiat deposits + bank accounts (native amounts from raw entities)
-  for (const bank of bankAccounts) {
-    const ccy = bank.currency.toUpperCase();
+  for (const cash of cashAccounts) {
+    const ccy = cash.currency.toUpperCase();
     const { base, native } = ensureCcy(ccy);
-    base.cash += convertToBase(bank.balance, bank.currency, primaryCurrency, fxRates);
-    native.cash += bank.balance;
-  }
-  for (const deposit of exchangeDeposits) {
-    const ccy = deposit.currency.toUpperCase();
-    const { base, native } = ensureCcy(ccy);
-    base.cash += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
-    native.cash += deposit.amount;
-  }
-  for (const deposit of brokerDeposits) {
-    const ccy = deposit.currency.toUpperCase();
-    const { base, native } = ensureCcy(ccy);
-    base.cash += convertToBase(deposit.amount, deposit.currency, primaryCurrency, fxRates);
-    native.cash += deposit.amount;
+    base.cash += convertToBase(cash.balance, cash.currency, primaryCurrency, fxRates);
+    native.cash += cash.balance;
   }
   // Stablecoins → grouped by inferred peg currency
   for (const asset of cryptoAssets) {

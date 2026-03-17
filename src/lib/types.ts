@@ -621,7 +621,7 @@ export type TransferResult =
 /** Flat portfolio item for command palette search. */
 export interface HoldingItem {
   id: string;
-  type: "crypto" | "stock" | "bank" | "exchange_deposit" | "broker_deposit";
+  type: "crypto" | "stock" | "cash";
   name: string;
   ticker?: string;
   value: number;
