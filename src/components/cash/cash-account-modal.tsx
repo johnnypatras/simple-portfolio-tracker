@@ -1,0 +1,248 @@
+"use client";
+
+import { useState, useEffect, useId } from "react";
+import { Modal } from "@/components/ui/modal";
+import { toast } from "sonner";
+import {
+  createCashAccount,
+  updateCashAccount,
+} from "@/lib/actions/cash-accounts";
+import type { CashAccount, CashAccountInput, CurrencyType } from "@/lib/types";
+
+interface CashAccountModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  cashAccount?: CashAccount | null;
+  institutionId?: string;
+  institutionName?: string;
+  walletId?: string;
+  walletName?: string;
+  brokerId?: string;
+  brokerName?: string;
+}
+
+export function CashAccountModal({
+  isOpen,
+  onClose,
+  cashAccount,
+  institutionId,
+  institutionName,
+  walletId,
+  walletName,
+  brokerId,
+  brokerName,
+}: CashAccountModalProps) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isAdjustment, setIsAdjustment] = useState(false);
+
+  const id = useId();
+
+  // Form state
+  const [name, setName] = useState("");
+  const [currency, setCurrency] = useState<CurrencyType>("EUR");
+  const [balance, setBalance] = useState("");
+  const [apy, setApy] = useState("");
+
+  // Bank-origin accounts show the name field; deposits (wallet/broker) do not
+  const isBankOrigin = !walletId && !brokerId && !cashAccount?.wallet_id && !cashAccount?.broker_id;
+  const isEditing = !!cashAccount;
+
+  // Derive modal title from context
+  function getTitle(): string {
+    if (isEditing) {
+      if (cashAccount.wallet_id) return "Edit Exchange Deposit";
+      if (cashAccount.broker_id) return "Edit Broker Deposit";
+      return "Edit Bank Account";
+    }
+    if (walletId) return `Add Deposit — ${walletName ?? "Exchange"}`;
+    if (brokerId) return `Add Deposit — ${brokerName ?? "Broker"}`;
+    return `Add Account — ${institutionName ?? "Bank"}`;
+  }
+
+  // Sync form when modal opens or cashAccount changes
+  useEffect(() => {
+    if (isOpen && cashAccount) {
+      setName(cashAccount.name ?? "");
+      setCurrency(cashAccount.currency);
+      setBalance(cashAccount.balance.toString());
+      setApy(cashAccount.apy.toString());
+      setError(null);
+      setIsAdjustment(false);
+    } else if (isOpen) {
+      setName("");
+      setCurrency("EUR");
+      setBalance("");
+      setApy("");
+      setError(null);
+      setIsAdjustment(false);
+    }
+  }, [isOpen, cashAccount]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      if (isEditing) {
+        const input: CashAccountInput = {
+          currency,
+          balance: parseFloat(balance) || 0,
+          apy: parseFloat(apy) || 0,
+          name: isBankOrigin ? name : undefined,
+        };
+        await updateCashAccount(cashAccount.id, input, { isAdjustment });
+      } else {
+        const input: CashAccountInput = {
+          institution_id: institutionId,
+          currency,
+          balance: parseFloat(balance) || 0,
+          apy: parseFloat(apy) || 0,
+          name: isBankOrigin ? name : undefined,
+          wallet_id: walletId ?? null,
+          broker_id: brokerId ?? null,
+        };
+        await createCashAccount(input, { isAdjustment });
+      }
+      onClose();
+      const adjLabel = isAdjustment ? " (adjustment)" : "";
+      const verb = isEditing ? "updated" : "added";
+      const noun = isBankOrigin ? "Bank account" : "Deposit";
+      toast.success(`${noun} ${verb}${adjLabel}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal open={isOpen} onClose={onClose} title={getTitle()}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Transfer / Adjustment badge (edit mode only) */}
+        {cashAccount?.last_was_transfer && (
+          <div className="flex items-center gap-1.5 -mt-2 mb-1">
+            <span className="text-[10px] text-teal-400 font-medium" title="Last change was a sell/buy/move transfer">Xfer</span>
+            <span className="text-[10px] text-zinc-600">Last changed via transfer</span>
+          </div>
+        )}
+        {!cashAccount?.last_was_transfer && cashAccount?.last_was_adjustment && (
+          <div className="flex items-center gap-1.5 -mt-2 mb-1">
+            <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">Adj.</span>
+            <span className="text-[10px] text-zinc-600">Last saved as portfolio adjustment</span>
+          </div>
+        )}
+
+        {/* Name field — bank-origin only */}
+        {isBankOrigin && (
+          <div>
+            <label htmlFor={`${id}-name`} className="block text-xs text-zinc-500 mb-1">
+              Account Name
+            </label>
+            <input
+              id={`${id}-name`}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Savings, Current"
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              required
+            />
+          </div>
+        )}
+
+        {/* Currency + Balance */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-500 mb-1">
+              Currency
+            </label>
+            <select
+              id={`${id}-currency`}
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value as CurrencyType)}
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            >
+              <option value="EUR">EUR</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${id}-balance`} className="block text-xs text-zinc-500 mb-1">
+              {isBankOrigin ? "Balance" : "Amount"}
+            </label>
+            <input
+              id={`${id}-balance`}
+              type="number"
+              step="0.01"
+              value={balance}
+              onChange={(e) => setBalance(e.target.value)}
+              placeholder="0.00"
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              required
+            />
+          </div>
+        </div>
+
+        {/* APY */}
+        <div>
+          <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-500 mb-1">
+            APY % <span className="text-zinc-600">(optional)</span>
+          </label>
+          <input
+            id={`${id}-apy`}
+            type="number"
+            step="0.01"
+            value={apy}
+            onChange={(e) => setApy(e.target.value)}
+            placeholder="0.00"
+            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+          />
+        </div>
+
+        {/* Error display */}
+        {error && (
+          <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+            {error}
+          </p>
+        )}
+
+        {/* Footer: adjustment checkbox + buttons */}
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
+            <input
+              type="checkbox"
+              checked={isAdjustment}
+              onChange={(e) => setIsAdjustment(e.target.checked)}
+              className="accent-amber-500"
+            />
+            Portfolio adjustment
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+            >
+              {loading
+                ? "Saving..."
+                : isEditing
+                  ? "Save Changes"
+                  : isBankOrigin
+                    ? "Add Account"
+                    : "Add Deposit"}
+            </button>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
+}
