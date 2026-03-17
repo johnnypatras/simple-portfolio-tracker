@@ -65,6 +65,7 @@ export function classifyAssetClass(
   }
   if (entityType === "stock_position") return "stocks";
   if (
+    entityType === "cash_account" ||
     entityType === "bank_account" ||
     entityType === "exchange_deposit" ||
     entityType === "broker_deposit"
