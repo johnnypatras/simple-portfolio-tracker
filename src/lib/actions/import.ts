@@ -19,13 +19,11 @@ export interface ImportResult {
     institutions: number;
     wallets: number;
     brokers: number;
-    bankAccounts: number;
+    cashAccounts: number;
     cryptoAssets: number;
     cryptoPositions: number;
     stockAssets: number;
     stockPositions: number;
-    exchangeDeposits: number;
-    brokerDeposits: number;
     tradeEntries: number;
     snapshots: number;
     diaryEntries: number;
@@ -35,11 +33,9 @@ export interface ImportResult {
     institutions: number;
     wallets: number;
     brokers: number;
-    bankAccounts: number;
+    cashAccounts: number;
     cryptoAssets: number;
     stockAssets: number;
-    exchangeDeposits: number;
-    brokerDeposits: number;
     snapshots: number;
   };
 }
@@ -66,19 +62,35 @@ export async function validateBackup(
 
   const d = data as Record<string, unknown>;
 
-  // Accept v1 and v2
-  if (d.version !== 1 && d.version !== 2) {
+  // Accept v1, v2, and v3
+  if (d.version !== 1 && d.version !== 2 && d.version !== 3) {
     return { ok: false, error: `Unsupported backup version: ${d.version}` };
   }
 
+  const isV3 = d.version === 3;
+
+  // Required arrays differ by version
   const requiredArrays = [
     "institutions", "wallets", "brokers", "cryptoAssets", "stockAssets",
-    "bankAccounts", "exchangeDeposits", "brokerDeposits", "tradeEntries", "snapshots",
+    "tradeEntries", "snapshots",
   ];
 
   for (const key of requiredArrays) {
     if (!Array.isArray(d[key])) {
       return { ok: false, error: `Missing or invalid field: ${key}` };
+    }
+  }
+
+  // v3 requires cashAccounts; v1/v2 requires the 3 legacy arrays
+  if (isV3) {
+    if (!Array.isArray(d.cashAccounts)) {
+      return { ok: false, error: "Missing or invalid field: cashAccounts" };
+    }
+  } else {
+    for (const key of ["bankAccounts", "exchangeDeposits", "brokerDeposits"]) {
+      if (!Array.isArray(d[key])) {
+        return { ok: false, error: `Missing or invalid field: ${key}` };
+      }
     }
   }
 
@@ -89,12 +101,18 @@ export async function validateBackup(
     brokers: ["id", "name"],
     cryptoAssets: ["id", "ticker", "name", "coingecko_id"],
     stockAssets: ["id", "ticker", "name"],
-    bankAccounts: ["name", "currency", "balance"],
-    exchangeDeposits: ["wallet_id", "currency", "amount"],
-    brokerDeposits: ["broker_id", "currency", "amount"],
     tradeEntries: ["asset_name", "quantity", "price"],
     snapshots: ["snapshot_date", "total_value_usd"],
   };
+
+  // Add cash shape rules based on version
+  if (isV3) {
+    shapeRules.cashAccounts = ["currency", "balance"];
+  } else {
+    shapeRules.bankAccounts = ["name", "currency", "balance"];
+    shapeRules.exchangeDeposits = ["wallet_id", "currency", "amount"];
+    shapeRules.brokerDeposits = ["broker_id", "currency", "amount"];
+  }
 
   for (const [key, fields] of Object.entries(shapeRules)) {
     const arr = d[key] as unknown[];
@@ -105,13 +123,13 @@ export async function validateBackup(
     }
   }
 
-  // v2 optional arrays — validate shape only when present
-  const v2ShapeRules: Record<string, string[]> = {
+  // v2+ optional arrays — validate shape only when present
+  const optionalShapeRules: Record<string, string[]> = {
     diaryEntries: ["entry_date", "content"],
     goalPrices: ["crypto_asset_id", "target_price"],
   };
 
-  for (const [key, fields] of Object.entries(v2ShapeRules)) {
+  for (const [key, fields] of Object.entries(optionalShapeRules)) {
     if (Array.isArray(d[key])) {
       const arr = d[key] as unknown[];
       for (let i = 0; i < arr.length; i++) {
@@ -120,6 +138,39 @@ export async function validateBackup(
         }
       }
     }
+  }
+
+  // ── Normalize v1/v2 → v3 format ────────────────────────
+  // Convert 3 legacy arrays into unified cashAccounts for consistent processing
+  if (!isV3) {
+    const cashAccounts: Record<string, unknown>[] = [];
+
+    for (const ba of (d.bankAccounts as Record<string, unknown>[])) {
+      cashAccounts.push({
+        ...ba,
+        balance: ba.balance,
+        wallet_id: null,
+        broker_id: null,
+      });
+    }
+    for (const dep of (d.exchangeDeposits as Record<string, unknown>[])) {
+      cashAccounts.push({
+        ...dep,
+        balance: dep.amount,
+        name: null,
+        broker_id: null,
+      });
+    }
+    for (const dep of (d.brokerDeposits as Record<string, unknown>[])) {
+      cashAccounts.push({
+        ...dep,
+        balance: dep.amount,
+        name: null,
+        wallet_id: null,
+      });
+    }
+
+    d.cashAccounts = cashAccounts;
   }
 
   // ── Value validation ──────────────────────────────────
@@ -135,18 +186,10 @@ export async function validateBackup(
     for (const [i, b] of (d.brokers as Record<string, unknown>[]).entries()) {
       validateName(String(b.name), 100, `brokers[${i}].name`);
     }
-    for (const [i, ba] of (d.bankAccounts as Record<string, unknown>[]).entries()) {
-      validateName(String(ba.name), 100, `bankAccounts[${i}].name`);
-      validateCurrency(String(ba.currency));
-      validateAmount(Number(ba.balance), `bankAccounts[${i}].balance`);
-    }
-    for (const [i, dep] of (d.exchangeDeposits as Record<string, unknown>[]).entries()) {
-      validateCurrency(String(dep.currency));
-      validateAmount(Number(dep.amount), `exchangeDeposits[${i}].amount`);
-    }
-    for (const [i, dep] of (d.brokerDeposits as Record<string, unknown>[]).entries()) {
-      validateCurrency(String(dep.currency));
-      validateAmount(Number(dep.amount), `brokerDeposits[${i}].amount`);
+    for (const [i, ca] of (d.cashAccounts as Record<string, unknown>[]).entries()) {
+      if (ca.name) validateName(String(ca.name), 100, `cashAccounts[${i}].name`);
+      validateCurrency(String(ca.currency));
+      validateAmount(Number(ca.balance), `cashAccounts[${i}].balance`);
     }
     for (const [i, t] of (d.tradeEntries as Record<string, unknown>[]).entries()) {
       validateQuantity(Number(t.quantity), `tradeEntries[${i}].quantity`);
@@ -222,9 +265,9 @@ export async function importFromJson(
     const tables = [
       "diary_entries",
       "portfolio_snapshots", "trade_entries",
-      "exchange_deposits", "broker_deposits",
+      "cash_accounts",
       "crypto_assets", "stock_assets",
-      "bank_accounts", "brokers", "wallets", "institutions",
+      "brokers", "wallets", "institutions",
     ];
     for (const table of tables) {
       const { error } = await supabase.from(table).delete().eq("user_id", uid);
@@ -240,14 +283,14 @@ export async function importFromJson(
   const stockAssetMap = new Map<string, string>();
 
   const counts = {
-    institutions: 0, wallets: 0, brokers: 0, bankAccounts: 0,
+    institutions: 0, wallets: 0, brokers: 0, cashAccounts: 0,
     cryptoAssets: 0, cryptoPositions: 0, stockAssets: 0, stockPositions: 0,
-    exchangeDeposits: 0, brokerDeposits: 0, tradeEntries: 0, snapshots: 0,
+    tradeEntries: 0, snapshots: 0,
     diaryEntries: 0, goalPrices: 0,
   };
   const skipped = {
-    institutions: 0, wallets: 0, brokers: 0, bankAccounts: 0,
-    cryptoAssets: 0, stockAssets: 0, exchangeDeposits: 0, brokerDeposits: 0,
+    institutions: 0, wallets: 0, brokers: 0, cashAccounts: 0,
+    cryptoAssets: 0, stockAssets: 0,
     snapshots: 0,
   };
 
@@ -357,48 +400,55 @@ export async function importFromJson(
     }
   }
 
-  // ── 4. Bank Accounts (batch insert) ───────────────────
+  // ── 4. Cash Accounts (unified — batch insert) ──────────
+  // Data arrives as cashAccounts[] (v3 native or normalized from v1/v2 in validateBackup)
   {
-    const existingBankMap = new Map<string, boolean>();
+    const existingCashSet = new Set<string>();
     if (!isReplace) {
-      const { data: existingBanks } = await supabase
-        .from("bank_accounts")
-        .select("name, currency")
+      const { data: existingCash } = await supabase
+        .from("cash_accounts")
+        .select("name, currency, wallet_id, broker_id")
         .eq("user_id", uid)
         .is("deleted_at", null);
-      for (const ba of existingBanks ?? []) {
-        existingBankMap.set(`${ba.name}|${ba.currency}`, true);
+      for (const ca of existingCash ?? []) {
+        // Dedup key: wallet_id|broker_id|name|currency
+        existingCashSet.add(`${ca.wallet_id ?? ""}|${ca.broker_id ?? ""}|${ca.name ?? ""}|${ca.currency}`);
       }
     }
 
     const newRows: Record<string, unknown>[] = [];
 
-    for (const ba of data.bankAccounts) {
-      const mappedInstId = ba.institution_id ? instMap.get(ba.institution_id) ?? null : null;
-      const found = !isReplace && existingBankMap.has(`${ba.name}|${ba.currency}`);
+    for (const ca of data.cashAccounts ?? []) {
+      const mappedInstId = ca.institution_id ? instMap.get(ca.institution_id) ?? null : null;
+      const mappedWalletId = ca.wallet_id ? walletMap.get(ca.wallet_id) ?? null : null;
+      const mappedBrokerId = ca.broker_id ? brokerMap.get(ca.broker_id) ?? null : null;
+
+      const dedupKey = `${mappedWalletId ?? ""}|${mappedBrokerId ?? ""}|${ca.name ?? ""}|${ca.currency}`;
+      const found = !isReplace && existingCashSet.has(dedupKey);
 
       if (found) {
-        skipped.bankAccounts++;
+        skipped.cashAccounts++;
       } else {
         newRows.push({
           user_id: uid,
-          name: ba.name,
-          bank_name: ba.bank_name,
-          region: ba.region,
-          currency: ba.currency,
-          balance: ba.balance,
-          apy: ba.apy,
           institution_id: mappedInstId,
-          last_was_adjustment: ba.last_was_adjustment ?? false,
-          last_was_transfer: ba.last_was_transfer ?? false,
+          name: ca.name ?? null,
+          currency: ca.currency,
+          balance: ca.balance,
+          apy: ca.apy ?? 0,
+          region: ca.region ?? null,
+          wallet_id: mappedWalletId,
+          broker_id: mappedBrokerId,
+          last_was_adjustment: ca.last_was_adjustment ?? false,
+          last_was_transfer: ca.last_was_transfer ?? false,
         });
       }
     }
 
     if (newRows.length > 0) {
-      const { error } = await supabase.from("bank_accounts").insert(newRows);
-      if (error) return fail(`Bank accounts batch: ${error.message}`);
-      counts.bankAccounts = newRows.length;
+      const { error } = await supabase.from("cash_accounts").insert(newRows);
+      if (error) return fail(`Cash accounts batch: ${error.message}`);
+      counts.cashAccounts = newRows.length;
     }
   }
 
@@ -587,93 +637,7 @@ export async function importFromJson(
     }
   }
 
-  // ── 7. Exchange Deposits (batch insert) ────────────────
-  {
-    const existingExDepSet = new Set<string>();
-    if (!isReplace) {
-      const { data: existingExDeps } = await supabase
-        .from("exchange_deposits")
-        .select("wallet_id, currency")
-        .eq("user_id", uid)
-        .is("deleted_at", null);
-      for (const d of existingExDeps ?? []) {
-        existingExDepSet.add(`${d.wallet_id}|${d.currency}`);
-      }
-    }
-
-    const newRows: Record<string, unknown>[] = [];
-
-    for (const dep of data.exchangeDeposits) {
-      const mappedWalletId = walletMap.get(dep.wallet_id);
-      if (!mappedWalletId) continue;
-      const found = !isReplace && existingExDepSet.has(`${mappedWalletId}|${dep.currency}`);
-
-      if (found) {
-        skipped.exchangeDeposits++;
-      } else {
-        newRows.push({
-          user_id: uid,
-          wallet_id: mappedWalletId,
-          currency: dep.currency,
-          amount: dep.amount,
-          apy: dep.apy ?? 0,
-          last_was_adjustment: dep.last_was_adjustment ?? false,
-          last_was_transfer: dep.last_was_transfer ?? false,
-        });
-      }
-    }
-
-    if (newRows.length > 0) {
-      const { error } = await supabase.from("exchange_deposits").insert(newRows);
-      if (error) return fail(`Exchange deposits batch: ${error.message}`);
-      counts.exchangeDeposits = newRows.length;
-    }
-  }
-
-  // ── 8. Broker Deposits (batch insert) ──────────────────
-  {
-    const existingBrDepSet = new Set<string>();
-    if (!isReplace) {
-      const { data: existingBrDeps } = await supabase
-        .from("broker_deposits")
-        .select("broker_id, currency")
-        .eq("user_id", uid)
-        .is("deleted_at", null);
-      for (const d of existingBrDeps ?? []) {
-        existingBrDepSet.add(`${d.broker_id}|${d.currency}`);
-      }
-    }
-
-    const newRows: Record<string, unknown>[] = [];
-
-    for (const dep of data.brokerDeposits) {
-      const mappedBrokerId = brokerMap.get(dep.broker_id);
-      if (!mappedBrokerId) continue;
-      const found = !isReplace && existingBrDepSet.has(`${mappedBrokerId}|${dep.currency}`);
-
-      if (found) {
-        skipped.brokerDeposits++;
-      } else {
-        newRows.push({
-          user_id: uid,
-          broker_id: mappedBrokerId,
-          currency: dep.currency,
-          amount: dep.amount,
-          apy: dep.apy ?? 0,
-          last_was_adjustment: dep.last_was_adjustment ?? false,
-          last_was_transfer: dep.last_was_transfer ?? false,
-        });
-      }
-    }
-
-    if (newRows.length > 0) {
-      const { error } = await supabase.from("broker_deposits").insert(newRows);
-      if (error) return fail(`Broker deposits batch: ${error.message}`);
-      counts.brokerDeposits = newRows.length;
-    }
-  }
-
-  // ── 9. Trade Entries (batch upsert by original UUID) ────
+  // ── 7. Trade Entries (batch upsert by original UUID) ────
   // Dedup via the original `id` from the backup — re-importing the same file
   // is a no-op, while legitimate duplicate trades (different UUIDs) are preserved.
   {
@@ -700,7 +664,7 @@ export async function importFromJson(
     }
   }
 
-  // ── 10. Snapshots (batch upsert) ───────────────────────
+  // ── 8. Snapshots (batch upsert) ───────────────────────
   {
     const snapshotRows = data.snapshots.map((s) => ({
       user_id: uid,
@@ -729,7 +693,7 @@ export async function importFromJson(
     }
   }
 
-  // ── 11. Diary Entries (v2) ─────────────────────────────
+  // ── 9. Diary Entries (v2+) ────────────────────────────
   if (data.diaryEntries?.length) {
     const rows = data.diaryEntries.map((d) => ({
       user_id: uid,
@@ -744,7 +708,7 @@ export async function importFromJson(
     }
   }
 
-  // ── 12. Profile (v2) ──────────────────────────────────
+  // ── 10. Profile (v2+) ─────────────────────────────────
   if (data.profile) {
     const { error } = await supabase
       .from("profiles")
