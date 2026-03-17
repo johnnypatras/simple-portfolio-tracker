@@ -525,7 +525,9 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 | **Server Actions** | |
 | `transfers.ts` | 5 branches → 3 per function, unified cash_account handling, `findExistingCash()` |
 | `undo.ts` | TABLE_REMAP, SNAPSHOT_FIELD_REMAP at all 6 dynamic `.from()` sites |
-| `institutions.ts` | `also_bank` cross-check, role removal migration |
+| `institutions.ts` | `also_bank` cross-check, role removal migration, ~5 `.from("bank_accounts")` sites |
+| `wallets.ts` | Imports `deleteExchangeDeposit`, queries `exchange_deposits`, has `also_bank` bank_accounts insert |
+| `brokers.ts` | Imports `deleteBrokerDeposit`, queries `broker_deposits`, has `also_bank` bank_accounts insert |
 | `import.ts` | 3 blocks → 1, v3 format, v1/v2 normalization |
 | `export.ts` | 3 sections → 1, dual-format output for backward compat |
 | `comparison.ts` | 3 fetches → 1 |
@@ -567,7 +569,7 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 
 ### Net Code Impact
 
-~1,280 lines deleted (three near-identical action files + three modals), ~450 lines created (unified action + modal). **Net reduction: ~800 lines.** Total files touched: ~38 (3 deleted + 2 created + 33 modified).
+~1,280 lines deleted (three near-identical action files + three modals), ~450 lines created (unified action + modal). **Net reduction: ~800 lines.** Total files touched: ~40 (3 deleted + 2 created + 35 modified).
 
 ## 8. Testing Strategy
 
