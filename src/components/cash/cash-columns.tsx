@@ -3,60 +3,65 @@ import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef } from "@/lib/column-config";
 import { formatCurrency } from "@/lib/format";
-import type { BankAccount, BrokerDeposit, ExchangeDeposit } from "@/lib/types";
+import type { CashAccount } from "@/lib/types";
 import { countryName } from "@/lib/types";
 
-// ── Bank group (computed, not a DB type) ────────────────────
+// ── Cash group (computed, not a DB type) ────────────────────
 
-export interface BankGroup {
-  bankName: string;
-  accounts: BankAccount[];
+export interface CashGroup {
+  /** Display name for the group (institution name, wallet name, broker name, or bank name fallback) */
+  groupName: string;
+  /** Origin type derived from FKs */
+  origin: "Bank" | "Exchange" | "Broker";
+  accounts: CashAccount[];
   totalValue: number;
   region: string;
   weightedApy: number;
 }
 
-// ── Exchange group (computed, not a DB type) ─────────────────
-
-export interface ExchangeGroup {
-  walletName: string;
-  deposits: ExchangeDeposit[];
-  totalValue: number;
-  weightedApy: number;
-}
-
-// ── Broker group (computed, not a DB type) ────────────────────
-
-export interface BrokerGroup {
-  brokerName: string;
-  deposits: BrokerDeposit[];
-  totalValue: number;
-  weightedApy: number;
-}
-
 // ── Tagged union row type ─────────────────────────────────────
 
-export type CashRow =
-  | { type: "bank-group"; data: BankGroup; id: string }
-  | { type: "exchange-group"; data: ExchangeGroup; id: string }
-  | { type: "broker-group"; data: BrokerGroup; id: string };
+export type CashRow = { type: "cash-group"; data: CashGroup; id: string };
 
-// ── Build bank group rows ─────────────────────────────────────
+// ── Derive origin from CashAccount FKs ──────────────────────
 
-export function buildBankGroupRows(
-  accounts: BankAccount[],
+function deriveOrigin(cash: CashAccount): "Bank" | "Exchange" | "Broker" {
+  if (cash.wallet_id) return "Exchange";
+  if (cash.broker_id) return "Broker";
+  return "Bank";
+}
+
+// ── Derive group key: use institution/wallet/broker name ─────
+
+function deriveGroupKey(cash: CashAccount): string {
+  if (cash.wallet_id) return `wallet:${cash.wallet_name ?? cash.wallet_id}`;
+  if (cash.broker_id) return `broker:${cash.broker_name ?? cash.broker_id}`;
+  return `inst:${cash.institution_name ?? cash.institution_id ?? "Unknown"}`;
+}
+
+function deriveGroupName(cash: CashAccount): string {
+  if (cash.wallet_id) return cash.wallet_name ?? "Unknown Exchange";
+  if (cash.broker_id) return cash.broker_name ?? "Unknown Broker";
+  return cash.institution_name ?? "Unknown Bank";
+}
+
+// ── Build unified cash group rows ─────────────────────────────
+
+export function buildCashGroupRows(
+  cashAccounts: CashAccount[],
   primaryCurrency: string,
   fxRates: FXRates
 ): CashRow[] {
-  const groupMap = new Map<string, BankAccount[]>();
-  for (const acct of accounts) {
-    const existing = groupMap.get(acct.bank_name) ?? [];
+  const groupMap = new Map<string, CashAccount[]>();
+  for (const acct of cashAccounts) {
+    const key = deriveGroupKey(acct);
+    const existing = groupMap.get(key) ?? [];
     existing.push(acct);
-    groupMap.set(acct.bank_name, existing);
+    groupMap.set(key, existing);
   }
 
   const rows: CashRow[] = [];
-  for (const [bankName, accts] of groupMap) {
+  for (const [key, accts] of groupMap) {
     const totalValue = accts.reduce(
       (sum, a) =>
         sum + convertToBase(a.balance, a.currency, primaryCurrency, fxRates),
@@ -70,26 +75,27 @@ export function buildBankGroupRows(
             (sum, a) =>
               sum +
               a.apy *
-                (convertToBase(
-                  a.balance,
-                  a.currency,
-                  primaryCurrency,
-                  fxRates
-                ) /
+                (convertToBase(a.balance, a.currency, primaryCurrency, fxRates) /
                   totalValue),
             0
           )
-        : accts.reduce((sum, a) => sum + a.apy, 0) / accts.length;
+        : accts.length > 0
+          ? accts.reduce((sum, a) => sum + a.apy, 0) / accts.length
+          : 0;
 
-    // Country: shared if all the same, "—" if mixed
-    const regions = [...new Set(accts.map((a) => a.region))];
-    const region = regions.length === 1 ? regions[0] : "—";
+    // Country: shared if all the same, "" if mixed or not applicable
+    const regions = [...new Set(accts.map((a) => a.region).filter(Boolean))];
+    const region = regions.length === 1 ? (regions[0] ?? "") : "";
+
+    const origin = deriveOrigin(accts[0]);
+    const groupName = deriveGroupName(accts[0]);
 
     rows.push({
-      type: "bank-group",
-      id: `bank-group:${bankName}`,
+      type: "cash-group",
+      id: `cash-group:${key}`,
       data: {
-        bankName,
+        groupName,
+        origin,
         accounts: accts.sort((a, b) => b.balance - a.balance),
         totalValue,
         region,
@@ -99,121 +105,7 @@ export function buildBankGroupRows(
   }
 
   // Sort by total value descending
-  rows.sort((a, b) => {
-    const av = a.type === "bank-group" ? a.data.totalValue : 0;
-    const bv = b.type === "bank-group" ? b.data.totalValue : 0;
-    return bv - av;
-  });
-
-  return rows;
-}
-
-// ── Build exchange group rows ───────────────────────────────────
-
-export function buildExchangeGroupRows(
-  deposits: ExchangeDeposit[],
-  primaryCurrency: string,
-  fxRates: FXRates
-): CashRow[] {
-  const groupMap = new Map<string, ExchangeDeposit[]>();
-  for (const dep of deposits) {
-    const existing = groupMap.get(dep.wallet_name) ?? [];
-    existing.push(dep);
-    groupMap.set(dep.wallet_name, existing);
-  }
-
-  const rows: CashRow[] = [];
-  for (const [walletName, deps] of groupMap) {
-    const totalValue = deps.reduce(
-      (sum, d) =>
-        sum + convertToBase(d.amount, d.currency, primaryCurrency, fxRates),
-      0
-    );
-
-    const weightedApy =
-      totalValue > 0
-        ? deps.reduce(
-            (sum, d) =>
-              sum +
-              d.apy *
-                (convertToBase(d.amount, d.currency, primaryCurrency, fxRates) /
-                  totalValue),
-            0
-          )
-        : deps.reduce((sum, d) => sum + d.apy, 0) / deps.length;
-
-    rows.push({
-      type: "exchange-group",
-      id: `exchange-group:${walletName}`,
-      data: {
-        walletName,
-        deposits: deps.sort((a, b) => b.amount - a.amount),
-        totalValue,
-        weightedApy,
-      },
-    });
-  }
-
-  rows.sort((a, b) => {
-    const av = a.type === "exchange-group" ? a.data.totalValue : 0;
-    const bv = b.type === "exchange-group" ? b.data.totalValue : 0;
-    return bv - av;
-  });
-
-  return rows;
-}
-
-// ── Build broker group rows ────────────────────────────────────
-
-export function buildBrokerGroupRows(
-  deposits: BrokerDeposit[],
-  primaryCurrency: string,
-  fxRates: FXRates
-): CashRow[] {
-  const groupMap = new Map<string, BrokerDeposit[]>();
-  for (const dep of deposits) {
-    const existing = groupMap.get(dep.broker_name) ?? [];
-    existing.push(dep);
-    groupMap.set(dep.broker_name, existing);
-  }
-
-  const rows: CashRow[] = [];
-  for (const [brokerName, deps] of groupMap) {
-    const totalValue = deps.reduce(
-      (sum, d) =>
-        sum + convertToBase(d.amount, d.currency, primaryCurrency, fxRates),
-      0
-    );
-
-    const weightedApy =
-      totalValue > 0
-        ? deps.reduce(
-            (sum, d) =>
-              sum +
-              d.apy *
-                (convertToBase(d.amount, d.currency, primaryCurrency, fxRates) /
-                  totalValue),
-            0
-          )
-        : deps.reduce((sum, d) => sum + d.apy, 0) / deps.length;
-
-    rows.push({
-      type: "broker-group",
-      id: `broker-group:${brokerName}`,
-      data: {
-        brokerName,
-        deposits: deps.sort((a, b) => b.amount - a.amount),
-        totalValue,
-        weightedApy,
-      },
-    });
-  }
-
-  rows.sort((a, b) => {
-    const av = a.type === "broker-group" ? a.data.totalValue : 0;
-    const bv = b.type === "broker-group" ? b.data.totalValue : 0;
-    return bv - av;
-  });
+  rows.sort((a, b) => b.data.totalValue - a.data.totalValue);
 
   return rows;
 }
@@ -224,17 +116,13 @@ export function buildBrokerGroupRows(
 // ═══════════════════════════════════════════════════════════════
 
 export function getCashColumns(handlers: {
-  onEditBank: (b: BankAccount) => void;
-  onDeleteBank: (id: string) => void;
-  onEditExchange: (d: ExchangeDeposit) => void;
-  onDeleteExchange: (id: string) => void;
-  onEditBrokerDeposit: (d: BrokerDeposit) => void;
-  onDeleteBrokerDeposit: (id: string) => void;
+  onEdit: (c: CashAccount) => void;
+  onDelete: (id: string, opts?: { isAdjustment: boolean }) => void;
   isExpanded: (id: string) => boolean;
   toggleExpand: (id: string) => void;
 }): ColumnDef<CashRow>[] {
   return [
-    // ── Name / Wallet (pinned left) ────────────────────────
+    // ── Name (pinned left) ────────────────────────────────
     {
       key: "name",
       label: "Account / Wallet",
@@ -242,88 +130,41 @@ export function getCashColumns(handlers: {
       pinned: "left",
       align: "left",
       renderCell: (row) => {
-        if (row.type === "bank-group") {
-          const expanded = handlers.isExpanded(row.id);
-          return (
-            <button
-              onClick={() => handlers.toggleExpand(row.id)}
-              className="flex items-center gap-2 text-left min-w-0"
-            >
-              {expanded ? (
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-              )}
-              <span className="text-sm font-medium text-zinc-200">
-                {row.data.bankName}
-              </span>
-              <span className="text-xs text-zinc-600">
-                {row.data.accounts.length} account
-                {row.data.accounts.length !== 1 ? "s" : ""}
-              </span>
-            </button>
-          );
-        }
-        if (row.type === "exchange-group") {
-          const expanded = handlers.isExpanded(row.id);
-          return (
-            <button
-              onClick={() => handlers.toggleExpand(row.id)}
-              className="flex items-center gap-2 text-left min-w-0"
-            >
-              {expanded ? (
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-              )}
-              <span className="text-sm font-medium text-zinc-200">
-                {row.data.walletName}
-              </span>
-              <span className="text-xs text-zinc-600">
-                {row.data.deposits.length} deposit
-                {row.data.deposits.length !== 1 ? "s" : ""}
-              </span>
-            </button>
-          );
-        }
-        if (row.type === "broker-group") {
-          const expanded = handlers.isExpanded(row.id);
-          return (
-            <button
-              onClick={() => handlers.toggleExpand(row.id)}
-              className="flex items-center gap-2 text-left min-w-0"
-            >
-              {expanded ? (
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-              )}
-              <span className="text-sm font-medium text-zinc-200">
-                {row.data.brokerName}
-              </span>
-              <span className="text-xs text-zinc-600">
-                {row.data.deposits.length} deposit
-                {row.data.deposits.length !== 1 ? "s" : ""}
-              </span>
-            </button>
-          );
-        }
-        return null;
+        const expanded = handlers.isExpanded(row.id);
+        const { groupName, accounts, origin } = row.data;
+        const itemLabel = origin === "Bank" ? "account" : "deposit";
+        return (
+          <button
+            onClick={() => handlers.toggleExpand(row.id)}
+            className="flex items-center gap-2 text-left min-w-0"
+          >
+            {expanded ? (
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            )}
+            <span className="text-sm font-medium text-zinc-200">
+              {groupName}
+            </span>
+            <span className="text-xs text-zinc-600">
+              {accounts.length} {itemLabel}
+              {accounts.length !== 1 ? "s" : ""}
+            </span>
+          </button>
+        );
       },
     },
 
-    // ── Bank (bank-only) ───────────────────────────────────
+    // ── Type (derived from FKs) ─────────────────────────────
     {
-      key: "bank",
-      label: "Bank",
-      header: "Bank",
+      key: "type",
+      label: "Type",
+      header: "Type",
       align: "left",
       hiddenBelow: "lg",
-      appliesTo: "bank",
-      renderCell: () => {
-        // Bank name is already shown in the group's "name" column
-        return null;
-      },
+      renderCell: (row) => (
+        <span className="text-xs text-zinc-500">{row.data.origin}</span>
+      ),
     },
 
     // ── Currency (shared) ────────────────────────────────
@@ -333,14 +174,7 @@ export function getCashColumns(handlers: {
       header: "Currency",
       align: "left",
       renderCell: (row) => {
-        let currencies: string[];
-        if (row.type === "bank-group") {
-          currencies = [...new Set(row.data.accounts.map((a) => a.currency))];
-        } else if (row.type === "exchange-group" || row.type === "broker-group") {
-          currencies = [...new Set(row.data.deposits.map((d) => d.currency))];
-        } else {
-          return null;
-        }
+        const currencies = [...new Set(row.data.accounts.map((a) => a.currency))];
         return (
           <span className="text-xs text-zinc-500">
             {currencies.join(", ")}
@@ -356,23 +190,11 @@ export function getCashColumns(handlers: {
       header: "Balance",
       align: "right",
       width: "w-28",
-      renderCell: (row, ctx) => {
-        if (row.type === "bank-group") {
-          return (
-            <span className="text-sm font-medium text-zinc-200 tabular-nums">
-              {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
-            </span>
-          );
-        }
-        if (row.type === "exchange-group" || row.type === "broker-group") {
-          return (
-            <span className="text-sm font-medium text-zinc-200 tabular-nums">
-              {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
-            </span>
-          );
-        }
-        return null;
-      },
+      renderCell: (row, ctx) => (
+        <span className="text-sm font-medium text-zinc-200 tabular-nums">
+          {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
+        </span>
+      ),
     },
 
     // ── APY (shared) ───────────────────────────────────────
@@ -383,21 +205,17 @@ export function getCashColumns(handlers: {
       align: "right",
       width: "w-16",
       hiddenBelow: "md",
-      renderCell: (row) => {
-        if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") {
-          return row.data.weightedApy > 0 ? (
-            <span className="text-sm text-emerald-400">
-              ~{row.data.weightedApy.toFixed(2)}%
-            </span>
-          ) : (
-            <span className="text-sm text-zinc-600">—</span>
-          );
-        }
-        return null;
-      },
+      renderCell: (row) =>
+        row.data.weightedApy > 0 ? (
+          <span className="text-sm text-emerald-400">
+            ~{row.data.weightedApy.toFixed(2)}%
+          </span>
+        ) : (
+          <span className="text-sm text-zinc-600">&mdash;</span>
+        ),
     },
 
-    // ── Country (bank-only) ────────────────────────────────
+    // ── Country (bank-relevant) ────────────────────────────
     {
       key: "region",
       label: "Country",
@@ -405,16 +223,10 @@ export function getCashColumns(handlers: {
       align: "right",
       width: "w-20",
       hiddenBelow: "md",
-      appliesTo: "bank",
-      renderCell: (row) => {
-        if (row.type === "bank-group") {
-          return (
-            <span className="text-xs text-zinc-500">{countryName(row.data.region)}</span>
-          );
-        }
-        // exchange-group: no country concept
-        return null;
-      },
+      renderCell: (row) =>
+        row.data.region ? (
+          <span className="text-xs text-zinc-500">{countryName(row.data.region)}</span>
+        ) : null,
     },
 
     // ── Value in base currency (shared) ────────────────────
@@ -426,16 +238,11 @@ export function getCashColumns(handlers: {
       width: "w-28",
       hiddenBelow: "sm",
       renderHeader: (ctx) => `Value (${ctx.primaryCurrency})`,
-      renderCell: (row, ctx) => {
-        if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") {
-          return (
-            <span className="text-sm font-medium text-zinc-200 tabular-nums">
-              {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
-            </span>
-          );
-        }
-        return null;
-      },
+      renderCell: (row, ctx) => (
+        <span className="text-sm font-medium text-zinc-200 tabular-nums">
+          {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
+        </span>
+      ),
     },
 
     // ── Actions (pinned right) ─────────────────────────────
@@ -446,9 +253,8 @@ export function getCashColumns(handlers: {
       pinned: "right",
       align: "right",
       width: "w-20",
-      renderCell: (row) => {
+      renderCell: () => {
         // Groups have no actions — edit/delete lives on the expanded sub-rows
-        if (row.type === "bank-group" || row.type === "exchange-group" || row.type === "broker-group") return null;
         return null;
       },
     },
