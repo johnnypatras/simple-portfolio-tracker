@@ -47,6 +47,7 @@ export interface Broker {
   deleted_at?: string | null;
 }
 
+/** @deprecated Use CashAccount */
 export interface BankAccount {
   id: string;
   user_id: string;
@@ -156,6 +157,7 @@ export interface BrokerInput {
   name: string;
 }
 
+/** @deprecated Use CashAccountInput */
 export interface BankAccountInput {
   name: string;
   bank_name: string;
@@ -214,6 +216,7 @@ export function countryName(code: string): string {
   return COUNTRY_MAP.get(code) ?? code;
 }
 
+/** @deprecated Use CashAccountInput */
 export interface ExchangeDepositInput {
   wallet_id: string;
   currency: CurrencyType;
@@ -223,6 +226,7 @@ export interface ExchangeDepositInput {
 
 // ─── Exchange Deposits (fiat on exchanges) ──────────────
 
+/** @deprecated Use CashAccount */
 export interface ExchangeDeposit {
   id: string;
   user_id: string;
@@ -240,6 +244,7 @@ export interface ExchangeDeposit {
 
 // ─── Broker Deposits (fiat on brokers) ───────────────────
 
+/** @deprecated Use CashAccountInput */
 export interface BrokerDepositInput {
   broker_id: string;
   currency: CurrencyType;
@@ -247,6 +252,7 @@ export interface BrokerDepositInput {
   apy?: number;
 }
 
+/** @deprecated Use CashAccount */
 export interface BrokerDeposit {
   id: string;
   user_id: string;
@@ -260,6 +266,37 @@ export interface BrokerDeposit {
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
+}
+
+// ─── Unified Cash Account ───────────────────────────────
+
+export interface CashAccount {
+  id: string;
+  user_id: string;
+  institution_id: string | null;
+  name: string | null;
+  currency: string;
+  balance: number;
+  apy: number;
+  region: string | null;
+  wallet_id: string | null;
+  broker_id: string | null;
+  last_was_adjustment: boolean;
+  last_was_transfer: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface CashAccountInput {
+  institution_id?: string;
+  name?: string | null;
+  currency: string;
+  balance: number;
+  apy?: number;
+  region?: string | null;
+  wallet_id?: string | null;
+  broker_id?: string | null;
 }
 
 // ─── Portfolio Snapshots ────────────────────────────────
@@ -512,6 +549,7 @@ export type EntityType =
   | "stock_asset"
   | "wallet"
   | "broker"
+  | "cash_account"
   | "bank_account"
   | "exchange_deposit"
   | "crypto_position"
