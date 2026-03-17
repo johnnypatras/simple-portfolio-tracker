@@ -412,36 +412,56 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 - `src/lib/actions/cash-accounts.ts` (~450 lines)
 - `src/components/cash/cash-account-modal.tsx` (~replaces 3 modals)
 
-### Files Modified (~22)
+### Files Modified (~33)
 
 | File | Change |
 |------|--------|
+| **Server Actions** | |
 | `transfers.ts` | 5 branches → 3 per function, unified cash_account handling, `findExistingCash()` |
-| `transfer-dialog.tsx` | Remove type tabs, institution-grouped picker, same-account detection |
 | `undo.ts` | TABLE_REMAP, SNAPSHOT_FIELD_REMAP at all 5 `.from()` sites |
-| `types.ts` | `CashAccount` interface, updated `TransferSide`, `EntityType`, `HoldingItem` |
-| `aggregate.ts` | 3 cash loops → 1 |
-| `institution-grouping.ts` | 3 cash loops → 1 |
-| `cashflow.ts` | Add `"cash_account"` to `classifyAssetClass()` |
-| `deltas.ts` | Update `cashAmountField()` |
-| `activity-log.ts` | Add `"cash_account"` to asset class mapping |
-| `backfill.ts` | Add `"cash_account"` to `CASH_ENTITY_TYPES` |
-| `holdings.ts` | 3 cash arrays → 1 |
-| `cash-table.tsx` | Remove exchange/broker sections, single list grouped by institution |
-| `activity-timeline.tsx` | Add `cash_account: "Cash"` label |
-| `accounts-view.tsx` | Unified "Add Cash" button, merge banner for invalid states |
 | `institutions.ts` | `also_bank` cross-check, role removal migration |
 | `import.ts` | 3 blocks → 1, v3 format, v1/v2 normalization |
 | `export.ts` | 3 sections → 1, dual-format output for backward compat |
 | `comparison.ts` | 3 fetches → 1 |
-| `shared-portfolio.ts` | 3 fetches → 1 |
+| `shared-portfolio.ts` | 3 fetches → 1, `SharedPortfolioData` interface updated |
+| `activity-log.ts` | Add `"cash_account"` to asset class mapping |
+| `backfill.ts` | Add `"cash_account"` to `CASH_ENTITY_TYPES` |
+| **Types** | |
+| `types.ts` | `CashAccount` interface, updated `TransferSide`, `EntityType`, `HoldingItem` |
+| **Portfolio Logic** | |
+| `assemble.ts` | `PortfolioAssets` interface: 3 fields → 1 `cashAccounts`, pass-through updated |
+| `aggregate.ts` | 3 cash loops → 1 |
+| `institution-grouping.ts` | 3 cash loops → 1 |
+| `dashboard-insights.ts` | 3 cash params → 1, cash breakdown + currency exposure loops unified |
+| `holdings.ts` | 3 cash arrays → 1 |
+| `cashflow.ts` | Add `"cash_account"` to `classifyAssetClass()` |
+| `deltas.ts` | Update `cashAmountField()` |
+| **Dashboard Pages** | |
+| `dashboard/page.tsx` | `getCashAccounts()` replaces 3 parallel fetches |
 | `cash/page.tsx` | `getCashAccounts()` replaces 3 calls |
 | `accounts/page.tsx` | Same |
+| **Share Pages** | |
+| `share/[token]/page.tsx` | Destructure single `cashAccounts` from shared portfolio |
+| `share/[token]/accounts/page.tsx` | Same |
+| `share/[token]/cash/page.tsx` | Same |
+| `share/[token]/crypto/page.tsx` | Pass single empty `cashAccounts: []` |
+| `share/[token]/stocks/page.tsx` | Same |
+| **API Routes** | |
+| `api/holdings/route.ts` | `getCashAccounts()` replaces 3 parallel fetches |
+| **Edge Function** | |
+| `supabase/functions/daily-snapshot/index.ts` | Replace 3 direct table queries with single `cash_accounts` query |
+| **UI Components** | |
+| `transfer-dialog.tsx` | Remove type tabs, institution-grouped picker, same-account detection |
+| `cash-table.tsx` | Remove exchange/broker sections, single list grouped by institution |
+| `cash-columns.tsx` | Unified column definitions for single cash type |
+| `accounts-view.tsx` | Unified "Add Cash" button, merge banner for invalid states |
+| `add-institution-modal.tsx` | `also_bank` creation routes through `findExistingCash()` |
+| `activity-timeline.tsx` | Add `cash_account: "Cash"` label |
 | `import-export-settings.tsx` | Update labels/counts |
 
 ### Net Code Impact
 
-~1,280 lines deleted (three near-identical action files + three modals), ~450 lines created (unified action + modal). **Net reduction: ~800 lines.**
+~1,280 lines deleted (three near-identical action files + three modals), ~450 lines created (unified action + modal). **Net reduction: ~800 lines.** Total files touched: ~38 (3 deleted + 2 created + 33 modified).
 
 ## 8. Testing Strategy
 
