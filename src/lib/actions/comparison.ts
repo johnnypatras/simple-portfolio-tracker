@@ -4,9 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
-import { getBankAccounts } from "@/lib/actions/bank-accounts";
-import { getExchangeDeposits } from "@/lib/actions/exchange-deposits";
-import { getBrokerDeposits } from "@/lib/actions/broker-deposits";
+import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { getSnapshots } from "@/lib/actions/snapshots";
 import { getPrices } from "@/lib/prices/coingecko";
@@ -74,16 +72,12 @@ export async function getComparisonData(
   const [
     viewerCrypto,
     viewerStocks,
-    viewerBanks,
-    viewerExchangeDeps,
-    viewerBrokerDeps,
+    viewerCashAccounts,
     viewerSnapshots,
   ] = await Promise.all([
     getCryptoAssetsWithPositions(),
     getStockAssetsWithPositions(),
-    getBankAccounts(),
-    getExchangeDeposits(),
-    getBrokerDeposits(),
+    getCashAccounts(),
     getSnapshots(365),
   ]);
 
@@ -111,13 +105,9 @@ export async function getComparisonData(
       "EUR",
       "USD",
       ...viewerStocks.map((a) => a.currency),
-      ...viewerBanks.map((a) => a.currency),
-      ...viewerExchangeDeps.map((a) => a.currency),
-      ...viewerBrokerDeps.map((a) => a.currency),
+      ...viewerCashAccounts.map((a) => a.currency),
       ...ownerData.stockAssets.map((a) => a.currency),
-      ...ownerData.bankAccounts.map((a) => a.currency),
-      ...ownerData.exchangeDeposits.map((a) => a.currency),
-      ...ownerData.brokerDeposits.map((a) => a.currency),
+      ...ownerData.cashAccounts.map((a) => a.currency),
     ]),
   ];
 
@@ -144,9 +134,7 @@ export async function getComparisonData(
     cryptoPrices,
     stockAssets: viewerStocks,
     stockPrices,
-    bankAccounts: viewerBanks,
-    exchangeDeposits: viewerExchangeDeps,
-    brokerDeposits: viewerBrokerDeps,
+    cashAccounts: viewerCashAccounts,
     primaryCurrency: viewerCurrency,
     fxRates,
     fxRatesUsd,
@@ -159,9 +147,7 @@ export async function getComparisonData(
     cryptoPrices,
     stockAssets: ownerData.stockAssets,
     stockPrices,
-    bankAccounts: ownerData.bankAccounts,
-    exchangeDeposits: ownerData.exchangeDeposits,
-    brokerDeposits: ownerData.brokerDeposits,
+    cashAccounts: ownerData.cashAccounts,
     primaryCurrency: viewerCurrency,
     fxRates,
     fxRatesUsd,
@@ -249,49 +235,20 @@ export async function getComparisonData(
     }
   }
 
-  // Cash holdings (bank accounts + exchange deposits + broker deposits by currency)
-  for (const sources of [
-    {
-      viewer: { banks: viewerBanks, exDeps: viewerExchangeDeps, brDeps: viewerBrokerDeps },
-      owner: {
-        banks: ownerData.bankAccounts,
-        exDeps: ownerData.exchangeDeposits,
-        brDeps: ownerData.brokerDeposits,
-      },
-    },
+  // Cash holdings (unified cash accounts by currency)
+  for (const { list, side } of [
+    { list: viewerCashAccounts, side: "viewer" as const },
+    { list: ownerData.cashAccounts, side: "owner" as const },
   ]) {
-    for (const side of ["viewer", "owner"] as const) {
-      const src = sources[side];
-      for (const bank of src.banks) {
-        const value = convertToBase(bank.balance, bank.currency, viewerCurrency, fxRates);
-        if (value === 0) continue;
-        upsertHolding(
-          `cash:${bank.currency}`,
-          { key: `cash:${bank.currency}`, name: `${bank.currency} Cash`, ticker: bank.currency, class: "cash", imageUrl: null },
-          side,
-          value
-        );
-      }
-      for (const dep of src.exDeps) {
-        const value = convertToBase(dep.amount, dep.currency, viewerCurrency, fxRates);
-        if (value === 0) continue;
-        upsertHolding(
-          `cash:${dep.currency}`,
-          { key: `cash:${dep.currency}`, name: `${dep.currency} Cash`, ticker: dep.currency, class: "cash", imageUrl: null },
-          side,
-          value
-        );
-      }
-      for (const dep of src.brDeps) {
-        const value = convertToBase(dep.amount, dep.currency, viewerCurrency, fxRates);
-        if (value === 0) continue;
-        upsertHolding(
-          `cash:${dep.currency}`,
-          { key: `cash:${dep.currency}`, name: `${dep.currency} Cash`, ticker: dep.currency, class: "cash", imageUrl: null },
-          side,
-          value
-        );
-      }
+    for (const cash of list) {
+      const value = convertToBase(cash.balance, cash.currency, viewerCurrency, fxRates);
+      if (value === 0) continue;
+      upsertHolding(
+        `cash:${cash.currency}`,
+        { key: `cash:${cash.currency}`, name: `${cash.currency} Cash`, ticker: cash.currency, class: "cash", imageUrl: null },
+        side,
+        value
+      );
     }
   }
 
