@@ -82,17 +82,13 @@ Deno.serve(async (req: Request) => {
       { data: cryptoPositions },
       { data: stockAssets },
       { data: stockPositions },
-      { data: bankAccounts },
-      { data: exchangeDeposits },
-      { data: brokerDeposits },
+      { data: cashAccounts },
     ] = await Promise.all([
       supabase.from("crypto_assets").select("id, user_id, coingecko_id, subcategory").is("deleted_at", null).in("user_id", userIds),
       supabase.from("crypto_positions").select("id, crypto_asset_id, quantity").is("deleted_at", null),
       supabase.from("stock_assets").select("id, user_id, ticker, yahoo_ticker, currency").is("deleted_at", null).in("user_id", userIds),
       supabase.from("stock_positions").select("id, stock_asset_id, quantity").is("deleted_at", null),
-      supabase.from("bank_accounts").select("user_id, currency, balance").is("deleted_at", null).in("user_id", userIds),
-      supabase.from("exchange_deposits").select("user_id, currency, amount").is("deleted_at", null).in("user_id", userIds),
-      supabase.from("broker_deposits").select("user_id, currency, amount").is("deleted_at", null).in("user_id", userIds),
+      supabase.from("cash_accounts").select("user_id, currency, balance").is("deleted_at", null).in("user_id", userIds),
     ]);
 
     // 3. Build per-user holdings and deduplicated price request sets
@@ -158,27 +154,13 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Cash items (bank accounts + exchange deposits + broker deposits)
-    for (const bank of bankAccounts ?? []) {
-      const amt = Number(bank.balance);
+    // Cash items (unified cash_accounts table)
+    for (const acct of cashAccounts ?? []) {
+      const amt = Number(acct.balance);
       if (amt === 0) continue;
-      currencySet.add(bank.currency);
-      const holdings = userHoldings.get(bank.user_id);
-      if (holdings) holdings.cashItems.push({ currency: bank.currency, amount: amt });
-    }
-    for (const dep of exchangeDeposits ?? []) {
-      const amt = Number(dep.amount);
-      if (amt === 0) continue;
-      currencySet.add(dep.currency);
-      const holdings = userHoldings.get(dep.user_id);
-      if (holdings) holdings.cashItems.push({ currency: dep.currency, amount: amt });
-    }
-    for (const dep of brokerDeposits ?? []) {
-      const amt = Number(dep.amount);
-      if (amt === 0) continue;
-      currencySet.add(dep.currency);
-      const holdings = userHoldings.get(dep.user_id);
-      if (holdings) holdings.cashItems.push({ currency: dep.currency, amount: amt });
+      currencySet.add(acct.currency);
+      const holdings = userHoldings.get(acct.user_id);
+      if (holdings) holdings.cashItems.push({ currency: acct.currency, amount: amt });
     }
 
     // 4. Batch price fetches (4 API calls in parallel)
