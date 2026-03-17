@@ -20,7 +20,7 @@ export default async function SharedCashPage({
   const data = await getSharedPortfolio(token);
   if (!data) notFound();
 
-  const { bankAccounts, exchangeDeposits, brokerDeposits, wallets, brokers, cryptoAssets, profile, share } = data;
+  const { cashAccounts, wallets, brokers, cryptoAssets, profile, share } = data;
   const cur = profile.primary_currency;
 
   // Stablecoins are reclassified as cash
@@ -29,9 +29,7 @@ export default async function SharedCashPage({
   const allCurrencies = [
     ...new Set([
       "USD", "EUR",
-      ...bankAccounts.map((b) => b.currency),
-      ...exchangeDeposits.map((d) => d.currency),
-      ...brokerDeposits.map((d) => d.currency),
+      ...cashAccounts.map((a) => a.currency),
     ]),
   ];
 
@@ -52,9 +50,7 @@ export default async function SharedCashPage({
     cryptoPrices: stablecoinPrices,
     stockAssets: [],
     stockPrices: {},
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
+    cashAccounts,
     primaryCurrency: cur,
     fxRates,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
@@ -72,9 +68,7 @@ export default async function SharedCashPage({
         </p>
       </div>
       <CashTable
-        bankAccounts={bankAccounts}
-        exchangeDeposits={exchangeDeposits}
-        brokerDeposits={brokerDeposits}
+        cashAccounts={cashAccounts}
         wallets={wallets}
         brokers={brokers}
         primaryCurrency={cur}

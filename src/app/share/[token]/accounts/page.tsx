@@ -19,7 +19,7 @@ export default async function SharedAccountsPage({
 
   const {
     institutions, cryptoAssets, stockAssets, wallets, brokers,
-    bankAccounts, exchangeDeposits, brokerDeposits, profile,
+    cashAccounts, profile,
   } = data;
   const primaryCurrency = profile.primary_currency;
 
@@ -29,9 +29,7 @@ export default async function SharedAccountsPage({
     ...new Set([
       "EUR", "USD",
       ...stockAssets.map((a) => a.currency),
-      ...bankAccounts.map((a) => a.currency),
-      ...exchangeDeposits.map((a) => a.currency),
-      ...brokerDeposits.map((a) => a.currency),
+      ...cashAccounts.map((a) => a.currency),
     ]),
   ];
 
@@ -55,9 +53,7 @@ export default async function SharedAccountsPage({
         stockAssets={stockAssets}
         wallets={wallets}
         brokers={brokers}
-        bankAccounts={bankAccounts}
-        exchangeDeposits={exchangeDeposits}
-        brokerDeposits={brokerDeposits}
+        cashAccounts={cashAccounts}
         cryptoPrices={cryptoPrices}
         stockPrices={stockPrices}
         fxRates={fxRates}

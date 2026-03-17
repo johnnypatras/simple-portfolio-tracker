@@ -7,9 +7,7 @@ import type {
   Profile,
   CryptoAssetWithPositions,
   StockAssetWithPositions,
-  BankAccount,
-  ExchangeDeposit,
-  BrokerDeposit,
+  CashAccount,
   Wallet,
   Broker,
   InstitutionWithRoles,
@@ -25,9 +23,7 @@ export interface SharedPortfolioData {
   profile: Profile;
   cryptoAssets: CryptoAssetWithPositions[];
   stockAssets: StockAssetWithPositions[];
-  bankAccounts: BankAccount[];
-  exchangeDeposits: ExchangeDeposit[];
-  brokerDeposits: BrokerDeposit[];
+  cashAccounts: CashAccount[];
   wallets: Wallet[];
   brokers: Broker[];
   institutions: InstitutionWithRoles[];
@@ -56,22 +52,18 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     profileRes,
     cryptoAssetsRes,
     stockAssetsRes,
-    bankAccountsRes,
+    cashAccountsRes,
     walletsRes,
     brokersRes,
-    exchangeDepositsRes,
-    brokerDepositsRes,
     institutionsRes,
     snapshotsRes,
   ] = await Promise.all([
     admin.from("profiles").select("*").eq("id", userId).single(),
     admin.from("crypto_assets").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
     admin.from("stock_assets").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
-    admin.from("bank_accounts").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
+    admin.from("cash_accounts").select("*, institutions(name), wallets(name), brokers(name)").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
     admin.from("wallets").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
     admin.from("brokers").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
-    admin.from("exchange_deposits").select("*, wallets(name)").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
-    admin.from("broker_deposits").select("*, brokers(name)").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
     admin.from("institutions").select("*").eq("user_id", userId).is("deleted_at", null).order("name"),
     // Last 365 days of snapshots for the chart
     admin.from("portfolio_snapshots").select("*").eq("user_id", userId)
@@ -84,7 +76,6 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   const profile = profileRes.data as Profile;
   const cryptoAssetsRaw = cryptoAssetsRes.data ?? [];
   const stockAssetsRaw = stockAssetsRes.data ?? [];
-  const bankAccounts = (bankAccountsRes.data ?? []) as BankAccount[];
   const wallets = (walletsRes.data ?? []) as Wallet[];
   const brokers = (brokersRes.data ?? []) as Broker[];
   const snapshots = (snapshotsRes.data ?? []) as PortfolioSnapshot[];
@@ -149,42 +140,38 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     }));
   }
 
-  // ── Flatten exchange deposits with wallet names ───────
-  const exchangeDeposits: ExchangeDeposit[] = (exchangeDepositsRes.data ?? []).map((row) => ({
+  // ── Flatten cash accounts with joined names ────────────
+  const cashAccounts: CashAccount[] = (cashAccountsRes.data ?? []).map((row) => ({
     id: row.id,
     user_id: row.user_id,
+    institution_id: row.institution_id,
+    name: row.name,
+    currency: row.currency,
+    balance: row.balance,
+    apy: row.apy,
+    region: row.region,
     wallet_id: row.wallet_id,
-    wallet_name: (row.wallets as { name: string })?.name ?? "Unknown",
-    currency: row.currency,
-    amount: row.amount,
-    apy: row.apy,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  }));
-
-  // ── Flatten broker deposits with broker names ─────────
-  const brokerDeposits: BrokerDeposit[] = (brokerDepositsRes.data ?? []).map((row) => ({
-    id: row.id,
-    user_id: row.user_id,
     broker_id: row.broker_id,
-    broker_name: (row.brokers as { name: string })?.name ?? "Unknown",
-    currency: row.currency,
-    amount: row.amount,
-    apy: row.apy,
+    last_was_adjustment: row.last_was_adjustment ?? false,
+    last_was_transfer: row.last_was_transfer ?? false,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    deleted_at: row.deleted_at,
+    institution_name: (row.institutions as { name: string } | null)?.name ?? null,
+    wallet_name: (row.wallets as { name: string } | null)?.name ?? null,
+    broker_name: (row.brokers as { name: string } | null)?.name ?? null,
   }));
 
   // ── Build institutions with roles ─────────────────────
   const walletInstIds = new Set(wallets.map((w) => w.institution_id).filter(Boolean));
   const brokerInstIds = new Set(brokers.map((b) => b.institution_id).filter(Boolean));
-  const bankInstIds = new Set(bankAccounts.map((b) => b.institution_id).filter(Boolean));
+  const cashInstIds = new Set(cashAccounts.map((c) => c.institution_id).filter(Boolean));
 
   const institutions: InstitutionWithRoles[] = (institutionsRes.data ?? []).map((inst) => {
     const roles: InstitutionRole[] = [];
     if (walletInstIds.has(inst.id)) roles.push("wallet");
     if (brokerInstIds.has(inst.id)) roles.push("broker");
-    if (bankInstIds.has(inst.id)) roles.push("bank");
+    if (cashInstIds.has(inst.id)) roles.push("bank");
     return { ...inst, roles };
   });
 
@@ -203,9 +190,7 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     profile,
     cryptoAssets,
     stockAssets,
-    bankAccounts,
-    exchangeDeposits,
-    brokerDeposits,
+    cashAccounts,
     wallets,
     brokers,
     institutions,

@@ -23,16 +23,15 @@ export default async function SharedOverviewPage({
   if (!data) notFound();
 
   const {
-    profile, cryptoAssets, stockAssets, bankAccounts,
-    exchangeDeposits, brokerDeposits, snapshots,
-    snap7d, snap30d, snap1y,
+    profile, cryptoAssets, stockAssets, cashAccounts,
+    snapshots, snap7d, snap30d, snap1y,
   } = data;
   const primaryCurrency = profile.primary_currency;
 
   // Prices, aggregation, insights + benchmark data (parallelized)
   const [assembled, sp500TRHistory, cashFlowResult, adjustmentDeltas] = await Promise.all([
     assemblePortfolioView(
-      { cryptoAssets, stockAssets, bankAccounts, exchangeDeposits, brokerDeposits, primaryCurrency },
+      { cryptoAssets, stockAssets, cashAccounts, primaryCurrency },
       `/share/${token}`,
     ),
     fetchIndexHistory("^SP500TR", 365),

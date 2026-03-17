@@ -286,6 +286,10 @@ export interface CashAccount {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  // Flattened display names from JOINs (populated by getCashAccounts / getSharedPortfolio)
+  institution_name?: string | null;
+  wallet_name?: string | null;
+  broker_name?: string | null;
 }
 
 export interface CashAccountInput {
