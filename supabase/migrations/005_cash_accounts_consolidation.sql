@@ -132,13 +132,16 @@ $$;
 -- ────────────────────────────────────────────────────────────────────────────
 
 -- Add broker_deposit amounts to matching exchange_deposits (same user, institution, currency)
+-- Uses implicit cross-join: PostgreSQL UPDATE FROM can't reference target alias in FROM JOINs
 UPDATE exchange_deposits ed
 SET amount = ed.amount + bd.amount,
     updated_at = now()
-FROM broker_deposits bd
-JOIN wallets w ON w.id = ed.wallet_id AND w.user_id = ed.user_id
-JOIN brokers b ON b.id = bd.broker_id AND b.user_id = bd.user_id
-WHERE bd.user_id = ed.user_id
+FROM broker_deposits bd, wallets w, brokers b
+WHERE w.id = ed.wallet_id
+  AND w.user_id = ed.user_id
+  AND b.id = bd.broker_id
+  AND b.user_id = bd.user_id
+  AND bd.user_id = ed.user_id
   AND bd.deleted_at IS NULL
   AND ed.deleted_at IS NULL
   AND w.institution_id = b.institution_id
@@ -148,10 +151,13 @@ WHERE bd.user_id = ed.user_id
 UPDATE broker_deposits bd
 SET deleted_at = now(),
     updated_at = now()
-FROM wallets w
-JOIN exchange_deposits ed ON ed.wallet_id = w.id AND ed.user_id = w.user_id AND ed.deleted_at IS NULL
-JOIN brokers b ON b.id = bd.broker_id AND b.user_id = bd.user_id
-WHERE bd.deleted_at IS NULL
+FROM wallets w, exchange_deposits ed, brokers b
+WHERE w.id = ed.wallet_id
+  AND w.user_id = ed.user_id
+  AND ed.deleted_at IS NULL
+  AND b.id = bd.broker_id
+  AND b.user_id = bd.user_id
+  AND bd.deleted_at IS NULL
   AND w.institution_id = b.institution_id
   AND ed.currency = bd.currency;
 
