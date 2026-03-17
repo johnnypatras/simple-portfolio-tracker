@@ -528,6 +528,7 @@ Returns all cash accounts at institution+currency. Callers decide behavior:
 | `institutions.ts` | `also_bank` cross-check, role removal migration, ~5 `.from("bank_accounts")` sites |
 | `wallets.ts` | Imports `deleteExchangeDeposit`, queries `exchange_deposits`, has `also_bank` bank_accounts insert |
 | `brokers.ts` | Imports `deleteBrokerDeposit`, queries `broker_deposits`, has `also_bank` bank_accounts insert |
+| `trades.ts` | Queries `.from("bank_accounts")` for currency list in trade entry form |
 | `import.ts` | 3 blocks → 1, v3 format, v1/v2 normalization |
 | `export.ts` | 3 sections → 1, dual-format output for backward compat |
 | `comparison.ts` | 3 fetches → 1 |

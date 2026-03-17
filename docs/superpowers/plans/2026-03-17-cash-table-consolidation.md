@@ -399,7 +399,7 @@ Replace `"bank" | "exchange_deposit" | "broker_deposit"` with `"cash"` in `Holdi
 ```bash
 git add src/lib/portfolio/assemble.ts src/lib/portfolio/aggregate.ts \
   src/lib/portfolio/institution-grouping.ts src/lib/portfolio/dashboard-insights.ts \
-  src/lib/portfolio/holdings.ts
+  src/lib/portfolio/holdings.ts src/lib/types.ts
 git commit -m "refactor: unify cash arrays in portfolio assembly pipeline"
 ```
 
@@ -644,19 +644,13 @@ interface CashAccountModalProps {
 }
 ```
 
-- [ ] **Step 3: Delete old modals**
+**Do NOT delete old modals yet** — they are still imported by `cash-table.tsx` (Task 12) and `accounts-view.tsx` (Task 13). Old modals will be deleted in Task 20 alongside the old action files.
 
-```bash
-git rm src/components/cash/bank-account-modal.tsx
-git rm src/components/cash/exchange-deposit-modal.tsx
-git rm src/components/cash/broker-deposit-modal.tsx
-```
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add src/components/cash/cash-account-modal.tsx
-git commit -m "feat: unified cash-account-modal, delete 3 old modals"
+git commit -m "feat: add unified cash-account-modal"
 ```
 
 ---
@@ -701,15 +695,28 @@ git commit -m "refactor: unified cash-table with single CashAccount type"
 3. The `AddAssetDropdown` logic simplifies: one "Add Cash" option instead of conditional exchange/broker/bank buttons
 4. Accept `cashAccounts: CashAccount[]` instead of 3 separate arrays
 
-- [ ] **Step 2: Update `add-institution-modal.tsx`**
+- [ ] **Step 2: Add invalid state detection + merge banner**
+
+Add logic to detect legacy duplicate cash at same institution+currency (bank_account + deposit with different origin). On accounts page load, scan `cashAccounts` for entries that share `institution_id + currency` but have `name=NULL` (deposit) alongside named accounts. Show a banner:
+
+```
+"Trade Republic has duplicate EUR cash entries." [Merge]
+```
+
+Merge action: call a new server action `mergeCashAccounts(survivorId, duplicateId)` that sums balances into the survivor, soft-deletes the duplicate, and logs both changes as adjustments. Add this server action to `cash-accounts.ts`.
+
+Survivor priority: prefer the bank-origin account (has name) > exchange > broker.
+
+- [ ] **Step 3: Update `add-institution-modal.tsx`**
 
 Replace `createBankAccount` import with `createCashAccount`. The `also_bank` auto-create should call `findExistingCash()` first — if cash already exists at institution+currency, skip creation.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add src/components/accounts/accounts-view.tsx src/components/accounts/add-institution-modal.tsx
-git commit -m "refactor: unified Add Cash button in accounts view"
+git add src/components/accounts/accounts-view.tsx src/components/accounts/add-institution-modal.tsx \
+  src/lib/actions/cash-accounts.ts
+git commit -m "feat: unified Add Cash button + merge banner for legacy duplicates"
 ```
 
 ---
@@ -762,19 +769,36 @@ const cashDestOptions = useMemo(() => {
 
 Replace 3 cash cases with single `{ type: "cash_account", accountId, amount }`.
 
-- [ ] **Step 5: Update `buildSource()` for generic picker**
+- [ ] **Step 5: Update `srcGroupedOptions` memo (source picker)**
 
-Replace `exchange|`, `broker|`, `bank|` ID prefixes with `cash|{id}`. Update parsing.
+Replace the 3 cash loops (lines ~408-441) that iterate `bankAccounts`/`exchangeDeposits`/`brokerDeposits` with a single loop over `cashAccounts`. Replace `bank|{id}`, `exchange|{walletId}|{currency}`, `broker|{brokerId}|{currency}` ID prefixes with `cash|{id}`. The `name` field and `available` amount come from the unified `CashAccount`.
 
-- [ ] **Step 6: Add same-account detection**
+- [ ] **Step 6: Update `srcIsCash` and `buildSource()` for generic picker**
+
+Replace `srcIsCash` (line ~455):
+```typescript
+// Old: srcLocationId.startsWith("bank|") || srcLocationId.startsWith("exchange|") || srcLocationId.startsWith("broker|")
+// New:
+const srcIsCash = srcLocationId.startsWith("cash|");
+```
+
+In `buildSource()`: replace `bank`, `exchange`, `broker` prefix cases with single `cash` case that returns `{ type: "cash_account", accountId, amount }`.
+
+- [ ] **Step 7: Update `autoCalcValue` memo**
+
+Replace the `destType`-based cash checks (lines ~460, ~473) with whatever replaces `destType` for cash destination detection. E.g., if destination is selected from the cash picker, use a `destIsCash` boolean derived from the selection.
+
+- [ ] **Step 8: Add same-account detection**
 
 Before submit, check if source and destination resolve to the same `cash_accounts` ID. If so, show inline error and disable submit.
 
-- [ ] **Step 7: Update buy mode cash auto-detection**
+- [ ] **Step 9: Update buy mode cash auto-detection**
 
-Replace separate broker_deposit/exchange_deposit lookup with `findExistingCash()` — or query `cashAccounts` locally.
+Replace separate broker_deposit/exchange_deposit lookup with `findExistingCash()` — or query `cashAccounts` locally. Update `handleExecute()` buy mode source construction: replace 2 `TransferSide` variants (broker_deposit/exchange_deposit) with single `{ type: "cash_account", accountId, amount }`.
 
-- [ ] **Step 8: Commit**
+Also collapse 3 state variables (`bankAccounts`, `exchangeDeposits`, `brokerDeposits`) into single `cashAccounts` state. Remove old type imports (`BankAccount`, `ExchangeDeposit`, `BrokerDeposit`).
+
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/components/ui/transfer-dialog.tsx
@@ -910,59 +934,90 @@ git commit -m "refactor: edge function uses cash_accounts table"
 
 ---
 
-### Task 19: Update institutions.ts, wallets.ts, brokers.ts
+### Task 19: Update institutions.ts, wallets.ts, brokers.ts, trades.ts
 
 **Files:**
 - Modify: `src/lib/actions/institutions.ts`
 - Modify: `src/lib/actions/wallets.ts`
 - Modify: `src/lib/actions/brokers.ts`
+- Modify: `src/lib/actions/trades.ts`
 
-Read ALL three files first. They all have references to old cash tables.
+Read ALL four files first. They all have references to old cash tables.
 
 - [ ] **Step 1: Update `institutions.ts`**
 
 This file has ~5 `.from("bank_accounts")` call sites. Update ALL of them:
 
-1. Role detection query (line ~21): replace `.from("bank_accounts")` → `.from("cash_accounts")`
-2. `also_bank` auto-create: add `findExistingCash()` check — skip if cash already exists
-3. `removeRole()` bank case: replace `deleteBankAccount` → `deleteCashAccount`, query `cash_accounts`
-4. `deleteInstitution()`: replace `bank_accounts` queries → `cash_accounts`
-5. Region propagation: replace `.from("bank_accounts")` → `.from("cash_accounts")`
+1. Role detection query (line ~21): `.from("bank_accounts")` → `.from("cash_accounts")`
+2. `also_bank` auto-create: add `findExistingCash()` check — skip if cash already exists at institution+currency
+3. `removeRole()` bank case: **migrate cash, not delete.** If remaining roles exist, update the cash_account to reassign `wallet_id`/`broker_id` based on surviving role. If no remaining roles, block with error. Show confirmation: "Removing wallet role will move your EUR deposit to your bank account. Continue?"
+4. `removeRole()` when cash = 0: auto-delete zero-balance record, then proceed with role removal
+5. `deleteInstitution()`: replace `bank_accounts` queries → `cash_accounts`
+6. Region propagation: replace `.from("bank_accounts")` → `.from("cash_accounts")`
+7. Update all `entity_table: "bank_accounts"` / `entity_type: "bank_account"` in activity logging → `"cash_accounts"` / `"cash_account"`
 
 - [ ] **Step 2: Update `wallets.ts`**
 
-This file imports `deleteExchangeDeposit` and queries `exchange_deposits` directly:
-1. Replace `import { deleteExchangeDeposit } from "@/lib/actions/exchange-deposits"` → `import { deleteCashAccount } from "@/lib/actions/cash-accounts"`
-2. Replace `.from("exchange_deposits")` queries → `.from("cash_accounts").not("wallet_id", "is", null)` (filter to exchange-origin)
-3. Replace `also_bank` pattern: `.from("bank_accounts").insert(...)` → `createCashAccount({ ... })`
+Read the full file. It has 6 references across 4 functions:
+
+**`deleteWallet()` (lines ~325-335):**
+1. Dynamic import `await import("@/lib/actions/exchange-deposits")` → `await import("@/lib/actions/cash-accounts")` (keep as dynamic import to avoid circular deps)
+2. `.from("exchange_deposits").select("id").eq("wallet_id", id)` → `.from("cash_accounts").select("id").eq("wallet_id", id)` (use `.eq("wallet_id", id)` for precision — NOT `.not("wallet_id", "is", null)` which would match ALL exchange-origin cash)
+3. `deleteExchangeDeposit(dep.id)` → `deleteCashAccount(dep.id)`
+
+**`createWallet()` also_bank (lines ~96-113):**
+4. Duplicate check: `.from("bank_accounts").select("id").eq("institution_id", institutionId)` → replace with `findExistingCash(supabase, user.id, institutionId, "EUR")` — if non-empty, skip creation
+5. INSERT: `.from("bank_accounts").insert({ name, bank_name, region, currency, balance, apy, institution_id })` → `createCashAccount({ institution_id, name, currency: "EUR", balance: 0 })` — drop `bank_name` and `region` fields (not in new schema)
+6. Activity logging: update `entity_table`/`entity_type` from `"bank_accounts"`/`"bank_account"` → `"cash_accounts"`/`"cash_account"`
+
+**`updateWallet()` also_bank (lines ~248-265):**
+Same as createWallet — duplicate check + INSERT + activity logging. Same changes.
 
 - [ ] **Step 3: Update `brokers.ts`**
 
-Same pattern as wallets.ts:
-1. Replace `import { deleteBrokerDeposit } from "@/lib/actions/broker-deposits"` → `import { deleteCashAccount } from "@/lib/actions/cash-accounts"`
-2. Replace `.from("broker_deposits")` queries → `.from("cash_accounts").not("broker_id", "is", null)` (filter to broker-origin)
-3. Replace `also_bank` pattern: `.from("bank_accounts").insert(...)` → `createCashAccount({ ... })`
+Same pattern as wallets.ts, with 6 references:
 
-- [ ] **Step 4: Commit**
+**`deleteBroker()` (lines ~297-307):**
+1. Dynamic import `await import("@/lib/actions/broker-deposits")` → `await import("@/lib/actions/cash-accounts")`
+2. `.from("broker_deposits").select("id").eq("broker_id", id)` → `.from("cash_accounts").select("id").eq("broker_id", id)`
+3. `deleteBrokerDeposit(dep.id)` → `deleteCashAccount(dep.id)`
+
+**`createBroker()` also_bank (lines ~98-115):**
+4. Duplicate check → `findExistingCash()`
+5. INSERT → `createCashAccount()` (drop `bank_name`, `region`)
+6. Activity logging → `"cash_accounts"`/`"cash_account"`
+
+**`updateBroker()` also_bank (lines ~222-239):**
+Same as createBroker.
+
+- [ ] **Step 4: Update `trades.ts`**
+
+Line ~29: `.from("bank_accounts").select("currency")` → `.from("cash_accounts").select("currency")`. This query builds the currency list for trade entry forms. Column name `currency` exists on both tables, so no field rename needed.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/actions/institutions.ts src/lib/actions/wallets.ts src/lib/actions/brokers.ts
-git commit -m "refactor: institutions/wallets/brokers use cash_accounts"
+git add src/lib/actions/institutions.ts src/lib/actions/wallets.ts \
+  src/lib/actions/brokers.ts src/lib/actions/trades.ts
+git commit -m "refactor: institutions/wallets/brokers/trades use cash_accounts"
 ```
 
 ---
 
-### Task 20: Delete old action files
+### Task 20: Delete old action files and modals
 
 **Files:**
 - Delete: `src/lib/actions/bank-accounts.ts`
 - Delete: `src/lib/actions/exchange-deposits.ts`
 - Delete: `src/lib/actions/broker-deposits.ts`
+- Delete: `src/components/cash/bank-account-modal.tsx`
+- Delete: `src/components/cash/exchange-deposit-modal.tsx`
+- Delete: `src/components/cash/broker-deposit-modal.tsx`
 
 - [ ] **Step 1: Verify no remaining imports**
 
 ```bash
-grep -r "bank-accounts\|exchange-deposits\|broker-deposits" src/ --include="*.ts" --include="*.tsx" | grep -v "__tests__" | grep -v "node_modules"
+grep -r "bank-accounts\|exchange-deposits\|broker-deposits\|bank-account-modal\|exchange-deposit-modal\|broker-deposit-modal" src/ --include="*.ts" --include="*.tsx" | grep -v "__tests__" | grep -v "node_modules"
 ```
 
 Expected: Zero results (all imports have been updated in previous tasks).
@@ -973,6 +1028,9 @@ Expected: Zero results (all imports have been updated in previous tasks).
 git rm src/lib/actions/bank-accounts.ts
 git rm src/lib/actions/exchange-deposits.ts
 git rm src/lib/actions/broker-deposits.ts
+git rm src/components/cash/bank-account-modal.tsx
+git rm src/components/cash/exchange-deposit-modal.tsx
+git rm src/components/cash/broker-deposit-modal.tsx
 ```
 
 - [ ] **Step 3: Full build verification**
@@ -986,7 +1044,7 @@ Expected: Build succeeds with zero errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "chore: delete old bank-accounts, exchange-deposits, broker-deposits action files"
+git commit -m "chore: delete old cash action files and modals (6 files)"
 ```
 
 ---
