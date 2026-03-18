@@ -90,19 +90,16 @@ interface LabelNames {
   walletName: string | null;
   brokerName: string | null;
   currency: string;
-  balance: number;
 }
 
 function deriveLabel(names: LabelNames): string {
-  const { name, institutionName, walletName, brokerName, currency, balance } =
-    names;
-  if (walletName) return `${balance} ${currency} on ${walletName}`;
-  if (brokerName) return `${balance} ${currency} on ${brokerName}`;
-  const acctName = name ?? "";
-  const instName = institutionName ?? "Unknown";
-  return acctName
-    ? `${acctName} (${instName})`
-    : `${balance} ${currency} at ${instName}`;
+  const { name, institutionName, walletName, brokerName, currency } = names;
+  // Consistent compact format: "Name (Institution)" for all origins
+  const loc = walletName ?? brokerName ?? institutionName;
+  if (name && loc) return `${name} (${loc})`;
+  if (name) return name;
+  if (loc) return `${currency} (${loc})`;
+  return `${currency} cash`;
 }
 
 // ─── FX computation helpers ──────────────────────────────
@@ -276,7 +273,6 @@ export async function createCashAccount(
     walletName: names.walletName,
     brokerName: names.brokerName,
     currency: input.currency,
-    balance: input.balance,
   });
 
   // Compute FX
@@ -383,7 +379,6 @@ export async function updateCashAccount(
     walletName: names.walletName,
     brokerName: names.brokerName,
     currency: input.currency,
-    balance: input.balance,
   });
 
   // Compute FX on balance delta
@@ -460,7 +455,6 @@ export async function deleteCashAccount(
         walletName,
         brokerName,
         currency: snapshot.currency ?? "EUR",
-        balance: snapshot.balance ?? 0,
       })
     : "Unknown";
 
