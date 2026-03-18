@@ -514,6 +514,73 @@ export async function deleteCashAccount(
   revalidateCashPaths();
 }
 
+// ─── Merge duplicates ────────────────────────────────────
+
+/**
+ * Merge two cash accounts at the same institution + currency.
+ * Adds the duplicate's balance to the survivor, then soft-deletes the duplicate.
+ * Both operations are logged as adjustments (no real money moved).
+ */
+export async function mergeCashAccounts(
+  survivorId: string,
+  duplicateId: string,
+): Promise<void> {
+  validateUUID(survivorId, "Survivor account ID");
+  validateUUID(duplicateId, "Duplicate account ID");
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Fetch both accounts
+  const { data: survivor } = await supabase
+    .from("cash_accounts")
+    .select("*")
+    .eq("id", survivorId)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .single();
+
+  const { data: duplicate } = await supabase
+    .from("cash_accounts")
+    .select("*")
+    .eq("id", duplicateId)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .single();
+
+  if (!survivor || !duplicate) {
+    throw new Error("One or both cash accounts not found");
+  }
+
+  // Verify same institution + currency
+  if (survivor.institution_id !== duplicate.institution_id) {
+    throw new Error("Cash accounts must be at the same institution");
+  }
+  if (survivor.currency !== duplicate.currency) {
+    throw new Error("Cash accounts must have the same currency");
+  }
+
+  // Merge: add duplicate balance to survivor
+  const newBalance = (survivor.balance ?? 0) + (duplicate.balance ?? 0);
+
+  await updateCashAccount(survivorId, {
+    currency: survivor.currency,
+    balance: newBalance,
+    institution_id: survivor.institution_id,
+    name: survivor.name,
+    apy: survivor.apy ?? 0,
+    region: survivor.region,
+    wallet_id: survivor.wallet_id,
+    broker_id: survivor.broker_id,
+  }, { isAdjustment: true });
+
+  // Soft-delete the duplicate
+  await deleteCashAccount(duplicateId, { isAdjustment: true });
+}
+
 // ─── Internal helpers ────────────────────────────────────
 
 /**
