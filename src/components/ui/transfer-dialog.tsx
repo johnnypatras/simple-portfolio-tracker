@@ -586,7 +586,7 @@ export function TransferDialog({
       }
     }
   }, [
-    mode, prefilled, destType, destLocationId, destCurrency, destAmount,
+    mode, prefilled, destType, destLocationId, destAmount,
     sourceQty, moveLocationId,
   ]);
 

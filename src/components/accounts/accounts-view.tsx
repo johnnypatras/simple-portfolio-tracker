@@ -60,8 +60,6 @@ interface AccountsViewProps {
   stockPrices: YahooStockPriceData;
   fxRates: FXRates;
   primaryCurrency: string;
-  /** Live EUR/USD rate for write-time cashflow computation */
-  eurUsdRate?: number;
 }
 
 // ── Component ────────────────────────────────────────────
@@ -77,7 +75,6 @@ export function AccountsView({
   stockPrices,
   fxRates,
   primaryCurrency,
-  eurUsdRate,
 }: AccountsViewProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [editingInstitution, setEditingInstitution] = useState<InstitutionWithRoles | null>(null);
