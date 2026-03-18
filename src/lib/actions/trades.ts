@@ -5,6 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { validateUUID, validateQuantity, validateAmount, validateCurrency, validateName } from "@/lib/validation";
+import { partialUpdate } from "@/lib/partial-update";
 
 /** Lightweight asset name lists for the trade diary dropdown */
 export async function getAssetOptions(): Promise<{
@@ -120,17 +121,17 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
 
   const { error } = await supabase
     .from("trade_entries")
-    .update({
+    .update(partialUpdate({
       trade_date: input.trade_date,
       asset_type: input.asset_type,
       asset_name: input.asset_name.trim(),
       action: input.action,
       quantity: input.quantity,
       price: input.price,
-      currency: input.currency ?? "USD",
+      currency: input.currency,
       total_value: Math.round(totalValue * 100) / 100,
       notes: input.notes?.trim() || null,
-    })
+    }))
     .eq("id", id)
     .eq("user_id", user.id);
 

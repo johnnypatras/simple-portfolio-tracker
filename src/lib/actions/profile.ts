@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Profile, BaseCurrency } from "@/lib/types";
+import { partialUpdate } from "@/lib/partial-update";
 
 /** Fetch the current user's profile. */
 export async function getProfile(): Promise<Profile> {
@@ -39,7 +40,7 @@ export async function updateProfile(input: {
 
   const { error } = await supabase
     .from("profiles")
-    .update({ ...input, updated_at: new Date().toISOString() })
+    .update(partialUpdate({ ...input, updated_at: new Date().toISOString() }))
     .eq("id", user.id);
 
   if (error) throw new Error(error.message);

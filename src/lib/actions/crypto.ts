@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
+import { partialUpdate } from "@/lib/partial-update";
 import { validateQuantity, validateUUID, validateCoinGeckoId } from "@/lib/validation";
 
 /** Get all crypto assets with their positions and wallet names */
@@ -336,13 +337,13 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       .single();
 
     if (before) {
-      const { error } = await supabase.from("crypto_positions").update({
+      const { error } = await supabase.from("crypto_positions").update(partialUpdate({
         quantity: input.quantity,
-        acquisition_method: input.acquisition_method ?? "bought",
-        apy: input.apy ?? 0,
+        acquisition_method: input.acquisition_method,
+        apy: input.apy,
         last_was_adjustment: opts?.isAdjustment ?? false,
         last_was_transfer: opts?.transferGroupId != null,
-      }).eq("id", before.id);
+      })).eq("id", before.id);
       if (error) throw new Error(error.message);
     } else {
       const { error } = await supabase.from("crypto_positions").insert({
@@ -364,13 +365,13 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
             .is("deleted_at", null)
             .single();
           if (!existing) throw new Error(error.message);
-          const { error: updateErr } = await supabase.from("crypto_positions").update({
+          const { error: updateErr } = await supabase.from("crypto_positions").update(partialUpdate({
             quantity: input.quantity,
-            acquisition_method: input.acquisition_method ?? "bought",
-            apy: input.apy ?? 0,
+            acquisition_method: input.acquisition_method,
+            apy: input.apy,
             last_was_adjustment: opts?.isAdjustment ?? false,
             last_was_transfer: opts?.transferGroupId != null,
-          }).eq("id", existing.id);
+          })).eq("id", existing.id);
           if (updateErr) throw new Error(updateErr.message);
         } else {
           throw new Error(error.message);
