@@ -139,6 +139,8 @@ export function AccountsView({
   );
 
   // ── Merge candidates: detect duplicate cash accounts at same institution + currency
+  // Detect mixed-origin duplicates: a named bank account + an unnamed deposit
+  // at the same institution+currency. Multiple named bank accounts are legitimate.
   const mergeCandidates = useMemo(() => {
     const active = cashAccounts.filter((ca) => !ca.deleted_at && ca.institution_id);
     const grouped = new Map<string, CashAccount[]>();
@@ -148,24 +150,22 @@ export function AccountsView({
       if (list) list.push(ca);
       else grouped.set(key, [ca]);
     }
-    const results: { institution_name: string; currency: string; survivor: CashAccount; duplicate: CashAccount }[] = [];
+    const results: { institutionId: string; institution_name: string; currency: string; survivor: CashAccount; duplicate: CashAccount }[] = [];
     for (const accounts of grouped.values()) {
       if (accounts.length < 2) continue;
-      // Survivor priority: prefer named (bank-origin) over unnamed (deposit-origin);
-      // if both named, prefer higher balance.
-      const sorted = [...accounts].sort((a, b) => {
-        const aHasName = !!a.name;
-        const bHasName = !!b.name;
-        if (aHasName !== bHasName) return aHasName ? -1 : 1;
-        return b.balance - a.balance;
-      });
-      const survivor = sorted[0];
-      for (let i = 1; i < sorted.length; i++) {
+      const named = accounts.filter((a) => !!a.name);
+      const unnamed = accounts.filter((a) => !a.name);
+      // Only flag when there's a mix of named + unnamed (bank + deposit)
+      if (named.length === 0 || unnamed.length === 0) continue;
+      // Survivor = the named (bank-origin) account with highest balance
+      const survivor = named.sort((a, b) => b.balance - a.balance)[0];
+      for (const dup of unnamed) {
         results.push({
+          institutionId: survivor.institution_id!,
           institution_name: survivor.institution_name ?? "Unknown",
           currency: survivor.currency,
           survivor,
-          duplicate: sorted[i],
+          duplicate: dup,
         });
       }
     }
@@ -325,32 +325,7 @@ export function AccountsView({
         </div>
       )}
 
-      {/* Merge banner for duplicate cash accounts */}
-      {!isReadOnly && mergeCandidates.length > 0 && mergeCandidates.map((m) => (
-        <div key={m.duplicate.id} className="flex items-center justify-between bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3 mb-3">
-          <span className="text-sm text-amber-200">
-            {m.institution_name} has duplicate {m.currency} cash entries
-          </span>
-          <button
-            disabled={mergingId === m.duplicate.id}
-            onClick={async () => {
-              setMergingId(m.duplicate.id);
-              try {
-                await mergeCashAccounts(m.survivor.id, m.duplicate.id);
-                router.refresh();
-                toast.success("Cash accounts merged");
-              } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Merge failed");
-              } finally {
-                setMergingId(null);
-              }
-            }}
-            className="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-3 py-1.5 rounded-md disabled:opacity-50"
-          >
-            {mergingId === m.duplicate.id ? "Merging..." : "Merge"}
-          </button>
-        </div>
-      ))}
+      {/* Merge banners rendered inside institution cards via renderMergeBanner() */}
 
       {/* Institution cards */}
       <div className="space-y-2">
@@ -729,6 +704,34 @@ export function AccountsView({
                     totalValue={cash.reduce((s, c) => s + c.valueBase, 0)}
                     primaryCurrency={primaryCurrency}
                   >
+                    {/* Inline merge banner for mixed-origin duplicates at this institution */}
+                    {!isReadOnly && mergeCandidates
+                      .filter((m) => m.institutionId === institution.id)
+                      .map((m) => (
+                        <div key={m.duplicate.id} className="flex items-center justify-between bg-amber-500/10 rounded px-3 py-1.5 mb-1.5 text-[11px]">
+                          <span className="text-amber-300/80">
+                            Duplicate {m.currency} deposit — merge into {m.survivor.name}?
+                          </span>
+                          <button
+                            disabled={mergingId === m.duplicate.id}
+                            onClick={async () => {
+                              setMergingId(m.duplicate.id);
+                              try {
+                                await mergeCashAccounts(m.survivor.id, m.duplicate.id);
+                                router.refresh();
+                                toast.success("Cash accounts merged");
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : "Merge failed");
+                              } finally {
+                                setMergingId(null);
+                              }
+                            }}
+                            className="text-[10px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded disabled:opacity-50"
+                          >
+                            {mergingId === m.duplicate.id ? "Merging..." : "Merge"}
+                          </button>
+                        </div>
+                      ))}
                     {cash
                       .sort((a, b) => b.valueBase - a.valueBase)
                       .map((row) => (
