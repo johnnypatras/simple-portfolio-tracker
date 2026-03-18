@@ -973,6 +973,13 @@ export function AccountsView({
             onSuccess={() => { router.refresh(); setTransferInstId(null); }}
             mode={"sell" as TransferMode}
             initialInstitutionId={transferInstId ?? undefined}
+            initialDestCashId={
+              transferInstId
+                ? cashAccounts.find(
+                    (ca) => !ca.deleted_at && ca.institution_id === transferInstId,
+                  )?.id
+                : undefined
+            }
           />
 
           {/* Delete confirmation */}

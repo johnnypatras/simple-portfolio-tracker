@@ -77,6 +77,8 @@ interface TransferDialogProps {
   initialDestination?: InitialSide;
   /** When set, the generic source picker filters to this institution's assets */
   initialInstitutionId?: string;
+  /** Pre-select a cash account as destination (sell mode from institution page) */
+  initialDestCashId?: string;
 }
 
 // ─── Component ──────────────────────────────────────────────
@@ -89,6 +91,7 @@ export function TransferDialog({
   initialSource,
   initialDestination,
   initialInstitutionId,
+  initialDestCashId,
 }: TransferDialogProps) {
   // ── Data state ──
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -226,6 +229,17 @@ export function TransferDialog({
     setSrcLocationId("");
     setSrcAmount("");
   }, [open, prefilled?.assetId, prefilled?.locationId]);
+
+  // ── Pre-select institution cash as destination (sell mode from accounts page) ──
+  useEffect(() => {
+    if (!open || !initialDestCashId || dataLoading) return;
+    const match = cashAccounts.find((ca) => ca.id === initialDestCashId);
+    if (match) {
+      setDestType("cash_account");
+      setDestLocationId(match.id);
+      setDestCurrency(match.currency);
+    }
+  }, [open, initialDestCashId, dataLoading, cashAccounts]);
 
   // ── Title ──
   const title = useMemo(() => {
