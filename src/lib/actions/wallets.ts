@@ -9,6 +9,7 @@ import {
   renameInstitution,
 } from "@/lib/actions/institutions";
 import { validateUUID, validateName } from "@/lib/validation";
+import { partialUpdate } from "@/lib/partial-update";
 
 export async function getWallets() {
   const supabase = await createServerSupabaseClient();
@@ -183,12 +184,12 @@ export async function updateWallet(
 
   const { error } = await supabase
     .from("wallets")
-    .update({
+    .update(partialUpdate({
       name: trimmedName,
       wallet_type: input.wallet_type,
-      privacy_label: input.privacy_label ?? null,
+      privacy_label: input.privacy_label,
       chain: input.chain?.trim() || null,
-    })
+    }))
     .eq("id", id)
     .eq("user_id", user.id);
 

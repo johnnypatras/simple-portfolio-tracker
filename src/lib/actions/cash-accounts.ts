@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CashAccount, CashAccountInput } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import { validateAmount, validateCurrency, validateUUID } from "@/lib/validation";
+import { partialUpdate } from "@/lib/partial-update";
 
 // ─── Shared types ────────────────────────────────────────
 
@@ -375,24 +376,20 @@ export async function updateCashAccount(
     .is("deleted_at", null)
     .single();
 
-  // Partial update: only include fields explicitly provided in input.
-  // Omitted fields (institution_id, region, wallet_id, broker_id) retain their existing values.
-  const updates: Record<string, unknown> = {
-    name: normalizedName,
-    currency: input.currency,
-    balance: input.balance,
-    apy: input.apy ?? 0,
-    last_was_adjustment: opts?.isAdjustment ?? false,
-    last_was_transfer: opts?.transferGroupId != null,
-  };
-  if (input.institution_id !== undefined) updates.institution_id = input.institution_id;
-  if (input.region !== undefined) updates.region = input.region;
-  if (input.wallet_id !== undefined) updates.wallet_id = input.wallet_id;
-  if (input.broker_id !== undefined) updates.broker_id = input.broker_id;
-
   const { error } = await supabase
     .from("cash_accounts")
-    .update(updates)
+    .update(partialUpdate({
+      name: normalizedName,
+      currency: input.currency,
+      balance: input.balance,
+      apy: input.apy ?? 0,
+      institution_id: input.institution_id,
+      region: input.region,
+      wallet_id: input.wallet_id,
+      broker_id: input.broker_id,
+      last_was_adjustment: opts?.isAdjustment ?? false,
+      last_was_transfer: opts?.transferGroupId != null,
+    }))
     .eq("id", id)
     .eq("user_id", user.id);
 
