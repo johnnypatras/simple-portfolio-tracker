@@ -94,6 +94,10 @@ export async function renameInstitution(id: string, newName: string): Promise<vo
     .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
+
+  // Refresh entity_name on activity_log for all cash accounts at this institution
+  const { refreshCashEntityNames } = await import("@/lib/actions/cash-accounts");
+  await refreshCashEntityNames(supabase, user.id, { institution_id: id });
 }
 
 /**

@@ -102,6 +102,42 @@ function deriveLabel(names: LabelNames): string {
   return `${currency} cash`;
 }
 
+/**
+ * Refresh entity_name on all activity_log entries for cash accounts matching a filter.
+ * Called when an entity is renamed (institution, wallet, broker, or cash account itself).
+ */
+export async function refreshCashEntityNames(
+  supabase: SupabaseClient,
+  userId: string,
+  filter: { institution_id?: string; wallet_id?: string; broker_id?: string; cash_id?: string },
+): Promise<void> {
+  let query = supabase
+    .from("cash_accounts")
+    .select("id, name, currency, institution_id, wallet_id, broker_id, institutions(name), wallets(name), brokers(name)")
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+  if (filter.cash_id) query = query.eq("id", filter.cash_id);
+  else if (filter.wallet_id) query = query.eq("wallet_id", filter.wallet_id);
+  else if (filter.broker_id) query = query.eq("broker_id", filter.broker_id);
+  else if (filter.institution_id) query = query.eq("institution_id", filter.institution_id);
+  else return;
+
+  const { data: accounts } = await query;
+  if (!accounts?.length) return;
+
+  for (const ca of accounts) {
+    const instName = (ca.institutions as unknown as { name: string } | null)?.name ?? null;
+    const walletName = (ca.wallets as unknown as { name: string } | null)?.name ?? null;
+    const brokerName = (ca.brokers as unknown as { name: string } | null)?.name ?? null;
+    const label = deriveLabel({ name: ca.name, institutionName: instName, walletName, brokerName, currency: ca.currency });
+    await supabase
+      .from("activity_log")
+      .update({ entity_name: label })
+      .eq("entity_id", ca.id)
+      .eq("user_id", userId);
+  }
+}
+
 // ─── FX computation helpers ──────────────────────────────
 
 type FxStatus = "complete" | "pending" | null;
@@ -339,20 +375,24 @@ export async function updateCashAccount(
     .is("deleted_at", null)
     .single();
 
+  // Partial update: only include fields explicitly provided in input.
+  // Omitted fields (institution_id, region, wallet_id, broker_id) retain their existing values.
+  const updates: Record<string, unknown> = {
+    name: normalizedName,
+    currency: input.currency,
+    balance: input.balance,
+    apy: input.apy ?? 0,
+    last_was_adjustment: opts?.isAdjustment ?? false,
+    last_was_transfer: opts?.transferGroupId != null,
+  };
+  if (input.institution_id !== undefined) updates.institution_id = input.institution_id;
+  if (input.region !== undefined) updates.region = input.region;
+  if (input.wallet_id !== undefined) updates.wallet_id = input.wallet_id;
+  if (input.broker_id !== undefined) updates.broker_id = input.broker_id;
+
   const { error } = await supabase
     .from("cash_accounts")
-    .update({
-      institution_id: input.institution_id ?? null,
-      name: normalizedName,
-      currency: input.currency,
-      balance: input.balance,
-      apy: input.apy ?? 0,
-      region: input.region ?? null,
-      wallet_id: input.wallet_id ?? null,
-      broker_id: input.broker_id ?? null,
-      last_was_adjustment: opts?.isAdjustment ?? false,
-      last_was_transfer: opts?.transferGroupId != null,
-    })
+    .update(updates)
     .eq("id", id)
     .eq("user_id", user.id);
 
@@ -409,6 +449,11 @@ export async function updateCashAccount(
     transfer_group_id: opts?.transferGroupId,
     created_at: opts?.effectiveDate,
   });
+
+  // If name changed, refresh entity_name on ALL activity_log entries for this account
+  if (before?.name !== normalizedName) {
+    await refreshCashEntityNames(supabase, user.id, { cash_id: id });
+  }
 
   revalidateCashPaths();
 }
