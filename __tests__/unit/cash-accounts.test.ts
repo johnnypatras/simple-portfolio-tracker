@@ -1,0 +1,431 @@
+import { vi, describe, it, expect, beforeEach } from "vitest";
+
+/**
+ * Unit tests for mergeCashAccounts and findExistingCash from cash-accounts.ts.
+ *
+ * Strategy: mock `createServerSupabaseClient` to return a fake Supabase client
+ * with controlled query results. Also mock activity-log, validation, and
+ * next/cache to avoid side-effects from the "use server" module.
+ */
+
+// ─── Hoisted mock state ──────────────────────────────────────────────────────
+const hoisted = vi.hoisted(() => ({
+  mockClient: null as ReturnType<typeof createMockClient> | null,
+  updateCashAccountCalls: [] as { id: string; input: unknown; opts: unknown }[],
+  deleteCashAccountCalls: [] as { id: string; opts: unknown }[],
+}));
+
+// ─── Mock helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Creates a fake Supabase query builder that returns preset results.
+ *
+ * The Supabase client chain: .from(...).select(...).eq(...).is(...).single()
+ * All builder methods return `this` and the object itself is thenable.
+ */
+function createQueryBuilder(resolveValue: unknown) {
+  const builder: Record<string, unknown> & PromiseLike<unknown> = {
+    select: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
+    or: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    single: vi.fn().mockReturnThis(),
+    then(
+      onFulfilled: (value: unknown) => unknown,
+      onRejected?: (reason: unknown) => unknown,
+    ) {
+      return Promise.resolve(resolveValue).then(onFulfilled, onRejected);
+    },
+  };
+  return builder;
+}
+
+/**
+ * Builds a mock Supabase client whose `.from()` returns per-call query builders.
+ * Also stubs `auth.getUser()` to return a test user.
+ */
+function createMockClient(fromCalls: unknown[]) {
+  let callIndex = 0;
+  return {
+    from: vi.fn(() => {
+      const result = fromCalls[callIndex] ?? { data: null, error: null };
+      callIndex++;
+      return createQueryBuilder(result);
+    }),
+    auth: {
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: { id: "user-123" } },
+        error: null,
+      }),
+    },
+  };
+}
+
+// ─── Module mocks (hoisted before imports) ───────────────────────────────────
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/server", () => ({
+  createServerSupabaseClient: vi.fn(async () => hoisted.mockClient),
+}));
+
+// Mock activity-log to avoid FX API calls and DB writes
+vi.mock("@/lib/actions/activity-log", () => ({
+  logActivity: vi.fn(),
+  toUsdAndEur: vi.fn().mockResolvedValue({ usd: 100, eur: 92 }),
+}));
+
+// Mock cashflow module
+vi.mock("@/lib/cashflow", () => ({
+  computeCashflowFromPrices: vi.fn().mockReturnValue({ usd: 100, eur: 92 }),
+  classifyAssetClass: vi.fn().mockReturnValue("cash"),
+}));
+
+// Mock validation (pass-through — not testing validation here)
+vi.mock("@/lib/validation", () => ({
+  validateAmount: vi.fn(),
+  validateCurrency: vi.fn(),
+  validateUUID: vi.fn(),
+}));
+
+// ─── Import after mocks ─────────────────────────────────────────────────────
+import { mergeCashAccounts, findExistingCash } from "@/lib/actions/cash-accounts";
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+describe("mergeCashAccounts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hoisted.updateCashAccountCalls = [];
+    hoisted.deleteCashAccountCalls = [];
+  });
+
+  it("throws when merging an account with itself", async () => {
+    await expect(
+      mergeCashAccounts("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+    ).rejects.toThrow("Cannot merge a cash account with itself");
+  });
+
+  it("throws when accounts are at different institutions", async () => {
+    // from() call 1: auth.getUser() is on the mock client
+    // mergeCashAccounts calls createServerSupabaseClient, then getUser,
+    // then two .from("cash_accounts") calls for survivor and duplicate.
+    hoisted.mockClient = createMockClient([
+      // survivor fetch
+      {
+        data: {
+          id: "surv-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 5000,
+          name: "Savings A",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      // duplicate fetch
+      {
+        data: {
+          id: "dup-id",
+          user_id: "user-123",
+          institution_id: "inst-B",
+          currency: "EUR",
+          balance: 500,
+          name: "Savings B",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+    ]);
+
+    await expect(
+      mergeCashAccounts(
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        "aaaaaaaa-0000-0000-0000-000000000002",
+      ),
+    ).rejects.toThrow("Cash accounts must be at the same institution");
+  });
+
+  it("throws when accounts have different currencies", async () => {
+    hoisted.mockClient = createMockClient([
+      // survivor: EUR
+      {
+        data: {
+          id: "surv-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 5000,
+          name: "EUR Account",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      // duplicate: USD
+      {
+        data: {
+          id: "dup-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "USD",
+          balance: 1000,
+          name: "USD Account",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+    ]);
+
+    await expect(
+      mergeCashAccounts(
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        "aaaaaaaa-0000-0000-0000-000000000002",
+      ),
+    ).rejects.toThrow("Cash accounts must have the same currency");
+  });
+
+  it("throws when one account is not found", async () => {
+    hoisted.mockClient = createMockClient([
+      // survivor found
+      {
+        data: {
+          id: "surv-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 5000,
+          name: "Savings",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      // duplicate not found
+      { data: null, error: null },
+    ]);
+
+    await expect(
+      mergeCashAccounts(
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        "aaaaaaaa-0000-0000-0000-000000000002",
+      ),
+    ).rejects.toThrow("One or both cash accounts not found");
+  });
+
+  it("computes correct merged balance (6500 + 500 = 7000)", async () => {
+    // The merge function calls:
+    // 1. createServerSupabaseClient + getUser
+    // 2. from("cash_accounts").select.eq.eq.is.single → survivor
+    // 3. from("cash_accounts").select.eq.eq.is.single → duplicate
+    // Then it calls updateCashAccount(survivorId, { balance: 7000, ... })
+    // which internally calls createServerSupabaseClient again.
+    // We need enough from() results for all DB calls in both merge + update + delete.
+
+    // For the merge itself (fetching survivor & duplicate):
+    const mergeClient = createMockClient([
+      // survivor fetch
+      {
+        data: {
+          id: "surv-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 6500,
+          name: "Main Account",
+          apy: 1.5,
+          region: "GR",
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      // duplicate fetch
+      {
+        data: {
+          id: "dup-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 500,
+          name: "Duplicate",
+          apy: 0,
+          region: "GR",
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+    ]);
+
+    // After merge fetches, it calls updateCashAccount and deleteCashAccount,
+    // each of which calls createServerSupabaseClient. We track calls by
+    // swapping the mock client for each subsequent call.
+
+    // Track how updateCashAccount is called by intercepting createServerSupabaseClient.
+    // Each call to updateCashAccount/deleteCashAccount gets a fresh client.
+    const updateClient = createMockClient([
+      // before snapshot fetch
+      { data: { id: "surv-id", balance: 6500, currency: "EUR" }, error: null },
+      // update query
+      { error: null },
+      // after snapshot fetch
+      { data: { id: "surv-id", balance: 7000, currency: "EUR" }, error: null },
+      // resolveDisplayNames: institution lookup
+      { data: { name: "Alpha Bank" }, error: null },
+    ]);
+
+    const deleteClient = createMockClient([
+      // snapshot fetch for delete
+      {
+        data: {
+          id: "dup-id",
+          balance: 500,
+          currency: "EUR",
+          name: "Duplicate",
+          institutions: null,
+          wallets: null,
+          brokers: null,
+        },
+        error: null,
+      },
+      // soft-delete update
+      { error: null },
+    ]);
+
+    const { createServerSupabaseClient } = await import(
+      "@/lib/supabase/server"
+    );
+    const mockCreate = vi.mocked(createServerSupabaseClient);
+
+    // First call → merge client (fetches survivor + duplicate)
+    // Second call → update client (updateCashAccount)
+    // Third call → delete client (deleteCashAccount)
+    mockCreate
+      .mockResolvedValueOnce(mergeClient as never)
+      .mockResolvedValueOnce(updateClient as never)
+      .mockResolvedValueOnce(deleteClient as never);
+
+    await mergeCashAccounts(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      "aaaaaaaa-0000-0000-0000-000000000002",
+    );
+
+    // Verify updateCashAccount was called — the update client's from() should have been invoked
+    // The update client's .from() is called for: before fetch, update, after fetch, display names
+    expect(updateClient.from).toHaveBeenCalled();
+
+    // The second .from() call is the update — check that .update() was called on its builder
+    const updateBuilder = updateClient.from.mock.results[1]?.value;
+    expect(updateBuilder.update).toHaveBeenCalled();
+
+    // Verify the balance in the update call: the update builder's update() should receive { balance: 7000, ... }
+    const updateArg = updateBuilder.update.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(updateArg.balance).toBe(7000);
+  });
+});
+
+describe("findExistingCash", () => {
+  it("returns matching records for institution + currency", async () => {
+    const mockClient = createMockClient([
+      {
+        data: [
+          {
+            id: "ca1",
+            user_id: "user-123",
+            institution_id: "inst-A",
+            currency: "EUR",
+            balance: 5000,
+          },
+          {
+            id: "ca2",
+            user_id: "user-123",
+            institution_id: "inst-A",
+            currency: "EUR",
+            balance: 3000,
+          },
+        ],
+        error: null,
+      },
+    ]);
+
+    // findExistingCash takes a pre-built supabase client, no need for mock injection
+    const result = await findExistingCash(
+      mockClient as never,
+      "user-123",
+      "inst-A",
+      "EUR",
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe("ca1");
+    expect(result[1].id).toBe("ca2");
+  });
+
+  it("returns empty array when no match exists", async () => {
+    const mockClient = createMockClient([
+      { data: [], error: null },
+    ]);
+
+    const result = await findExistingCash(
+      mockClient as never,
+      "user-123",
+      "inst-X",
+      "GBP",
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it("filters out soft-deleted records via .is('deleted_at', null)", async () => {
+    // The query builder chains .is("deleted_at", null).
+    // We verify the chain is called correctly and only non-deleted data is returned.
+    const mockClient = createMockClient([
+      {
+        data: [
+          {
+            id: "ca-active",
+            user_id: "user-123",
+            institution_id: "inst-A",
+            currency: "EUR",
+            balance: 5000,
+            deleted_at: null,
+          },
+        ],
+        error: null,
+      },
+    ]);
+
+    const result = await findExistingCash(
+      mockClient as never,
+      "user-123",
+      "inst-A",
+      "EUR",
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("ca-active");
+
+    // Verify .is() was called with "deleted_at" and null (soft-delete filter)
+    const fromResult = mockClient.from.mock.results[0]?.value;
+    expect(fromResult.is).toHaveBeenCalledWith("deleted_at", null);
+  });
+});
