@@ -1,15 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-
-// Mock "use server" dependencies so the module can be imported in unit tests
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/supabase/server", () => ({
-  createServerSupabaseClient: vi.fn(),
-}));
-vi.mock("@/lib/actions/activity-log", () => ({
-  logActivity: vi.fn(),
-}));
-
-import { resolveTable, remapSnapshotFields } from "@/lib/actions/undo";
+import { describe, it, expect } from "vitest";
+import { resolveTable, remapSnapshotFields } from "@/lib/undo-remap";
 
 describe("resolveTable", () => {
   it("remaps bank_accounts → cash_accounts", () => {
