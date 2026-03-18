@@ -8,7 +8,7 @@ import {
   findOrCreateInstitution,
   renameInstitution,
 } from "@/lib/actions/institutions";
-import { validateUUID } from "@/lib/validation";
+import { validateUUID, validateName } from "@/lib/validation";
 
 export async function getBrokers() {
   const supabase = await createServerSupabaseClient();
@@ -38,6 +38,7 @@ export async function createBroker(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateName(input.name, 100, "Broker name");
   const trimmedName = input.name.trim();
   const institutionId = await findOrCreateInstitution(trimmedName);
 

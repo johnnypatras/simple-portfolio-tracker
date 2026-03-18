@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateUUID } from "@/lib/validation";
+import { validateUUID, validateQuantity, validateAmount, validateCurrency, validateName } from "@/lib/validation";
 
 /** Lightweight asset name lists for the trade diary dropdown */
 export async function getAssetOptions(): Promise<{
@@ -62,6 +62,11 @@ export async function createTradeEntry(input: TradeEntryInput) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateName(input.asset_name, 100, "Asset name");
+  validateQuantity(input.quantity, "Quantity");
+  validateAmount(input.price, "Price");
+  if (input.currency) validateCurrency(input.currency);
+
   const totalValue = input.quantity * input.price;
 
   const { data: created, error } = await supabase.from("trade_entries").insert({
@@ -96,6 +101,12 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  validateName(input.asset_name, 100, "Asset name");
+  validateQuantity(input.quantity, "Quantity");
+  validateAmount(input.price, "Price");
+  if (input.currency) validateCurrency(input.currency);
+
   const totalValue = input.quantity * input.price;
 
   // Capture before snapshot

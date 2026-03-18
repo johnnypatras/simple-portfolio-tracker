@@ -8,7 +8,7 @@ import {
   findOrCreateInstitution,
   renameInstitution,
 } from "@/lib/actions/institutions";
-import { validateUUID } from "@/lib/validation";
+import { validateUUID, validateName } from "@/lib/validation";
 
 export async function getWallets() {
   const supabase = await createServerSupabaseClient();
@@ -32,6 +32,7 @@ export async function createWallet(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateName(input.name, 100, "Wallet name");
   const trimmedName = input.name.trim();
 
   // Find or create institution
@@ -130,6 +131,7 @@ export async function createStandaloneWallet(input: WalletInput): Promise<void> 
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateName(input.name, 100, "Wallet name");
   const trimmedName = input.name.trim();
 
   const { data: created, error } = await supabase.from("wallets").insert({
