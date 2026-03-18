@@ -14,6 +14,7 @@ describe("RLS enforcement", () => {
     cleanup: () => void;
   };
   let cryptoAssetId: string;
+  let cashAccountId: string;
 
   beforeAll(async () => {
     userA = await createTestUser("rls-a@test.local");
@@ -30,6 +31,25 @@ describe("RLS enforcement", () => {
       .select("id")
       .single();
     cryptoAssetId = asset!.id;
+
+    // Create a cash_account for RLS tests
+    const { data: inst } = await userA.client
+      .from("institutions")
+      .insert({ user_id: userA.userId, name: "RLS-Bank" })
+      .select("id")
+      .single();
+    const { data: cash } = await userA.client
+      .from("cash_accounts")
+      .insert({
+        user_id: userA.userId,
+        name: "RLS-Cash",
+        institution_id: inst!.id,
+        currency: "EUR",
+        balance: 3000,
+      })
+      .select("id")
+      .single();
+    cashAccountId = cash!.id;
   });
 
   afterAll(() => {
@@ -76,6 +96,27 @@ describe("RLS enforcement", () => {
     if (error) {
       expect(error.code).toBeTruthy();
     }
+  });
+
+  it("User B cannot SELECT User A's cash_accounts", async () => {
+    const { data } = await userB.client
+      .from("cash_accounts")
+      .select("*")
+      .eq("id", cashAccountId);
+    expect(data).toEqual([]);
+  });
+
+  it("User B cannot UPDATE User A's cash_accounts", async () => {
+    await userB.client
+      .from("cash_accounts")
+      .update({ balance: 0 })
+      .eq("id", cashAccountId);
+    const { data } = await userA.client
+      .from("cash_accounts")
+      .select("balance")
+      .eq("id", cashAccountId)
+      .single();
+    expect(data?.balance).toBe(3000);
   });
 
   it("User B cannot DELETE User A's activity_log", async () => {

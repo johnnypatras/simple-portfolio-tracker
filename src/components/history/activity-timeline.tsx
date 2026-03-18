@@ -258,7 +258,7 @@ function formatDiffValue(value: unknown): string {
 }
 
 /** Build a human-readable change summary from before/after snapshots. */
-function describeChanges(
+export function describeChanges(
   before: Record<string, unknown> | null,
   after: Record<string, unknown> | null
 ): string | null {
@@ -327,7 +327,7 @@ function groupTransfers(
 }
 
 /** Identify source (negative delta) and destination (positive delta) legs. */
-function identifyTransferLegs(entries: ActivityLog[]): {
+export function identifyTransferLegs(entries: ActivityLog[]): {
   source: ActivityLog;
   dest: ActivityLog;
 } {
@@ -375,7 +375,7 @@ function extractQtyChange(log: ActivityLog): number | null {
 }
 
 /** Build a human-readable transfer summary line. */
-function buildTransferSummary(source: ActivityLog, dest: ActivityLog): string {
+export function buildTransferSummary(source: ActivityLog, dest: ActivityLog): string {
   const srcLoc = extractLocation(source.entity_name);
   const destLoc = extractLocation(dest.entity_name);
 

@@ -20,11 +20,11 @@ const SNAPSHOT_FIELD_REMAP: Record<string, Record<string, string>> = {
   broker_deposits: { amount: "balance" },
 };
 
-function resolveTable(entityTable: string): string {
+export function resolveTable(entityTable: string): string {
   return TABLE_REMAP[entityTable] ?? entityTable;
 }
 
-function remapSnapshotFields(
+export function remapSnapshotFields(
   entityTable: string,
   snapshot: Record<string, unknown> | null,
 ): Record<string, unknown> | null {

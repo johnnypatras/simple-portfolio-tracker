@@ -298,4 +298,39 @@ describe("cascade soft-delete triggers", () => {
     await softDelete("stock_assets", asset!.id);
     expect(await isDeleted("stock_positions", position!.id)).toBe(true);
   });
+
+  it("wallet → cash_account cascade restore (soft-delete then restore)", async () => {
+    const { data: wallet } = await client
+      .from("wallets")
+      .insert({
+        user_id: userId,
+        name: "Cascade-Restore-Wallet",
+        wallet_type: "custodial",
+      })
+      .select("id")
+      .single();
+    const { data: deposit } = await client
+      .from("cash_accounts")
+      .insert({
+        user_id: userId,
+        wallet_id: wallet!.id,
+        currency: "EUR",
+        balance: 250,
+      })
+      .select("id")
+      .single();
+
+    // Soft-delete the wallet → cash_account should cascade
+    await softDelete("wallets", wallet!.id);
+    expect(await isDeleted("cash_accounts", deposit!.id)).toBe(true);
+
+    // Restore the wallet (set deleted_at = NULL) → cash_account should restore
+    const { error } = await client
+      .from("wallets")
+      .update({ deleted_at: null })
+      .eq("id", wallet!.id);
+    if (error) throw new Error(`restore wallets/${wallet!.id}: ${error.message}`);
+
+    expect(await isDeleted("cash_accounts", deposit!.id)).toBe(false);
+  });
 });

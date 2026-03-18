@@ -88,4 +88,38 @@ describe("rateLimit", () => {
     expect(allowed).toBe(3);
     expect(blocked).toBe(3);
   });
+
+  it("returns Retry-After header when rate limited", () => {
+    const check = rateLimit({ windowMs: 120_000, max: 1 });
+    check(makeReq()); // 1 — allowed
+    const result = check(makeReq()); // 2 — blocked
+    expect(result).not.toBeNull();
+    expect(result?.headers).toBeDefined();
+    expect((result as { headers: Record<string, string> }).headers["Retry-After"]).toBe(
+      String(Math.ceil(120_000 / 1000)),
+    );
+  });
+
+  it("requests with no x-forwarded-for share the 'unknown' bucket", () => {
+    const check = rateLimit({ windowMs: 60_000, max: 1 });
+    const noIpReq = () =>
+      new NextRequest("http://localhost/api/test", { headers: {} });
+    expect(check(noIpReq())).toBeNull(); // 1 — allowed
+    expect(check(noIpReq())).not.toBeNull(); // 2 — blocked (same "unknown" bucket)
+  });
+
+  it("multi-IP header uses only first IP for bucketing", () => {
+    const check = rateLimit({ windowMs: 60_000, max: 1 });
+    const multiIpReq = () =>
+      new NextRequest("http://localhost/api/test", {
+        headers: { "x-forwarded-for": "10.0.0.1, 192.168.1.1" },
+      });
+    expect(check(multiIpReq())).toBeNull(); // 1 — allowed
+    expect(check(multiIpReq())).not.toBeNull(); // 2 — blocked (keyed on "10.0.0.1")
+    // Different first IP should be a separate bucket
+    const differentFirstIp = new NextRequest("http://localhost/api/test", {
+      headers: { "x-forwarded-for": "10.0.0.2, 192.168.1.1" },
+    });
+    expect(check(differentFirstIp)).toBeNull(); // allowed — different bucket
+  });
 });

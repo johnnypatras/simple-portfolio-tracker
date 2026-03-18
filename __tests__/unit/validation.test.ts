@@ -5,6 +5,8 @@ import {
   validateCurrency,
   validateName,
   validateUUID,
+  validateCoinGeckoId,
+  validateYahooTicker,
 } from "@/lib/validation";
 
 describe("validateAmount", () => {
@@ -222,5 +224,89 @@ describe("validateUUID", () => {
     expect(() =>
       validateUUID("00000000-0000-0000-0000-000000000000")
     ).not.toThrow();
+  });
+});
+
+describe("validateCoinGeckoId", () => {
+  it("accepts simple id", () => {
+    expect(() => validateCoinGeckoId("bitcoin")).not.toThrow();
+  });
+
+  it("accepts hyphenated id", () => {
+    expect(() => validateCoinGeckoId("usd-coin")).not.toThrow();
+  });
+
+  it("accepts id starting with digit", () => {
+    expect(() => validateCoinGeckoId("0x-protocol")).not.toThrow();
+  });
+
+  it("accepts single character", () => {
+    expect(() => validateCoinGeckoId("a")).not.toThrow();
+  });
+
+  it("rejects empty string", () => {
+    expect(() => validateCoinGeckoId("")).toThrow();
+  });
+
+  it("rejects path traversal", () => {
+    expect(() => validateCoinGeckoId("../../../etc")).toThrow();
+  });
+
+  it("rejects leading hyphen", () => {
+    expect(() => validateCoinGeckoId("-bitcoin")).toThrow();
+  });
+
+  it("rejects uppercase", () => {
+    expect(() => validateCoinGeckoId("BITCOIN")).toThrow();
+  });
+
+  it("rejects space", () => {
+    expect(() => validateCoinGeckoId("bit coin")).toThrow();
+  });
+
+  it("rejects URL injection", () => {
+    expect(() => validateCoinGeckoId("bitcoin&vs_currencies=jpy")).toThrow();
+  });
+});
+
+describe("validateYahooTicker", () => {
+  it("accepts simple ticker", () => {
+    expect(() => validateYahooTicker("AAPL")).not.toThrow();
+  });
+
+  it("accepts ticker with dot (exchange suffix)", () => {
+    expect(() => validateYahooTicker("VWCE.DE")).not.toThrow();
+  });
+
+  it("rejects caret prefix (first char must be alphanumeric)", () => {
+    expect(() => validateYahooTicker("^GSPC")).toThrow();
+  });
+
+  it("accepts hyphenated ticker", () => {
+    expect(() => validateYahooTicker("BRK-B")).not.toThrow();
+  });
+
+  it("accepts FX ticker with equals", () => {
+    expect(() => validateYahooTicker("EURUSD=X")).not.toThrow();
+  });
+
+  it("rejects empty string", () => {
+    expect(() => validateYahooTicker("")).toThrow();
+  });
+
+  it("rejects lowercase", () => {
+    expect(() => validateYahooTicker("aapl")).toThrow();
+  });
+
+  it("rejects too long (>20 chars)", () => {
+    expect(() => validateYahooTicker("A".repeat(21))).toThrow();
+  });
+
+  it("rejects newline", () => {
+    expect(() => validateYahooTicker("TICK\n")).toThrow();
+  });
+
+  it("rejects URL injection", () => {
+    expect(() => validateYahooTicker("AAPL&foo=bar")).toThrow();
   });
 });

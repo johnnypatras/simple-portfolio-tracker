@@ -99,6 +99,10 @@ describe("classifyAssetClass", () => {
     expect(classifyAssetClass("broker_deposit")).toBe("cash");
   });
 
+  it("cash_account → cash", () => {
+    expect(classifyAssetClass("cash_account")).toBe("cash");
+  });
+
   it("crypto_asset → null (no cashflow)", () => {
     expect(classifyAssetClass("crypto_asset")).toBeNull();
   });

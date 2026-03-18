@@ -17,6 +17,10 @@ describe("cashAmountField", () => {
   it("returns 'amount' for broker_deposit", () => {
     expect(cashAmountField("broker_deposit")).toBe("amount");
   });
+
+  it("returns 'balance' for cash_account", () => {
+    expect(cashAmountField("cash_account")).toBe("balance");
+  });
 });
 
 describe("cashDelta", () => {
