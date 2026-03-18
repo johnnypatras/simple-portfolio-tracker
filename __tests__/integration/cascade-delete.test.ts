@@ -8,9 +8,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * When a parent entity's `deleted_at` is set, the DB trigger automatically
  * cascades to all child entities. This tests every cascade path:
  *
- *   institutions → wallets, brokers, bank_accounts
- *   wallets → crypto_positions, exchange_deposits
- *   brokers → stock_positions, broker_deposits
+ *   institutions → wallets, brokers, cash_accounts
+ *   wallets → crypto_positions, cash_accounts (wallet_id)
+ *   brokers → stock_positions, cash_accounts (broker_id)
  *   crypto_assets → crypto_positions
  *   stock_assets → stock_positions
  *   Two-level: institution → wallet → crypto_position
@@ -88,28 +88,26 @@ describe("cascade soft-delete triggers", () => {
     expect(await isDeleted("brokers", broker!.id)).toBe(true);
   });
 
-  it("institution → bank_accounts", async () => {
+  it("institution → cash_accounts", async () => {
     const { data: inst } = await client
       .from("institutions")
       .insert({ user_id: userId, name: "Cascade-Inst-3" })
       .select("id")
       .single();
-    const { data: bank } = await client
-      .from("bank_accounts")
+    const { data: cash } = await client
+      .from("cash_accounts")
       .insert({
         user_id: userId,
         name: "Cascade-Bank",
-        bank_name: "Cascade-Inst-3",
         currency: "EUR",
         balance: 1000,
-        apy: 0,
         institution_id: inst!.id,
       })
       .select("id")
       .single();
 
     await softDelete("institutions", inst!.id);
-    expect(await isDeleted("bank_accounts", bank!.id)).toBe(true);
+    expect(await isDeleted("cash_accounts", cash!.id)).toBe(true);
   });
 
   it("institution → wallet → crypto_position (two-level)", async () => {
@@ -154,7 +152,7 @@ describe("cascade soft-delete triggers", () => {
     expect(await isDeleted("crypto_positions", position!.id)).toBe(true);
   });
 
-  it("wallet → exchange_deposits", async () => {
+  it("wallet → cash_accounts (exchange deposit)", async () => {
     const { data: wallet } = await client
       .from("wallets")
       .insert({
@@ -165,21 +163,21 @@ describe("cascade soft-delete triggers", () => {
       .select("id")
       .single();
     const { data: deposit } = await client
-      .from("exchange_deposits")
+      .from("cash_accounts")
       .insert({
         user_id: userId,
         wallet_id: wallet!.id,
         currency: "USD",
-        amount: 500,
+        balance: 500,
       })
       .select("id")
       .single();
 
     await softDelete("wallets", wallet!.id);
-    expect(await isDeleted("exchange_deposits", deposit!.id)).toBe(true);
+    expect(await isDeleted("cash_accounts", deposit!.id)).toBe(true);
   });
 
-  it("institution → broker → stock_position + broker_deposit (two-level)", async () => {
+  it("institution → broker → stock_position + cash_account (two-level)", async () => {
     const { data: inst } = await client
       .from("institutions")
       .insert({ user_id: userId, name: "Cascade-Inst-5" })
@@ -216,23 +214,23 @@ describe("cascade soft-delete triggers", () => {
       .select("id")
       .single();
     if (spErr) throw new Error("stock_positions insert: " + spErr.message);
-    const { data: brokerDep, error: bdErr } = await client
-      .from("broker_deposits")
+    const { data: brokerCash, error: bcErr } = await client
+      .from("cash_accounts")
       .insert({
         user_id: userId,
         broker_id: broker!.id,
         currency: "EUR",
-        amount: 1000,
+        balance: 1000,
       })
       .select("id")
       .single();
-    if (bdErr) throw new Error("broker_deposits insert: " + bdErr.message);
+    if (bcErr) throw new Error("cash_accounts insert: " + bcErr.message);
 
     await softDelete("institutions", inst!.id);
 
     expect(await isDeleted("brokers", broker!.id)).toBe(true);
     expect(await isDeleted("stock_positions", stockPos!.id)).toBe(true);
-    expect(await isDeleted("broker_deposits", brokerDep!.id)).toBe(true);
+    expect(await isDeleted("cash_accounts", brokerCash!.id)).toBe(true);
   });
 
   it("crypto_asset → crypto_positions", async () => {
