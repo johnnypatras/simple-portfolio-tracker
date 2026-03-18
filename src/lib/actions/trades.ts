@@ -150,19 +150,23 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
 export async function deleteTradeEntry(id: string) {
   validateUUID(id, "Trade entry ID");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase
     .from("trade_entries")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
   const { error } = await supabase
     .from("trade_entries")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
   const label = snapshot

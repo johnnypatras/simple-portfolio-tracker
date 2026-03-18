@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getStockQuote } from "@/lib/prices/yahoo";
 import { rateLimit } from "@/lib/rate-limit";
+import { validateYahooTicker } from "@/lib/validation";
 
 const limiter = rateLimit({ windowMs: 60_000, max: 60 });
 
@@ -17,6 +18,10 @@ export async function GET(req: NextRequest) {
 
   if (!symbol) {
     return NextResponse.json(null);
+  }
+
+  try { validateYahooTicker(symbol); } catch {
+    return NextResponse.json({ error: "Invalid ticker symbol" }, { status: 400 });
   }
 
   const quote = await getStockQuote(symbol);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCoinDetail, inferChain, inferSubcategory, getAvailableChains } from "@/lib/prices/coingecko";
 import { rateLimit } from "@/lib/rate-limit";
+import { validateCoinGeckoId } from "@/lib/validation";
 
 const limiter = rateLimit({ windowMs: 60_000, max: 60 });
 
@@ -17,6 +18,10 @@ export async function GET(req: NextRequest) {
 
   if (!coinId) {
     return NextResponse.json({ chain: "", subcategory: "", availableChains: [] });
+  }
+
+  try { validateCoinGeckoId(coinId); } catch {
+    return NextResponse.json({ error: "Invalid coin ID" }, { status: 400 });
   }
 
   const detail = await getCoinDetail(coinId);

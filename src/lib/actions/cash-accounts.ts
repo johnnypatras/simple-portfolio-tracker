@@ -527,6 +527,9 @@ export async function mergeCashAccounts(
 ): Promise<void> {
   validateUUID(survivorId, "Survivor account ID");
   validateUUID(duplicateId, "Duplicate account ID");
+  if (survivorId === duplicateId) {
+    throw new Error("Cannot merge a cash account with itself");
+  }
 
   const supabase = await createServerSupabaseClient();
   const {
