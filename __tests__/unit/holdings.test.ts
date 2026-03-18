@@ -155,4 +155,78 @@ describe("buildPaletteHoldings", () => {
     });
     expect(result[0].detailPath).toBe("/share/abc123/cash");
   });
+
+  it("exchange-deposit cash (wallet_id set) produces type 'cash'", () => {
+    const cashAccounts: CashAccount[] = [
+      {
+        id: "ed1",
+        user_id: "u",
+        institution_id: null,
+        name: "Binance EUR",
+        currency: "EUR",
+        balance: 500,
+        apy: 0,
+        region: null,
+        wallet_id: "w1",
+        broker_id: null,
+        last_was_adjustment: false,
+        last_was_transfer: false,
+        created_at: "",
+        updated_at: "",
+        deleted_at: null,
+      },
+    ];
+
+    const result = buildPaletteHoldings({
+      cryptoAssets: [],
+      cryptoPrices: {},
+      stockAssets: [],
+      stockPrices: {},
+      cashAccounts,
+      fxRates: { EUR: 1 },
+      primaryCurrency: "EUR",
+      pathPrefix: "/dashboard",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("cash");
+    expect(result[0].name).toBe("Binance EUR");
+  });
+
+  it("broker-deposit cash (broker_id set) produces type 'cash'", () => {
+    const cashAccounts: CashAccount[] = [
+      {
+        id: "bd1",
+        user_id: "u",
+        institution_id: null,
+        name: "DEGIRO EUR",
+        currency: "EUR",
+        balance: 1000,
+        apy: 0,
+        region: null,
+        wallet_id: null,
+        broker_id: "b1",
+        last_was_adjustment: false,
+        last_was_transfer: false,
+        created_at: "",
+        updated_at: "",
+        deleted_at: null,
+      },
+    ];
+
+    const result = buildPaletteHoldings({
+      cryptoAssets: [],
+      cryptoPrices: {},
+      stockAssets: [],
+      stockPrices: {},
+      cashAccounts,
+      fxRates: { EUR: 1 },
+      primaryCurrency: "EUR",
+      pathPrefix: "/dashboard",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("cash");
+    expect(result[0].name).toBe("DEGIRO EUR");
+  });
 });
