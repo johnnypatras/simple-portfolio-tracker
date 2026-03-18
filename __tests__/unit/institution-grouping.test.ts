@@ -183,6 +183,20 @@ describe("buildInstitutionGroups", () => {
     expect(result[0].cash[0].valueBase).toBe(5000); // EUR → EUR, no conversion
   });
 
+  it("assigns type 'bank' for cash with no wallet_id and no broker_id", () => {
+    // Bank-origin cash: both wallet_id and broker_id are null
+    const result = buildInstitutionGroups(makeInput({
+      cashAccounts: [makeCashAccount({
+        id: "bank-cash",
+        wallet_id: null,
+        broker_id: null,
+      })],
+    }));
+    expect(result).toHaveLength(1);
+    expect(result[0].cash).toHaveLength(1);
+    expect(result[0].cash[0].type).toBe("bank");
+  });
+
   it("groups exchange deposits via wallet→institution", () => {
     const result = buildInstitutionGroups(makeInput({
       cashAccounts: [makeCashAccount({
