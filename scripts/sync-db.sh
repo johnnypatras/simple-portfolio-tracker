@@ -87,7 +87,9 @@ if ! pg_dump "$REMOTE_DATABASE_URL" \
 fi
 
 # ─── Step 6: Get local DB connection ─────────────────────
-LOCAL_DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+# Use supabase_admin (superuser) for TRUNCATE + pg_restore --disable-triggers
+# The default postgres role is NOT a superuser in local Supabase Docker
+LOCAL_DB="postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres"
 
 # ─── Step 7: Truncate local public tables ────────────────
 info "Truncating local public tables..."
