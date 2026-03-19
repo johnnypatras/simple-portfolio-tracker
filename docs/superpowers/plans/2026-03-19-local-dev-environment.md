@@ -628,7 +628,9 @@ if [[ "$MODE" == "push" ]]; then
       END LOOP;
     END \$\$;
   "
-  warn "Truncating production auth data..."
+  # Note: CASCADE also empties auth.sessions, auth.refresh_tokens, auth.one_time_tokens
+  # All active production sessions will be terminated — users must re-login
+  warn "Truncating production auth data (all active sessions will be terminated)..."
   psql "$REMOTE_DATABASE_URL" -q -c "
     TRUNCATE auth.mfa_challenges, auth.mfa_factors, auth.identities, auth.users CASCADE;
   "

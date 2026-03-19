@@ -240,7 +240,7 @@ Takes backup file path as argument. Safeguards: warning banner, auto-backup of c
 | `npm run sync` | None (read-only) | None | Every dev session |
 | `npm run db:push-schema` | Moderate | Dry-run + y/N | Per feature with migrations |
 | `npm run db:push-data` | High | `--confirm` + type phrase + auto-backup | Almost never |
-| `npm run db:restore-backup` | High | `--confirm` + type phrase | Emergency only |
+| `npm run db:restore-backup` | High | Type phrase + auto-backup | Emergency only |
 
 ---
 
