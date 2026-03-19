@@ -51,7 +51,7 @@ jobs:
           version: 2.78.1
 
       - name: Cache Supabase Docker images
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/supabase-docker-cache
           key: supabase-docker-${{ runner.os }}
