@@ -1,5 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { assertLocalSupabase } from "./env-guard";
+assertLocalSupabase();
 
 export async function updateSession(request: NextRequest) {
   // Pages that don't require authentication

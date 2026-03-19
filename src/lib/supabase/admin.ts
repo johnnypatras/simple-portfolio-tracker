@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { assertLocalSupabase } from "./env-guard";
+assertLocalSupabase();
 
 /**
  * Service-role Supabase client — bypasses RLS.
