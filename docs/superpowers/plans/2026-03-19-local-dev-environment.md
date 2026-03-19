@@ -146,7 +146,7 @@ export function assertLocalSupabase(): void {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run --project unit __tests__/unit/env-guard.test.ts`
-Expected: 4 tests PASS
+Expected: 6 tests PASS
 
 - [ ] **Step 5: Wire env guard into all Supabase client modules**
 
@@ -494,12 +494,18 @@ NC='\033[0m'
 info()  { echo -e "${GREEN}✓${NC} $1"; }
 error() { echo -e "${RED}✗${NC} $1" >&2; exit 1; }
 
-# Read .env.remote
+# Read .env.remote (safe parser — handles special chars in passwords)
 ENV_REMOTE=".env.remote"
 if [ ! -f "$ENV_REMOTE" ]; then
   error "Missing .env.remote."
 fi
-set -a; source "$ENV_REMOTE"; set +a
+while IFS='=' read -r key value; do
+  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+  key=$(echo "$key" | xargs)
+  value="${value#\'}" ; value="${value%\'}"
+  value="${value#\"}" ; value="${value%\"}"
+  export "$key=$value"
+done < "$ENV_REMOTE"
 
 if [ -z "${REMOTE_DATABASE_URL:-}" ]; then
   error "REMOTE_DATABASE_URL not set in .env.remote"
@@ -562,12 +568,18 @@ if [[ "$MODE" == "push" && "${1:-}" != "--confirm" ]]; then
   error "Usage: npm run db:push-data -- --confirm"
 fi
 
-# Read .env.remote
+# Read .env.remote (safe parser — handles special chars in passwords)
 ENV_REMOTE=".env.remote"
 if [ ! -f "$ENV_REMOTE" ]; then
   error "Missing .env.remote."
 fi
-set -a; source "$ENV_REMOTE"; set +a
+while IFS='=' read -r key value; do
+  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+  key=$(echo "$key" | xargs)
+  value="${value#\'}" ; value="${value%\'}"
+  value="${value#\"}" ; value="${value%\"}"
+  export "$key=$value"
+done < "$ENV_REMOTE"
 
 if [ -z "${REMOTE_DATABASE_URL:-}" ]; then
   error "REMOTE_DATABASE_URL not set in .env.remote"
@@ -864,7 +876,7 @@ These steps require user interaction and cannot be automated:
 - [ ] **Step 1: Get production database connection string**
 
 Go to Supabase Dashboard → Project Settings → Database → Connection string → URI.
-Select "Direct connection" (port 5432, NOT the pooler on 6543).
+Select "Session Pooler" (port 5432, NOT the transaction pooler on 6543).
 Add it to `.env.remote` as `REMOTE_DATABASE_URL`.
 
 - [ ] **Step 2: Run first sync and verify**
@@ -941,7 +953,7 @@ Re-run the env guard unit tests to confirm the guard catches production URLs:
 ```bash
 npx vitest run --project unit __tests__/unit/env-guard.test.ts
 ```
-Expected: All 4 tests pass (including "throws in development when URL points to supabase.co").
+Expected: All 6 tests pass (including "throws in development when URL points to supabase.co").
 
 - [ ] **Step 6: Final commit if any remaining changes**
 

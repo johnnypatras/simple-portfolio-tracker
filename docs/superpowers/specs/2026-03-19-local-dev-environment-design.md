@@ -73,12 +73,16 @@ Safety guarantee: even if the sync script is bypassed, `.env.local` points to lo
 In `src/lib/supabase/server.ts` (or a shared init module), add a runtime check:
 
 ```typescript
-if (process.env.NODE_ENV === 'development' &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
-  throw new Error(
-    'SAFETY: Development server is pointing to production Supabase. ' +
-    'Run `npm run sync` to regenerate .env.local with local credentials.'
-  );
+if (process.env.NODE_ENV === 'development') {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (url) {
+    try {
+      if (new URL(url).hostname.endsWith('.supabase.co')) {
+        throw new Error('SAFETY: Development server is pointing to production Supabase. ' +
+          'Run `npm run sync` to regenerate .env.local with local credentials.');
+      }
+    } catch (e) { if (e instanceof Error && e.message.startsWith('SAFETY:')) throw e; }
+  }
 }
 ```
 
@@ -273,7 +277,7 @@ Push to main:
 | Context | Migration command | Auth mechanism |
 |---------|------------------|----------------|
 | **CI (deploy job)** | `supabase db push --linked` | `SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROJECT_REF` GitHub secrets |
-| **Local manual** | `supabase db push --db-url $REMOTE_DATABASE_URL` | Direct PG connection string from `.env.remote` |
+| **Local manual** | `supabase db push --db-url $REMOTE_DATABASE_URL` | Session pooler connection string from `.env.remote` |
 
 These are two invocation modes of the same `supabase db push` command. CI uses `--linked` (token-based, non-interactive). Local uses `--db-url` (connection string, interactive with dry-run preview).
 
@@ -334,7 +338,7 @@ Since migrations apply before code deploys, there's a brief window where product
 
 - Docker Desktop running
 - Local Supabase running (`supabase start`)
-- Production database connection string from Supabase Dashboard → Project Settings → Database → Connection string → URI (direct, port 5432)
+- Production database connection string from Supabase Dashboard → Connect → Session Pooler (port 5432, NOT transaction pooler on 6543)
 
 ### Steps
 
