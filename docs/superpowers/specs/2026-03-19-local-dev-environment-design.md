@@ -40,9 +40,11 @@ Next.js auto-loads `.env.production.local` when `NODE_ENV=production` (e.g., dur
 
 ```bash
 # Production Supabase — used ONLY by sync/push scripts, never by Next.js
-# IMPORTANT: Use direct connection (port 5432), NOT pooler (port 6543).
-# pg_dump requires a direct Postgres session, not PgBouncer/Supavisor.
-REMOTE_DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres
+# IMPORTANT: Use session pooler (port 5432), NOT transaction pooler (port 6543).
+# Get from: Supabase Dashboard → Connect → Session Pooler
+# pg_dump requires a session-level connection (COPY protocol, etc.)
+# Values with special characters ($, spaces, !) MUST be single-quoted.
+REMOTE_DATABASE_URL='postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres'
 REMOTE_SUPABASE_URL=https://jaxjhmkehoyrkcxpbzay.supabase.co
 REMOTE_SUPABASE_SERVICE_ROLE_KEY=sb_secret_...
 COINGECKO_API_KEY=CG-...

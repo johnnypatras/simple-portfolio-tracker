@@ -69,6 +69,13 @@ describe("assertLocalSupabase", () => {
     expect(() => assertLocalSupabase()).toThrow("SAFETY");
   });
 
+  it("includes hostname in error message", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://xyz.supabase.co";
+    const { assertLocalSupabase } = await import("@/lib/supabase/env-guard");
+    expect(() => assertLocalSupabase()).toThrow("xyz.supabase.co");
+  });
+
   it("does not throw in development when URL is localhost", async () => {
     process.env.NODE_ENV = "development";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
@@ -86,6 +93,13 @@ describe("assertLocalSupabase", () => {
   it("does not throw when URL is undefined", async () => {
     process.env.NODE_ENV = "development";
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const { assertLocalSupabase } = await import("@/lib/supabase/env-guard");
+    expect(() => assertLocalSupabase()).not.toThrow();
+  });
+
+  it("does not throw for non-supabase.co URLs", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://evil-supabase.co.attacker.com";
     const { assertLocalSupabase } = await import("@/lib/supabase/env-guard");
     expect(() => assertLocalSupabase()).not.toThrow();
   });
@@ -108,14 +122,23 @@ Expected: FAIL — module not found
  * In production builds (Vercel), this is a no-op.
  */
 export function assertLocalSupabase(): void {
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("supabase.co")
-  ) {
-    throw new Error(
-      "SAFETY: Development server is pointing to production Supabase. " +
-        "Run `npm run sync` to regenerate .env.local with local credentials."
-    );
+  if (process.env.NODE_ENV !== "development") return;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) return;
+
+  try {
+    const hostname = new URL(url).hostname;
+    if (hostname.endsWith(".supabase.co")) {
+      throw new Error(
+        "SAFETY: Development server is pointing to production Supabase " +
+          `(${hostname}). Run \`npm run sync\` to regenerate .env.local ` +
+          "with local credentials."
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("SAFETY:")) throw e;
+    // Malformed URL — not a supabase.co URL, let it pass
   }
 }
 ```
@@ -168,13 +191,17 @@ git commit -m "feat: add runtime safety guard for dev ↔ production isolation"
 ```bash
 # .env.remote.example
 # Production Supabase — used ONLY by sync/push scripts, never by Next.js
-# IMPORTANT: Use direct connection (port 5432), NOT pooler (port 6543).
-# pg_dump requires a direct Postgres session, not PgBouncer/Supavisor.
-REMOTE_DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres
-REMOTE_SUPABASE_URL=https://your-project.supabase.co
-REMOTE_SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-COINGECKO_API_KEY=
-SENTRY_DSN=
+#
+# IMPORTANT: Use session pooler (port 5432), NOT transaction pooler (port 6543).
+# Get this from: Supabase Dashboard → Connect → Session Pooler
+# pg_dump requires a session-level connection (COPY protocol, etc.)
+#
+# Values with special characters ($, spaces, !) MUST be single-quoted.
+REMOTE_DATABASE_URL='postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres'
+REMOTE_SUPABASE_URL='https://your-project.supabase.co'
+REMOTE_SUPABASE_SERVICE_ROLE_KEY='your-service-role-key'
+COINGECKO_API_KEY=''
+SENTRY_DSN=''
 ```
 
 - [ ] **Step 2: Update `.gitignore`**
@@ -244,6 +271,7 @@ mkdir -p scripts
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077  # Restrict file permissions (dumps contain production data)
 
 # ─── Colors ───────────────────────────────────────────────
 RED='\033[0;31m'
@@ -254,6 +282,15 @@ NC='\033[0m' # No Color
 info()  { echo -e "${GREEN}✓${NC} $1"; }
 warn()  { echo -e "${YELLOW}⚠${NC} $1"; }
 error() { echo -e "${RED}✗${NC} $1" >&2; exit 1; }
+
+# ─── Cleanup on exit (signal safety) ─────────────────────
+DUMP_FILE=""
+AUTH_DUMP_FILE=""
+ERR_LOG=""
+cleanup() {
+  rm -f "$DUMP_FILE" "$AUTH_DUMP_FILE" "$ERR_LOG"
+}
+trap cleanup EXIT
 
 # ─── Step 1: Verify Docker ───────────────────────────────
 if ! docker info > /dev/null 2>&1; then
@@ -267,16 +304,23 @@ if ! supabase status > /dev/null 2>&1; then
 fi
 
 # ─── Step 3: Read .env.remote ────────────────────────────
+# NOTE: Values with special characters ($, spaces, !) MUST be single-quoted in .env.remote
 ENV_REMOTE=".env.remote"
 if [ ! -f "$ENV_REMOTE" ]; then
   error "Missing .env.remote. Copy .env.remote.example and fill in production credentials."
 fi
 
-# Source the env file to get variables
-set -a
-# shellcheck source=/dev/null
-source "$ENV_REMOTE"
-set +a
+# Parse env file safely (handles single-quoted values, comments, empty lines)
+while IFS='=' read -r key value; do
+  # Skip comments and empty lines
+  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+  # Strip leading/trailing whitespace from key
+  key=$(echo "$key" | xargs)
+  # Strip surrounding quotes (single or double) from value
+  value="${value#\'}" ; value="${value%\'}"
+  value="${value#\"}" ; value="${value%\"}"
+  export "$key=$value"
+done < "$ENV_REMOTE"
 
 if [ -z "${REMOTE_DATABASE_URL:-}" ]; then
   error "REMOTE_DATABASE_URL not set in .env.remote"
@@ -285,14 +329,14 @@ fi
 # ─── Step 4: pg_dump public data from production ─────────
 info "Dumping public schema data from production..."
 DUMP_FILE=$(mktemp /tmp/sync-public-XXXXXX.dump)
+ERR_LOG=$(mktemp /tmp/sync-err-XXXXXX.log)
 
 if ! pg_dump "$REMOTE_DATABASE_URL" \
   --data-only \
   --schema=public \
   --format=custom \
-  --file="$DUMP_FILE" 2>/tmp/sync-pgdump-err.log; then
-  cat /tmp/sync-pgdump-err.log >&2
-  rm -f "$DUMP_FILE" /tmp/sync-pgdump-err.log
+  --file="$DUMP_FILE" 2>"$ERR_LOG"; then
+  cat "$ERR_LOG" >&2
   error "Cannot connect to production database. Check network and .env.remote credentials."
 fi
 
@@ -300,17 +344,17 @@ fi
 info "Dumping auth data from production..."
 AUTH_DUMP_FILE=$(mktemp /tmp/sync-auth-XXXXXX.dump)
 
-pg_dump "$REMOTE_DATABASE_URL" \
+if ! pg_dump "$REMOTE_DATABASE_URL" \
   --data-only \
   --table=auth.users \
   --table=auth.identities \
   --table=auth.mfa_factors \
   --table=auth.mfa_challenges \
   --format=custom \
-  --file="$AUTH_DUMP_FILE" || {
-    rm -f "$DUMP_FILE" "$AUTH_DUMP_FILE"
-    error "Failed to dump auth data from production."
-  }
+  --file="$AUTH_DUMP_FILE" 2>"$ERR_LOG"; then
+  cat "$ERR_LOG" >&2
+  error "Failed to dump auth data from production."
+fi
 
 # ─── Step 6: Get local DB connection ─────────────────────
 LOCAL_DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
@@ -331,6 +375,8 @@ psql "$LOCAL_DB" -q -c "
 " > /dev/null 2>&1
 
 # ─── Step 8: Truncate local auth data ────────────────────
+# Note: CASCADE also empties auth.sessions, auth.refresh_tokens, auth.one_time_tokens
+# (ephemeral data — users must log in fresh after sync, which is expected behavior)
 info "Truncating local auth data..."
 psql "$LOCAL_DB" -q -c "
   TRUNCATE auth.mfa_challenges, auth.mfa_factors, auth.identities, auth.users CASCADE;
@@ -344,9 +390,8 @@ if ! pg_restore "$DUMP_FILE" \
   --no-owner \
   --disable-triggers \
   --schema=public \
-  --single-transaction 2>/tmp/sync-restore-err.log; then
-  cat /tmp/sync-restore-err.log >&2
-  rm -f "$DUMP_FILE" "$AUTH_DUMP_FILE" /tmp/sync-restore-err.log
+  --single-transaction 2>"$ERR_LOG"; then
+  cat "$ERR_LOG" >&2
   error "Failed to restore public data. Local DB may be empty — run 'supabase db reset' then retry."
 fi
 
@@ -357,10 +402,9 @@ if ! pg_restore "$AUTH_DUMP_FILE" \
   --data-only \
   --no-owner \
   --disable-triggers \
-  --single-transaction 2>/tmp/sync-restore-err.log; then
-  cat /tmp/sync-restore-err.log >&2
-  rm -f "$DUMP_FILE" "$AUTH_DUMP_FILE" /tmp/sync-restore-err.log
-  error "Failed to restore auth data."
+  --single-transaction 2>"$ERR_LOG"; then
+  cat "$ERR_LOG" >&2
+  error "Failed to restore auth data. GoTrue version mismatch? Run 'supabase stop && supabase start' to update."
 fi
 
 # ─── Step 11: Apply pending migrations (no-op if none pending) ──
@@ -370,16 +414,23 @@ supabase migration up || error "Failed to apply pending migrations. Fix the migr
 info "Generating .env.local with local Supabase keys..."
 STATUS_JSON=$(supabase status --output json 2>/dev/null)
 
-# Parse JSON — uses grep+cut (no jq dependency). Assumes single-line JSON output
-# from `supabase status --output json`, which has been stable across CLI versions.
-API_URL=$(echo "$STATUS_JSON" | grep -o '"API_URL":"[^"]*"' | cut -d'"' -f4)
-ANON_KEY=$(echo "$STATUS_JSON" | grep -o '"ANON_KEY":"[^"]*"' | cut -d'"' -f4)
-SERVICE_ROLE_KEY=$(echo "$STATUS_JSON" | grep -o '"SERVICE_ROLE_KEY":"[^"]*"' | cut -d'"' -f4)
+# Parse JSON with python3 (ships with macOS, handles any formatting)
+API_URL=$(python3 -c "import sys,json; print(json.load(sys.stdin)['API_URL'])" <<< "$STATUS_JSON")
+ANON_KEY=$(python3 -c "import sys,json; print(json.load(sys.stdin)['ANON_KEY'])" <<< "$STATUS_JSON")
+SVC_ROLE_KEY=$(python3 -c "import sys,json; print(json.load(sys.stdin)['SERVICE_ROLE_KEY'])" <<< "$STATUS_JSON")
 
-cat > .env.local << ENVEOF
+# Validate parsed values are non-empty
+if [ -z "$API_URL" ] || [ -z "$ANON_KEY" ] || [ -z "$SVC_ROLE_KEY" ]; then
+  error "Failed to parse supabase status output. Is local Supabase running?"
+fi
+
+cat > .env.local << 'ENVEOF_HEADER'
+# Auto-generated by sync-db.sh — DO NOT EDIT (will be overwritten on next sync)
+ENVEOF_HEADER
+cat >> .env.local << ENVEOF
 NEXT_PUBLIC_SUPABASE_URL=${API_URL}
 NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
-SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}
+SUPABASE_SERVICE_ROLE_KEY=${SVC_ROLE_KEY}
 COINGECKO_API_KEY=${COINGECKO_API_KEY:-}
 NEXT_PUBLIC_SENTRY_DSN=${SENTRY_DSN:-}
 SENTRY_DSN=${SENTRY_DSN:-}
@@ -388,9 +439,6 @@ ENVEOF
 # ─── Step 13: Summary ────────────────────────────────────
 TABLE_COUNT=$(psql "$LOCAL_DB" -t -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public';" 2>/dev/null | tr -d ' ')
 USER_COUNT=$(psql "$LOCAL_DB" -t -c "SELECT count(*) FROM auth.users;" 2>/dev/null | tr -d ' ')
-
-# Cleanup temp files
-rm -f "$DUMP_FILE" "$AUTH_DUMP_FILE" /tmp/sync-pgdump-err.log
 
 info "Synced ${TABLE_COUNT} tables, ${USER_COUNT} auth users from production."
 ```
@@ -460,10 +508,15 @@ fi
 # Dry run
 echo -e "${YELLOW}Dry run — migrations that would be applied to PRODUCTION:${NC}"
 echo ""
-supabase db push --db-url "$REMOTE_DATABASE_URL" --dry-run 2>&1 || {
-  info "No pending migrations."
-  exit 0
+DRY_RUN_OUTPUT=$(supabase db push --db-url "$REMOTE_DATABASE_URL" --dry-run 2>&1) || {
+  if echo "$DRY_RUN_OUTPUT" | grep -qi "no.*migration"; then
+    info "No pending migrations."
+    exit 0
+  fi
+  echo "$DRY_RUN_OUTPUT" >&2
+  error "Failed to check migrations. Check network and credentials."
 }
+echo "$DRY_RUN_OUTPUT"
 
 echo ""
 read -rp "Apply these migration(s) to PRODUCTION? [y/N] " confirm
@@ -481,6 +534,7 @@ info "Migrations applied to production."
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077  # Restrict file permissions (backups contain production data)
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -613,6 +667,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:  # manual trigger for re-deploys
 
 permissions:
   contents: read
@@ -691,7 +746,7 @@ jobs:
 
   preview:
     needs: test
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -699,12 +754,17 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel
 
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=preview --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
       - name: Deploy preview
         run: |
-          vercel deploy --token "$VERCEL_TOKEN" \
-            --yes \
-            > deployment-url.txt 2>&1
-          echo "Preview URL: $(cat deployment-url.txt)"
+          URL=$(vercel deploy --token "$VERCEL_TOKEN" --yes)
+          echo "Preview URL: $URL"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -712,7 +772,7 @@ jobs:
 
   deploy:
     needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -732,7 +792,12 @@ jobs:
 
       - name: Push migrations (if changed)
         run: |
-          if git diff ${{ github.event.before }}..${{ github.sha }} --name-only | grep -q '^supabase/migrations/'; then
+          BEFORE="${{ github.event.before }}"
+          # On first push or workflow_dispatch, BEFORE is null SHA — run all deploy steps
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE" ]; then
+            echo "First push or manual dispatch — pushing all migrations..."
+            supabase db push
+          elif git diff "$BEFORE".."${{ github.sha }}" --name-only | grep -q '^supabase/migrations/'; then
             echo "Migrations changed — pushing to production..."
             supabase db push
           else
@@ -744,6 +809,13 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel
 
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
       - name: Deploy to production
         run: vercel deploy --prod --token "$VERCEL_TOKEN" --yes
         env:
@@ -753,7 +825,11 @@ jobs:
 
       - name: Deploy Edge Functions (if changed)
         run: |
-          if git diff ${{ github.event.before }}..${{ github.sha }} --name-only | grep -q '^supabase/functions/'; then
+          BEFORE="${{ github.event.before }}"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE" ]; then
+            echo "First push or manual dispatch — deploying edge functions..."
+            supabase functions deploy daily-snapshot --project-ref "$SUPABASE_PROJECT_REF"
+          elif git diff "$BEFORE".."${{ github.sha }}" --name-only | grep -q '^supabase/functions/'; then
             echo "Edge Functions changed — deploying..."
             supabase functions deploy daily-snapshot --project-ref "$SUPABASE_PROJECT_REF"
           else
