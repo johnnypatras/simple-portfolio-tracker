@@ -22,7 +22,7 @@
 | `.env.remote.example` | Create | Template for production credentials |
 | `src/lib/supabase/env-guard.ts` | Create | Runtime safety guard module |
 | `src/lib/supabase/server.ts` | Modify | Import env guard |
-| `src/lib/supabase/client.ts` | Modify | Import env guard |
+| `src/lib/supabase/client.ts` | No change | Browser-side — guard not needed (URL baked at build time) |
 | `src/lib/supabase/admin.ts` | Modify | Import env guard |
 | `src/lib/supabase/middleware.ts` | Modify | Import env guard |
 | `.gitignore` | Modify | Add `!.env.remote.example`, `backups/` |
@@ -129,7 +129,7 @@ export function assertLocalSupabase(): void {
 
   try {
     const hostname = new URL(url).hostname;
-    if (hostname.endsWith(".supabase.co")) {
+    if (hostname.endsWith(".supabase.co") || hostname === "supabase.co") {
       throw new Error(
         "SAFETY: Development server is pointing to production Supabase " +
           `(${hostname}). Run \`npm run sync\` to regenerate .env.local ` +
@@ -150,11 +150,12 @@ Expected: 6 tests PASS
 
 - [ ] **Step 5: Wire env guard into all Supabase client modules**
 
-Add `import { assertLocalSupabase } from "./env-guard";` and `assertLocalSupabase();` at the top of:
+Add `import { assertLocalSupabase } from "./env-guard";` and `assertLocalSupabase();` at the top of these **server-side only** files:
 - `src/lib/supabase/server.ts` — after imports, before `export`
-- `src/lib/supabase/client.ts` — after imports, before `export`
 - `src/lib/supabase/admin.ts` — after imports, before `export`
 - `src/lib/supabase/middleware.ts` — after imports, before `export`
+
+Do NOT add to `src/lib/supabase/client.ts` — it's imported by browser components and the guard would ship to the client bundle unnecessarily. The browser client gets its URL baked in at build time and cannot be misconfigured at runtime.
 
 - [ ] **Step 6: Verify build passes**
 
@@ -170,8 +171,7 @@ Expected: 0 errors, 0 warnings
 
 ```bash
 git add src/lib/supabase/env-guard.ts __tests__/unit/env-guard.test.ts \
-  src/lib/supabase/server.ts src/lib/supabase/client.ts \
-  src/lib/supabase/admin.ts src/lib/supabase/middleware.ts
+  src/lib/supabase/server.ts src/lib/supabase/admin.ts src/lib/supabase/middleware.ts
 git commit -m "feat: add runtime safety guard for dev ↔ production isolation"
 ```
 
@@ -311,11 +311,12 @@ if [ ! -f "$ENV_REMOTE" ]; then
 fi
 
 # Parse env file safely (handles single-quoted values, comments, empty lines)
-while IFS='=' read -r key value; do
-  # Skip comments and empty lines
-  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
-  # Strip leading/trailing whitespace from key
+# The `|| [[ -n "$key" ]]` ensures the last line is processed even without a trailing newline
+while IFS='=' read -r key value || [[ -n "$key" ]]; do
+  # Strip leading/trailing whitespace from key FIRST (before -z check)
   key=$(echo "$key" | xargs)
+  # Skip comments, empty lines, and whitespace-only lines
+  [[ -z "$key" || "$key" =~ ^# ]] && continue
   # Strip surrounding quotes (single or double) from value
   value="${value#\'}" ; value="${value%\'}"
   value="${value#\"}" ; value="${value%\"}"
@@ -361,7 +362,7 @@ LOCAL_DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 
 # ─── Step 7: Truncate local public tables ────────────────
 info "Truncating local public tables..."
-psql "$LOCAL_DB" -q -c "
+if ! psql "$LOCAL_DB" -q -c "
   DO \$\$
   DECLARE
     tbl text;
@@ -372,15 +373,21 @@ psql "$LOCAL_DB" -q -c "
       EXECUTE format('TRUNCATE TABLE public.%I CASCADE', tbl);
     END LOOP;
   END \$\$;
-" > /dev/null 2>&1
+" 2>"$ERR_LOG"; then
+  cat "$ERR_LOG" >&2
+  error "Failed to truncate local public tables."
+fi
 
 # ─── Step 8: Truncate local auth data ────────────────────
 # Note: CASCADE also empties auth.sessions, auth.refresh_tokens, auth.one_time_tokens
 # (ephemeral data — users must log in fresh after sync, which is expected behavior)
 info "Truncating local auth data..."
-psql "$LOCAL_DB" -q -c "
+if ! psql "$LOCAL_DB" -q -c "
   TRUNCATE auth.mfa_challenges, auth.mfa_factors, auth.identities, auth.users CASCADE;
-" > /dev/null 2>&1
+" 2>"$ERR_LOG"; then
+  cat "$ERR_LOG" >&2
+  error "Failed to truncate local auth data."
+fi
 
 # ─── Step 9: Restore public data ─────────────────────────
 info "Restoring public data..."
@@ -499,9 +506,9 @@ ENV_REMOTE=".env.remote"
 if [ ! -f "$ENV_REMOTE" ]; then
   error "Missing .env.remote."
 fi
-while IFS='=' read -r key value; do
-  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+while IFS='=' read -r key value || [[ -n "$key" ]]; do
   key=$(echo "$key" | xargs)
+  [[ -z "$key" || "$key" =~ ^# ]] && continue
   value="${value#\'}" ; value="${value%\'}"
   value="${value#\"}" ; value="${value%\"}"
   export "$key=$value"
@@ -573,9 +580,9 @@ ENV_REMOTE=".env.remote"
 if [ ! -f "$ENV_REMOTE" ]; then
   error "Missing .env.remote."
 fi
-while IFS='=' read -r key value; do
-  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+while IFS='=' read -r key value || [[ -n "$key" ]]; do
   key=$(echo "$key" | xargs)
+  [[ -z "$key" || "$key" =~ ^# ]] && continue
   value="${value#\'}" ; value="${value%\'}"
   value="${value#\"}" ; value="${value%\"}"
   export "$key=$value"
@@ -616,9 +623,30 @@ fi
 
 LOCAL_DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 
+# Trap: if script exits after TRUNCATE, warn about backup
+TRUNCATED_REMOTE=false
+trap '
+  if $TRUNCATED_REMOTE; then
+    echo -e "${RED}CRITICAL: Production may be in an incomplete state.${NC}" >&2
+    echo -e "${RED}Restore from backup: npm run db:restore-backup -- ${BACKUP_DEST}${NC}" >&2
+  fi
+' EXIT
+
 if [[ "$MODE" == "push" ]]; then
-  # Truncate remote tables first (--clean and --data-only cannot be combined in pg_restore)
-  warn "Truncating production public tables..."
+  # Step 1: Dump local data to temp files BEFORE any truncation (safe — no production changes yet)
+  warn "Dumping local public data..."
+  PUBLIC_DUMP=$(mktemp /tmp/push-public-XXXXXX.dump)
+  pg_dump "$LOCAL_DB" --schema=public --data-only --format=custom --file="$PUBLIC_DUMP"
+
+  warn "Dumping local auth data..."
+  AUTH_DUMP=$(mktemp /tmp/push-auth-XXXXXX.dump)
+  pg_dump "$LOCAL_DB" --data-only --table=auth.users --table=auth.identities \
+    --table=auth.mfa_factors --table=auth.mfa_challenges --format=custom --file="$AUTH_DUMP"
+
+  # Step 2: Truncate production (point of no return — trap handler activates)
+  # Note: CASCADE also empties auth.sessions, auth.refresh_tokens, auth.one_time_tokens
+  # All active production sessions will be terminated — users must re-login
+  warn "Truncating production tables (all active sessions will be terminated)..."
   psql "$REMOTE_DATABASE_URL" -q -c "
     DO \$\$
     DECLARE tbl text;
@@ -628,34 +656,52 @@ if [[ "$MODE" == "push" ]]; then
       END LOOP;
     END \$\$;
   "
-  # Note: CASCADE also empties auth.sessions, auth.refresh_tokens, auth.one_time_tokens
-  # All active production sessions will be terminated — users must re-login
-  warn "Truncating production auth data (all active sessions will be terminated)..."
   psql "$REMOTE_DATABASE_URL" -q -c "
     TRUNCATE auth.mfa_challenges, auth.mfa_factors, auth.identities, auth.users CASCADE;
   "
+  TRUNCATED_REMOTE=true
 
-  # Restore public data
-  warn "Pushing local public data to production..."
-  pg_dump "$LOCAL_DB" --schema=public --data-only --format=custom | \
-    pg_restore --dbname="$REMOTE_DATABASE_URL" --data-only --no-owner --disable-triggers --single-transaction
+  # Step 3: Restore data from temp dumps
+  warn "Restoring public data to production..."
+  pg_restore "$PUBLIC_DUMP" \
+    --dbname="$REMOTE_DATABASE_URL" --data-only --no-owner --disable-triggers --single-transaction
 
-  # Restore auth data
-  warn "Pushing local auth data to production..."
-  pg_dump "$LOCAL_DB" --data-only --table=auth.users --table=auth.identities \
-    --table=auth.mfa_factors --table=auth.mfa_challenges --format=custom | \
-    pg_restore --dbname="$REMOTE_DATABASE_URL" --data-only --no-owner --disable-triggers --single-transaction
+  warn "Restoring auth data to production..."
+  pg_restore "$AUTH_DUMP" \
+    --dbname="$REMOTE_DATABASE_URL" --data-only --no-owner --disable-triggers --single-transaction
 
+  TRUNCATED_REMOTE=false  # success — disable trap warning
+  rm -f "$PUBLIC_DUMP" "$AUTH_DUMP"
   info "Production overwritten with local data. Backup at $BACKUP_DEST"
 else
-  # Restore from backup file (custom format)
+  # Restore from backup file using TRUNCATE + data-only (not --clean, which drops GoTrue schema)
   warn "Restoring from backup: $BACKUP_FILE..."
+
+  # Truncate production tables first
+  warn "Truncating production tables..."
+  psql "$REMOTE_DATABASE_URL" -q -c "
+    DO \$\$
+    DECLARE tbl text;
+    BEGIN
+      FOR tbl IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+      LOOP EXECUTE format('TRUNCATE TABLE public.%I CASCADE', tbl);
+      END LOOP;
+    END \$\$;
+  "
+  psql "$REMOTE_DATABASE_URL" -q -c "
+    TRUNCATE auth.mfa_challenges, auth.mfa_factors, auth.identities, auth.users CASCADE;
+  "
+  TRUNCATED_REMOTE=true
+
+  # Restore data from backup (data-only to avoid dropping GoTrue schema objects)
   pg_restore "$BACKUP_FILE" \
     --dbname="$REMOTE_DATABASE_URL" \
+    --data-only \
     --no-owner \
-    --clean \
-    --if-exists \
+    --disable-triggers \
     --single-transaction
+
+  TRUNCATED_REMOTE=false  # success — disable trap warning
   info "Production restored from $BACKUP_FILE"
 fi
 ```
@@ -927,11 +973,19 @@ Go to GitHub repo → Settings → Secrets and variables → Actions. Add:
 - `VERCEL_ORG_ID` — `orgId` from `.vercel/project.json`
 - `VERCEL_PROJECT_ID` — `projectId` from `.vercel/project.json`
 
-- [ ] **Step 5: Disable Vercel auto-deploy**
+- [ ] **Step 5: Verify Sentry env vars in Vercel**
+
+Vercel Dashboard → Project → Settings → Environment Variables. Verify these exist:
+- `SENTRY_AUTH_TOKEN` (needed for source map uploads during Vercel remote build)
+- `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` (needed for runtime error tracking)
+
+These were already configured if Vercel auto-deploy was working. Verify they're still present.
+
+- [ ] **Step 6: Disable Vercel auto-deploy**
 
 Vercel Dashboard → Project → Settings → Git → disconnect GitHub integration (or set Ignored Build Step to always skip).
 
-- [ ] **Step 6: Verify CI pipeline**
+- [ ] **Step 7: Verify CI pipeline**
 
 Push a test branch with a trivial change, create PR:
 - Verify: test job runs and passes

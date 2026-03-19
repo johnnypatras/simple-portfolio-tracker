@@ -77,7 +77,8 @@ if (process.env.NODE_ENV === 'development') {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (url) {
     try {
-      if (new URL(url).hostname.endsWith('.supabase.co')) {
+      const h = new URL(url).hostname;
+      if (h.endsWith('.supabase.co') || h === 'supabase.co') {
         throw new Error('SAFETY: Development server is pointing to production Supabase. ' +
           'Run `npm run sync` to regenerate .env.local with local credentials.');
       }
