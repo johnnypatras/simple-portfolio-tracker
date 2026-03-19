@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # manual trigger for re-deploys
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-build
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Component tests
+        run: npm run test:component
+
+      - name: Install Supabase CLI
+        id: supabase-cli
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.78.1
+
+      - name: Cache Supabase Docker images
+        uses: actions/cache@v4
+        with:
+          path: /tmp/supabase-docker-cache
+          key: supabase-docker-${{ runner.os }}
+
+      - name: Load cached Docker images
+        run: |
+          if [ -d /tmp/supabase-docker-cache ]; then
+            for f in /tmp/supabase-docker-cache/*.tar; do
+              docker load -i "$f" 2>/dev/null || true
+            done
+          fi
+
+      - name: Start Supabase
+        run: supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor
+
+      - name: Save Docker images to cache
+        run: |
+          mkdir -p /tmp/supabase-docker-cache
+          for img in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep supabase); do
+            name=$(echo "$img" | tr '/:' '_')
+            docker save "$img" -o "/tmp/supabase-docker-cache/${name}.tar" 2>/dev/null || true
+          done
+
+      - name: Integration tests
+        run: npx vitest run --project integration
+
+      - name: Stop Supabase
+        if: always() && steps.supabase-cli.outcome == 'success'
+        run: supabase stop
+
+  preview:
+    needs: test
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@^50
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=preview --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy preview
+        run: |
+          URL=$(vercel deploy --token "$VERCEL_TOKEN" --yes)
+          echo "Preview URL: $URL"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for reliable change detection
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.78.1
+
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Push migrations (if changed)
+        run: |
+          BEFORE="${{ github.event.before }}"
+          # On first push or workflow_dispatch, BEFORE is null SHA — run all deploy steps
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE" ]; then
+            echo "First push or manual dispatch — pushing all migrations..."
+            supabase db push
+          elif git diff "$BEFORE".."${{ github.sha }}" --name-only | grep -q '^supabase/migrations/'; then
+            echo "Migrations changed — pushing to production..."
+            supabase db push
+          else
+            echo "No migration changes — skipping."
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@^50
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy to production
+        run: vercel deploy --prod --token "$VERCEL_TOKEN" --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy Edge Functions (if changed)
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE" ]; then
+            echo "First push or manual dispatch — deploying edge functions..."
+            supabase functions deploy daily-snapshot --project-ref "$SUPABASE_PROJECT_REF"
+          elif git diff "$BEFORE".."${{ github.sha }}" --name-only | grep -q '^supabase/functions/'; then
+            echo "Edge Functions changed — deploying..."
+            supabase functions deploy daily-snapshot --project-ref "$SUPABASE_PROJECT_REF"
+          else
+            echo "No Edge Function changes — skipping."
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
