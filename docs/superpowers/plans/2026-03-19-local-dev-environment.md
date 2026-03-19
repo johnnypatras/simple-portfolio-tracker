@@ -40,7 +40,6 @@
 - Create: `src/lib/supabase/env-guard.ts`
 - Create: `__tests__/unit/env-guard.test.ts`
 - Modify: `src/lib/supabase/server.ts`
-- Modify: `src/lib/supabase/client.ts`
 - Modify: `src/lib/supabase/admin.ts`
 - Modify: `src/lib/supabase/middleware.ts`
 
@@ -623,9 +622,12 @@ fi
 
 LOCAL_DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 
-# Trap: if script exits after TRUNCATE, warn about backup
+# Trap: clean up temp files + warn about backup if TRUNCATE happened
 TRUNCATED_REMOTE=false
+PUBLIC_DUMP=""
+AUTH_DUMP=""
 trap '
+  rm -f "$PUBLIC_DUMP" "$AUTH_DUMP"
   if $TRUNCATED_REMOTE; then
     echo -e "${RED}CRITICAL: Production may be in an incomplete state.${NC}" >&2
     echo -e "${RED}Restore from backup: npm run db:restore-backup -- ${BACKUP_DEST}${NC}" >&2
@@ -670,8 +672,7 @@ if [[ "$MODE" == "push" ]]; then
   pg_restore "$AUTH_DUMP" \
     --dbname="$REMOTE_DATABASE_URL" --data-only --no-owner --disable-triggers --single-transaction
 
-  TRUNCATED_REMOTE=false  # success — disable trap warning
-  rm -f "$PUBLIC_DUMP" "$AUTH_DUMP"
+  TRUNCATED_REMOTE=false  # success — disable trap warning (trap still cleans temp files)
   info "Production overwritten with local data. Backup at $BACKUP_DEST"
 else
   # Restore from backup file using TRUNCATE + data-only (not --clean, which drops GoTrue schema)
