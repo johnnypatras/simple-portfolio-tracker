@@ -836,7 +836,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Vercel CLI
-        run: npm install -g vercel
+        run: npm install -g vercel@^50
 
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=preview --token "$VERCEL_TOKEN"
@@ -891,7 +891,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Install Vercel CLI
-        run: npm install -g vercel
+        run: npm install -g vercel@^50
 
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
