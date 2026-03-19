@@ -47,9 +47,23 @@ describe("assertLocalSupabase", () => {
     expect(() => assertLocalSupabase()).not.toThrow();
   });
 
-  it("does not throw for non-supabase.co URLs", async () => {
+  it("does not throw for lookalike domains (subdomain confusion)", async () => {
     process.env.NODE_ENV = "development";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://evil-supabase.co.attacker.com";
+    const { assertLocalSupabase } = await import("@/lib/supabase/env-guard");
+    expect(() => assertLocalSupabase()).not.toThrow();
+  });
+
+  it("does not throw in test environment even with supabase.co URL", async () => {
+    process.env.NODE_ENV = "test";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://abc.supabase.co";
+    const { assertLocalSupabase } = await import("@/lib/supabase/env-guard");
+    expect(() => assertLocalSupabase()).not.toThrow();
+  });
+
+  it("does not throw for a malformed URL", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "not-a-url";
     const { assertLocalSupabase } = await import("@/lib/supabase/env-guard");
     expect(() => assertLocalSupabase()).not.toThrow();
   });
