@@ -220,7 +220,7 @@ Note: `npm run sync` requires the local schema to match production. If productio
 1. Read `REMOTE_DATABASE_URL` from `.env.remote`.
 2. Print WARNING banner about destructive overwrite.
 3. Require `--confirm` flag (exits without it).
-4. Back up production: `pg_dump production → backups/pre-push-YYYY-MM-DD-HHMMSS.sql.gz`.
+4. Back up production: `pg_dump production → backups/pre-push-YYYY-MM-DD-HHMMSS.dump` (custom format, compressed).
 5. Prompt: type exact phrase `OVERWRITE PRODUCTION` to proceed.
 6. `pg_dump` local → `pg_restore` to production.
 7. Print: "Production overwritten. Backup at backups/pre-push-..."
@@ -231,7 +231,7 @@ Note: `npm run sync` requires the local schema to match production. If productio
 
 ### `npm run db:restore-backup` — Emergency rollback
 
-Takes backup file path as argument. Same safeguards as push-data (warning, `--confirm`, type phrase). Restores `pg_dump` backup file to production.
+Takes backup file path as argument. Safeguards: warning banner, auto-backup of current production state, type exact phrase `OVERWRITE PRODUCTION`. Note: `--confirm` flag is not required for restore (the backup file argument itself is an intentional action, and the type-phrase gate is sufficient).
 
 ### Command summary
 
@@ -307,8 +307,10 @@ Preview deployments for PRs use Vercel's configured environment variables (produ
 
 ```yaml
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false   # queue, don't cancel running deploys
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # PRs: cancel previous runs on same branch (fast feedback)
+  # Main: queue sequentially per-ref (never cancel running deploys)
 ```
 
 ### Required GitHub secrets

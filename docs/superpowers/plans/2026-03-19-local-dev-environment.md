@@ -184,7 +184,7 @@ git commit -m "feat: add runtime safety guard for dev ↔ production isolation"
 - Modify: `.gitignore`
 - Modify: `package.json`
 
-**Prerequisites:** User must have production DB connection string ready (from Supabase Dashboard → Project Settings → Database → Connection string → URI, direct port 5432).
+**Prerequisites:** User must have production DB connection string ready (from Supabase Dashboard → Connect → Session Pooler, port 5432, NOT transaction pooler on 6543).
 
 - [ ] **Step 1: Create `.env.remote.example`**
 
@@ -617,10 +617,33 @@ fi
 LOCAL_DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 
 if [[ "$MODE" == "push" ]]; then
-  # Dump local → restore to production
-  warn "Pushing local data to production..."
+  # Truncate remote tables first (--clean and --data-only cannot be combined in pg_restore)
+  warn "Truncating production public tables..."
+  psql "$REMOTE_DATABASE_URL" -q -c "
+    DO \$\$
+    DECLARE tbl text;
+    BEGIN
+      FOR tbl IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+      LOOP EXECUTE format('TRUNCATE TABLE public.%I CASCADE', tbl);
+      END LOOP;
+    END \$\$;
+  "
+  warn "Truncating production auth data..."
+  psql "$REMOTE_DATABASE_URL" -q -c "
+    TRUNCATE auth.mfa_challenges, auth.mfa_factors, auth.identities, auth.users CASCADE;
+  "
+
+  # Restore public data
+  warn "Pushing local public data to production..."
   pg_dump "$LOCAL_DB" --schema=public --data-only --format=custom | \
-    pg_restore --dbname="$REMOTE_DATABASE_URL" --data-only --no-owner --disable-triggers --clean --single-transaction
+    pg_restore --dbname="$REMOTE_DATABASE_URL" --data-only --no-owner --disable-triggers --single-transaction
+
+  # Restore auth data
+  warn "Pushing local auth data to production..."
+  pg_dump "$LOCAL_DB" --data-only --table=auth.users --table=auth.identities \
+    --table=auth.mfa_factors --table=auth.mfa_challenges --format=custom | \
+    pg_restore --dbname="$REMOTE_DATABASE_URL" --data-only --no-owner --disable-triggers --single-transaction
+
   info "Production overwritten with local data. Backup at $BACKUP_DEST"
 else
   # Restore from backup file (custom format)
