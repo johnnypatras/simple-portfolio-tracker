@@ -31,9 +31,10 @@ yarn-error.log*
 .pnpm-debug.log*
 firebase-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
 !.env.example
+!.env.remote.example
 
 # vercel
 .vercel
@@ -69,9 +70,6 @@ backup_*.json
 # spreadsheets
 *.xlsx
 
-# Sentry Config File
-.env.sentry-build-plugin
-
 # Archived migrations (local reference only, contain old secrets)
 supabase/migrations-archive/
 
@@ -79,3 +77,6 @@ supabase/migrations-archive/
 .mcp.json
 .vscode/
 opencode.json
+
+# database backups from push-data script
+backups/
