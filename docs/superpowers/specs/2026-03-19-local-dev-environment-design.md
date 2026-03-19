@@ -164,10 +164,13 @@ Key principle: if sync fails, `npm run dev` does NOT proceed. You never develop 
 
 ```json
 {
-  "dev": "scripts/sync-db.sh && next dev --turbopack",
-  "dev:skip-sync": "next dev --turbopack",
+  "dev": "bash scripts/sync-db.sh && next dev --turbopack",
+  "dev:skip-sync": "echo '⚠ Skipping sync — using existing local data.' && next dev --turbopack",
   "dev:edge": "supabase functions serve daily-snapshot --env-file .env.local",
-  "sync": "scripts/sync-db.sh"
+  "sync": "bash scripts/sync-db.sh",
+  "db:push-schema": "bash scripts/push-schema.sh",
+  "db:push-data": "bash scripts/push-data.sh",
+  "db:restore-backup": "bash scripts/push-data.sh --restore"
 }
 ```
 
