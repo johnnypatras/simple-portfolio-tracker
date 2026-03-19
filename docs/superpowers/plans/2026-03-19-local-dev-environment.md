@@ -338,26 +338,33 @@ psql "$LOCAL_DB" -q -c "
 
 # ─── Step 9: Restore public data ─────────────────────────
 info "Restoring public data..."
-pg_restore "$DUMP_FILE" \
+if ! pg_restore "$DUMP_FILE" \
   --dbname="$LOCAL_DB" \
   --data-only \
   --no-owner \
   --disable-triggers \
   --schema=public \
-  --single-transaction 2>/dev/null || true
+  --single-transaction 2>/tmp/sync-restore-err.log; then
+  cat /tmp/sync-restore-err.log >&2
+  rm -f "$DUMP_FILE" "$AUTH_DUMP_FILE" /tmp/sync-restore-err.log
+  error "Failed to restore public data. Local DB may be empty — run 'supabase db reset' then retry."
+fi
 
 # ─── Step 10: Restore auth data ──────────────────────────
 info "Restoring auth data..."
-pg_restore "$AUTH_DUMP_FILE" \
+if ! pg_restore "$AUTH_DUMP_FILE" \
   --dbname="$LOCAL_DB" \
   --data-only \
   --no-owner \
   --disable-triggers \
-  --single-transaction 2>/dev/null || true
+  --single-transaction 2>/tmp/sync-restore-err.log; then
+  cat /tmp/sync-restore-err.log >&2
+  rm -f "$DUMP_FILE" "$AUTH_DUMP_FILE" /tmp/sync-restore-err.log
+  error "Failed to restore auth data."
+fi
 
-# ─── Step 11: Apply pending migrations (idempotent) ──────
-# supabase migration up is a no-op if nothing is pending
-supabase migration up 2>/dev/null || true
+# ─── Step 11: Apply pending migrations (no-op if none pending) ──
+supabase migration up || error "Failed to apply pending migrations. Fix the migration and retry."
 
 # ─── Step 12: Write .env.local ───────────────────────────
 info "Generating .env.local with local Supabase keys..."
@@ -710,7 +717,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0  # full history for reliable change detection
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
@@ -725,7 +732,7 @@ jobs:
 
       - name: Push migrations (if changed)
         run: |
-          if git diff HEAD~1 --name-only | grep -q '^supabase/migrations/'; then
+          if git diff ${{ github.event.before }}..${{ github.sha }} --name-only | grep -q '^supabase/migrations/'; then
             echo "Migrations changed — pushing to production..."
             supabase db push
           else
@@ -746,7 +753,7 @@ jobs:
 
       - name: Deploy Edge Functions (if changed)
         run: |
-          if git diff HEAD~1 --name-only | grep -q '^supabase/functions/'; then
+          if git diff ${{ github.event.before }}..${{ github.sha }} --name-only | grep -q '^supabase/functions/'; then
             echo "Edge Functions changed — deploying..."
             supabase functions deploy daily-snapshot --project-ref "$SUPABASE_PROJECT_REF"
           else
@@ -854,20 +861,11 @@ Expected: `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321`
 
 - [ ] **Step 5: Verify safety guard works**
 
-Temporarily change `.env.local` to point to production:
+Re-run the env guard unit tests to confirm the guard catches production URLs:
 ```bash
-echo 'NEXT_PUBLIC_SUPABASE_URL=https://abc.supabase.co' > /tmp/test-env
-NODE_ENV=development NEXT_PUBLIC_SUPABASE_URL=https://abc.supabase.co node -e "
-  process.env.NODE_ENV = 'development';
-  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://abc.supabase.co';
-  const { assertLocalSupabase } = require('./src/lib/supabase/env-guard');
-  try { assertLocalSupabase(); console.log('FAIL: should have thrown'); }
-  catch (e) { console.log('PASS:', e.message); }
-"
+npx vitest run --project unit __tests__/unit/env-guard.test.ts
 ```
-Expected: `PASS: SAFETY: Development server is pointing to production Supabase...`
-
-Restore `.env.local`: `npm run sync`
+Expected: All 4 tests pass (including "throws in development when URL points to supabase.co").
 
 - [ ] **Step 6: Final commit if any remaining changes**
 
