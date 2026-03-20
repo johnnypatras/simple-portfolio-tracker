@@ -498,7 +498,8 @@ export function ActivityTimeline({
           <select
             value={currentEntityType ?? ""}
             onChange={(e) => updateFilter("type", e.target.value)}
-            className="px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            aria-label="Filter by entity type"
+            className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           >
             {ENTITY_FILTER_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -510,7 +511,8 @@ export function ActivityTimeline({
           <select
             value={currentAction ?? ""}
             onChange={(e) => updateFilter("action", e.target.value)}
-            className="px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            aria-label="Filter by action"
+            className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           >
             {ACTION_FILTER_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -525,6 +527,7 @@ export function ActivityTimeline({
             <button
               onClick={handleExportCsv}
               className="shrink-0 p-2 text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800/80 transition-colors"
+              aria-label="Export CSV"
               title="Export CSV"
             >
               <Download className="w-3.5 h-3.5" />
@@ -542,7 +545,7 @@ export function ActivityTimeline({
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-12 text-center">
           <Clock className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
           <p className="text-sm text-zinc-500 font-medium">No activity yet</p>
-          <p className="text-xs text-zinc-600 mt-1">
+          <p className="text-xs text-zinc-500 mt-1">
             Changes to your portfolio will appear here
           </p>
         </div>
@@ -606,6 +609,7 @@ export function ActivityTimeline({
                               <button
                                 onClick={() => toggleTransferExpand(item.groupId)}
                                 className="p-1 rounded text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-all"
+                                aria-label={isExpanded ? "Collapse" : "Show details"}
                                 title={isExpanded ? "Collapse" : "Show details"}
                               >
                                 {isExpanded ? (
@@ -615,7 +619,7 @@ export function ActivityTimeline({
                                 )}
                               </button>
                               {isUndone ? (
-                                <span className="text-[10px] font-medium text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded">
+                                <span className="text-[10px] font-medium text-zinc-500 bg-zinc-800/50 px-1.5 py-0.5 rounded">
                                   Undone
                                 </span>
                               ) : !isReadOnly ? (
@@ -629,7 +633,7 @@ export function ActivityTimeline({
                                   <Undo2 className="w-3.5 h-3.5" />
                                 </ConfirmButton>
                               ) : null}
-                              <span className="text-xs text-zinc-600">
+                              <span className="text-xs text-zinc-500">
                                 {getTimeLabel(source.created_at)}
                               </span>
                             </div>
@@ -647,7 +651,7 @@ export function ActivityTimeline({
                                       <LegIcon className="w-2.5 h-2.5" />
                                     </div>
                                     <span className="text-zinc-400 shrink-0">{leg.entity_name}</span>
-                                    <span className="text-zinc-600 truncate">{leg.description}</span>
+                                    <span className="text-zinc-500 truncate">{leg.description}</span>
                                   </div>
                                 );
                               })}
@@ -726,13 +730,14 @@ export function ActivityTimeline({
                                   ? "text-amber-400 bg-amber-500/10"
                                   : "md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
                               }`}
+                              aria-label={log.is_adjustment ? "Marked as adjustment — click to count as transaction" : "Mark as portfolio adjustment"}
                               title={log.is_adjustment ? "Marked as adjustment — click to count as transaction" : "Mark as portfolio adjustment"}
                             >
                               <SlidersHorizontal className="w-3.5 h-3.5" />
                             </button>
                           )}
                           {log.undone_at ? (
-                            <span className="text-[10px] font-medium text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] font-medium text-zinc-500 bg-zinc-800/50 px-1.5 py-0.5 rounded">
                               Undone
                             </span>
                           ) : !isReadOnly && log.entity_id ? (
@@ -758,7 +763,7 @@ export function ActivityTimeline({
                               return result;
                             } : undefined}
                           />
-                          <span className="text-xs text-zinc-600">
+                          <span className="text-xs text-zinc-500">
                             {getTimeLabel(log.created_at)}
                           </span>
                         </div>
@@ -780,6 +785,7 @@ export function ActivityTimeline({
                 <button
                   onClick={() => updateFilter("page", String(page - 1))}
                   disabled={page <= 1}
+                  aria-label="Previous page"
                   className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -787,6 +793,7 @@ export function ActivityTimeline({
                 <button
                   onClick={() => updateFilter("page", String(page + 1))}
                   disabled={page >= totalPages}
+                  aria-label="Next page"
                   className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronRight className="w-4 h-4" />

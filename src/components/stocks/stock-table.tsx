@@ -534,7 +534,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
           <TrendingUp className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
           <p className="text-sm text-zinc-500">No stocks or ETFs yet</p>
-          <p className="text-xs text-zinc-600 mt-1">
+          <p className="text-xs text-zinc-500 mt-1">
             Add your first stock or ETF to get started
           </p>
         </div>
@@ -562,7 +562,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                         <span className={`text-sm font-semibold uppercase tracking-wider ${group.color}`}>
                           {group.label}
                         </span>
-                        <span className="text-[11px] text-zinc-600">
+                        <span className="text-[11px] text-zinc-500">
                           ({group.assetCount})
                         </span>
                         <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -619,7 +619,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                         <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                           {group.brokerName}
                         </span>
-                        <span className="text-[11px] text-zinc-600">
+                        <span className="text-[11px] text-zinc-500">
                           ({group.entryCount})
                         </span>
                         <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -678,7 +678,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                         <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                           {group.currency}
                         </span>
-                        <span className="text-[11px] text-zinc-600">
+                        <span className="text-[11px] text-zinc-500">
                           ({group.assetCount})
                         </span>
                         <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -736,7 +736,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                         <span className={`text-sm font-semibold tracking-wider ${groupColor} ${group.isUncategorized ? "italic" : "uppercase"}`}>
                           {group.subcategory}
                         </span>
-                        <span className="text-[11px] text-zinc-600">
+                        <span className="text-[11px] text-zinc-500">
                           ({group.assetCount})
                         </span>
                         <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -824,7 +824,6 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                         onClick={isSortable ? () => handleSort(colSortKey) : undefined}
                         onKeyDown={isSortable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort(colSortKey); } } : undefined}
                         tabIndex={isSortable ? 0 : undefined}
-                        role={isSortable ? "button" : undefined}
                         aria-sort={isActiveSort ? (sortDir === "desc" ? "descending" : "ascending") : undefined}
                       >
                         <span className={`inline-flex items-center gap-1 ${align === "text-right" ? "justify-end" : align === "text-center" ? "justify-center" : ""}`}>
@@ -869,7 +868,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                 <span className={`text-sm font-semibold uppercase tracking-wider ${group.color}`}>
                                   {group.label}
                                 </span>
-                                <span className="text-[11px] text-zinc-600">
+                                <span className="text-[11px] text-zinc-500">
                                   {group.assetCount} asset{group.assetCount !== 1 ? "s" : ""}
                                 </span>
                                 {isGroupOpen && (
@@ -929,7 +928,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                 <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                                   {group.brokerName}
                                 </span>
-                                <span className="text-[11px] text-zinc-600">
+                                <span className="text-[11px] text-zinc-500">
                                   {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                 </span>
                                 {isGroupOpen && (
@@ -1005,7 +1004,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                   {rowExpanded && entry.positions.length === 0 && (
                                     <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                       <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
-                                        <p className="text-xs text-zinc-600">
+                                        <p className="text-xs text-zinc-500">
                                           No positions — click edit to add quantities
                                         </p>
                                       </td>
@@ -1043,7 +1042,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                 <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                                   {group.currency}
                                 </span>
-                                <span className="text-[11px] text-zinc-600">
+                                <span className="text-[11px] text-zinc-500">
                                   {group.assetCount} asset{group.assetCount !== 1 ? "s" : ""}
                                 </span>
                                 {isGroupOpen && (
@@ -1098,7 +1097,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                   {rowExpanded && row.asset.positions.length === 0 && (
                                     <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                       <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-                                        <p className="text-xs text-zinc-600">
+                                        <p className="text-xs text-zinc-500">
                                           No positions — click edit to add quantities
                                         </p>
                                       </td>
@@ -1138,7 +1137,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                 <span className={`text-sm font-semibold tracking-wider ${groupColor} ${group.isUncategorized ? "italic" : "uppercase"}`}>
                                   {group.subcategory}
                                 </span>
-                                <span className="text-[11px] text-zinc-600">
+                                <span className="text-[11px] text-zinc-500">
                                   {group.assetCount} asset{group.assetCount !== 1 ? "s" : ""}
                                 </span>
                                 {isGroupOpen && (
@@ -1193,7 +1192,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                                   {rowExpanded && row.asset.positions.length === 0 && (
                                     <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                       <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-                                        <p className="text-xs text-zinc-600">
+                                        <p className="text-xs text-zinc-500">
                                           No positions — click edit to add quantities
                                         </p>
                                       </td>
@@ -1312,7 +1311,7 @@ function MobileStockCard({
               <p className="text-xs font-medium text-zinc-300 truncate">
                 {row.asset.yahoo_ticker || row.asset.ticker}
               </p>
-              <p className="text-[11px] text-zinc-600">
+              <p className="text-[11px] text-zinc-500">
                 {row.asset.currency}
                 {row.asset.isin && ` · ${row.asset.isin}`}
               </p>
@@ -1536,7 +1535,7 @@ function FlatSingleRow({
       {rowExpanded && row.asset.positions.length === 0 && (
         <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
           <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
-            <p className="text-xs text-zinc-600">
+            <p className="text-xs text-zinc-500">
               No positions — click edit to add quantities
             </p>
           </td>
@@ -1579,6 +1578,10 @@ function TickerGroupRows({
       <tr
         className="border-b border-zinc-800/30 border-l-2 border-l-zinc-500/30 bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/40 transition-colors"
         onClick={toggleOpen}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleOpen(); } }}
+        tabIndex={0}
+        role="button"
+        aria-expanded={isOpen}
       >
         {groupHeaderCells(orderedColumns,
           <div className="flex items-center gap-2 min-w-0">
@@ -1635,7 +1638,7 @@ function TickerGroupRows({
                             <span className="text-xs font-medium text-zinc-300 truncate block">
                               {row.asset.yahoo_ticker || row.asset.ticker}
                             </span>
-                            <span className="text-[11px] text-zinc-600">
+                            <span className="text-[11px] text-zinc-500">
                               {row.asset.currency}
                               {row.asset.isin && ` · ${row.asset.isin}`}
                             </span>
@@ -1672,7 +1675,7 @@ function TickerGroupRows({
               {rowExpanded && row.asset.positions.length === 0 && (
                 <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                   <td colSpan={orderedColumns.length} className="pl-14 pr-4 py-3">
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-xs text-zinc-500">
                       No positions — click edit to add quantities
                     </p>
                   </td>
@@ -1753,7 +1756,7 @@ function TypeGroupInnerRows({
               {rowExpanded && row.asset.positions.length === 0 && (
                 <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                   <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-xs text-zinc-500">
                       No positions — click edit to add quantities
                     </p>
                   </td>
@@ -1811,7 +1814,7 @@ function TypeGroupInnerRows({
               {rowExpanded && row.asset.positions.length === 0 && (
                 <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                   <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-xs text-zinc-500">
                       No positions — click edit to add quantities
                     </p>
                   </td>
@@ -1881,7 +1884,7 @@ function MobileTickerGroupCard({
           <span className="text-sm font-semibold text-zinc-100 truncate block">{group.name}</span>
           <span className="text-xs text-zinc-500 uppercase">
             {group.ticker}
-            <span className="text-[10px] text-zinc-600 ml-1.5 normal-case">
+            <span className="text-[10px] text-zinc-500 ml-1.5 normal-case">
               {group.rows.length} listings
             </span>
           </span>

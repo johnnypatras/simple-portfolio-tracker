@@ -87,7 +87,7 @@ export function ThemeSelector() {
         })}
       </div>
 
-      <p className="text-xs text-zinc-600 mt-2">
+      <p className="text-xs text-zinc-500 mt-2">
         Applies instantly across all pages
       </p>
     </div>

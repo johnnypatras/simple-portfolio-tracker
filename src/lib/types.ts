@@ -1,3 +1,15 @@
+// ─── Domain types (shared across server actions + portfolio logic) ───
+
+export type AssetClass = "crypto" | "stocks" | "cash";
+
+export interface CashFlowEvent {
+  date: string;       // YYYY-MM-DD
+  amount_usd: number; // positive = deposit, negative = withdrawal
+  amount_eur?: number; // EUR amount via historical rate (avoids USD round-trip for EUR entities)
+  asset_class?: AssetClass;
+  entity_name?: string;
+}
+
 // ─── Database entity types ──────────────────────────────
 
 export type WalletType = "custodial" | "non_custodial";
@@ -547,6 +559,8 @@ export interface GoalPrice {
 
 // ─── Activity Log / Audit Trail ────────────────────────
 
+export type FlowStatus = "complete" | "pending" | "failed" | null;
+
 export type ActionType = "created" | "updated" | "removed" | "undone";
 export type EntityType =
   | "crypto_asset"
@@ -584,9 +598,9 @@ export interface ActivityLog {
   compensates_for: string | null;
   cashflow_amount_usd: number | null;
   cashflow_amount_eur: number | null;
-  cashflow_asset_class: string | null;
-  cashflow_status: string | null;
-  delta_status: string | null;
+  cashflow_asset_class: AssetClass | null;
+  cashflow_status: FlowStatus;
+  delta_status: FlowStatus;
   cashflow_attempted_at: string | null;
   delta_attempted_at: string | null;
   created_at: string;
@@ -617,6 +631,20 @@ export interface TransferInput {
 export type TransferResult =
   | { success: true; transferGroupId: string; partialFailure?: boolean }
   | { success: false; error: string; transferGroupId?: string; partialFailure?: boolean };
+
+// ─── Adjustment Deltas (chart enrichment) ───────────────
+
+export interface AdjustmentDelta {
+  date: string;
+  cumulative_usd: number;
+  cumulative_eur: number;
+  crypto_cumulative_usd: number;
+  crypto_cumulative_eur: number;
+  stocks_cumulative_usd: number;
+  stocks_cumulative_eur: number;
+  cash_cumulative_usd: number;
+  cash_cumulative_eur: number;
+}
 
 // ─── Command Palette ─────────────────────────────────────
 

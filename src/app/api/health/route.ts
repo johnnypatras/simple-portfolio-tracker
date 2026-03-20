@@ -34,7 +34,6 @@ export async function GET() {
 
     return NextResponse.json({
       status: snapshotStale ? "warning" : "ok",
-      lastSnapshot,
       snapshotAgeHours: ageHours ? Math.round(ageHours) : null,
       snapshotStale,
       ms: Date.now() - start,

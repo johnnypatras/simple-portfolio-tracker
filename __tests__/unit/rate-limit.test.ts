@@ -95,7 +95,7 @@ describe("rateLimit", () => {
     const result = check(makeReq()); // 2 — blocked
     expect(result).not.toBeNull();
     expect(result?.headers).toBeDefined();
-    expect((result as { headers: Record<string, string> }).headers["Retry-After"]).toBe(
+    expect((result as unknown as { headers: Record<string, string> }).headers["Retry-After"]).toBe(
       String(Math.ceil(120_000 / 1000)),
     );
   });

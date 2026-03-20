@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { exportFullJson } from "@/lib/actions/export";
+import { VALID_THEMES } from "@/lib/constants";
 import type { PortfolioBackup } from "@/lib/actions/export";
 import {
   validateAmount,
@@ -492,7 +493,9 @@ export async function importFromJson(
           user_id: uid,
           ticker: asset.ticker,
           name: asset.name,
-          coingecko_id: asset.coingecko_id.replace(/[&?#]/g, ""),
+          coingecko_id: /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(asset.coingecko_id)
+            ? asset.coingecko_id
+            : asset.coingecko_id.replace(/[^a-z0-9-]/gi, "").toLowerCase(),
           chain: asset.chain ?? null,
           subcategory: asset.subcategory ?? null,
           image_url: asset.image_url ?? null,
@@ -599,7 +602,11 @@ export async function importFromJson(
           ticker: asset.ticker,
           name: asset.name,
           isin: asset.isin ?? null,
-          yahoo_ticker: asset.yahoo_ticker?.replace(/[&?#]/g, "") || null,
+          yahoo_ticker: asset.yahoo_ticker
+            ? (/^[A-Za-z0-9^=.\-]{1,20}$/.test(asset.yahoo_ticker)
+              ? asset.yahoo_ticker
+              : asset.yahoo_ticker.replace(/[^A-Za-z0-9^=.\-]/g, "").slice(0, 20) || null)
+            : null,
           category: asset.category ?? "individual_stock",
           tags: asset.tags ?? [],
           currency: asset.currency ?? "USD",
@@ -686,6 +693,7 @@ export async function importFromJson(
         .from("portfolio_snapshots")
         .upsert(snapshotRows, { onConflict: "user_id,snapshot_date" });
       if (error) {
+        console.error("[import] snapshot upsert failed:", error.message);
         skipped.snapshots += snapshotRows.length;
       } else {
         counts.snapshots = snapshotRows.length;
@@ -698,9 +706,9 @@ export async function importFromJson(
     const rows = data.diaryEntries.map((d) => ({
       user_id: uid,
       entry_date: d.entry_date,
-      content: d.content,
+      content: typeof d.content === "string" ? d.content.slice(0, 50000) : "",
     }));
-    const { error } = await supabase.from("diary_entries").insert(rows);
+    const { error } = await supabase.from("diary_entries").upsert(rows, { onConflict: "user_id,entry_date" });
     if (error) {
       console.error("[import] Diary entries failed:", error.message);
     } else {
@@ -710,14 +718,20 @@ export async function importFromJson(
 
   // ── 10. Profile (v2+) ─────────────────────────────────
   if (data.profile) {
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        display_name: data.profile.display_name,
-        theme: data.profile.theme,
-      })
-      .eq("id", uid);
-    if (error) console.error("[import] Profile update failed:", error.message);
+    const profileUpdate: Record<string, string> = {};
+    if (data.profile.display_name && typeof data.profile.display_name === "string" && data.profile.display_name.length <= 100) {
+      profileUpdate.display_name = data.profile.display_name;
+    }
+    if (data.profile.theme && typeof data.profile.theme === "string" && (VALID_THEMES as readonly string[]).includes(data.profile.theme)) {
+      profileUpdate.theme = data.profile.theme;
+    }
+    if (Object.keys(profileUpdate).length > 0) {
+      const { error } = await supabase
+        .from("profiles")
+        .update(profileUpdate)
+        .eq("id", uid);
+      if (error) console.error("[import] Profile update failed:", error.message);
+    }
   }
 
   // activityLog and portfolioShares are export-only (archival) — not imported

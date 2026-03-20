@@ -104,7 +104,7 @@ describe("aggregatePortfolio", () => {
         user_id: "u1", created_at: "",
         positions: [stockPos(10, "sa1")],
       }],
-      stockPrices: { AAPL: { price: 200, change24h: 1, currency: "GBP" } },
+      stockPrices: { AAPL: { price: 200, previousClose: 198, change24h: 1, currency: "GBP", name: "Apple Inc." } },
       cashAccounts: [],
       primaryCurrency: "USD", fxRates: { USD: 1 }, // GBP missing
     });
@@ -121,7 +121,7 @@ describe("aggregatePortfolio", () => {
         user_id: "u1", created_at: "",
         positions: [stockPos(5, "sa1")],
       }],
-      stockPrices: { AAPL: { price: 200, change24h: 1 } },
+      stockPrices: { AAPL: { price: 200, previousClose: 198, change24h: 1, currency: "USD", name: "Apple Inc." } },
       cashAccounts: [],
       primaryCurrency: "EUR", fxRates: { EUR: 1, USD: 1.10 },
     });
@@ -224,7 +224,7 @@ describe("aggregatePortfolio", () => {
         user_id: "u1", created_at: "",
         positions: [stockPos(10, "sa1")],
       }],
-      stockPrices: { "VWCE.DE": { price: 100, change24h: 0 } },
+      stockPrices: { "VWCE.DE": { price: 100, previousClose: 100, change24h: 0, currency: "EUR", name: "Vanguard FTSE All-World ETF" } },
       cashAccounts: [],
       primaryCurrency: "EUR",
       fxRates: { EUR: 1, USD: 1.11 },
@@ -262,8 +262,8 @@ describe("aggregatePortfolio", () => {
         },
       ],
       stockPrices: {
-        "VWCE.DE": { price: 100, change24h: 0 },
-        AAPL: { price: 200, change24h: 0 },
+        "VWCE.DE": { price: 100, previousClose: 100, change24h: 0, currency: "EUR", name: "Vanguard FTSE All-World ETF" },
+        AAPL: { price: 200, previousClose: 200, change24h: 0, currency: "USD", name: "Apple Inc." },
       },
       cashAccounts: [{
         id: "ba1", user_id: "u1", institution_id: null, name: "Savings",

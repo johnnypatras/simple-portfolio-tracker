@@ -5,8 +5,7 @@
  * portfolio-chart.tsx so it can be tested without a render context.
  */
 
-import type { AdjustmentDelta } from "@/lib/actions/activity-log";
-import type { CashFlowEvent } from "@/lib/actions/benchmark";
+import type { AdjustmentDelta, CashFlowEvent, BaseCurrency } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -35,7 +34,7 @@ export interface EnrichedChartPoint extends ChartPoint {
 export interface EnrichChartDataInput {
   points: ChartPoint[];
   viewMode: ChartViewMode;
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
   sp500History: { date: string; close: number }[];
   cashFlows: CashFlowEvent[];
   adjustmentDeltas: AdjustmentDelta[];
@@ -56,14 +55,14 @@ function getSliceValueUsd(p: ChartPoint, viewMode: ChartViewMode): number {
 function toDisplayFromUsd(
   usd: number,
   p: { value: number; valueUsd: number },
-  primaryCurrency: string,
+  primaryCurrency: BaseCurrency,
 ): number {
   if (primaryCurrency === "USD") return usd;
   if (p.valueUsd === 0) return usd;
   return usd * (p.value / p.valueUsd);
 }
 
-function getSliceValue(p: ChartPoint, viewMode: ChartViewMode, primaryCurrency: string): number {
+function getSliceValue(p: ChartPoint, viewMode: ChartViewMode, primaryCurrency: BaseCurrency): number {
   if (viewMode === "total") return p.value;
   return toDisplayFromUsd(getSliceValueUsd(p, viewMode), p, primaryCurrency);
 }
@@ -84,18 +83,9 @@ function getDeltaPair(
 
 function getCumulativeDelta(
   date: string,
-  deltaLookup: { date: string; cumUsd: number; cumEur: number }[],
+  deltaMap: Map<string, { usd: number; eur: number }>,
 ): { usd: number; eur: number } {
-  if (deltaLookup.length === 0) return { usd: 0, eur: 0 };
-  let result = { usd: 0, eur: 0 };
-  for (const d of deltaLookup) {
-    if (d.date <= date) {
-      result = { usd: d.cumUsd, eur: d.cumEur };
-    } else {
-      break;
-    }
-  }
-  return result;
+  return deltaMap.get(date) ?? { usd: 0, eur: 0 };
 }
 
 function getSliceRatio(
@@ -114,21 +104,14 @@ function getSliceRatio(
 function getSp500Price(
   date: string,
   sp500Map: Map<string, number>,
-  sp500History: { date: string; close: number }[],
 ): number | undefined {
-  const exact = sp500Map.get(date);
-  if (exact != null) return exact;
-  for (let i = sp500History.length - 1; i >= 0; i--) {
-    if (sp500History[i].date <= date && sp500History[i].close > 0)
-      return sp500History[i].close;
-  }
-  return undefined;
+  return sp500Map.get(date);
 }
 
 function toDisplayCurrency(
   usdAmount: number,
   point: { value: number; valueUsd: number },
-  primaryCurrency: string,
+  primaryCurrency: BaseCurrency,
 ): number | undefined {
   if (primaryCurrency === "USD") return usdAmount;
   if (point.valueUsd === 0) return undefined;
@@ -154,7 +137,7 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
 
   if (points.length === 0) return [];
 
-  // Pre-compute delta lookup and final cumulative delta
+  // Pre-compute delta lookup sorted by date
   const deltaLookup = adjustmentDeltas.map((d) => ({
     date: d.date,
     ...getDeltaPair(d, viewMode),
@@ -165,7 +148,39 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
       ? deltaLookup[deltaLookup.length - 1]
       : { cumUsd: 0, cumEur: 0 };
 
+  // Build sp500Map with forward-fill for weekends/holidays so getSp500Price is O(1)
   const sp500Map = new Map(sp500History.map((p) => [p.date, p.close]));
+  if (points.length > 0 && sp500History.length > 0) {
+    const startDate = points[0].date;
+    const endDate = points[points.length - 1].date;
+    let lastPrice: number | undefined;
+    const cursor = new Date(startDate);
+    const end = new Date(endDate);
+    while (cursor <= end) {
+      const ds = cursor.toISOString().slice(0, 10);
+      const known = sp500Map.get(ds);
+      if (known != null && known > 0) {
+        lastPrice = known;
+      } else if (lastPrice != null) {
+        sp500Map.set(ds, lastPrice);
+      }
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  // Build deltaMap keyed by every chart date so getCumulativeDelta is O(1)
+  const deltaMap = new Map<string, { usd: number; eur: number }>();
+  if (points.length > 0) {
+    let lastDelta = { usd: 0, eur: 0 };
+    let di = 0;
+    for (const p of points) {
+      while (di < deltaLookup.length && deltaLookup[di].date <= p.date) {
+        lastDelta = { usd: deltaLookup[di].cumUsd, eur: deltaLookup[di].cumEur };
+        di++;
+      }
+      deltaMap.set(p.date, lastDelta);
+    }
+  }
 
   const hasCashFlows = cashFlows.length > 0;
   const chartStart = points[0].date;
@@ -179,15 +194,15 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
 
   if (hasCashFlows) {
     return enrichCashFlowAdjusted(
-      points, viewMode, primaryCurrency, sp500History, sp500Map,
-      cashFlows, deltaLookup, finalCumDelta, finalDeltaDisplay, deltaDisp,
+      points, viewMode, primaryCurrency, sp500Map,
+      cashFlows, deltaMap, finalDeltaDisplay, deltaDisp,
       snapshotRatios, chartStart,
     );
   }
 
   return enrichNaiveFallback(
-    points, viewMode, primaryCurrency, sp500Map, sp500History,
-    deltaLookup, finalCumDelta, finalDeltaDisplay, deltaDisp, chartStart,
+    points, viewMode, primaryCurrency, sp500Map,
+    deltaMap, finalDeltaDisplay, deltaDisp, chartStart,
   );
 }
 
@@ -196,12 +211,10 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
 function enrichCashFlowAdjusted(
   points: ChartPoint[],
   viewMode: ChartViewMode,
-  primaryCurrency: string,
-  sp500History: { date: string; close: number }[],
+  primaryCurrency: BaseCurrency,
   sp500Map: Map<string, number>,
   cashFlows: CashFlowEvent[],
-  deltaLookup: { date: string; cumUsd: number; cumEur: number }[],
-  finalCumDelta: { cumUsd: number; cumEur: number },
+  deltaMap: Map<string, { usd: number; eur: number }>,
   finalDeltaDisplay: number,
   deltaDisp: (d: { usd: number; eur: number }) => number,
   snapshotRatios: { date: string; ratio: number }[] | null,
@@ -212,7 +225,7 @@ function enrichCashFlowAdjusted(
   const unitsByDate = new Map<string, number>();
 
   for (const cf of cashFlows) {
-    const price = getSp500Price(cf.date, sp500Map, sp500History);
+    const price = getSp500Price(cf.date, sp500Map);
     if (price && price > 0) {
       const scaledAmount = cf.amount_usd * getSliceRatio(cf.date, snapshotRatios);
       sp500Units += scaledAmount / price;
@@ -226,9 +239,9 @@ function enrichCashFlowAdjusted(
 
   // Seed S&P units so benchmark starts at the adjusted portfolio value.
   const firstPoint = points[0];
-  const sp500StartPrice = getSp500Price(firstPoint.date, sp500Map, sp500History);
+  const sp500StartPrice = getSp500Price(firstPoint.date, sp500Map);
   if (sp500StartPrice && sp500StartPrice > 0) {
-    const firstDelta = getCumulativeDelta(firstPoint.date, deltaLookup);
+    const firstDelta = getCumulativeDelta(firstPoint.date, deltaMap);
     const firstSliceVal = getSliceValue(firstPoint, viewMode, primaryCurrency);
     const firstSliceUsd = getSliceValueUsd(firstPoint, viewMode);
     const adjustedFirstDisp = firstSliceVal + (finalDeltaDisplay - deltaDisp(firstDelta));
@@ -244,7 +257,7 @@ function enrichCashFlowAdjusted(
     const adjustedFirstUsd = adjustedFirstDisp * fxRatioUsdPerDisp;
 
     const neededUnits = adjustedFirstUsd / sp500StartPrice;
-    if (neededUnits > preChartUnits) {
+    if (neededUnits !== preChartUnits) {
       const seedDelta = neededUnits - preChartUnits;
       sp500Units += seedDelta;
       preChartUnits = neededUnits;
@@ -259,14 +272,14 @@ function enrichCashFlowAdjusted(
     if (unitsByDate.has(p.date)) {
       currentUnits = unitsByDate.get(p.date)!;
     }
-    const price = getSp500Price(p.date, sp500Map, sp500History);
+    const price = getSp500Price(p.date, sp500Map);
     const sp500ValueUsd = price != null ? currentUnits * price : undefined;
     const sp500Value = sp500ValueUsd != null
       ? toDisplayCurrency(sp500ValueUsd, p, primaryCurrency)
       : undefined;
 
     const sliceVal = getSliceValue(p, viewMode, primaryCurrency);
-    const delta = getCumulativeDelta(p.date, deltaLookup);
+    const delta = getCumulativeDelta(p.date, deltaMap);
     const adjustedValue = sliceVal + (finalDeltaDisplay - deltaDisp(delta));
 
     return { ...p, value: sliceVal, sp500Value, adjustedValue, rawValue: sliceVal };
@@ -278,31 +291,29 @@ function enrichCashFlowAdjusted(
 function enrichNaiveFallback(
   points: ChartPoint[],
   viewMode: ChartViewMode,
-  primaryCurrency: string,
+  primaryCurrency: BaseCurrency,
   sp500Map: Map<string, number>,
-  sp500History: { date: string; close: number }[],
-  deltaLookup: { date: string; cumUsd: number; cumEur: number }[],
-  finalCumDelta: { cumUsd: number; cumEur: number },
+  deltaMap: Map<string, { usd: number; eur: number }>,
   finalDeltaDisplay: number,
   deltaDisp: (d: { usd: number; eur: number }) => number,
   chartStart: string,
 ): EnrichedChartPoint[] {
   const firstSliceVal = getSliceValue(points[0], viewMode, primaryCurrency);
-  const firstDeltaFb = getCumulativeDelta(chartStart, deltaLookup);
+  const firstDeltaFb = getCumulativeDelta(chartStart, deltaMap);
   const portfolioStart = firstSliceVal + (finalDeltaDisplay - deltaDisp(firstDeltaFb));
-  const sp500Start = getSp500Price(chartStart, sp500Map, sp500History);
+  const sp500Start = getSp500Price(chartStart, sp500Map);
 
   return points.map((p) => {
     const sliceVal = getSliceValue(p, viewMode, primaryCurrency);
     let sp500Value: number | undefined;
     if (sp500Start && portfolioStart > 0) {
-      const close = getSp500Price(p.date, sp500Map, sp500History);
+      const close = getSp500Price(p.date, sp500Map);
       if (close != null) {
         sp500Value = (portfolioStart / sp500Start) * close;
       }
     }
 
-    const delta = getCumulativeDelta(p.date, deltaLookup);
+    const delta = getCumulativeDelta(p.date, deltaMap);
     const adjustedValue = sliceVal + (finalDeltaDisplay - deltaDisp(delta));
 
     return { ...p, value: sliceVal, sp500Value, adjustedValue, rawValue: sliceVal };

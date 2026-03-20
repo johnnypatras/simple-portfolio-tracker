@@ -146,7 +146,7 @@ export function getCashColumns(handlers: {
             <span className="text-sm font-medium text-zinc-200">
               {groupName}
             </span>
-            <span className="text-xs text-zinc-600">
+            <span className="text-xs text-zinc-500">
               {accounts.length} {itemLabel}
               {accounts.length !== 1 ? "s" : ""}
             </span>
@@ -211,7 +211,7 @@ export function getCashColumns(handlers: {
             ~{row.data.weightedApy.toFixed(2)}%
           </span>
         ) : (
-          <span className="text-sm text-zinc-600">&mdash;</span>
+          <span className="text-sm text-zinc-500">&mdash;</span>
         ),
     },
 

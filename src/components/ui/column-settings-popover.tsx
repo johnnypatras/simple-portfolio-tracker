@@ -20,6 +20,13 @@ export function ColumnSettingsPopover({
   const popoverRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
+  // Focus popover when opened
+  useEffect(() => {
+    if (open) {
+      popoverRef.current?.focus();
+    }
+  }, [open]);
+
   // Close on click outside
   useEffect(() => {
     if (!open) return;
@@ -66,7 +73,8 @@ export function ColumnSettingsPopover({
           ref={popoverRef}
           role="dialog"
           aria-label="Column settings"
-          className="absolute left-0 top-full mt-1 z-50 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl"
+          tabIndex={-1}
+          className="absolute left-0 top-full mt-1 z-50 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl focus:outline-none"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800/50">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { Lock, Eye, EyeOff, CheckCircle2 } from "lucide-react";
@@ -15,13 +15,18 @@ export default function ResetPasswordPage() {
 
   const router = useRouter();
   const supabase = createClient();
+  const redirectTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+  useEffect(() => {
+    return () => { if (redirectTimer.current) clearTimeout(redirectTimer.current); };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+    if (password.length < 8 || password.length > 72) {
+      setError(password.length < 8 ? "Password must be at least 8 characters" : "Password must be at most 72 characters");
       return;
     }
 
@@ -46,7 +51,7 @@ export default function ResetPasswordPage() {
         setError(updateError.message);
       } else {
         setDone(true);
-        setTimeout(() => router.push("/dashboard"), 2000);
+        redirectTimer.current = setTimeout(() => router.push("/dashboard"), 2000);
       }
     } catch {
       setError("An unexpected error occurred");
@@ -96,7 +101,7 @@ export default function ResetPasswordPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Min. 8 characters"
-                  className="w-full pl-10 pr-10 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40"
+                  className="w-full pl-10 pr-10 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-blue-500/70"
                   required
                   minLength={8}
                   autoFocus
@@ -128,7 +133,7 @@ export default function ResetPasswordPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Repeat your new password"
-                  className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40"
+                  className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-blue-500/70"
                   required
                   minLength={8}
                 />

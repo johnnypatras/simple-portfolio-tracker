@@ -6,6 +6,7 @@
  */
 
 import { convertToBase, fxChangeForCurrency as fxChangeFor } from "@/lib/prices/fx";
+import { isStablecoin } from "@/lib/cashflow";
 import type { FXRates } from "@/lib/prices/fx";
 import type {
   CryptoAssetWithPositions,
@@ -13,6 +14,7 @@ import type {
   StockAssetWithPositions,
   YahooStockPriceData,
   CashAccount,
+  BaseCurrency,
 } from "@/lib/types";
 
 export interface PortfolioSummary {
@@ -30,7 +32,7 @@ export interface PortfolioSummary {
     stocks: number;
     cash: number;
   };
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
 
   // Absolute 24h value changes — components sum exactly to totalValueChange24h.
   // Computed as weightedChange / 100 (linear approximation, perfectly additive).
@@ -72,7 +74,7 @@ interface AggregateParams {
   stockAssets: StockAssetWithPositions[];
   stockPrices: YahooStockPriceData;
   cashAccounts: CashAccount[];
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
   fxRates: FXRates;
   /** Dual FX rate sets for accurate snapshot storage.
    *  fxRatesUsd: rates relative to USD (for computing *_value_usd columns).
@@ -130,7 +132,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const value = totalQty * priceInBase;
 
-    if (asset.subcategory?.toLowerCase() === "stablecoin") {
+    if (isStablecoin(asset.subcategory)) {
       stablecoinValue += value;
       // Full return from CoinGecko (includes both price deviation + FX)
       const stableChange = price[changeKey] ?? 0;
@@ -156,6 +158,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   // Yahoo gives prices in native trading currency → convert via FX
   let stocksValue = 0;
   let stocksWeightedChange = 0;
+  let stocksFxWeightedChange = 0;
 
   for (const asset of stockAssets) {
     const key = asset.yahoo_ticker || asset.ticker;
@@ -165,11 +168,13 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
     const valueNative = totalQty * priceData.price;
     const valueBase = convertToBase(valueNative, asset.currency, primaryCurrency, fxRates);
+    const fxChange = fxChangeForCurrency(asset.currency);
     // Total change in primary currency ≈ asset price change + FX change
-    const change = (priceData.change24h ?? 0) + fxChangeForCurrency(asset.currency);
+    const change = (priceData.change24h ?? 0) + fxChange;
 
     stocksValue += valueBase;
     stocksWeightedChange += valueBase * change;
+    stocksFxWeightedChange += valueBase * fxChange;
   }
 
   // ── Cash (unified cash accounts) ──
@@ -201,14 +206,6 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
   // - Stocks: fxChangeForCurrency(stock.currency) per stock
   // - Stablecoins: fxChangeForCurrency("USD") — precise, excludes tiny price deviation
   // - Fiat cash: fxChangeForCurrency(account.currency) — pure FX
-  const stocksFxWeightedChange = stockAssets.reduce((sum, asset) => {
-    const key = asset.yahoo_ticker || asset.ticker;
-    const priceData = stockPrices[key];
-    if (!priceData) return sum;
-    const totalQty = asset.positions.reduce((s, p) => s + p.quantity, 0);
-    const valueBase = convertToBase(totalQty * priceData.price, asset.currency, primaryCurrency, fxRates);
-    return sum + valueBase * fxChangeForCurrency(asset.currency);
-  }, 0);
   const fxWeightedChange = cryptoFxWeightedChange + stocksFxWeightedChange + stablecoinFxWeightedChange + fiatCashWeightedChange;
   const fxChange24hPercent =
     totalValue > 0 ? fxWeightedChange / totalValue : 0;
@@ -237,7 +234,7 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
-    if (asset.subcategory?.toLowerCase() === "stablecoin") {
+    if (isStablecoin(asset.subcategory)) {
       stablecoinValueUsd += totalQty * (price.usd ?? 0);
       stablecoinValueEur += totalQty * (price.eur ?? 0);
     } else {

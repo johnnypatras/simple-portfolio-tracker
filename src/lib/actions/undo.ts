@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActivityLog } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { resolveTable, remapSnapshotFields } from "@/lib/undo-remap";
+import { validateUUID } from "@/lib/validation";
 
 // ─── Field classification ─────────────────────────────────
 // Controls how each snapshot field is handled during compensation.
@@ -42,6 +43,13 @@ const ALLOWED_UNDO_TABLES = new Set([
   // Keep old names — historical activity_log entries still reference them
   "bank_accounts", "exchange_deposits", "broker_deposits",
   "trade_entries",
+]);
+
+/** Tables that have a direct user_id column (for defense-in-depth filtering). */
+const TABLES_WITH_USER_ID = new Set([
+  "crypto_assets", "stock_assets", "cash_accounts",
+  "wallets", "brokers", "institutions",
+  "trade_entries", "diary_entries",
 ]);
 
 // ─── Compensating update computation ─────────────────────
@@ -125,6 +133,7 @@ function buildCompensationDescription(
 async function undoSingleEntry(
   log: ActivityLog,
   supabase: SupabaseClient,
+  userId: string,
 ): Promise<{ success: boolean; message: string; compensationId?: string }> {
   // ── Guard: missing undo metadata ─
   if (!log.entity_id || !log.entity_table) {
@@ -145,11 +154,17 @@ async function undoSingleEntry(
   const afterSnapshot = remapSnapshotFields(log.entity_table, log.after_snapshot);
 
   // ── Fetch current entity state ─
-  const { data: existing } = await supabase
+  let entityQuery = supabase
     .from(effectiveTable)
     .select("*")
-    .eq("id", log.entity_id)
-    .single();
+    .eq("id", log.entity_id);
+  if (TABLES_WITH_USER_ID.has(effectiveTable)) {
+    entityQuery = entityQuery.eq("user_id", userId);
+  }
+  const { data: existing, error: fetchErr } = await entityQuery.single();
+  if (fetchErr && fetchErr.code !== "PGRST116") {
+    console.error("[undo] Entity fetch failed:", fetchErr.message);
+  }
 
   if (!existing) {
     return {
@@ -177,19 +192,23 @@ async function undoSingleEntry(
   try {
     switch (log.action) {
       case "created": {
-        const { error } = await supabase
+        let q = supabase
           .from(effectiveTable)
           .update({ deleted_at: new Date().toISOString() })
           .eq("id", log.entity_id);
+        if (TABLES_WITH_USER_ID.has(effectiveTable)) q = q.eq("user_id", userId);
+        const { error } = await q;
         if (error) throw error;
         break;
       }
 
       case "removed": {
-        const { error } = await supabase
+        let q = supabase
           .from(effectiveTable)
           .update({ deleted_at: null })
           .eq("id", log.entity_id);
+        if (TABLES_WITH_USER_ID.has(effectiveTable)) q = q.eq("user_id", userId);
+        const { error } = await q;
         if (error) throw error;
         break;
       }
@@ -237,7 +256,7 @@ async function undoSingleEntry(
             compensatingFields,
             entity,
           );
-          const { data: compEntry } = await supabase
+          const { data: compEntry, error: compErr } = await supabase
             .from("activity_log")
             .insert({
               user_id: user.id,
@@ -253,10 +272,15 @@ async function undoSingleEntry(
               is_adjustment: false,
               delta_usd: null,
               delta_eur: null,
+              delta_status: null,
+              cashflow_status: null,
             })
             .select("id")
             .single();
 
+          if (compErr) {
+            console.error("[undo] Failed to insert compensation log entry:", compErr.message);
+          }
           compensationId = compEntry?.id;
         }
 
@@ -275,17 +299,21 @@ async function undoSingleEntry(
   }
 
   // ── Mark the original entry as undone ─
-  await supabase
+  const { error: undoneAtError } = await supabase
     .from("activity_log")
     .update({ undone_at: new Date().toISOString() })
     .eq("id", log.id);
+  if (undoneAtError) {
+    console.error("[undo] failed to set undone_at on activity_log:", undoneAtError.message);
+  }
 
   // ── If this was a compensation entry being undone (redo), restore the original ─
   if (log.compensates_for) {
     await supabase
       .from("activity_log")
       .update({ undone_at: null })
-      .eq("id", log.compensates_for);
+      .eq("id", log.compensates_for)
+      .eq("user_id", userId);
   }
 
   // For created/removed, log a simple non-undoable undo entry
@@ -316,11 +344,13 @@ async function rollbackCompensation(
   compensationId: string,
   originalEntryId: string,
   supabase: SupabaseClient,
+  userId: string,
 ): Promise<void> {
   const { data: comp } = await supabase
     .from("activity_log")
     .select("*")
     .eq("id", compensationId)
+    .eq("user_id", userId)
     .single();
 
   if (!comp?.entity_id || !comp?.entity_table || !comp?.before_snapshot) return;
@@ -334,18 +364,25 @@ async function rollbackCompensation(
   }
 
   if (Object.keys(restoreFields).length > 0) {
-    await supabase
-      .from(resolveTable(comp.entity_table as string))
+    const effectiveTable = resolveTable(comp.entity_table as string);
+    let entityRestore = supabase
+      .from(effectiveTable)
       .update(restoreFields)
       .eq("id", comp.entity_id as string);
+    if (TABLES_WITH_USER_ID.has(effectiveTable)) {
+      entityRestore = entityRestore.eq("user_id", userId);
+    }
+    const { error: restoreErr } = await entityRestore;
+    if (restoreErr) console.error("[undo] Rollback entity restore failed:", restoreErr.message);
   }
 
   // Clean up: delete the compensation entry and restore the original
-  await supabase.from("activity_log").delete().eq("id", compensationId);
+  await supabase.from("activity_log").delete().eq("id", compensationId).eq("user_id", userId);
   await supabase
     .from("activity_log")
     .update({ undone_at: null })
-    .eq("id", originalEntryId);
+    .eq("id", originalEntryId)
+    .eq("user_id", userId);
 }
 
 /**
@@ -355,22 +392,23 @@ async function rollbackCompensation(
 async function undoTransferGroup(
   entries: ActivityLog[],
   supabase: SupabaseClient,
+  userId: string,
 ): Promise<{ success: boolean; message: string }> {
   const completed: { compensationId: string; originalId: string }[] = [];
 
   for (const entry of entries) {
     if (entry.undone_at) continue;
 
-    const result = await undoSingleEntry(entry, supabase);
+    const result = await undoSingleEntry(entry, supabase, userId);
 
     if (!result.success) {
       // Auto-rollback all previously completed compensations
       for (const { compensationId, originalId } of completed) {
         try {
-          await rollbackCompensation(compensationId, originalId, supabase);
-        } catch {
+          await rollbackCompensation(compensationId, originalId, supabase, userId);
+        } catch (rollbackErr) {
           // Best effort — rollback failure is logged but doesn't throw
-          console.error(`Failed to rollback compensation ${compensationId}`);
+          console.error(`Failed to rollback compensation ${compensationId}`, rollbackErr);
         }
       }
       return { success: false, message: `Transfer undo failed: ${result.message}` };
@@ -407,11 +445,14 @@ export async function undoActivity(
   } = await supabase.auth.getUser();
   if (!user) return { success: false, message: "Not authenticated" };
 
+  validateUUID(activityLogId, "Activity log ID");
+
   // ── Fetch the log entry ─
   const { data: entry, error: fetchErr } = await supabase
     .from("activity_log")
     .select("*")
     .eq("id", activityLogId)
+    .eq("user_id", user.id)
     .single();
 
   if (fetchErr || !entry) {
@@ -445,6 +486,7 @@ export async function undoActivity(
       .from("activity_log")
       .select("*")
       .eq("transfer_group_id", log.transfer_group_id)
+      .eq("user_id", user.id)
       .is("undone_at", null)
       .order("created_at", { ascending: true });
 
@@ -455,13 +497,14 @@ export async function undoActivity(
     const result = await undoTransferGroup(
       groupEntries as ActivityLog[],
       supabase,
+      user.id,
     );
     if (result.success) revalidateDashboard();
     return result;
   }
 
   // ── Single-entry undo ─
-  const result = await undoSingleEntry(log, supabase);
+  const result = await undoSingleEntry(log, supabase, user.id);
   if (result.success) revalidateDashboard();
   return result;
 }

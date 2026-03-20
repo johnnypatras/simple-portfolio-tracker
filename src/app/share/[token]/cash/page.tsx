@@ -8,6 +8,7 @@ import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { CashTable } from "@/components/cash/cash-table";
+import { isStablecoin } from "@/lib/cashflow";
 
 export default async function SharedCashPage({
   params,
@@ -20,11 +21,11 @@ export default async function SharedCashPage({
   const data = await getSharedPortfolio(token);
   if (!data) notFound();
 
-  const { cashAccounts, wallets, brokers, cryptoAssets, profile, share } = data;
+  const { cashAccounts, cryptoAssets, profile, share } = data;
   const cur = profile.primary_currency;
 
   // Stablecoins are reclassified as cash
-  const stablecoins = cryptoAssets.filter((a) => a.subcategory?.toLowerCase() === "stablecoin");
+  const stablecoins = cryptoAssets.filter((a) => isStablecoin(a.subcategory));
 
   const allCurrencies = [
     ...new Set([
@@ -69,8 +70,6 @@ export default async function SharedCashPage({
       </div>
       <CashTable
         cashAccounts={cashAccounts}
-        wallets={wallets}
-        brokers={brokers}
         primaryCurrency={cur}
         fxRates={fxRates}
         stablecoins={stablecoins}

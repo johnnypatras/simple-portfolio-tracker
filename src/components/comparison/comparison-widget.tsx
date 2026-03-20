@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useId, useRef, useState, useCallback } from "react";
 import { X, Loader2 } from "lucide-react";
+import FocusTrap from "focus-trap-react";
 import {
   getComparisonData,
   type ComparisonData,
@@ -26,6 +27,7 @@ export function ComparisonWidget({
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const hasFetched = useRef(false);
+  const titleId = useId();
 
   // Fetch comparison data on first open
   const fetchData = useCallback(async () => {
@@ -106,70 +108,77 @@ export function ComparisonWidget({
       />
 
       {/* Panel — right slide on desktop, bottom sheet on mobile */}
-      <div
-        ref={panelRef}
-        className={`
-          fixed z-50 bg-zinc-900 border border-zinc-800/50 shadow-2xl shadow-black/50
-          transition-transform duration-300 ease-out overflow-y-auto
+      <FocusTrap active={isOpen} focusTrapOptions={{ initialFocus: false, fallbackFocus: () => panelRef.current!, allowOutsideClick: true }}>
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          className={`
+            fixed z-50 bg-zinc-900 border border-zinc-800/50 shadow-2xl shadow-black/50
+            transition-transform duration-300 ease-out overflow-y-auto outline-none
 
-          bottom-0 left-0 right-0 max-h-[75vh] rounded-t-2xl
-          sm:bottom-auto sm:left-auto sm:top-0 sm:right-0
-          sm:w-96 sm:h-full sm:max-h-none sm:rounded-t-none sm:rounded-l-xl
+            bottom-0 left-0 right-0 max-h-[75vh] rounded-t-2xl
+            sm:bottom-auto sm:left-auto sm:top-0 sm:right-0
+            sm:w-96 sm:h-full sm:max-h-none sm:rounded-t-none sm:rounded-l-xl
 
-          ${
-            isOpen
-              ? "translate-y-0 sm:translate-x-0"
-              : "translate-y-full sm:translate-y-0 sm:translate-x-full"
-          }
-        `}
-      >
-        {/* Drag handle (mobile only) */}
-        <div className="sm:hidden flex justify-center pt-2 pb-1">
-          <div className="w-10 h-1 rounded-full bg-zinc-700" />
+            ${
+              isOpen
+                ? "translate-y-0 sm:translate-x-0"
+                : "translate-y-full sm:translate-y-0 sm:translate-x-full"
+            }
+          `}
+        >
+          {/* Drag handle (mobile only) */}
+          <div className="sm:hidden flex justify-center pt-2 pb-1">
+            <div className="w-10 h-1 rounded-full bg-zinc-700" />
+          </div>
+
+          {/* Header */}
+          <div className="sticky top-0 bg-zinc-900 z-10 flex items-center justify-between px-4 py-3 border-b border-zinc-800/50">
+            <h2 id={titleId} className="text-sm font-semibold text-zinc-100">
+              You vs {ownerName}
+            </h2>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Content area */}
+          <div className="px-4 py-4">
+            {loading && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+                <span className="text-xs text-zinc-500">
+                  Loading comparison...
+                </span>
+              </div>
+            )}
+
+            {error && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                <span className="text-sm text-zinc-400">{error}</span>
+                <button
+                  onClick={() => {
+                    hasFetched.current = false;
+                    fetchData();
+                  }}
+                  className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+
+            {!loading && !error && data && <ComparisonContent data={data} token={token} />}
+          </div>
         </div>
-
-        {/* Header */}
-        <div className="sticky top-0 bg-zinc-900 z-10 flex items-center justify-between px-4 py-3 border-b border-zinc-800/50">
-          <h2 className="text-sm font-semibold text-zinc-100">
-            You vs {ownerName}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Content area */}
-        <div className="px-4 py-4">
-          {loading && (
-            <div className="flex flex-col items-center justify-center py-12 gap-3">
-              <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
-              <span className="text-xs text-zinc-500">
-                Loading comparison...
-              </span>
-            </div>
-          )}
-
-          {error && (
-            <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-              <span className="text-sm text-zinc-400">{error}</span>
-              <button
-                onClick={() => {
-                  hasFetched.current = false;
-                  fetchData();
-                }}
-                className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
-              >
-                Try again
-              </button>
-            </div>
-          )}
-
-          {!loading && !error && data && <ComparisonContent data={data} token={token} />}
-        </div>
-      </div>
+      </FocusTrap>
     </>
   );
 }

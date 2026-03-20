@@ -297,7 +297,7 @@ export function PositionEditor({
                 onFocus={() => setChainOpen(true)}
                 onBlur={() => setTimeout(() => setChainOpen(false), 150)}
                 placeholder="e.g. Ethereum, BNB Chain..."
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               />
               {chainOpen && chainOptions.length > 0 && (() => {
                 const filtered = chainOptions.filter(
@@ -343,7 +343,7 @@ export function PositionEditor({
                 onFocus={() => setSubcategoryOpen(true)}
                 onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
                 placeholder="e.g. L1, DeFi, Stablecoin..."
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               />
               {subcategoryOpen && existingSubcategories.length > 0 && (() => {
                 const filtered = existingSubcategories.filter(
@@ -490,7 +490,7 @@ export function PositionEditor({
                   onChange={(e) =>
                     handleQuantityChange(walletId, e.target.value)
                   }
-                  className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   disabled={isSaving}
                   placeholder="Quantity"
                 />
@@ -499,7 +499,7 @@ export function PositionEditor({
                   onChange={(e) =>
                     handleAcquisitionChange(walletId, e.target.value)
                   }
-                  className="w-24 sm:w-28 px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 shrink-0"
+                  className="w-24 sm:w-28 px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70 shrink-0"
                   disabled={isSaving}
                 >
                   {ACQUISITION_TYPES.map((t) => (
@@ -516,12 +516,12 @@ export function PositionEditor({
                     max="100"
                     value={edit?.apy ?? "0"}
                     onChange={(e) => handleApyChange(walletId, e.target.value)}
-                    className="w-full px-2 py-2 pr-6 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    className="w-full px-2 py-2 pr-6 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                     disabled={isSaving}
                     placeholder="APY"
                     title="APY %"
                   />
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-600 pointer-events-none">%</span>
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-500 pointer-events-none">%</span>
                 </div>
                 <button
                   onClick={() => handleSave(walletId)}
@@ -573,7 +573,7 @@ export function PositionEditor({
             <select
               value={addingWallet}
               onChange={(e) => setAddingWallet(e.target.value)}
-              className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             >
               <option value="">Add to wallet / exchange...</option>
               {availableWallets

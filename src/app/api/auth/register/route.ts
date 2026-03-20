@@ -11,16 +11,35 @@ export async function POST(req: NextRequest) {
   try {
     const { code, email, password, display_name, first_name, last_name } = await req.json();
 
-    if (!email || !password || typeof password !== "string") {
+    if (!email || typeof email !== "string" || !password || typeof password !== "string") {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    if (password.length < 8) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       return NextResponse.json(
-        { error: "Password must be at least 8 characters" },
+        { error: "Invalid email address" },
+        { status: 400 }
+      );
+    }
+
+    // Validate name field lengths
+    if (typeof display_name === "string" && display_name.trim().length > 100) {
+      return NextResponse.json({ error: "Display name too long (max 100)" }, { status: 400 });
+    }
+    if (typeof first_name === "string" && first_name.trim().length > 100) {
+      return NextResponse.json({ error: "First name too long (max 100)" }, { status: 400 });
+    }
+    if (typeof last_name === "string" && last_name.trim().length > 100) {
+      return NextResponse.json({ error: "Last name too long (max 100)" }, { status: 400 });
+    }
+
+    if (password.length < 8 || password.length > 72) {
+      return NextResponse.json(
+        { error: password.length < 8 ? "Password must be at least 8 characters" : "Password must be at most 72 characters" },
         { status: 400 }
       );
     }
@@ -65,7 +84,7 @@ export async function POST(req: NextRequest) {
     // 2. Create the user via admin API
     const { data: userData, error: signUpError } =
       await admin.auth.admin.createUser({
-        email,
+        email: trimmedEmail,
         password,
         email_confirm: true,
       });
@@ -132,6 +151,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[register] Unhandled error:", err);
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.captureException(err);
     return NextResponse.json(
       { error: "An unexpected error occurred" },
       { status: 500 }

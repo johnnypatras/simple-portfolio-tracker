@@ -13,6 +13,8 @@ import { partialUpdate } from "@/lib/partial-update";
 
 export async function getWallets() {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
   const { data, error } = await supabase
     .from("wallets")
     .select("*")
@@ -166,6 +168,8 @@ export async function updateWallet(
   input: WalletInput,
   opts?: { also_broker?: boolean; also_bank?: boolean }
 ) {
+  validateUUID(id, "Wallet ID");
+  validateName(input.name.trim(), 100, "Wallet name");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },

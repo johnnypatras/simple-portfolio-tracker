@@ -53,20 +53,25 @@ export async function getPrices(
 
   const ids = coinIds.join(",");
   const url = `${BASE_URL}/simple/price?ids=${ids}&vs_currencies=usd,eur&include_24hr_change=true`;
-  let res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
+  try {
+    let res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
 
-  if (res.status === 429) {
-    console.warn("[coingecko] Rate limited (429), retrying in 2s…");
-    await new Promise((r) => setTimeout(r, 2000));
-    res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
-  }
+    if (res.status === 429) {
+      console.warn("[coingecko] Rate limited (429), retrying in 2s…");
+      await new Promise((r) => setTimeout(r, 2000));
+      res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
+    }
 
-  if (!res.ok) {
-    console.error("[coingecko] Price fetch failed:", res.status);
+    if (!res.ok) {
+      console.error("[coingecko] Price fetch failed:", res.status);
+      return {};
+    }
+
+    return res.json();
+  } catch (err) {
+    console.error("[coingecko] Price fetch error:", err);
     return {};
   }
-
-  return res.json();
 }
 
 // ── Historical daily prices (for benchmark cash flow valuation) ──
@@ -122,13 +127,14 @@ export interface CoinGeckoDetail {
  * Used to auto-detect chain and subcategory when adding a new crypto asset.
  */
 export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | null> {
-  const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`;
-  const res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 3600 } });
+  try {
+    const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`;
+    const res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 3600 } });
 
-  if (!res.ok) {
-    console.error("[coingecko] Coin detail failed:", res.status);
-    return null;
-  }
+    if (!res.ok) {
+      console.error("[coingecko] Coin detail failed:", res.status);
+      return null;
+    }
 
   const data = await res.json();
   // Extract platforms, filtering out empty-string keys (CoinGecko quirk)
@@ -145,6 +151,10 @@ export async function getCoinDetail(coinId: string): Promise<CoinGeckoDetail | n
     platforms,
     image_thumb: (data.image?.thumb as string) ?? null,
   };
+  } catch (err) {
+    console.error("[coingecko] Coin detail error:", err);
+    return null;
+  }
 }
 
 /**

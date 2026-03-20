@@ -12,6 +12,8 @@ import { validateUUID, validateName } from "@/lib/validation";
 
 export async function getBrokers() {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
   const { data, error } = await supabase
     .from("brokers")
     .select("*")
@@ -134,6 +136,7 @@ export async function updateBroker(
   }
 ) {
   validateUUID(id, "Broker ID");
+  validateName(input.name.trim(), 100, "Broker name");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -162,11 +165,7 @@ export async function updateBroker(
 
   // Role extension: create sibling wallet if requested
   if (opts?.also_wallet && before?.institution_id) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      const { data: existingWallet } = await supabase
+    const { data: existingWallet } = await supabase
         .from("wallets")
         .select("id")
         .eq("institution_id", before.institution_id)
@@ -195,7 +194,6 @@ export async function updateBroker(
           });
         }
       }
-    }
   }
 
   // Role extension: create sibling cash account if requested
@@ -245,6 +243,8 @@ export async function updateBroker(
 export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }) {
   validateUUID(id, "Broker ID");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Delete child stock positions individually so each gets an activity_log entry
   const { deleteStockPosition } = await import("@/lib/actions/stocks");
@@ -281,9 +281,6 @@ export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }
     .eq("id", id)
     .is("deleted_at", null)
     .single();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
 
   const { error } = await supabase
     .from("brokers")

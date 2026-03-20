@@ -1,4 +1,5 @@
 import type {
+  BaseCurrency,
   CryptoAssetWithPositions,
   StockAssetWithPositions,
   CashAccount,
@@ -15,7 +16,7 @@ interface BuildPaletteHoldingsInput {
   stockPrices: YahooStockPriceData;
   cashAccounts: CashAccount[];
   fxRates: Record<string, number>;
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
   /** Path prefix for detail links, e.g. "/dashboard" or "/share/abc123" */
   pathPrefix: string;
 }

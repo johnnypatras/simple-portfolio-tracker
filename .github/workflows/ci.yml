@@ -35,6 +35,7 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-build
+          NEXT_PUBLIC_SENTRY_DSN: "https://placeholder@sentry.io/0"
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: npm run build
 
@@ -51,7 +52,7 @@ jobs:
           version: 2.78.1
 
       - name: Cache Supabase Docker images
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/supabase-docker-cache
           key: supabase-docker-${{ runner.os }}
@@ -84,7 +85,7 @@ jobs:
 
   preview:
     needs: test
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,6 +113,9 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:

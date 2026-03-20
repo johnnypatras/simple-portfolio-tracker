@@ -33,6 +33,8 @@ const emptySummary: PortfolioSummary = {
   stocksValueEur: 0,
   cashValueUsd: 0,
   cashValueEur: 0,
+  stocksHomeCurrencyEur: 0,
+  cashHomeCurrencyEur: 0,
 };
 
 const mkt = {
@@ -112,15 +114,19 @@ describe("computeDashboardInsights", () => {
       cryptoAssets: [
         {
           id: "ca1", user_id: "u", ticker: "BTC", name: "Bitcoin",
-          coingecko_id: "bitcoin", chain: null, subcategory: null, created_at: "",
+          coingecko_id: "bitcoin", chain: null, subcategory: null, image_url: null, created_at: "",
           positions: [{ id: "p1", crypto_asset_id: "ca1", wallet_id: "w1",
-            wallet_name: "W", quantity: 1, apy: 0, created_at: "" }],
+            wallet_name: "W", wallet_type: "custodial" as const, quantity: 1, apy: 0,
+            acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false,
+            updated_at: "", deleted_at: null }],
         },
         {
           id: "ca2", user_id: "u", ticker: "ETH", name: "Ethereum",
-          coingecko_id: "ethereum", chain: null, subcategory: null, created_at: "",
+          coingecko_id: "ethereum", chain: null, subcategory: null, image_url: null, created_at: "",
           positions: [{ id: "p2", crypto_asset_id: "ca2", wallet_id: "w1",
-            wallet_name: "W", quantity: 10, apy: 0, created_at: "" }],
+            wallet_name: "W", wallet_type: "custodial" as const, quantity: 10, apy: 0,
+            acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false,
+            updated_at: "", deleted_at: null }],
         },
       ],
       cryptoPrices: {
@@ -143,9 +149,11 @@ describe("computeDashboardInsights", () => {
       cryptoAssets: [
         {
           id: "ca1", user_id: "u", ticker: "USDC", name: "USD Coin",
-          coingecko_id: "usd-coin", chain: null, subcategory: "stablecoin", created_at: "",
+          coingecko_id: "usd-coin", chain: null, subcategory: "stablecoin", image_url: null, created_at: "",
           positions: [{ id: "p1", crypto_asset_id: "ca1", wallet_id: "w1",
-            wallet_name: "W", quantity: 5000, apy: 3, created_at: "" }],
+            wallet_name: "W", wallet_type: "custodial" as const, quantity: 5000, apy: 3,
+            acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false,
+            updated_at: "", deleted_at: null }],
         },
       ],
       cryptoPrices: {
@@ -169,12 +177,16 @@ describe("computeDashboardInsights", () => {
     const result = computeDashboardInsights({
       cryptoAssets: [{
         id: "ca1", user_id: "u", ticker: "ETH", name: "Ethereum",
-        coingecko_id: "ethereum", chain: null, subcategory: null, created_at: "",
+        coingecko_id: "ethereum", chain: null, subcategory: null, image_url: null, created_at: "",
         positions: [
           { id: "p1", crypto_asset_id: "ca1", wallet_id: "w1", wallet_name: "W",
-            quantity: 5, apy: 4, created_at: "", acquisition_method: "staked" },
+            wallet_type: "custodial" as const, quantity: 5, apy: 4,
+            acquisition_method: "staked", last_was_adjustment: false, last_was_transfer: false,
+            updated_at: "", deleted_at: null },
           { id: "p2", crypto_asset_id: "ca1", wallet_id: "w1", wallet_name: "W",
-            quantity: 3, apy: 0, created_at: "", acquisition_method: "buy" },
+            wallet_type: "custodial" as const, quantity: 3, apy: 0,
+            acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false,
+            updated_at: "", deleted_at: null },
         ],
       }],
       cryptoPrices: {
@@ -200,19 +212,21 @@ describe("computeDashboardInsights", () => {
           name: "Vanguard", currency: "USD", category: "etf" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
-            broker_name: "B", quantity: 10, created_at: "" }],
+            broker_name: "B", quantity: 10, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
         },
         {
           id: "sa2", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
           name: "Apple", currency: "USD", category: "individual_stock" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p2", stock_asset_id: "sa2", broker_id: "b1",
-            broker_name: "B", quantity: 5, created_at: "" }],
+            broker_name: "B", quantity: 5, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
         },
       ],
       stockPrices: {
-        "VWCE.DE": { price: 100, change24h: 0 },
-        AAPL: { price: 200, change24h: 0 },
+        "VWCE.DE": { price: 100, previousClose: 100, change24h: 0, currency: "USD", name: "Vanguard FTSE All-World ETF" },
+        AAPL: { price: 200, previousClose: 200, change24h: 0, currency: "USD", name: "Apple Inc." },
       },
       cashAccounts: [],
       primaryCurrency: "USD", fxRates: { USD: 1 },
@@ -236,19 +250,21 @@ describe("computeDashboardInsights", () => {
           name: "Vanguard FTSE", currency: "USD", category: "etf" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
-            broker_name: "B", quantity: 20, created_at: "" }],
+            broker_name: "B", quantity: 20, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
         },
         {
           id: "sa2", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
           name: "Apple", currency: "USD", category: "individual_stock" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p2", stock_asset_id: "sa2", broker_id: "b1",
-            broker_name: "B", quantity: 1, created_at: "" }],
+            broker_name: "B", quantity: 1, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
         },
       ],
       stockPrices: {
-        "VWCE.DE": { price: 100, change24h: 0 },
-        AAPL: { price: 200, change24h: 0 },
+        "VWCE.DE": { price: 100, previousClose: 100, change24h: 0, currency: "USD", name: "Vanguard FTSE All-World ETF" },
+        AAPL: { price: 200, previousClose: 200, change24h: 0, currency: "USD", name: "Apple Inc." },
       },
       cashAccounts: [],
       primaryCurrency: "USD", fxRates: { USD: 1 },
@@ -265,9 +281,11 @@ describe("computeDashboardInsights", () => {
     const result = computeDashboardInsights({
       cryptoAssets: [{
         id: "ca1", user_id: "u", ticker: "USDC", name: "USD Coin",
-        coingecko_id: "usd-coin", chain: null, subcategory: "stablecoin", created_at: "",
+        coingecko_id: "usd-coin", chain: null, subcategory: "stablecoin", image_url: null, created_at: "",
         positions: [{ id: "p1", crypto_asset_id: "ca1", wallet_id: "w1",
-          wallet_name: "W", quantity: 1000, apy: 0, created_at: "" }],
+          wallet_name: "W", wallet_type: "custodial" as const, quantity: 1000, apy: 0,
+          acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false,
+          updated_at: "", deleted_at: null }],
       }],
       cryptoPrices: {
         "usd-coin": { usd: 1, eur: 1, usd_24h_change: 0, eur_24h_change: 0 },
@@ -329,16 +347,17 @@ describe("computeDashboardInsights", () => {
           name: "Vanguard", currency: "USD", category: "etf" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
-            broker_name: "B", quantity: 100, created_at: "" }],
+            broker_name: "B", quantity: 100, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
         },
       ],
-      stockPrices: { "VWCE.DE": { price: 100, change24h: 0 } },
+      stockPrices: { "VWCE.DE": { price: 100, previousClose: 100, change24h: 0, currency: "USD", name: "Vanguard FTSE All-World ETF" } },
       cashAccounts: [],
       primaryCurrency: "USD", fxRates: { USD: 1 },
       summary: { ...emptySummary, totalValue: 10000, stocksValue: 10000 },
       ...mkt,
       dividends: {
-        "VWCE.DE": { trailingYield: 1.5, annualDividend: 1.5, frequency: 4 },
+        "VWCE.DE": { trailingYield: 1.5, annualDividend: 1.5, dividendCount: 4, currency: "USD" },
       },
     });
     // 100 × $100 = $10000 value, yield = 1.5%

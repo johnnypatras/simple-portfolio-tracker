@@ -473,7 +473,7 @@ export function ImportExportSettings() {
           <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-6 flex flex-col items-center gap-3">
             <Loader2 className="w-6 h-6 text-zinc-400 animate-spin" />
             <p className="text-sm text-zinc-400">Importing data…</p>
-            <p className="text-xs text-zinc-600">This may take a moment</p>
+            <p className="text-xs text-zinc-500">This may take a moment</p>
           </div>
         )}
 

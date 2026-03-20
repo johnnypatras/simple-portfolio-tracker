@@ -23,7 +23,7 @@ import {
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
-import type { CashFlowEvent } from "@/lib/actions/benchmark";
+import type { CashFlowEvent } from "@/lib/types";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
 import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { useSharedView } from "@/components/shared-view-context";
@@ -222,7 +222,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                 {c.available && (
                   <span
                     ref={openTooltip === "total" ? tooltipRef : undefined}
+                    role="button"
                     onClick={(e) => toggleTooltip("total", e)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("total", e as unknown as React.MouseEvent); } }}
                     tabIndex={0}
                     className={`relative group/tip cursor-pointer text-sm font-medium tabular-nums whitespace-nowrap ${changeColorClass(c.percent)}`}
                   >
@@ -257,7 +259,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                   </span>
                 )}
                 {!c.available && (
-                  <span className="text-sm text-zinc-600">—</span>
+                  <span className="text-sm text-zinc-500">—</span>
                 )}
               </div>
             );
@@ -309,7 +311,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {/* ── Currency exposure bars ── */}
           {insights.currencyExposure.length > 1 && (
             <div className="mt-4 pt-4 border-t border-zinc-800/50 space-y-1">
-              <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Currency Exposure</span>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Currency Exposure</span>
               {insights.currencyExposure.map((e) => {
                 const textColor = CURRENCY_TEXT_COLORS[e.currency] ?? "text-zinc-400";
                 const showBase = exposureInBase && e.currency !== cur;
@@ -433,6 +435,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             <button
               className="flex items-center justify-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 pt-3 transition-colors md:hidden"
               onClick={() => setMarketExpanded((e) => !e)}
+              aria-expanded={marketExpanded}
             >
               {marketExpanded ? (
                 <>Less <ChevronUp className="w-3 h-3" /></>
@@ -451,6 +454,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
         <div
           role="link"
           tabIndex={0}
+          aria-label="View crypto holdings"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -496,7 +500,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                   {c.available ? (
                     <span
                       ref={openTooltip === "crypto" ? tooltipRef : undefined}
+                      role="button"
                       onClick={(e) => toggleTooltip("crypto", e)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("crypto", e as unknown as React.MouseEvent); } }}
                       tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
@@ -532,7 +538,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       })()}
                     </span>
                   ) : (
-                    <span className="text-xs text-zinc-600">—</span>
+                    <span className="text-xs text-zinc-500">—</span>
                   )}
                 </div>
                 {summary.stablecoinValue > 0 && (
@@ -619,7 +625,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                 );
               })
             ) : (
-              <p className="text-xs text-zinc-600">No crypto holdings yet</p>
+              <p className="text-xs text-zinc-500">No crypto holdings yet</p>
             )}
           </div>
         </div>
@@ -631,6 +637,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
         <div
           role="link"
           tabIndex={0}
+          aria-label="View stock and ETF holdings"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -676,7 +683,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                   {c.available ? (
                     <span
                       ref={openTooltip === "equities" ? tooltipRef : undefined}
+                      role="button"
                       onClick={(e) => toggleTooltip("equities", e)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("equities", e as unknown as React.MouseEvent); } }}
                       tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
@@ -712,7 +721,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       })()}
                     </span>
                   ) : (
-                    <span className="text-xs text-zinc-600">—</span>
+                    <span className="text-xs text-zinc-500">—</span>
                   )}
                 </div>
                 {insights.stocksWeightedYield > 0 && (() => {
@@ -836,6 +845,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
         <div
           role="link"
           tabIndex={0}
+          aria-label="View cash accounts"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -881,7 +891,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                   {c.available ? (
                     <span
                       ref={openTooltip === "cash" ? tooltipRef : undefined}
+                      role="button"
                       onClick={(e) => toggleTooltip("cash", e)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("cash", e as unknown as React.MouseEvent); } }}
                       tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
                     >
@@ -917,7 +929,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       })()}
                     </span>
                   ) : (
-                    <span className="text-xs text-zinc-600">—</span>
+                    <span className="text-xs text-zinc-500">—</span>
                   )}
                 </div>
                 {insights.weightedAvgApy > 0 && (
@@ -1127,6 +1139,11 @@ function AllocationBar({
         <span
           className={`relative group/val text-xs text-zinc-300 tabular-nums w-16 text-right shrink-0 ${onValueClick ? "cursor-pointer select-none" : ""}`}
           onClick={onValueClick}
+          {...(onValueClick ? {
+            role: "button",
+            tabIndex: 0,
+            onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onValueClick(); } },
+          } : {})}
         >
           {fmtCurrencyCompact(value, currency)}
           {valueTitle && (
