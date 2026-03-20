@@ -203,7 +203,7 @@ export function SharingSettings() {
             id="share-expiry"
             value={expiresInDays}
             onChange={(e) => setExpiresInDays(e.target.value)}
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           >
             {EXPIRY_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -216,7 +216,7 @@ export function SharingSettings() {
         {/* Label */}
         <div>
           <label htmlFor="share-label" className="block text-sm text-zinc-400 mb-1.5">
-            Label <span className="text-zinc-600">(optional)</span>
+            Label <span className="text-zinc-500">(optional)</span>
           </label>
           <input
             id="share-label"
@@ -225,7 +225,7 @@ export function SharingSettings() {
             onChange={(e) => setLabel(e.target.value)}
             placeholder='e.g. "For my accountant"'
             maxLength={100}
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           />
         </div>
 
@@ -253,7 +253,7 @@ export function SharingSettings() {
           <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
             <Share2 className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
             <p className="text-sm text-zinc-500">No active share links</p>
-            <p className="text-xs text-zinc-600 mt-1">
+            <p className="text-xs text-zinc-500 mt-1">
               Create a link above to share your portfolio
             </p>
           </div>
@@ -341,7 +341,7 @@ export function SharingSettings() {
                         {expired ? "Expired" : "Revoked"}
                       </span>
                     </div>
-                    <p className="text-xs text-zinc-600 mt-0.5">
+                    <p className="text-xs text-zinc-500 mt-0.5">
                       Created {formatDateTime(share.created_at)}
                     </p>
                   </div>

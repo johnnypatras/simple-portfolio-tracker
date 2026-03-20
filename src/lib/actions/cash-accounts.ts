@@ -5,8 +5,10 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CashAccount, CashAccountInput } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
-import { validateAmount, validateCurrency, validateUUID } from "@/lib/validation";
+import { validateAmount, validateCurrency, validateName, validateUUID } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
+import { round2 } from "@/lib/format";
+import { type FxResult, emptyFx } from "@/lib/activity-fx";
 
 // ─── Shared types ────────────────────────────────────────
 
@@ -29,6 +31,8 @@ function revalidateCashPaths(): void {
 
 export async function getCashAccounts(): Promise<CashAccount[]> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
   const { data, error } = await supabase
     .from("cash_accounts")
     .select("*, institutions(name), wallets(name), brokers(name)")
@@ -141,31 +145,7 @@ export async function refreshCashEntityNames(
 
 // ─── FX computation helpers ──────────────────────────────
 
-type FxStatus = "complete" | "pending" | null;
-
-interface FxResult {
-  deltaUsd: number | null;
-  deltaEur: number | null;
-  deltaStatus: FxStatus;
-  cashflowUsd: number | null;
-  cashflowEur: number | null;
-  cashflowAssetClass: string | null;
-  cashflowStatus: FxStatus;
-}
-
-function emptyFx(): FxResult {
-  return {
-    deltaUsd: null,
-    deltaEur: null,
-    deltaStatus: null,
-    cashflowUsd: null,
-    cashflowEur: null,
-    cashflowAssetClass: null,
-    cashflowStatus: null,
-  };
-}
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
+// round2 imported from @/lib/format
 
 /**
  * Compute adjustment deltas (portfolio correction — no real money moved).
@@ -223,12 +203,15 @@ async function computeCashflow(
       entityCurrency: currency,
       fxRate,
     });
-    return {
-      cashflowUsd: round2(cf.usd),
-      cashflowEur: round2(cf.eur),
-      cashflowAssetClass: assetClass,
-      cashflowStatus: "complete",
-    };
+    if (cf) {
+      return {
+        cashflowUsd: round2(cf.usd),
+        cashflowEur: round2(cf.eur),
+        cashflowAssetClass: assetClass,
+        cashflowStatus: "complete",
+      };
+    }
+    // Non-EUR/USD currency with fxRate but computeCashflowFromPrices can't handle it — fall through to FX API
   }
 
   // Fallback: use FX API
@@ -276,6 +259,7 @@ export async function createCashAccount(
 
   // Normalize empty name to null
   const normalizedName = input.name?.trim() || null;
+  if (normalizedName) validateName(normalizedName, 100, "Account name");
 
   const { data: created, error } = await supabase
     .from("cash_accounts")
@@ -367,6 +351,7 @@ export async function updateCashAccount(
 
   // Normalize empty name to null
   const normalizedName = input.name?.trim() || null;
+  if (normalizedName) validateName(normalizedName, 100, "Account name");
 
   // Capture before snapshot
   const { data: before } = await supabase
@@ -400,6 +385,7 @@ export async function updateCashAccount(
     .from("cash_accounts")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 

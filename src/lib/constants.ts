@@ -1,5 +1,8 @@
 // ─── Shared constants across the app ─────────────────────────
 
+/** Valid theme identifiers — derived from themes.ts, shared by profile validation + import validation */
+export { THEME_IDS as VALID_THEMES } from "@/lib/themes";
+
 /** Responsive column visibility: breakpoint → Tailwind class for table cells */
 export const HIDDEN_BELOW: Record<string, string> = {
   sm: "hidden sm:table-cell",

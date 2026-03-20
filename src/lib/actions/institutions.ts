@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { InstitutionWithRoles, InstitutionRole, PrivacyLabel } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
+import { validateUUID, validateName } from "@/lib/validation";
 
 /**
  * Fetch all institutions for the current user with computed roles.
@@ -12,6 +13,8 @@ import { logActivity } from "@/lib/actions/activity-log";
  */
 export async function getInstitutionsWithRoles(): Promise<InstitutionWithRoles[]> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
   // Fetch institutions and all child records in parallel (exclude soft-deleted)
   const [instRes, walletsRes, brokersRes, banksRes] = await Promise.all([
@@ -48,13 +51,13 @@ export async function getInstitutionsWithRoles(): Promise<InstitutionWithRoles[]
  * Returns the institution id.
  */
 export async function findOrCreateInstitution(name: string): Promise<string> {
+  const trimmed = name.trim();
+  validateName(trimmed, 100, "Institution name");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
-
-  const trimmed = name.trim();
 
   // Try to find existing (active only)
   const { data: existing } = await supabase
@@ -83,6 +86,8 @@ export async function findOrCreateInstitution(name: string): Promise<string> {
  * change to all linked wallets, brokers, and cash_accounts.
  */
 export async function renameInstitution(id: string, newName: string): Promise<void> {
+  validateUUID(id, "Institution ID");
+  validateName(newName.trim(), 100, "Institution name");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -117,6 +122,8 @@ export async function updateInstitutionRoles(
     bank_currency?: string;
   }
 ): Promise<void> {
+  validateUUID(institutionId, "Institution ID");
+  if (opts.newName) validateName(opts.newName.trim(), 100, "Institution name");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -262,6 +269,7 @@ export async function removeInstitutionRole(
   role: "wallet" | "broker" | "bank",
   opts?: { isAdjustment?: boolean }
 ): Promise<void> {
+  validateUUID(institutionId, "Institution ID");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -318,6 +326,7 @@ export async function removeInstitutionRole(
  * Delete an institution and all its children (cascade trigger handles soft-deletes).
  */
 export async function deleteInstitution(institutionId: string, opts?: { isAdjustment?: boolean }): Promise<void> {
+  validateUUID(institutionId, "Institution ID");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -345,9 +354,11 @@ export async function deleteInstitution(institutionId: string, opts?: { isAdjust
   const { deleteBroker } = await import("@/lib/actions/brokers");
   const { deleteCashAccount } = await import("@/lib/actions/cash-accounts");
 
-  for (const w of instWallets ?? []) await deleteWallet(w.id, opts);
-  for (const b of instBrokers ?? []) await deleteBroker(b.id, opts);
-  for (const ca of instCashAccounts ?? []) await deleteCashAccount(ca.id, opts);
+  await Promise.all([
+    ...(instWallets ?? []).map((w) => deleteWallet(w.id, opts)),
+    ...(instBrokers ?? []).map((b) => deleteBroker(b.id, opts)),
+    ...(instCashAccounts ?? []).map((ca) => deleteCashAccount(ca.id, opts)),
+  ]);
 
   const { error } = await supabase
     .from("institutions")

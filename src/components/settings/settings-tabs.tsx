@@ -45,17 +45,33 @@ export function SettingsTabs({ profile }: SettingsTabsProps) {
     return BASE_TABS;
   }, [profile.role]);
 
+  function handleTabKeyDown(e: React.KeyboardEvent, index: number) {
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      setActive(tabs[(index + 1) % tabs.length].id);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      setActive(tabs[(index - 1 + tabs.length) % tabs.length].id);
+    }
+  }
+
   return (
     <div>
       {/* Tab bar */}
-      <div className="flex gap-1 bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-1 mb-6 overflow-x-auto">
-        {tabs.map((tab) => {
+      <div role="tablist" className="flex gap-1 bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-1 mb-6 overflow-x-auto">
+        {tabs.map((tab, index) => {
           const Icon = tab.icon;
           const isActive = active === tab.id;
           return (
             <button
               key={tab.id}
+              id={`tab-${tab.id}`}
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`panel-${tab.id}`}
+              tabIndex={isActive ? 0 : -1}
               onClick={() => setActive(tab.id)}
+              onKeyDown={(e) => handleTabKeyDown(e, index)}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                 isActive
                   ? "bg-zinc-800 text-zinc-100"
@@ -70,11 +86,13 @@ export function SettingsTabs({ profile }: SettingsTabsProps) {
       </div>
 
       {/* Tab content */}
-      {active === "general" && <GeneralSettings profile={profile} />}
-      {active === "sharing" && <SharingSettings />}
-      {active === "import-export" && <ImportExportSettings />}
-      {active === "account" && <AccountSettings profile={profile} />}
-      {active === "users" && <UsersSettings />}
+      <div role="tabpanel" id={`panel-${active}`} aria-labelledby={`tab-${active}`}>
+        {active === "general" && <GeneralSettings profile={profile} />}
+        {active === "sharing" && <SharingSettings />}
+        {active === "import-export" && <ImportExportSettings />}
+        {active === "account" && <AccountSettings profile={profile} />}
+        {active === "users" && <UsersSettings />}
+      </div>
     </div>
   );
 }

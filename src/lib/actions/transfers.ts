@@ -91,6 +91,9 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     if (input.newCashDeposit.amount <= 0) throw new Error("Cash deposit amount must be positive");
     validateCurrency(input.newCashDeposit.currency);
   }
+  if (input.effectiveDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveDate)) {
+    throw new Error("Invalid date format");
+  }
 
   // Use a local destination variable to avoid mutating input
   let destination: TransferSide = input.destination;

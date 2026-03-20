@@ -12,7 +12,7 @@ import {
 import { toCsv } from "@/lib/csv";
 import { validateUUID } from "@/lib/validation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
+import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, FlowStatus } from "@/lib/types";
 
 // ─── FX conversion helper ───────────────────────────────
 // Converts an amount in any currency to both USD and EUR.
@@ -64,9 +64,9 @@ export async function logActivity(params: {
   // Cashflow tracking (pre-computed at write time)
   cashflow_amount_usd?: number | null;
   cashflow_amount_eur?: number | null;
-  cashflow_asset_class?: string | null;
-  cashflow_status?: "complete" | "pending" | null;
-  delta_status?: "complete" | "pending" | null;
+  cashflow_asset_class?: AssetClass | null;
+  cashflow_status?: FlowStatus;
+  delta_status?: FlowStatus;
 }): Promise<void> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -111,13 +111,16 @@ export async function getActivityLogs(filters?: {
   offset?: number;
 }): Promise<{ logs: ActivityLog[]; total: number }> {
   const supabase = await createServerSupabaseClient();
-  const limit = filters?.limit ?? 50;
-  const offset = filters?.offset ?? 0;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const limit = Math.max(1, Math.min(filters?.limit ?? 50, 500));
+  const offset = Math.max(0, filters?.offset ?? 0);
 
   // Build filtered query
   let query = supabase
     .from("activity_log")
     .select("*", { count: "exact" })
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -276,12 +279,15 @@ export async function toggleActivityAdjustment(
 ): Promise<void> {
   validateUUID(logId, "Activity log ID");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Fetch full row to access snapshots
   const { data: row, error: fetchErr } = await supabase
     .from("activity_log")
     .select("*")
     .eq("id", logId)
+    .eq("user_id", user.id)
     .single();
   if (fetchErr) throw new Error(fetchErr.message);
   if (!row) throw new Error("Activity log entry not found");
@@ -330,9 +336,9 @@ export async function toggleActivityAdjustment(
       cashflowEur = Math.round(values.eur * 100) / 100;
 
       // Determine asset class
-      const { classifyAssetClass } = await import("@/lib/cashflow");
+      const { classifyAssetClass, isStablecoin } = await import("@/lib/cashflow");
       // Check stablecoin status for crypto positions
-      let isStablecoin = false;
+      let isStable = false;
       if (row.entity_type === "crypto_position") {
         const snap = (row.after_snapshot ?? row.before_snapshot) as Record<string, unknown> | null;
         const assetId = snap?.crypto_asset_id as string | undefined;
@@ -342,10 +348,10 @@ export async function toggleActivityAdjustment(
             .select("subcategory")
             .eq("id", assetId)
             .single();
-          isStablecoin = asset?.subcategory?.toLowerCase() === "stablecoin";
+          isStable = isStablecoin(asset?.subcategory);
         }
       }
-      cashflowAssetClass = classifyAssetClass(row.entity_type, isStablecoin);
+      cashflowAssetClass = classifyAssetClass(row.entity_type, isStable);
       cashflowStatus = "complete";
     } catch (err) {
       console.error("[activity-log] Cashflow computation failed on toggle:", err instanceof Error ? err.message : err);
@@ -369,38 +375,36 @@ export async function toggleActivityAdjustment(
       cashflow_asset_class: cashflowAssetClass,
       cashflow_status: cashflowStatus,
     })
-    .eq("id", logId);
+    .eq("id", logId)
+    .eq("user_id", user.id);
   if (error) throw new Error(error.message);
 }
 
 // ─── Adjustment deltas for chart ────────────────────────
 // Returns cumulative adjustment deltas by date for the chart.
 
-export interface AdjustmentDelta {
-  date: string;
-  cumulative_usd: number;
-  cumulative_eur: number;
-  crypto_cumulative_usd: number;
-  crypto_cumulative_eur: number;
-  stocks_cumulative_usd: number;
-  stocks_cumulative_eur: number;
-  cash_cumulative_usd: number;
-  cash_cumulative_eur: number;
-}
-
 export async function getAdjustmentDeltas(
   userId?: string
 ): Promise<AdjustmentDelta[]> {
+  // Admin client path is for Edge Function / cron only — validate UUID to prevent misuse
+  if (userId) validateUUID(userId, "User ID");
   const supabase = userId
     ? createAdminClient()
     : await createServerSupabaseClient();
 
   // Fetch stablecoin position IDs so we can classify them as cash (matching snapshot logic)
   // Snapshots count stablecoins in cash_value_usd, not crypto_value_usd
-  const { data: stablecoinPositions } = await supabase
+  let stablecoinQuery = supabase
     .from("crypto_positions")
     .select("id, crypto_assets!inner(subcategory)")
     .ilike("crypto_assets.subcategory", "stablecoin");
+  if (userId) {
+    stablecoinQuery = stablecoinQuery.eq("crypto_assets.user_id", userId);
+  }
+  const { data: stablecoinPositions, error: stablecoinErr } = await stablecoinQuery;
+  if (stablecoinErr) {
+    console.error("[activity-log] Failed to fetch stablecoin positions:", stablecoinErr.message);
+  }
   const stablecoinPosIds = new Set(
     (stablecoinPositions ?? []).map((p) => p.id as string)
   );
@@ -488,9 +492,12 @@ export async function getAdjustmentDeltas(
 
 export async function exportActivityLogsCsv(): Promise<string> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
   const { data, error } = await supabase
     .from("activity_log")
     .select("*")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(10000);
 

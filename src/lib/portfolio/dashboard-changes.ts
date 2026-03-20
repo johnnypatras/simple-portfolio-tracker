@@ -5,8 +5,7 @@
  * FX decomposition, and deposit sums from snapshots and cash flows.
  */
 
-import type { PortfolioSnapshot } from "@/lib/types";
-import type { AssetClass, CashFlowEvent } from "@/lib/actions/benchmark";
+import type { PortfolioSnapshot, AssetClass, CashFlowEvent, BaseCurrency } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -27,7 +26,7 @@ export interface DepositResult {
 
 /** All the values needed by change calculations, threaded from the component. */
 export interface ChangeContext {
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
   totalValue: number;
   totalValueUsd: number;
   totalValueEur: number;
@@ -77,14 +76,15 @@ export function deriveClassFx(
   currentClassEur: number,
   pastClassUsd: number,
   snapshot: PortfolioSnapshot,
-  primaryCurrency: string,
+  primaryCurrency: BaseCurrency,
   currentHomeCurrencyEur?: number,
   pastHomeCurrencyEur?: number | null,
-): { fxPct: number; fxAbs: number; pastClassEur: number } {
+): { fxPct: number; fxAbs: number; pastClassEur: number | null } {
   const snapTotalUsd = snapshot.total_value_usd ?? 0;
   const snapTotalEur = snapshot.total_value_eur ?? 0;
+  // When EUR columns are null (old snapshots) or values are zero, we can't derive FX
   if (snapTotalUsd === 0 || snapTotalEur === 0 || pastClassUsd === 0)
-    return { fxPct: 0, fxAbs: 0, pastClassEur: 0 };
+    return { fxPct: 0, fxAbs: 0, pastClassEur: null };
 
   const impliedRate = snapTotalEur / snapTotalUsd;
   const pastClassEur = pastClassUsd * impliedRate;
@@ -177,7 +177,8 @@ export function getCryptoChangeForPeriod(
     ctx.cryptoValue, ctx.cryptoValueUsd, ctx.cryptoValueEur, pastUsd, snapshot, ctx.primaryCurrency,
   );
   const pastEur = ctx.primaryCurrency === "EUR" ? pastClassEur : pastUsd;
-  const delta = ctx.cryptoValue - (pastEur || ctx.cryptoValue);
+  if (pastEur == null) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const delta = ctx.cryptoValue - pastEur;
   const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
   return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
 }
@@ -203,7 +204,8 @@ export function getStockChangeForPeriod(
     ctx.stocksHomeCurrencyEur, snapshot.stocks_eur_denominated_value,
   );
   const pastEur = ctx.primaryCurrency === "EUR" ? pastClassEur : pastUsd;
-  const delta = ctx.stocksValue - (pastEur || ctx.stocksValue);
+  if (pastEur == null) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const delta = ctx.stocksValue - pastEur;
   const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
   return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
 }
@@ -229,7 +231,8 @@ export function getCashChangeForPeriod(
     ctx.cashHomeCurrencyEur, snapshot.cash_eur_denominated_value,
   );
   const pastEur = ctx.primaryCurrency === "EUR" ? pastClassEur : pastUsd;
-  const delta = ctx.cashValue - (pastEur || ctx.cashValue);
+  if (pastEur == null) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const delta = ctx.cashValue - pastEur;
   const pct = pastEur > 0 ? (delta / pastEur) * 100 : 0;
   return { percent: pct, valueChange: delta, available: true, fxPercent: fxPct, fxValueChange: fxAbs };
 }
@@ -251,7 +254,7 @@ export function getDepositsForPeriod(
 export function computeDeposits(
   period: ChangePeriod,
   cashFlows: CashFlowEvent[],
-  primaryCurrency: string,
+  primaryCurrency: BaseCurrency,
   fxMul: number,
   filterClass?: AssetClass,
 ): DepositResult {

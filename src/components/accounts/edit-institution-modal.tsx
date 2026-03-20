@@ -167,7 +167,7 @@ export function EditInstitutionModal({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
           />
           {name !== institution.name && (
@@ -250,7 +250,7 @@ export function EditInstitutionModal({
                 </span>
               ))}
               {institution.roles.length === 0 && (
-                <span className="text-xs text-zinc-600">No roles yet</span>
+                <span className="text-xs text-zinc-500">No roles yet</span>
               )}
             </div>
           )}
@@ -316,7 +316,7 @@ export function EditInstitutionModal({
                 onChange={(e) =>
                   setPrivacyLabel(e.target.value as PrivacyLabel | "")
                 }
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               >
                 <option value="">Not set</option>
                 <option value="anon">Anonymous</option>
@@ -401,7 +401,7 @@ export function EditInstitutionModal({
                 id={`${id}-bank-currency`}
                 value={bankCurrency}
                 onChange={(e) => setBankCurrency(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               >
                 <option value="EUR">EUR</option>
                 <option value="USD">USD</option>
@@ -465,7 +465,7 @@ export function EditInstitutionModal({
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder={institution.name}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-red-500/30 rounded-lg text-sm text-zinc-100 placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-red-500/30 rounded-lg text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500/70"
                 />
               </div>
               <label

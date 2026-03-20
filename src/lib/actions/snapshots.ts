@@ -5,9 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { PortfolioSnapshot } from "@/lib/types";
 
 /** Round to 2 decimal places (matching Edge Function's round2) */
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
+import { round2 } from "@/lib/format";
 
 /**
  * Save (upsert) today's portfolio snapshot.
@@ -105,6 +103,7 @@ export async function saveSnapshot(values: {
 
   if (error) {
     console.error("[snapshots] Failed to save snapshot:", error.message);
+    throw new Error(`Failed to save snapshot: ${error.message}`);
   }
 }
 
@@ -116,6 +115,8 @@ export async function getSnapshots(
   days: number
 ): Promise<PortfolioSnapshot[]> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
   const since = new Date();
   since.setDate(since.getDate() - days);
@@ -129,7 +130,7 @@ export async function getSnapshots(
 
   if (error) {
     console.error("[snapshots] Failed to fetch snapshots:", error.message);
-    return [];
+    throw new Error(`Failed to load portfolio history: ${error.message}`);
   }
 
   return data ?? [];
@@ -145,6 +146,8 @@ export async function getSnapshotAt(
   daysAgo: number
 ): Promise<PortfolioSnapshot | null> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
 
   const target = new Date();
   target.setDate(target.getDate() - daysAgo);
@@ -160,7 +163,7 @@ export async function getSnapshotAt(
 
   if (error) {
     console.error("[snapshots] Failed to fetch snapshot:", error.message);
-    return null;
+    throw new Error(`Failed to load snapshot: ${error.message}`);
   }
 
   return data;

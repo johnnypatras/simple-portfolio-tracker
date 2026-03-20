@@ -15,13 +15,14 @@ import type {
   YahooDividendMap,
   CashAccount,
   HoldingItem,
+  BaseCurrency,
 } from "@/lib/types";
 
 interface PortfolioAssets {
   cryptoAssets: CryptoAssetWithPositions[];
   stockAssets: StockAssetWithPositions[];
   cashAccounts: CashAccount[];
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
 }
 
 export interface AssembledPortfolio {

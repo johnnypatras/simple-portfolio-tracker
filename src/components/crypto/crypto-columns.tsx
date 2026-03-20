@@ -498,7 +498,7 @@ export function getCryptoColumns(handlers: {
       renderCell: (row) => {
         const positions = row.asset.positions;
         if (positions.length === 0)
-          return <span className="text-xs text-zinc-600">—</span>;
+          return <span className="text-xs text-zinc-500">—</span>;
 
         const types = new Set(positions.map((p) => p.wallet_type));
 
@@ -512,7 +512,7 @@ export function getCryptoColumns(handlers: {
           return match ? (
             <span className={`text-xs font-medium ${match.color}`}>{match.label}</span>
           ) : (
-            <span className="text-xs text-zinc-600">—</span>
+            <span className="text-xs text-zinc-500">—</span>
           );
         }
 
@@ -529,7 +529,7 @@ export function getCryptoColumns(handlers: {
       renderCell: (row) => {
         const method = getDominantMethod(row.asset.positions);
         if (row.asset.positions.length === 0) {
-          return <span className="text-xs text-zinc-600">—</span>;
+          return <span className="text-xs text-zinc-500">—</span>;
         }
         return (
           <span
@@ -552,7 +552,7 @@ export function getCryptoColumns(handlers: {
         return chain ? (
           <span className="text-xs text-zinc-400">{chain}</span>
         ) : (
-          <span className="text-xs text-zinc-600">—</span>
+          <span className="text-xs text-zinc-500">—</span>
         );
       },
     },
@@ -568,7 +568,7 @@ export function getCryptoColumns(handlers: {
         return sub ? (
           <span className="text-xs text-zinc-400">{sub}</span>
         ) : (
-          <span className="text-xs text-zinc-600">—</span>
+          <span className="text-xs text-zinc-500">—</span>
         );
       },
     },
@@ -585,7 +585,7 @@ export function getCryptoColumns(handlers: {
             {row.weightedApy.toFixed(row.weightedApy % 1 === 0 ? 0 : 2)}%
           </span>
         ) : (
-          <span className="text-xs text-zinc-600">—</span>
+          <span className="text-xs text-zinc-500">—</span>
         ),
     },
     {
@@ -614,7 +614,7 @@ export function getCryptoColumns(handlers: {
             )}
           </div>
         ) : (
-          <span className="text-xs text-zinc-600">No data</span>
+          <span className="text-xs text-zinc-500">No data</span>
         ),
     },
     {

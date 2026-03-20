@@ -874,9 +874,9 @@ export function TransferDialog({
                       setSourceQty(e.target.value);
                       setDestAmountManual(false);
                     }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   />
-                  <div className="text-xs text-zinc-600 mt-1">
+                  <div className="text-xs text-zinc-500 mt-1">
                     Available: {prefilled.currentQty} {prefilled.assetTicker}
                     {prefilled.currentPrice
                       ? ` (~${prefilled.currency} ${(prefilled.currentQty * prefilled.currentPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })})`
@@ -899,7 +899,7 @@ export function TransferDialog({
                       setSrcLocationId(e.target.value);
                       setSrcAmount("");
                     }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   >
                     <option value="">Select source...</option>
                     {Array.from(srcGroupedOptions.entries()).map(([group, opts]) => (
@@ -913,7 +913,7 @@ export function TransferDialog({
                     ))}
                   </select>
                   {srcGroupedOptions.size === 0 && (
-                    <p className="text-xs text-zinc-600 mt-1">No positions with balance found</p>
+                    <p className="text-xs text-zinc-500 mt-1">No positions with balance found</p>
                   )}
                 </div>
 
@@ -934,9 +934,9 @@ export function TransferDialog({
                         setSrcAmount(e.target.value);
                         setDestAmountManual(false);
                       }}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                     />
-                    <div className="text-xs text-zinc-600 mt-1">
+                    <div className="text-xs text-zinc-500 mt-1">
                       Available: {srcSelected.available.toLocaleString(undefined, { maximumFractionDigits: 6 })} {srcSelected.unit}
                     </div>
                   </div>
@@ -981,7 +981,7 @@ export function TransferDialog({
                         {"shortname" in buySelectedAsset ? buySelectedAsset.shortname : buySelectedAsset.name}
                       </span>
                       {buyAssetCurrency && (
-                        <span className="text-xs text-zinc-600 ml-2">{buyAssetCurrency}</span>
+                        <span className="text-xs text-zinc-500 ml-2">{buyAssetCurrency}</span>
                       )}
                     </div>
                     <button
@@ -1027,7 +1027,7 @@ export function TransferDialog({
                               {"shortname" in r ? r.shortname : r.name}
                             </span>
                             {"exchDisp" in r && (
-                              <span className="text-xs text-zinc-600 ml-1">({(r as YahooSearchResult).exchDisp})</span>
+                              <span className="text-xs text-zinc-500 ml-1">({(r as YahooSearchResult).exchDisp})</span>
                             )}
                           </button>
                         ))}
@@ -1058,7 +1058,7 @@ export function TransferDialog({
                             value={buyNewLocationName}
                             onChange={(e) => setBuyNewLocationName(e.target.value)}
                             placeholder={buyAssetType === "stock" ? "New broker name" : "New exchange name"}
-                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                           />
                           <button
                             type="button"
@@ -1077,7 +1077,7 @@ export function TransferDialog({
                             id={`${id}-buy-location`}
                             value={buyLocationId}
                             onChange={(e) => setBuyLocationId(e.target.value)}
-                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                           >
                             <option value="">Select...</option>
                             {buyLocationOptions.map((loc) => (
@@ -1105,10 +1105,10 @@ export function TransferDialog({
                         min="0"
                         value={buyQuantity}
                         onChange={(e) => setBuyQuantity(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                       />
                       {buyValue !== null && (
-                        <div className="text-xs text-zinc-600 mt-1">
+                        <div className="text-xs text-zinc-500 mt-1">
                           ~{buyAssetCurrency} {buyValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </div>
                       )}
@@ -1150,7 +1150,7 @@ export function TransferDialog({
                     id={`${id}-move-location`}
                     value={moveLocationId}
                     onChange={(e) => setMoveLocationId(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   >
                     <option value="">Select...</option>
                     {moveLocations.map((loc) => (
@@ -1169,7 +1169,7 @@ export function TransferDialog({
 
                 {cashState === "skipped" ? (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-600">Cash not tracked</span>
+                    <span className="text-sm text-zinc-500">Cash not tracked</span>
                     <button
                       type="button"
                       onClick={() => setCashState("prompt")}
@@ -1207,7 +1207,7 @@ export function TransferDialog({
                         value={cashBalance}
                         onChange={(e) => setCashBalance(e.target.value)}
                         placeholder="e.g. 5000"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                       />
                     </div>
                     <div className="flex items-center gap-1">
@@ -1269,7 +1269,7 @@ export function TransferDialog({
                     id={`${id}-dest-location`}
                     value={destLocationId}
                     onChange={(e) => setDestLocationId(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   >
                     <option value="">Select...</option>
                     {destLocationOptions.map((opt) => (
@@ -1290,7 +1290,7 @@ export function TransferDialog({
                       id={`${id}-dest-currency`}
                       value={destCurrency}
                       onChange={(e) => setDestCurrency(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                     >
                       {["EUR", "USD", "GBP", "CHF"].map((c) => (
                         <option key={c} value={c}>{c}</option>
@@ -1316,7 +1316,7 @@ export function TransferDialog({
                       setDestAmount(e.target.value);
                       setDestAmountManual(true);
                     }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   />
                 </div>
               </>
@@ -1344,7 +1344,7 @@ export function TransferDialog({
                 </div>
               )}
               {cashState === "skipped" && (
-                <div className="text-zinc-600">Cash: not tracked</div>
+                <div className="text-zinc-500">Cash: not tracked</div>
               )}
               {(() => {
                 const creating: string[] = [];
@@ -1372,7 +1372,7 @@ export function TransferDialog({
               value={effectiveDate}
               max={new Date().toISOString().split("T")[0]}
               onChange={(e) => setEffectiveDate(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             />
           </div>
 
@@ -1397,7 +1397,7 @@ export function TransferDialog({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
             >
               Cancel
             </button>

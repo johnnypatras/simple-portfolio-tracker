@@ -165,12 +165,17 @@ Deno.serve(async (req: Request) => {
 
     // 4. Batch price fetches (4 API calls in parallel)
     const allTickers = [...yahooTickerSet];
-    const [cryptoPrices, yahooQuotes, fxUsd, fxEur] = await Promise.all([
+    const [cryptoPrices, yahooQuotes, fxUsd, fxEur] = await Promise.allSettled([
       fetchCoinGeckoPrices([...coinIdSet]),
       fetchYahooBatch(allTickers),
       fetchFxRates("USD", [...currencySet].filter((c) => c !== "USD")),
       fetchFxRates("EUR", [...currencySet].filter((c) => c !== "EUR")),
-    ]);
+    ]).then(([crypto, yahoo, fxU, fxE]) => [
+      crypto.status === "fulfilled" ? crypto.value : ({} as Record<string, { usd: number; eur: number }>),
+      yahoo.status === "fulfilled" ? yahoo.value : new Map<string, YahooQuote>(),
+      fxU.status === "fulfilled" ? fxU.value : ({ USD: 1 } as Record<string, number>),
+      fxE.status === "fulfilled" ? fxE.value : ({ EUR: 1 } as Record<string, number>),
+    ] as const);
 
     // 4b. Fall back to v8/chart for any tickers missing from v7 batch
     const missingTickers = allTickers.filter((t) => !yahooQuotes.has(t));
@@ -239,8 +244,8 @@ Deno.serve(async (req: Request) => {
         const valueNative = asset.quantity * quote.price;
         stocksValueUsd += convertToBase(valueNative, quote.currency, "USD", fxUsd);
         stocksValueEur += convertToBase(valueNative, quote.currency, "EUR", fxEur);
-        if (quote.currency === primaryCurrency) {
-          stocksHomeCurrencyEur += convertToBase(valueNative, quote.currency, "EUR", fxEur);
+        if (asset.currency === primaryCurrency) {
+          stocksHomeCurrencyEur += convertToBase(valueNative, asset.currency, "EUR", fxEur);
         }
       }
 

@@ -5,6 +5,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Profile, BaseCurrency } from "@/lib/types";
 import { partialUpdate } from "@/lib/partial-update";
+import { validateName } from "@/lib/validation";
+import { VALID_THEMES } from "@/lib/constants";
 
 /** Fetch the current user's profile. */
 export async function getProfile(): Promise<Profile> {
@@ -32,6 +34,17 @@ export async function updateProfile(input: {
   primary_currency?: BaseCurrency;
   theme?: string | null;
 }): Promise<void> {
+  // Validate string fields
+  if (input.first_name) validateName(input.first_name, 100, "First name");
+  if (input.last_name) validateName(input.last_name, 100, "Last name");
+  if (input.display_name) validateName(input.display_name, 100, "Display name");
+  if (input.primary_currency && !["USD", "EUR"].includes(input.primary_currency)) {
+    throw new Error("Invalid currency. Must be USD or EUR.");
+  }
+  if (input.theme && !(VALID_THEMES as readonly string[]).includes(input.theme)) {
+    throw new Error("Invalid theme.");
+  }
+
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -67,11 +80,9 @@ export async function clearAllData(): Promise<void> {
     "portfolio_snapshots",
     "diary_entries",
     "trade_entries",
-    "exchange_deposits",
-    "broker_deposits",
+    "cash_accounts",
     "stock_assets",
     "crypto_assets",
-    "bank_accounts",
     "brokers",
     "wallets",
     "institutions",
@@ -157,17 +168,23 @@ export async function changePassword(
   } = await supabase.auth.getUser();
   if (!user || !user.email) throw new Error("Not authenticated");
 
-  // Verify current password
+  if (typeof currentPassword !== "string" || currentPassword.length < 1 || currentPassword.length > 72) {
+    throw new Error("Invalid password");
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 8 || newPassword.length > 72) {
+    throw new Error("New password must be 8-72 characters");
+  }
+
+  if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+    throw new Error("Password must include uppercase, lowercase, and a number");
+  }
+
+  // Verify current password (after all validation — avoids wasting a network round-trip)
   const { error: signInError } = await supabase.auth.signInWithPassword({
     email: user.email,
     password: currentPassword,
   });
   if (signInError) throw new Error("Current password is incorrect");
-
-  if (newPassword.length < 8) throw new Error("Password must be at least 8 characters");
-  if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-    throw new Error("Password must include uppercase, lowercase, and a number");
-  }
 
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw new Error(error.message);

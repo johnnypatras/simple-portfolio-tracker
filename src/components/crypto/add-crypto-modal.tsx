@@ -223,10 +223,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
               type="text"
+              aria-label="Search coins"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search coins (e.g. Bitcoin, ETH, SOL...)"
-              className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               autoFocus
             />
             {searching && (
@@ -268,7 +269,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                     </span>
                   </div>
                   {coin.market_cap_rank && (
-                    <span className="text-xs text-zinc-600">
+                    <span className="text-xs text-zinc-500">
                       Rank #{coin.market_cap_rank}
                     </span>
                   )}
@@ -292,7 +293,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           </div>
 
           {query.length < 2 && (
-            <p className="text-xs text-zinc-600 text-center">
+            <p className="text-xs text-zinc-500 text-center">
               Type at least 2 characters to search
             </p>
           )}
@@ -334,7 +335,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 </span>
               </div>
               {selectedCoin.market_cap_rank && (
-                <span className="text-xs text-zinc-600">
+                <span className="text-xs text-zinc-500">
                   Rank #{selectedCoin.market_cap_rank}
                 </span>
               )}
@@ -372,14 +373,14 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               {!isExchange && (
               <div>
                 <label htmlFor={`${id}-chain`} className="block text-xs text-zinc-500 mb-1">
-                  Chain <span className="text-zinc-600">(optional)</span>
+                  Chain <span className="text-zinc-500">(optional)</span>
                 </label>
                 {chainOptions.length > 0 ? (
                   <select
                     id={`${id}-chain`}
                     value={chain}
                     onChange={(e) => setChain(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   >
                     <option value="">Select chain...</option>
                     {chainOptions.map((c) => (
@@ -395,7 +396,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                     value={chain}
                     onChange={(e) => setChain(e.target.value)}
                     placeholder="e.g. Ethereum, Solana..."
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   />
                 )}
               </div>
@@ -404,7 +405,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               {/* Type */}
               <div className="relative">
                 <label htmlFor={`${id}-type`} className="block text-xs text-zinc-500 mb-1">
-                  Type <span className="text-zinc-600">(optional)</span>
+                  Type <span className="text-zinc-500">(optional)</span>
                 </label>
                 <input
                   id={`${id}-type`}
@@ -417,7 +418,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                   onFocus={() => setSubcategoryDropdownOpen(true)}
                   onBlur={() => setTimeout(() => setSubcategoryDropdownOpen(false), 150)}
                   placeholder="e.g. L1, DeFi..."
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 />
                 {subcategoryDropdownOpen && existingSubcategories.length > 0 && (() => {
                   const filtered = existingSubcategories.filter(
@@ -464,7 +465,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                     <ChevronRight className="w-3 h-3" />
                   )}
                   Add initial position
-                  <span className="text-zinc-600">(optional)</span>
+                  <span className="text-zinc-500">(optional)</span>
                 </button>
 
                 {positionOpen && (
@@ -478,7 +479,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                           id={`${id}-wallet`}
                           value={positionWalletId}
                           onChange={(e) => setPositionWalletId(e.target.value)}
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                         >
                           <option value="">Select...</option>
                           {compatibleWallets.map((w) => {
@@ -497,7 +498,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                           </p>
                         )}
                         {chain && !showAllWallets && chainFilteredWallets.length > 0 && chainFilteredWallets.length < wallets.length && (
-                          <p className="text-xs text-zinc-600 mt-1">
+                          <p className="text-xs text-zinc-500 mt-1">
                             Showing {chain}-compatible only{" "}
                             <button
                               type="button"
@@ -521,7 +522,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                           placeholder="0"
                           step="any"
                           min="0"
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 tabular-nums"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums"
                         />
                       </div>
                     </div>
@@ -534,7 +535,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                           id={`${id}-acquisition`}
                           value={acquisitionType}
                           onChange={(e) => setAcquisitionType(e.target.value)}
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                         >
                           {ACQUISITION_TYPES.map((t) => (
                             <option key={t.value} value={t.value}>
@@ -545,7 +546,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                       </div>
                       <div>
                         <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-500 mb-1">
-                          APY % <span className="text-zinc-600">(optional)</span>
+                          APY % <span className="text-zinc-500">(optional)</span>
                         </label>
                         <input
                           id={`${id}-apy`}
@@ -556,7 +557,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                           value={positionApy}
                           onChange={(e) => setPositionApy(e.target.value)}
                           placeholder="0"
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                         />
                       </div>
                     </div>

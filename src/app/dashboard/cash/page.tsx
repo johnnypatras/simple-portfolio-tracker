@@ -1,6 +1,4 @@
 import { getCashAccounts } from "@/lib/actions/cash-accounts";
-import { getWallets } from "@/lib/actions/wallets";
-import { getBrokers } from "@/lib/actions/brokers";
 import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
@@ -11,13 +9,12 @@ import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { CashTable } from "@/components/cash/cash-table";
 import { MobileMenuButton } from "@/components/sidebar";
+import { isStablecoin } from "@/lib/cashflow";
 
 export default async function CashPage() {
-  const [cashAccounts, wallets, brokers, profile, cryptoAssets, cashFlowResult] =
+  const [cashAccounts, profile, cryptoAssets, cashFlowResult] =
     await Promise.all([
       getCashAccounts(),
-      getWallets(),
-      getBrokers(),
       getProfile(),
       getCryptoAssetsWithPositions(),
       deriveCashFlows(),
@@ -26,7 +23,7 @@ export default async function CashPage() {
   const cashFlows = cashFlowResult.events;
 
   // Stablecoins are reclassified as cash — fetch their CoinGecko prices
-  const stablecoins = cryptoAssets.filter((a) => a.subcategory?.toLowerCase() === "stablecoin");
+  const stablecoins = cryptoAssets.filter((a) => isStablecoin(a.subcategory));
 
   // Collect all currencies that need FX conversion
   const allCurrencies = [
@@ -75,8 +72,6 @@ export default async function CashPage() {
       </div>
       <CashTable
         cashAccounts={cashAccounts}
-        wallets={wallets}
-        brokers={brokers}
         primaryCurrency={profile.primary_currency}
         fxRates={fxRates}
         stablecoins={stablecoins}
@@ -86,7 +81,6 @@ export default async function CashPage() {
         fxValueChange24h={summary.cashTotalFxValueChange24h}
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
-        eurUsdRate={eurUsdData?.price ?? undefined}
       />
     </div>
   );

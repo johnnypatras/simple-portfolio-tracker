@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { nanoid } from "nanoid";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { validateName, validateUUID } from "@/lib/validation";
 import type { ShareScope } from "@/lib/share-utils";
 
 // ─── Types ──────────────────────────────────────────────
@@ -51,6 +52,13 @@ export async function createShareLink(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  const shareLabel = opts.label?.trim() || null;
+  if (shareLabel) validateName(shareLabel, 100, "Share label");
+
+  if (opts.expiresInDays != null && (!Number.isInteger(opts.expiresInDays) || opts.expiresInDays < 1 || opts.expiresInDays > 3650)) {
+    throw new Error("Expiry must be between 1 and 3650 days");
+  }
+
   const token = nanoid(21);
   const expiresAt =
     opts.expiresInDays != null
@@ -62,7 +70,7 @@ export async function createShareLink(
     share_type: "link",
     token,
     scope: opts.scope ?? "full",
-    label: opts.label?.trim() || null,
+    label: shareLabel,
     expires_at: expiresAt,
   });
 
@@ -73,6 +81,7 @@ export async function createShareLink(
 
 /** Revoke a share (sets revoked_at). */
 export async function revokeShare(shareId: string): Promise<void> {
+  validateUUID(shareId, "Share ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -114,6 +123,9 @@ export async function getMyShares(): Promise<ShareLink[]> {
 export const validateShareToken = cache(async (
   token: string
 ): Promise<ValidatedShare | null> => {
+  // Reject malformed tokens before hitting the DB (nanoid(21) = 21 chars, URL-safe alphabet)
+  if (!/^[A-Za-z0-9_-]{21}$/.test(token)) return null;
+
   const admin = createAdminClient();
 
   const { data, error } = await admin

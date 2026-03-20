@@ -231,10 +231,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
               type="text"
+              aria-label="Search stocks and ETFs"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search stocks & ETFs (e.g. AAPL, VWCE, S&P 500...)"
-              className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               autoFocus
             />
             {searching && (
@@ -275,7 +276,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-600">
+                    <span className="text-[11px] text-zinc-500">
                       {result.exchDisp}
                     </span>
                     {result.currency && (
@@ -300,7 +301,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
           </div>
 
           {query.length < 2 && (
-            <p className="text-xs text-zinc-600 text-center">
+            <p className="text-xs text-zinc-500 text-center">
               Type at least 2 characters to search
             </p>
           )}
@@ -358,7 +359,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   value={ticker}
                   onChange={(e) => setTicker(e.target.value)}
                   placeholder="AAPL"
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 uppercase"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 uppercase"
                 />
               </div>
               <div>
@@ -371,7 +372,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Apple Inc."
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 />
               </div>
             </div>
@@ -388,13 +389,13 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   value={yahooTicker}
                   onChange={(e) => setYahooTicker(e.target.value)}
                   placeholder="VWCE.DE"
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 uppercase"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 uppercase"
                 />
               </div>
               <div>
                 <label htmlFor={`${id}-isin`} className="block text-xs text-zinc-500 mb-1">
                   ISIN{" "}
-                  <span className="text-zinc-600">(optional)</span>
+                  <span className="text-zinc-500">(optional)</span>
                 </label>
                 <input
                   id={`${id}-isin`}
@@ -402,7 +403,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   value={isin}
                   onChange={(e) => setIsin(e.target.value)}
                   placeholder="IE00B3RBWM25"
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 uppercase"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 uppercase"
                 />
               </div>
             </div>
@@ -419,7 +420,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   onChange={(e) =>
                     setCategory(e.target.value as AssetCategory)
                   }
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 >
                   {TYPES.map((c) => (
                     <option key={c.value} value={c.value}>
@@ -439,7 +440,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   onChange={(e) => setCurrency(e.target.value.toUpperCase())}
                   placeholder="USD"
                   maxLength={3}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 uppercase"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 uppercase"
                 />
               </div>
             </div>
@@ -462,7 +463,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   onFocus={() => setSubcategoryOpen(true)}
                   onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
                   placeholder="e.g. UCITS, Non-UCITS..."
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 />
                 {subcategoryOpen && (() => {
                   const seeded = SEEDED_SUBTYPES[category] ?? [];
@@ -499,7 +500,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 <label htmlFor={`${id}-tags`} className="block text-xs text-zinc-500 mb-1">
                   Tags
                 </label>
-                <div className="w-full min-h-[38px] px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-wrap items-center gap-1 focus-within:ring-2 focus-within:ring-blue-500/40">
+                <div className="w-full min-h-[38px] px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-wrap items-center gap-1 focus-within:ring-2 focus-within:ring-blue-500/70">
                   {tags.map((tag) => (
                     <span
                       key={tag}
@@ -585,7 +586,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                     <ChevronRight className="w-3 h-3" />
                   )}
                   Add initial position
-                  <span className="text-zinc-600">(optional)</span>
+                  <span className="text-zinc-500">(optional)</span>
                 </button>
 
                 {positionOpen && (
@@ -599,7 +600,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                           id={`${id}-broker`}
                           value={positionBrokerId}
                           onChange={(e) => setPositionBrokerId(e.target.value)}
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                         >
                           <option value="">Select broker...</option>
                           {brokers.map((b) => (
@@ -621,7 +622,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                           placeholder="0"
                           step="any"
                           min="0"
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 tabular-nums"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums"
                         />
                       </div>
                     </div>

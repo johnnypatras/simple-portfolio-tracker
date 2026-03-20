@@ -92,7 +92,7 @@ describe("deriveClassFx", () => {
     const result = deriveClassFx(45000, 53000, 45000, 50000, snap, "EUR");
     expect(result.fxPct).toBe(0);
     expect(result.fxAbs).toBe(0);
-    expect(result.pastClassEur).toBe(0);
+    expect(result.pastClassEur).toBeNull();
   });
 
   it("returns zeros when past class value is zero", () => {

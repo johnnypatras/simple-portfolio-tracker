@@ -44,6 +44,7 @@ import type {
   CoinGeckoPriceData,
   YahooStockPriceData,
   TransferMode,
+  BaseCurrency,
 } from "@/lib/types";
 import { useSharedView } from "@/components/shared-view-context";
 
@@ -59,7 +60,7 @@ interface AccountsViewProps {
   cryptoPrices: CoinGeckoPriceData;
   stockPrices: YahooStockPriceData;
   fxRates: FXRates;
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
 }
 
 // ── Component ────────────────────────────────────────────
@@ -291,10 +292,10 @@ export function AccountsView({
                       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                       <span className="text-zinc-500">{s.label}</span>
                       <span className="text-zinc-400 tabular-nums">{s.pct.toFixed(0)}%</span>
-                      <span className="hidden md:inline text-zinc-600 tabular-nums">{formatCurrency(s.value, primaryCurrency)}</span>
+                      <span className="hidden md:inline text-zinc-500 tabular-nums">{formatCurrency(s.value, primaryCurrency)}</span>
                     </span>
                   ))}
-                  <span className="hidden md:flex items-center gap-x-4 text-zinc-600">
+                  <span className="hidden md:flex items-center gap-x-4 text-zinc-500">
                     <span>·</span>
                     <span>{nonEmptyGroups.length} institution{nonEmptyGroups.length !== 1 ? "s" : ""}, {totalAssets} asset{totalAssets !== 1 ? "s" : ""}</span>
                   </span>
@@ -365,6 +366,7 @@ export function AccountsView({
               role="button"
               tabIndex={0}
               aria-expanded={isExpanded}
+              aria-label={institution.name}
               onClick={() => toggleExpand(institution.id)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpand(institution.id); } }}
               className="w-full px-4 py-2.5 hover:bg-zinc-800/30 transition-colors cursor-pointer"
@@ -400,7 +402,7 @@ export function AccountsView({
                         )}
                       </div>
                       {assetCounts && (
-                        <span className="hidden md:inline text-[11px] text-zinc-600">{assetCounts}</span>
+                        <span className="hidden md:inline text-[11px] text-zinc-500">{assetCounts}</span>
                       )}
                     </>
                   )}
@@ -428,6 +430,7 @@ export function AccountsView({
                         e.stopPropagation();
                         setEditingInstitution(institution);
                       }}
+                      aria-label="Edit institution"
                       className={`p-1.5 rounded-lg text-zinc-600 hover:text-blue-400 hover:bg-zinc-800 transition-colors ${
                         isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
                       }`}
@@ -444,6 +447,7 @@ export function AccountsView({
                         const w = wallets.find((w) => w.id === realId);
                         if (w) setEditingStandaloneWallet(w);
                       }}
+                      aria-label="Edit wallet"
                       className={`p-1.5 rounded-lg text-zinc-600 hover:text-amber-400 hover:bg-amber-950/30 transition-colors ${
                         isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
                       }`}
@@ -453,7 +457,7 @@ export function AccountsView({
                   )}
                   <div className="text-right">
                     {isEmpty ? (
-                      <span className="text-sm text-zinc-600">No assets</span>
+                      <span className="text-sm text-zinc-500">No assets</span>
                     ) : (
                       <>
                         <span className="text-sm font-medium text-zinc-200">
@@ -502,7 +506,11 @@ export function AccountsView({
                       .map((row) => (
                         <div key={row.positionId}>
                           <div
+                            role="button"
+                            tabIndex={0}
+                            aria-expanded={activeRowId === row.positionId}
                             onClick={() => setActiveRowId(activeRowId === row.positionId ? null : row.positionId)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveRowId(activeRowId === row.positionId ? null : row.positionId); } }}
                             className={`flex items-center py-1.5 text-sm cursor-pointer rounded-md px-1 -mx-1 transition-colors ${
                               activeRowId === row.positionId ? "bg-zinc-800/50" : "hover:bg-zinc-800/30"
                             }`}
@@ -605,7 +613,11 @@ export function AccountsView({
                       .map((row) => (
                         <div key={row.positionId}>
                           <div
+                            role="button"
+                            tabIndex={0}
+                            aria-expanded={activeRowId === row.positionId}
                             onClick={() => setActiveRowId(activeRowId === row.positionId ? null : row.positionId)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveRowId(activeRowId === row.positionId ? null : row.positionId); } }}
                             className={`flex items-center py-1.5 text-sm cursor-pointer rounded-md px-1 -mx-1 transition-colors ${
                               activeRowId === row.positionId ? "bg-zinc-800/50" : "hover:bg-zinc-800/30"
                             }`}
@@ -737,7 +749,11 @@ export function AccountsView({
                       .map((row) => (
                         <div key={row.id}>
                           <div
+                            role="button"
+                            tabIndex={0}
+                            aria-expanded={activeRowId === row.id}
                             onClick={() => setActiveRowId(activeRowId === row.id ? null : row.id)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveRowId(activeRowId === row.id ? null : row.id); } }}
                             className={`flex items-center py-1.5 text-sm cursor-pointer rounded-md px-1 -mx-1 transition-colors ${
                               activeRowId === row.id ? "bg-zinc-800/50" : "hover:bg-zinc-800/30"
                             }`}
@@ -829,7 +845,7 @@ export function AccountsView({
 
                 {/* Empty state */}
                 {crypto.length === 0 && stocks.length === 0 && cash.length === 0 && (
-                  <div className="pt-3 text-center text-sm text-zinc-600">
+                  <div className="pt-3 text-center text-sm text-zinc-500">
                     No assets linked to this institution yet
                   </div>
                 )}
@@ -853,6 +869,7 @@ export function AccountsView({
       {hiddenGroups.length > 0 && (
         <button
           onClick={() => setShowAllInstitutions(!showAllInstitutions)}
+          aria-expanded={showAllInstitutions}
           className="w-full flex items-center justify-center gap-2 py-2.5 text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
         >
           {showAllInstitutions ? (
@@ -1044,7 +1061,7 @@ function AssetSection({
   label: string;
   count: number;
   totalValue: number;
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
   children: React.ReactNode;
 }) {
   return (
@@ -1123,6 +1140,8 @@ function AddAssetDropdown({
     <div ref={containerRef} className="pt-2 border-t border-zinc-800/30 relative">
       <button
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-haspopup="menu"
         className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800/50"
       >
         <Plus className="w-3 h-3" />

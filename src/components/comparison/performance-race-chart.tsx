@@ -138,7 +138,7 @@ export function PerformanceRaceChart({
           />
         </div>
         <div className="h-48 flex items-center justify-center">
-          <p className="text-sm text-zinc-600">
+          <p className="text-sm text-zinc-500">
             Chart will appear after a few days of data
           </p>
         </div>

@@ -120,6 +120,8 @@ function AllocationRow({
           step={1}
           value={Math.round(value)}
           onChange={(e) => onChange(Number(e.target.value))}
+          aria-label={`${label} allocation`}
+          aria-valuetext={`${Math.round(value)}%`}
           className={`alloc-slider-${label.toLowerCase()} w-full h-1.5 rounded-full appearance-none cursor-pointer
                      [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5
                      [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full
@@ -141,11 +143,11 @@ function AllocationRow({
           max={100}
           value={Math.round(value)}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-12 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-200 text-right
-                     focus:outline-none focus:border-zinc-500 [appearance:textfield]
+          className="w-12 bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-xs text-zinc-100 text-right
+                     focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-blue-500/70 [appearance:textfield]
                      [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
-        <span className="text-[10px] text-zinc-600">%</span>
+        <span className="text-[10px] text-zinc-500">%</span>
       </div>
     </div>
   );
@@ -198,12 +200,12 @@ function ResultRow({
       {/* Change */}
       <div className={`text-xs text-right ${changeColorClass(delta)}`}>
         {Math.abs(delta) < 1 ? (
-          <span className="text-zinc-600">—</span>
+          <span className="text-zinc-500">—</span>
         ) : (
           <>
             {delta >= 0 ? "+" : ""}
             {fmtCurrency(Math.abs(delta), currency, 0)}
-            {delta < 0 && <span className="text-zinc-600"> less</span>}
+            {delta < 0 && <span className="text-zinc-500"> less</span>}
           </>
         )}
       </div>
@@ -272,7 +274,7 @@ export function WhatIfCalculator({
         </h2>
         <button
           onClick={reset}
-          className="flex items-center gap-1 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors"
+          className="flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
         >
           <RotateCcw className="w-3 h-3" />
           Reset
@@ -281,7 +283,7 @@ export function WhatIfCalculator({
 
       {/* ── Total investment input ─────────────────────── */}
       <div>
-        <div className="text-[10px] text-zinc-600 uppercase tracking-wider font-medium mb-2">
+        <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-2">
           Total Investment
         </div>
         <div className="flex items-center gap-2">
@@ -293,8 +295,8 @@ export function WhatIfCalculator({
               type="number"
               value={Math.round(total)}
               onChange={(e) => setTotal(Math.max(0, Number(e.target.value)))}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-11 pr-3 py-2 text-sm text-zinc-200
-                         focus:outline-none focus:border-zinc-500 [appearance:textfield]
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-11 pr-3 py-2 text-sm text-zinc-100
+                         focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-blue-500/70 [appearance:textfield]
                          [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
@@ -310,7 +312,7 @@ export function WhatIfCalculator({
       {/* ── Allocation sliders ─────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-medium">
+          <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">
             Allocation
           </span>
           <button
@@ -336,16 +338,16 @@ export function WhatIfCalculator({
 
       {/* ── Results table ──────────────────────────────── */}
       <div>
-        <div className="text-[10px] text-zinc-600 uppercase tracking-wider font-medium mb-2">
+        <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-2">
           Result
         </div>
 
         {/* Column headers */}
         <div className="grid grid-cols-4 gap-2 mb-1">
           <div />
-          <div className="text-[10px] text-zinc-600 text-right">{viewerName} Now</div>
-          <div className="text-[10px] text-zinc-600 text-right">What If</div>
-          <div className="text-[10px] text-zinc-600 text-right">Change</div>
+          <div className="text-[10px] text-zinc-500 text-right">{viewerName} Now</div>
+          <div className="text-[10px] text-zinc-500 text-right">What If</div>
+          <div className="text-[10px] text-zinc-500 text-right">Change</div>
         </div>
 
         {/* Class rows */}

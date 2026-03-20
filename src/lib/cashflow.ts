@@ -4,7 +4,12 @@
  */
 
 import { positionQtyDelta, cashDelta } from "@/lib/deltas";
-import type { AssetClass } from "@/lib/actions/benchmark";
+import type { AssetClass } from "@/lib/types";
+
+/** Shared predicate for stablecoin detection — single source of truth. */
+export function isStablecoin(subcategory: string | null | undefined): boolean {
+  return subcategory?.toLowerCase() === "stablecoin";
+}
 
 /**
  * Compute cashflow USD/EUR values from prices already available at write time.
@@ -25,7 +30,7 @@ export function computeCashflowFromPrices(params: {
   entityCurrency?: string;
   /** EUR/USD rate (e.g., 1.08 = 1 EUR buys 1.08 USD) */
   fxRate?: number;
-}): { usd: number; eur: number } {
+}): { usd: number; eur: number } | null {
   const { action, beforeQty, afterQty } = params;
 
   // Position mode: qty × price
@@ -48,8 +53,10 @@ export function computeCashflowFromPrices(params: {
   if (currency === "USD") {
     return { usd: delta, eur: fxRate > 0 ? delta / fxRate : delta };
   }
-  // Other currencies: not expected in this codebase (EUR/USD only)
-  return { usd: delta, eur: delta };
+  // Other currencies (GBP, CHF, etc.): return null to signal "needs FX conversion"
+  // Callers should fall back to toUsdAndEur() or mark cashflow as pending
+  console.warn(`[cashflow] Unsupported currency "${currency}" in computeCashflowFromPrices — returning null for backfill`);
+  return null;
 }
 
 /**

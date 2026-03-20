@@ -71,7 +71,7 @@ export function AddWalletModal({ open, onClose }: AddWalletModalProps) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. MetaMask, Ledger, Phantom"
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
           />
         </div>
@@ -85,7 +85,7 @@ export function AddWalletModal({ open, onClose }: AddWalletModalProps) {
             id={`${id}-privacy`}
             value={privacyLabel}
             onChange={(e) => setPrivacyLabel(e.target.value as PrivacyLabel | "")}
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           >
             <option value="">Not set</option>
             <option value="anon">Anonymous</option>

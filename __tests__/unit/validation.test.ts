@@ -60,7 +60,7 @@ describe("validateQuantity", () => {
   });
 
   it("rejects negative", () => {
-    expect(() => validateQuantity(-5)).toThrow("cannot be negative");
+    expect(() => validateQuantity(-5)).toThrow("must not be negative");
   });
 
   it("rejects NaN", () => {
@@ -71,7 +71,7 @@ describe("validateQuantity", () => {
     expect(() => validateQuantity(Infinity)).toThrow("valid number");
   });
 
-  it("accepts zero", () => {
+  it("accepts zero (used for position removal)", () => {
     expect(() => validateQuantity(0)).not.toThrow();
   });
 

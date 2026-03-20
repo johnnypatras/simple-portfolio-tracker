@@ -12,12 +12,15 @@ import type {
 import { logActivity } from "@/lib/actions/activity-log";
 import { validateQuantity, validateUUID, validateYahooTicker } from "@/lib/validation";
 import { normalizeCategory } from "@/lib/stock-categories";
+import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
 
 /** Get all stock assets with their positions and broker names */
 export async function getStockAssetsWithPositions(): Promise<
   StockAssetWithPositions[]
 > {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
   // Round 1: fetch assets and all user brokers in parallel
   const [assetsResult, brokersResult] = await Promise.all([
@@ -227,11 +230,12 @@ export async function deleteStockAsset(id: string, opts?: { isAdjustment?: boole
   if (!user) throw new Error("Not authenticated");
 
   // Delete child positions individually so each gets an activity_log entry
-  const { data: positions } = await supabase
+  const { data: positions, error: positionsError } = await supabase
     .from("stock_positions")
     .select("id")
     .eq("stock_asset_id", id)
     .is("deleted_at", null);
+  if (positionsError) throw new Error(`Failed to fetch stock positions: ${positionsError.message}`);
 
   if (positions?.length) {
     for (const pos of positions) {
@@ -280,6 +284,8 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
 }) {
   validateQuantity(input.quantity, "Stock quantity");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Fetch asset ticker for logging
   const { data: asset } = await supabase
@@ -307,44 +313,11 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         .eq("id", existing.id);
       if (error) throw new Error(error.message);
 
-      let deltaUsd: number | null = null;
-      let deltaEur: number | null = null;
-      let cashflowUsd: number | null = null;
-      let cashflowEur: number | null = null;
-      let cashflowAssetClass: string | null = null;
-      let cashflowStatus: "complete" | "pending" | null = null;
-      let deltaStatus: "complete" | "pending" | null = null;
-
-      if (opts?.currentPriceNative) {
-        const qty = (existing.quantity as number) ?? 0;
-        const deltaNative = -(qty * opts.currentPriceNative);
-
-        if (opts?.isAdjustment) {
-          try {
-            const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-            const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD", opts.effectiveDate?.split("T")[0]);
-            deltaUsd = converted.usd;
-            deltaEur = converted.eur;
-            deltaStatus = "complete";
-          } catch (err) {
-            console.error("[stocks] FX delta failed, marked pending:", err instanceof Error ? err.message : err);
-            deltaStatus = "pending";
-          }
-        } else {
-          try {
-            const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-            const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD", opts.effectiveDate?.split("T")[0]);
-            const { classifyAssetClass } = await import("@/lib/cashflow");
-            cashflowUsd = converted.usd;
-            cashflowEur = converted.eur;
-            cashflowAssetClass = classifyAssetClass("stock_position");
-            cashflowStatus = "complete";
-          } catch (err) {
-            console.error("[stocks] FX cashflow failed, marked pending:", err instanceof Error ? err.message : err);
-            cashflowStatus = "pending";
-          }
-        }
-      }
+      const qty = (existing.quantity as number) ?? 0;
+      const deltaNative = -(qty * (opts?.currentPriceNative ?? 0));
+      const fx = (opts?.currentPriceNative != null)
+        ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts.assetCurrency ?? "USD", effectiveDate: opts.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position" })
+        : emptyFx();
 
       await logActivity({
         action: "removed",
@@ -356,13 +329,13 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         before_snapshot: existing,
         after_snapshot: null,
         is_adjustment: opts?.isAdjustment,
-        delta_usd: deltaUsd,
-        delta_eur: deltaEur,
-        delta_status: deltaStatus,
-        cashflow_amount_usd: cashflowUsd,
-        cashflow_amount_eur: cashflowEur,
-        cashflow_asset_class: cashflowAssetClass,
-        cashflow_status: cashflowStatus,
+        delta_usd: fx.deltaUsd,
+        delta_eur: fx.deltaEur,
+        delta_status: fx.deltaStatus,
+        cashflow_amount_usd: fx.cashflowUsd,
+        cashflow_amount_eur: fx.cashflowEur,
+        cashflow_asset_class: fx.cashflowAssetClass,
+        cashflow_status: fx.cashflowStatus,
         transfer_group_id: opts?.transferGroupId,
         created_at: opts?.effectiveDate,
       });
@@ -422,46 +395,13 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       .is("deleted_at", null)
       .single();
 
-    let deltaUsd: number | null = null;
-    let deltaEur: number | null = null;
-    let cashflowUsd: number | null = null;
-    let cashflowEur: number | null = null;
-    let cashflowAssetClass: string | null = null;
-    let cashflowStatus: "complete" | "pending" | null = null;
-    let deltaStatus: "complete" | "pending" | null = null;
-
-    if (opts?.currentPriceNative) {
-      const beforeQty = (before?.quantity as number) ?? 0;
-      const afterQty = input.quantity;
-      const qtyDelta = afterQty - beforeQty;
-      const deltaNative = qtyDelta * opts.currentPriceNative;
-
-      if (opts?.isAdjustment) {
-        try {
-          const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-          const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD", opts.effectiveDate?.split("T")[0]);
-          deltaUsd = converted.usd;
-          deltaEur = converted.eur;
-          deltaStatus = "complete";
-        } catch (err) {
-          console.error("[stocks] FX delta failed, marked pending:", err instanceof Error ? err.message : err);
-          deltaStatus = "pending";
-        }
-      } else {
-        try {
-          const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-          const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD", opts.effectiveDate?.split("T")[0]);
-          const { classifyAssetClass } = await import("@/lib/cashflow");
-          cashflowUsd = converted.usd;
-          cashflowEur = converted.eur;
-          cashflowAssetClass = classifyAssetClass("stock_position");
-          cashflowStatus = "complete";
-        } catch (err) {
-          console.error("[stocks] FX cashflow failed, marked pending:", err instanceof Error ? err.message : err);
-          cashflowStatus = "pending";
-        }
-      }
-    }
+    const beforeQty = (before?.quantity as number) ?? 0;
+    const afterQty = input.quantity;
+    const qtyDelta = afterQty - beforeQty;
+    const deltaNative = qtyDelta * (opts?.currentPriceNative ?? 0);
+    const fx = (opts?.currentPriceNative != null)
+      ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts.assetCurrency ?? "USD", effectiveDate: opts.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position" })
+      : emptyFx();
 
     await logActivity({
       action: before ? "updated" : "created",
@@ -473,13 +413,13 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       before_snapshot: before,
       after_snapshot: after,
       is_adjustment: opts?.isAdjustment,
-      delta_usd: deltaUsd,
-      delta_eur: deltaEur,
-      delta_status: deltaStatus,
-      cashflow_amount_usd: cashflowUsd,
-      cashflow_amount_eur: cashflowEur,
-      cashflow_asset_class: cashflowAssetClass,
-      cashflow_status: cashflowStatus,
+      delta_usd: fx.deltaUsd,
+      delta_eur: fx.deltaEur,
+      delta_status: fx.deltaStatus,
+      cashflow_amount_usd: fx.cashflowUsd,
+      cashflow_amount_eur: fx.cashflowEur,
+      cashflow_asset_class: fx.cashflowAssetClass,
+      cashflow_status: fx.cashflowStatus,
       transfer_group_id: opts?.transferGroupId,
       created_at: opts?.effectiveDate,
     });
@@ -499,6 +439,8 @@ export async function deleteStockPosition(positionId: string, opts?: {
 }) {
   validateUUID(positionId, "Stock position ID");
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   // Capture full snapshot before soft-delete
   const { data: snapshot } = await supabase
@@ -517,44 +459,11 @@ export async function deleteStockPosition(positionId: string, opts?: {
 
   if (error) throw new Error(error.message);
 
-  let deltaUsd: number | null = null;
-  let deltaEur: number | null = null;
-  let cashflowUsd: number | null = null;
-  let cashflowEur: number | null = null;
-  let cashflowAssetClass: string | null = null;
-  let cashflowStatus: "complete" | "pending" | null = null;
-  let deltaStatus: "complete" | "pending" | null = null;
-
-  if (snapshot) {
-    const qty = (snapshot.quantity as number) ?? 0;
-    const deltaNative = -(qty * (opts?.currentPriceNative ?? 0));
-
-    if (opts?.isAdjustment) {
-      try {
-        const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-        const converted = await toUsdAndEur(deltaNative, opts.assetCurrency ?? "USD", opts?.effectiveDate?.split("T")[0]);
-        deltaUsd = converted.usd;
-        deltaEur = converted.eur;
-        deltaStatus = "complete";
-      } catch (err) {
-        console.error("[stocks] FX delta failed, marked pending:", err instanceof Error ? err.message : err);
-        deltaStatus = "pending";
-      }
-    } else {
-      try {
-        const { toUsdAndEur } = await import("@/lib/actions/activity-log");
-        const converted = await toUsdAndEur(deltaNative, opts?.assetCurrency ?? "USD", opts?.effectiveDate?.split("T")[0]);
-        const { classifyAssetClass } = await import("@/lib/cashflow");
-        cashflowUsd = converted.usd;
-        cashflowEur = converted.eur;
-        cashflowAssetClass = classifyAssetClass("stock_position");
-        cashflowStatus = "complete";
-      } catch (err) {
-        console.error("[stocks] FX cashflow failed, marked pending:", err instanceof Error ? err.message : err);
-        cashflowStatus = "pending";
-      }
-    }
-  }
+  const qty = (snapshot?.quantity as number) ?? 0;
+  const deltaNative = -(qty * (opts?.currentPriceNative ?? 0));
+  const fx = (snapshot && opts?.currentPriceNative != null)
+    ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts.assetCurrency ?? "USD", effectiveDate: opts.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position" })
+    : emptyFx();
 
   await logActivity({
     action: "removed",
@@ -566,13 +475,13 @@ export async function deleteStockPosition(positionId: string, opts?: {
     before_snapshot: snapshot,
     after_snapshot: null,
     is_adjustment: opts?.isAdjustment,
-    delta_usd: deltaUsd,
-    delta_eur: deltaEur,
-    delta_status: deltaStatus,
-    cashflow_amount_usd: cashflowUsd,
-    cashflow_amount_eur: cashflowEur,
-    cashflow_asset_class: cashflowAssetClass,
-    cashflow_status: cashflowStatus,
+    delta_usd: fx.deltaUsd,
+    delta_eur: fx.deltaEur,
+    delta_status: fx.deltaStatus,
+    cashflow_amount_usd: fx.cashflowUsd,
+    cashflow_amount_eur: fx.cashflowEur,
+    cashflow_asset_class: fx.cashflowAssetClass,
+    cashflow_status: fx.cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
     created_at: opts?.effectiveDate,
   });

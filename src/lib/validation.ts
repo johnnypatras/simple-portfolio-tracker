@@ -13,7 +13,7 @@ export function validateAmount(n: number, label = "Amount"): void {
 
 export function validateQuantity(n: number, label = "Quantity"): void {
   if (!Number.isFinite(n)) throw new Error(`${label} must be a valid number`);
-  if (n < 0) throw new Error(`${label} cannot be negative`);
+  if (n < 0) throw new Error(`${label} must not be negative`);
   if (n > MAX_AMOUNT) throw new Error(`${label} is unreasonably large`);
 }
 
@@ -51,6 +51,10 @@ export function validateYahooTicker(s: string): void {
   if (!YAHOO_TICKER_RE.test(s)) {
     throw new Error(`Yahoo ticker contains invalid characters: "${s}"`);
   }
+}
+
+export function validateDate(s: string, label = "Date"): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error(`${label} must be YYYY-MM-DD format`);
 }
 
 const UUID_RE =

@@ -207,7 +207,7 @@ export function UsersSettings() {
         </h3>
 
         {pendingUsers.length === 0 ? (
-          <p className="text-sm text-zinc-600 bg-zinc-900/50 border border-zinc-800/50 rounded-lg px-4 py-3">
+          <p className="text-sm text-zinc-500 bg-zinc-900/50 border border-zinc-800/50 rounded-lg px-4 py-3">
             No pending registrations
           </p>
         ) : (
@@ -258,7 +258,7 @@ export function UsersSettings() {
           <select
             value={expiresInDays}
             onChange={(e) => setExpiresInDays(e.target.value)}
-            className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           >
             {EXPIRY_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -277,7 +277,7 @@ export function UsersSettings() {
         </div>
 
         {codes.length === 0 ? (
-          <p className="text-sm text-zinc-600 bg-zinc-900/50 border border-zinc-800/50 rounded-lg px-4 py-3">
+          <p className="text-sm text-zinc-500 bg-zinc-900/50 border border-zinc-800/50 rounded-lg px-4 py-3">
             No invite codes generated yet
           </p>
         ) : (
@@ -305,6 +305,7 @@ export function UsersSettings() {
                           onClick={() => copyCode(code.code)}
                           className="p-1.5 text-zinc-500 hover:text-zinc-300 transition-colors"
                           title="Copy invite link"
+                          aria-label="Copy invite link"
                         >
                           {copiedCode === code.code ? (
                             <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -377,7 +378,7 @@ export function UsersSettings() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-zinc-600 hidden sm:block">
+                    <span className="text-xs text-zinc-500 hidden sm:block">
                       {formatDate(user.created_at)}
                     </span>
                     {user.role !== "admin" && (

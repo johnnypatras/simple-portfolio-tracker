@@ -12,9 +12,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { Layers, TrendingUp, Info, BarChart3, Percent } from "lucide-react";
-import type { PortfolioSnapshot } from "@/lib/types";
-import type { CashFlowEvent } from "@/lib/actions/benchmark";
-import type { AdjustmentDelta } from "@/lib/actions/activity-log";
+import type { PortfolioSnapshot, CashFlowEvent, AdjustmentDelta, BaseCurrency } from "@/lib/types";
 import { fmtCurrencyCompact } from "@/lib/format";
 import { enrichChartData } from "@/lib/portfolio/chart-enrichment";
 import type { ChartViewMode, ChartPoint } from "@/lib/portfolio/chart-enrichment";
@@ -25,7 +23,7 @@ interface PortfolioChartProps {
   snapshots: PortfolioSnapshot[];
   liveValue: number;
   liveValueUsd?: number;
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
   sp500History?: { date: string; close: number }[];
   cashFlows?: CashFlowEvent[];
   adjustmentDeltas?: AdjustmentDelta[];
@@ -300,7 +298,7 @@ export function PortfolioChart({
           />
         </div>
         <div className="h-48 flex items-center justify-center">
-          <p className="text-sm text-zinc-600">
+          <p className="text-sm text-zinc-500">
             Chart will appear after a few days of data
           </p>
         </div>
@@ -480,7 +478,7 @@ export function PortfolioChart({
                       })()}
                     </p>
                     {!returnMode && hasDeltas && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
-                      <p className="text-[10px] text-zinc-600 mt-0.5">
+                      <p className="text-[10px] text-zinc-500 mt-0.5">
                         Raw: {fmtCurrencyCompact(point.rawValue, primaryCurrency)}
                       </p>
                     )}
@@ -579,11 +577,11 @@ export function PortfolioChart({
           {showBenchmark && (
             <>
               <LegendItem color="bg-zinc-500" label="S&P 500 TR" dashed />
-              <span className="text-[9px] text-zinc-600">
+              <span className="text-[9px] text-zinc-500">
                 {cashFlows.length > 0 ? "adjusted" : "naive"}
               </span>
               <span className="relative group">
-                <Info className="w-3 h-3 text-zinc-600 cursor-help" />
+                <Info className="w-3 h-3 text-zinc-500 cursor-help" />
                 <span className="absolute bottom-full right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mb-1.5 w-56 max-w-[calc(100vw-3rem)] px-2.5 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-[10px] leading-relaxed text-zinc-300 shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
                   {cashFlows.length > 0
                     ? "\"What if I\u2019d put every dollar into the S&P 500 instead?\" Each deposit, purchase, and withdrawal is replayed at the S&P price on that day. Accuracy improves over time as more changes are tracked."

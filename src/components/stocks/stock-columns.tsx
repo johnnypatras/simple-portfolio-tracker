@@ -486,7 +486,7 @@ export function getStockColumns(handlers: {
             <span className="text-xs text-zinc-500 uppercase">
               {row.asset.ticker}
               {row.asset.isin && (
-                <span className="text-zinc-600 ml-1.5 normal-case">
+                <span className="text-zinc-500 ml-1.5 normal-case">
                   {row.asset.isin}
                 </span>
               )}
@@ -538,7 +538,7 @@ export function getStockColumns(handlers: {
       renderCell: (row) => {
         const tags = row.asset.tags;
         if (!tags || tags.length === 0) {
-          return <span className="text-xs text-zinc-600">—</span>;
+          return <span className="text-xs text-zinc-500">—</span>;
         }
         const visible = tags.slice(0, 2);
         const remaining = tags.length - 2;
@@ -553,7 +553,7 @@ export function getStockColumns(handlers: {
               </span>
             ))}
             {remaining > 0 && (
-              <span className="text-[10px] text-zinc-600">
+              <span className="text-[10px] text-zinc-500">
                 +{remaining} more
               </span>
             )}
@@ -581,7 +581,7 @@ export function getStockColumns(handlers: {
             )}
           </div>
         ) : (
-          <span className="text-xs text-zinc-600">—</span>
+          <span className="text-xs text-zinc-500">—</span>
         ),
     },
     {
@@ -637,7 +637,7 @@ export function getStockColumns(handlers: {
       renderHeader: (ctx) =>
         `Value (${ctx.primaryCurrency})`,
       renderCell: (row, ctx) => (
-        <span className={`text-sm tabular-nums ${row.priceUnavailable ? "text-zinc-600" : "font-semibold text-zinc-100"}`}>
+        <span className={`text-sm tabular-nums ${row.priceUnavailable ? "text-zinc-500" : "font-semibold text-zinc-100"}`}>
           {row.priceUnavailable
             ? "—"
             : row.valueBase > 0

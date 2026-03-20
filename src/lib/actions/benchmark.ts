@@ -3,18 +3,11 @@
 import { cache } from "react";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { validateUUID } from "@/lib/validation";
 
 // ─── Cash Flow Event ─────────────────────────────────────
 
-export type AssetClass = "crypto" | "stocks" | "cash";
-
-export interface CashFlowEvent {
-  date: string;       // YYYY-MM-DD
-  amount_usd: number; // positive = deposit, negative = withdrawal
-  amount_eur?: number; // EUR amount via historical rate (avoids USD round-trip for EUR entities)
-  asset_class?: AssetClass;
-  entity_name?: string;
-}
+import type { AssetClass, CashFlowEvent } from "@/lib/types";
 
 /**
  * Derive cash flow events from the activity log.
@@ -30,6 +23,7 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
   pendingCount: number;
   failedCount: number;
 }> {
+  if (userId) validateUUID(userId, "User ID");
   const supabase = userId ? createAdminClient() : await createServerSupabaseClient();
 
   // Single DB query — all cashflows pre-computed at write time
@@ -45,6 +39,8 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
 
   if (error) {
     console.error("[benchmark] deriveCashFlows query failed:", error.message);
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.captureException(new Error(`deriveCashFlows query failed: ${error.message}`));
     return { events: [], pendingCount: 0, failedCount: 0 };
   }
 

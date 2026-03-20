@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import FocusTrap from "focus-trap-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -54,6 +55,7 @@ export function Sidebar({ email }: { email: string }) {
   const router = useRouter();
   const supabase = createClient();
   const { mobileOpen, setMobileOpen } = useSidebar();
+  const asideRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -146,7 +148,7 @@ export function Sidebar({ email }: { email: string }) {
 
         {/* User email */}
         <div className="px-3 pt-3">
-          <p className="text-xs text-zinc-600 truncate">{email}</p>
+          <p className="text-xs text-zinc-500 truncate">{email}</p>
         </div>
 
         {/* Dev mode indicator */}
@@ -173,13 +175,18 @@ export function Sidebar({ email }: { email: string }) {
       )}
 
       {/* Sidebar — mobile slides in, desktop always visible */}
-      <aside
-        className={`fixed top-0 left-0 z-40 h-full w-72 sm:w-60 bg-zinc-900 border-r border-zinc-800/50 flex flex-col transition-transform duration-200 lg:translate-x-0 lg:static lg:w-60 ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        {nav}
-      </aside>
+      <FocusTrap active={mobileOpen} focusTrapOptions={{ initialFocus: false, fallbackFocus: () => asideRef.current!, allowOutsideClick: true }}>
+        <aside
+          ref={asideRef}
+          tabIndex={-1}
+          {...(mobileOpen ? { role: "dialog" as const, "aria-modal": true, "aria-label": "Navigation menu" } : {})}
+          className={`fixed top-0 left-0 z-40 h-full w-72 sm:w-60 bg-zinc-900 border-r border-zinc-800/50 flex flex-col transition-transform duration-200 lg:translate-x-0 lg:static lg:w-60 outline-none ${
+            mobileOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          {nav}
+        </aside>
+      </FocusTrap>
     </>
   );
 }

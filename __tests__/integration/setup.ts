@@ -88,8 +88,19 @@ export async function createTestUser(email?: string): Promise<{
     throw new Error("Failed to sign up test user: " + error.message);
   }
   if (error) throw new Error("Failed to sign up test user: " + error.message);
-  if (!data.user) throw new Error("signUp returned no user");
+  if (!data?.user) throw new Error("signUp returned no user");
   const userId = data.user.id;
+
+  // Activate the user — is_active_user() RLS check blocks pending users from all operations.
+  // The auth trigger creates the profile row, but we need to wait for it.
+  const adminClient = getAdminClient();
+  for (let i = 0; i < 10; i++) {
+    const { data: profile } = await adminClient.from("profiles").select("id").eq("id", userId).maybeSingle();
+    if (profile) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const { error: activateErr } = await adminClient.from("profiles").update({ status: "active" }).eq("id", userId);
+  if (activateErr) console.error("[setup] Failed to activate test user:", activateErr.message);
 
   return {
     client: userClient,

@@ -34,11 +34,11 @@ function createQueryBuilder(resolveValue: unknown) {
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     single: vi.fn().mockReturnThis(),
-    then(
-      onFulfilled: (value: unknown) => unknown,
-      onRejected?: (reason: unknown) => unknown,
-    ) {
-      return Promise.resolve(resolveValue).then(onFulfilled, onRejected);
+    then<TResult1 = unknown, TResult2 = never>(
+      onfulfilled?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ): PromiseLike<TResult1 | TResult2> {
+      return Promise.resolve(resolveValue).then(onfulfilled, onrejected) as PromiseLike<TResult1 | TResult2>;
     },
   };
   return builder;
@@ -90,6 +90,7 @@ vi.mock("@/lib/cashflow", () => ({
 vi.mock("@/lib/validation", () => ({
   validateAmount: vi.fn(),
   validateCurrency: vi.fn(),
+  validateName: vi.fn(),
   validateUUID: vi.fn(),
 }));
 

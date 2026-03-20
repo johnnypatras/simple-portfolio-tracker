@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { nanoid } from "nanoid";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { validateUUID } from "@/lib/validation";
 import type { Profile, UserStatus } from "@/lib/types";
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -41,6 +42,7 @@ export async function getUsers(): Promise<Profile[]> {
 }
 
 export async function approveUser(userId: string): Promise<void> {
+  validateUUID(userId, "User ID");
   await requireAdmin();
   const admin = createAdminClient();
 
@@ -54,6 +56,7 @@ export async function approveUser(userId: string): Promise<void> {
 }
 
 export async function rejectUser(userId: string): Promise<void> {
+  validateUUID(userId, "User ID");
   await requireAdmin();
   const admin = createAdminClient();
 
@@ -71,6 +74,7 @@ export async function rejectUser(userId: string): Promise<void> {
 }
 
 export async function suspendUser(userId: string): Promise<void> {
+  validateUUID(userId, "User ID");
   const adminId = await requireAdmin();
   if (userId === adminId) throw new Error("Cannot suspend yourself");
   const admin = createAdminClient();
@@ -85,6 +89,7 @@ export async function suspendUser(userId: string): Promise<void> {
 }
 
 export async function unsuspendUser(userId: string): Promise<void> {
+  validateUUID(userId, "User ID");
   await requireAdmin();
   const admin = createAdminClient();
 
@@ -154,6 +159,10 @@ export async function createInviteCode(
   const adminId = await requireAdmin();
   const admin = createAdminClient();
 
+  if (expiresInDays != null && (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 3650)) {
+    throw new Error("Expiry must be between 1 and 3650 days");
+  }
+
   const code = nanoid(12);
   const expiresAt =
     expiresInDays != null
@@ -172,6 +181,7 @@ export async function createInviteCode(
 }
 
 export async function deleteInviteCode(codeId: string): Promise<void> {
+  validateUUID(codeId, "Invite code ID");
   await requireAdmin();
   const admin = createAdminClient();
 

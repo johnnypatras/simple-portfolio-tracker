@@ -49,11 +49,11 @@ function createQueryBuilder(resolveValue: unknown) {
     or: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
-    then(
-      onFulfilled: (value: unknown) => unknown,
-      onRejected?: (reason: unknown) => unknown
-    ) {
-      return Promise.resolve(resolveValue).then(onFulfilled, onRejected);
+    then<TResult1 = unknown, TResult2 = never>(
+      onfulfilled?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ): PromiseLike<TResult1 | TResult2> {
+      return Promise.resolve(resolveValue).then(onfulfilled, onrejected) as PromiseLike<TResult1 | TResult2>;
     },
   };
   return builder;
@@ -448,7 +448,7 @@ describe("deriveCashFlows (DB-only)", () => {
         { count: 0 },
       ]);
 
-      await deriveCashFlows("user-123");
+      await deriveCashFlows("00000000-0000-4000-8000-000000000001");
 
       expect(createAdminClient).toHaveBeenCalled();
       expect(createServerSupabaseClient).not.toHaveBeenCalled();
@@ -488,7 +488,7 @@ describe("deriveCashFlows (DB-only)", () => {
         { count: 0 },
       ]);
 
-      const result = await deriveCashFlows("user-abc");
+      const result = await deriveCashFlows("00000000-0000-4000-8000-000000000002");
 
       expect(result.events).toHaveLength(1);
       expect(result.events[0].date).toBe("2024-07-04");

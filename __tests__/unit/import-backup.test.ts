@@ -135,12 +135,11 @@ describe("validateBackup", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const cashAccounts = result.preview.cashAccounts ?? [];
-      const fromDeposit = cashAccounts.find(
-        (c: Record<string, unknown>) =>
-          (c as Record<string, unknown>).wallet_id === "w1",
+      const fromDeposit = (cashAccounts as unknown as Record<string, unknown>[]).find(
+        (c) => c.wallet_id === "w1",
       );
       expect(fromDeposit).toBeDefined();
-      expect((fromDeposit as Record<string, unknown>).balance).toBe(500);
+      expect(fromDeposit?.balance).toBe(500);
     }
   });
 });

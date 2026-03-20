@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
 import type { RenderContext, ColumnDef } from "@/lib/column-config";
 import { HIDDEN_BELOW } from "@/lib/constants";
+import { isStablecoin } from "@/lib/cashflow";
 import type {
   CryptoAssetWithPositions,
   CoinGeckoPriceData,
@@ -154,7 +155,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
     let stable = 0;
     let nonStable = 0;
     for (const r of baseRows) {
-      if (r.asset.subcategory?.toLowerCase() === "stablecoin") {
+      if (isStablecoin(r.asset.subcategory)) {
         stable += r.valueInBase;
       } else {
         nonStable += r.valueInBase;
@@ -166,7 +167,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
   const weighted24hChange = useMemo(() => {
     if (nonStableValue === 0) return 0;
     return baseRows
-      .filter((r) => r.asset.subcategory?.toLowerCase() !== "stablecoin")
+      .filter((r) => !isStablecoin(r.asset.subcategory))
       .reduce((sum, r) => sum + r.valueInBase * r.change24h, 0) / nonStableValue;
   }, [baseRows, nonStableValue]);
 
@@ -502,7 +503,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
           <Bitcoin className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
           <p className="text-sm text-zinc-500">No crypto assets yet</p>
-          <p className="text-xs text-zinc-600 mt-1">
+          <p className="text-xs text-zinc-500 mt-1">
             Search and add your first cryptocurrency
           </p>
         </div>
@@ -533,7 +534,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                         >
                           {group.label}
                         </span>
-                        <span className="text-[11px] text-zinc-600">
+                        <span className="text-[11px] text-zinc-500">
                           ({group.entryCount})
                         </span>
                         <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -597,7 +598,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               {wtInfo.label}
                             </span>
                           )}
-                          <span className="text-[11px] text-zinc-600">
+                          <span className="text-[11px] text-zinc-500">
                             ({group.entryCount})
                           </span>
                           <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -657,7 +658,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                             >
                               {group.label}
                             </span>
-                            <span className="text-[11px] text-zinc-600">
+                            <span className="text-[11px] text-zinc-500">
                               ({group.entryCount})
                             </span>
                             <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -715,7 +716,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                             <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
                               {group.label}
                             </span>
-                            <span className="text-[11px] text-zinc-600">
+                            <span className="text-[11px] text-zinc-500">
                               ({group.entryCount})
                             </span>
                             <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -770,7 +771,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
                                 {group.label}
                               </span>
-                              <span className="text-[11px] text-zinc-600">
+                              <span className="text-[11px] text-zinc-500">
                                 ({group.entryCount})
                               </span>
                               <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -841,7 +842,6 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                         onClick={isSortable ? () => handleSort(colSortKey) : undefined}
                         onKeyDown={isSortable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort(colSortKey); } } : undefined}
                         tabIndex={isSortable ? 0 : undefined}
-                        role={isSortable ? "button" : undefined}
                         aria-sort={isActiveSort ? (sortDir === "desc" ? "descending" : "ascending") : undefined}
                       >
                         <span className={`inline-flex items-center gap-1 ${align === "text-right" ? "justify-end" : ""}`}>
@@ -889,7 +889,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 >
                                   {group.label}
                                 </span>
-                                <span className="text-[11px] text-zinc-600">
+                                <span className="text-[11px] text-zinc-500">
                                   {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                 </span>
                                 {isGroupOpen && (
@@ -953,7 +953,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                       {wtInfo.label}
                                     </span>
                                   )}
-                                  <span className="text-[11px] text-zinc-600">
+                                  <span className="text-[11px] text-zinc-500">
                                     {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                   </span>
                                   {isGroupOpen && (
@@ -1013,7 +1013,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                     >
                                       {group.label}
                                     </span>
-                                    <span className="text-[11px] text-zinc-600">
+                                    <span className="text-[11px] text-zinc-500">
                                       {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                     </span>
                                     {isGroupOpen && (
@@ -1071,7 +1071,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                     <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
                                       {group.label}
                                     </span>
-                                    <span className="text-[11px] text-zinc-600">
+                                    <span className="text-[11px] text-zinc-500">
                                       {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                     </span>
                                     {isGroupOpen && (
@@ -1128,7 +1128,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                       {rowExpanded && row.asset.positions.length === 0 && (
                                         <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                           <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-                                            <p className="text-xs text-zinc-600">
+                                            <p className="text-xs text-zinc-500">
                                               No positions — click edit to add quantities
                                             </p>
                                           </td>
@@ -1166,7 +1166,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                     <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
                                       {group.label}
                                     </span>
-                                    <span className="text-[11px] text-zinc-600">
+                                    <span className="text-[11px] text-zinc-500">
                                       {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                     </span>
                                     {isGroupOpen && (
@@ -1223,7 +1223,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                       {rowExpanded && row.asset.positions.length === 0 && (
                                         <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                           <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-                                            <p className="text-xs text-zinc-600">
+                                            <p className="text-xs text-zinc-500">
                                               No positions — click edit to add quantities
                                             </p>
                                           </td>
@@ -1284,7 +1284,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               {rowExpanded && row.asset.positions.length === 0 && (
                                 <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                   <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
-                                    <p className="text-xs text-zinc-600">
+                                    <p className="text-xs text-zinc-500">
                                       No positions — click the layers icon to add quantities
                                     </p>
                                   </td>
@@ -1374,7 +1374,7 @@ function GroupedCryptoEntryRows({
           if (col.key === "source") {
             return (
               <td key={col.key} className={`${pl} py-3 text-left ${hidden}`}>
-                <span className="text-xs text-zinc-600">—</span>
+                <span className="text-xs text-zinc-500">—</span>
               </td>
             );
           }
@@ -1420,7 +1420,7 @@ function GroupedCryptoEntryRows({
       {rowExpanded && entry.positions.length === 0 && (
         <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
           <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-            <p className="text-xs text-zinc-600">
+            <p className="text-xs text-zinc-500">
               No positions — click edit to add quantities
             </p>
           </td>
@@ -1595,7 +1595,7 @@ function ExpandedCryptoRow({
                   {apy.toFixed(apy % 1 === 0 ? 0 : 2)}%
                 </span>
               ) : (
-                <span className="text-xs text-zinc-600">—</span>
+                <span className="text-xs text-zinc-500">—</span>
               )}
             </td>
           );

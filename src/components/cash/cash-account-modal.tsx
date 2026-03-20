@@ -124,13 +124,13 @@ export function CashAccountModal({
         {cashAccount?.last_was_transfer && (
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
             <span className="text-[10px] text-teal-400 font-medium" title="Last change was a sell/buy/move transfer">Xfer</span>
-            <span className="text-[10px] text-zinc-600">Last changed via transfer</span>
+            <span className="text-[10px] text-zinc-500">Last changed via transfer</span>
           </div>
         )}
         {!cashAccount?.last_was_transfer && cashAccount?.last_was_adjustment && (
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
             <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">Adj.</span>
-            <span className="text-[10px] text-zinc-600">Last saved as portfolio adjustment</span>
+            <span className="text-[10px] text-zinc-500">Last saved as portfolio adjustment</span>
           </div>
         )}
 
@@ -146,7 +146,7 @@ export function CashAccountModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Savings, Current"
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               required
             />
           </div>
@@ -162,7 +162,7 @@ export function CashAccountModal({
               id={`${id}-currency`}
               value={currency}
               onChange={(e) => setCurrency(e.target.value as CurrencyType)}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             >
               <option value="EUR">EUR</option>
               <option value="USD">USD</option>
@@ -179,7 +179,7 @@ export function CashAccountModal({
               value={balance}
               onChange={(e) => setBalance(e.target.value)}
               placeholder="0.00"
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               required
             />
           </div>
@@ -188,7 +188,7 @@ export function CashAccountModal({
         {/* APY */}
         <div>
           <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-500 mb-1">
-            APY % <span className="text-zinc-600">(optional)</span>
+            APY % <span className="text-zinc-500">(optional)</span>
           </label>
           <input
             id={`${id}-apy`}
@@ -197,7 +197,7 @@ export function CashAccountModal({
             value={apy}
             onChange={(e) => setApy(e.target.value)}
             placeholder="0.00"
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           />
         </div>
 

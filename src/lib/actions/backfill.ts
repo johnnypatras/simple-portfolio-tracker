@@ -1,7 +1,7 @@
 "use server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { classifyAssetClass } from "@/lib/cashflow";
+import { classifyAssetClass, isStablecoin } from "@/lib/cashflow";
 import { cashAmountField, cashDelta } from "@/lib/deltas";
 import type { CashEntityType } from "@/lib/deltas";
 import { toUsdAndEur, computeDeltaFromSnapshots } from "./activity-log";
@@ -70,6 +70,27 @@ export async function backfillCashflowsAndDeltas(): Promise<{
     return { processed: 0, succeeded: 0, pending: 0, failed: 0 };
   }
 
+  // Pre-fetch subcategories for all crypto rows in one query to avoid N+1
+  const cryptoAssetIds = allRows
+    .filter((r) => r.entity_type === "crypto_position")
+    .map((r) => {
+      const snap = (r.after_snapshot ?? r.before_snapshot) as Record<string, unknown> | null;
+      return snap?.crypto_asset_id as string | undefined;
+    })
+    .filter((id): id is string => Boolean(id));
+
+  const cryptoSubcategoryMap = new Map<string, string>();
+  if (cryptoAssetIds.length > 0) {
+    const { data: cryptoAssets, error: subcatErr } = await supabase
+      .from("crypto_assets")
+      .select("id, subcategory")
+      .in("id", cryptoAssetIds);
+    if (subcatErr) console.error("[backfill] Subcategory pre-fetch failed:", subcatErr.message);
+    for (const asset of cryptoAssets ?? []) {
+      if (asset.subcategory) cryptoSubcategoryMap.set(asset.id, asset.subcategory);
+    }
+  }
+
   let succeeded = 0;
   let pending = 0;
   let failed = 0;
@@ -111,22 +132,17 @@ export async function backfillCashflowsAndDeltas(): Promise<{
 
       if (isCashflow) {
         // Determine asset class (with stablecoin check for crypto)
-        let isStablecoin = false;
+        let isStable = false;
         if (entityType === "crypto_position") {
           const snap = (row.after_snapshot ?? row.before_snapshot) as Record<string, unknown> | null;
           const assetId = snap?.crypto_asset_id as string | undefined;
           if (assetId) {
-            const { data: asset } = await supabase
-              .from("crypto_assets")
-              .select("subcategory")
-              .eq("id", assetId)
-              .single();
-            isStablecoin = asset?.subcategory?.toLowerCase() === "stablecoin";
+            isStable = isStablecoin(cryptoSubcategoryMap.get(assetId));
           }
         }
-        const assetClass = classifyAssetClass(entityType, isStablecoin);
+        const assetClass = classifyAssetClass(entityType, isStable);
 
-        await supabase
+        const { error: cfWriteErr } = await supabase
           .from("activity_log")
           .update({
             cashflow_amount_usd: Math.round(values.usd * 100) / 100,
@@ -136,8 +152,9 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             cashflow_attempted_at: now.toISOString(),
           })
           .eq("id", row.id);
+        if (cfWriteErr) console.error(`[backfill] Cashflow write failed for row ${row.id as string}:`, cfWriteErr.message);
       } else {
-        await supabase
+        const { error: deltaWriteErr } = await supabase
           .from("activity_log")
           .update({
             delta_usd: Math.round(values.usd * 100) / 100,
@@ -146,6 +163,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             delta_attempted_at: now.toISOString(),
           })
           .eq("id", row.id);
+        if (deltaWriteErr) console.error(`[backfill] Delta write failed for row ${row.id as string}:`, deltaWriteErr.message);
       }
       succeeded++;
     } catch (err) {
@@ -194,7 +212,12 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             .single();
 
           if (snapBefore && snapAfter) {
-            const assetClass = classifyAssetClass(entityType);
+            const snap = (row.after_snapshot ?? row.before_snapshot) as Record<string, unknown> | null;
+            const assetId = snap?.crypto_asset_id as string | undefined;
+            const isStable = entityType === "crypto_position" && assetId
+              ? isStablecoin(cryptoSubcategoryMap.get(assetId))
+              : false;
+            const assetClass = classifyAssetClass(entityType, isStable);
             const classKey =
               assetClass === "crypto"
                 ? "crypto"
@@ -209,13 +232,18 @@ export async function backfillCashflowsAndDeltas(): Promise<{
               ((snapBefore as Record<string, number>)[`${classKey}_value_eur`] ?? 0);
             hasEstimate = true;
           }
-        } catch {
-          // Snapshot estimation failed — will use $0
+        } catch (estErr) {
+          console.error("[backfill] Snapshot estimation failed for row:", row.id, estErr);
         }
 
         if (isCashflow) {
-          const assetClass = classifyAssetClass(entityType);
-          await supabase
+          const snap = (row.after_snapshot ?? row.before_snapshot) as Record<string, unknown> | null;
+          const assetId = snap?.crypto_asset_id as string | undefined;
+          const isStable = entityType === "crypto_position" && assetId
+            ? isStablecoin(cryptoSubcategoryMap.get(assetId))
+            : false;
+          const assetClass = classifyAssetClass(entityType, isStable);
+          const { error: cfEstErr } = await supabase
             .from("activity_log")
             .update({
               cashflow_amount_usd: Math.round(estimateUsd * 100) / 100,
@@ -225,8 +253,9 @@ export async function backfillCashflowsAndDeltas(): Promise<{
               cashflow_attempted_at: now.toISOString(),
             })
             .eq("id", row.id);
+          if (cfEstErr) console.error(`[backfill] Cashflow fallback write failed for row ${row.id as string}:`, cfEstErr.message);
         } else {
-          await supabase
+          const { error: deltaEstErr } = await supabase
             .from("activity_log")
             .update({
               delta_usd: Math.round(estimateUsd * 100) / 100,
@@ -235,6 +264,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
               delta_attempted_at: now.toISOString(),
             })
             .eq("id", row.id);
+          if (deltaEstErr) console.error(`[backfill] Delta fallback write failed for row ${row.id as string}:`, deltaEstErr.message);
         }
         failed++;
       } else {
@@ -242,12 +272,13 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         const updateField = isCashflow
           ? "cashflow_attempted_at"
           : "delta_attempted_at";
-        await supabase
+        const { error: pendingWriteErr } = await supabase
           .from("activity_log")
           .update({
             [updateField]: now.toISOString(),
           })
           .eq("id", row.id);
+        if (pendingWriteErr) console.error(`[backfill] Pending update write failed for row ${row.id as string}:`, pendingWriteErr.message);
         pending++;
       }
     }
@@ -284,8 +315,8 @@ export async function backfillSingleRow(rowId: string): Promise<{
 
   const entityType = row.entity_type as string;
   const isCashEntity = CASH_ENTITY_TYPES.includes(entityType);
-  const needsCashflow = !row.is_adjustment && (row.cashflow_status === "pending" || row.cashflow_status === "failed");
-  const needsDelta = row.is_adjustment && (row.delta_status === "pending" || row.delta_status === "failed");
+  const needsCashflow = row.cashflow_status === "pending" || row.cashflow_status === "failed";
+  const needsDelta = row.delta_status === "pending" || row.delta_status === "failed";
 
   if (!needsCashflow && !needsDelta) {
     return { success: true }; // Nothing to retry
@@ -321,7 +352,7 @@ export async function backfillSingleRow(rowId: string): Promise<{
     const now = new Date().toISOString();
 
     if (needsCashflow) {
-      let isStablecoin = false;
+      let isStable = false;
       if (entityType === "crypto_position") {
         const snap = (row.after_snapshot ?? row.before_snapshot) as Record<string, unknown> | null;
         const assetId = snap?.crypto_asset_id as string | undefined;
@@ -331,24 +362,26 @@ export async function backfillSingleRow(rowId: string): Promise<{
             .select("subcategory")
             .eq("id", assetId)
             .single();
-          isStablecoin = asset?.subcategory?.toLowerCase() === "stablecoin";
+          isStable = isStablecoin(asset?.subcategory);
         }
       }
-      const assetClass = classifyAssetClass(entityType, isStablecoin);
+      const assetClass = classifyAssetClass(entityType, isStable);
       await supabase.from("activity_log").update({
         cashflow_amount_usd: Math.round(values.usd * 100) / 100,
         cashflow_amount_eur: Math.round(values.eur * 100) / 100,
         cashflow_asset_class: assetClass,
         cashflow_status: "complete",
         cashflow_attempted_at: now,
-      }).eq("id", rowId);
-    } else {
+      }).eq("id", rowId).eq("user_id", user.id);
+    }
+
+    if (needsDelta) {
       await supabase.from("activity_log").update({
         delta_usd: Math.round(values.usd * 100) / 100,
         delta_eur: Math.round(values.eur * 100) / 100,
         delta_status: "complete",
         delta_attempted_at: now,
-      }).eq("id", rowId);
+      }).eq("id", rowId).eq("user_id", user.id);
     }
 
     return { success: true };

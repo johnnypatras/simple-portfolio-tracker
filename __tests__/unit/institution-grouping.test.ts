@@ -20,7 +20,7 @@ function makeInstitution(overrides: Partial<InstitutionWithRoles> = {}): Institu
     id: "inst-1",
     user_id: "u1",
     name: "Binance",
-    roles: ["exchange"],
+    roles: ["wallet" as const],
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -32,8 +32,10 @@ function makeWallet(overrides: Partial<Wallet> = {}): Wallet {
     id: "w1",
     user_id: "u1",
     name: "Binance Wallet",
+    wallet_type: "custodial",
+    privacy_label: null,
+    chain: null,
     institution_id: "inst-1",
-    custody: "exchange",
     created_at: "2026-01-01T00:00:00Z",
     ...overrides,
   };
@@ -58,17 +60,22 @@ function makeCryptoAsset(overrides: Partial<CryptoAssetWithPositions> = {}): Cry
     name: "Bitcoin",
     coingecko_id: "bitcoin",
     chain: null,
-    source: null,
     subcategory: null,
+    image_url: null,
     created_at: "2026-01-01T00:00:00Z",
     positions: [{
       id: "cp1",
       crypto_asset_id: "ca1",
       wallet_id: "w1",
       wallet_name: "Binance Wallet",
+      wallet_type: "custodial" as const,
       quantity: 1,
       apy: 0,
-      created_at: "2026-01-01T00:00:00Z",
+      acquisition_method: "buy",
+      last_was_adjustment: false,
+      last_was_transfer: false,
+      updated_at: "2026-01-01T00:00:00Z",
+      deleted_at: null,
     }],
     ...overrides,
   };
@@ -85,7 +92,7 @@ function makeStockAsset(overrides: Partial<StockAssetWithPositions> = {}): Stock
     category: "etf",
     isin: null,
     subcategory: null,
-    tags: null,
+    tags: [],
     created_at: "2026-01-01T00:00:00Z",
     positions: [{
       id: "sp1",
@@ -93,7 +100,10 @@ function makeStockAsset(overrides: Partial<StockAssetWithPositions> = {}): Stock
       broker_id: "b1",
       broker_name: "DEGIRO",
       quantity: 10,
-      created_at: "2026-01-01T00:00:00Z",
+      last_was_adjustment: false,
+      last_was_transfer: false,
+      updated_at: "2026-01-01T00:00:00Z",
+      deleted_at: null,
     }],
     ...overrides,
   };
@@ -125,7 +135,7 @@ const defaultPrices: CoinGeckoPriceData = {
 };
 
 const defaultStockPrices: YahooStockPriceData = {
-  "VWCE.DE": { price: 120, previousClose: 118, change24h: 1.69 },
+  "VWCE.DE": { price: 120, previousClose: 118, change24h: 1.69, currency: "EUR", name: "Vanguard FTSE All-World ETF" },
 };
 
 const defaultFxRates: FXRates = { USD: 1.11, EUR: 1 };
@@ -236,9 +246,14 @@ describe("buildInstitutionGroups", () => {
         crypto_asset_id: "ca1",
         wallet_id: "w-standalone",
         wallet_name: "Ledger",
+        wallet_type: "non_custodial" as const,
         quantity: 0.5,
         apy: 0,
-        created_at: "2026-01-01T00:00:00Z",
+        acquisition_method: "buy",
+        last_was_adjustment: false,
+        last_was_transfer: false,
+        updated_at: "2026-01-01T00:00:00Z",
+        deleted_at: null,
       }],
     });
     const result = buildInstitutionGroups(makeInput({
@@ -265,11 +280,11 @@ describe("buildInstitutionGroups", () => {
       cryptoAssets: [
         makeCryptoAsset({
           id: "c1",
-          positions: [{ id: "p1", crypto_asset_id: "c1", wallet_id: "wa", wallet_name: "A", quantity: 0.1, apy: 0, created_at: "2026-01-01T00:00:00Z" }],
+          positions: [{ id: "p1", crypto_asset_id: "c1", wallet_id: "wa", wallet_name: "A", wallet_type: "custodial" as const, quantity: 0.1, apy: 0, acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false, updated_at: "2026-01-01T00:00:00Z", deleted_at: null }],
         }),
         makeCryptoAsset({
           id: "c2",
-          positions: [{ id: "p2", crypto_asset_id: "c2", wallet_id: "wb", wallet_name: "B", quantity: 1, apy: 0, created_at: "2026-01-01T00:00:00Z" }],
+          positions: [{ id: "p2", crypto_asset_id: "c2", wallet_id: "wb", wallet_name: "B", wallet_type: "custodial" as const, quantity: 1, apy: 0, acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false, updated_at: "2026-01-01T00:00:00Z", deleted_at: null }],
         }),
       ],
     }));
@@ -354,11 +369,14 @@ describe("buildInstitutionGroups", () => {
         broker_id: "b1",
         broker_name: "DEGIRO",
         quantity: 5,
-        created_at: "2026-01-01T00:00:00Z",
+        last_was_adjustment: false,
+        last_was_transfer: false,
+        updated_at: "2026-01-01T00:00:00Z",
+        deleted_at: null,
       }],
     });
     const stockPrices: YahooStockPriceData = {
-      AAPL: { price: 200, previousClose: 195, change24h: 2.56 },
+      AAPL: { price: 200, previousClose: 195, change24h: 2.56, currency: "USD", name: "Apple Inc." },
     };
     const result = buildInstitutionGroups(makeInput({
       stockAssets: [usdStock],

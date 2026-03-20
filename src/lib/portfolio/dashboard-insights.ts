@@ -7,6 +7,7 @@
  */
 
 import { convertToBase, fxChangeForCurrency as fxChangeFor } from "@/lib/prices/fx";
+import { isStablecoin } from "@/lib/cashflow";
 import type { FXRates } from "@/lib/prices/fx";
 import type { PortfolioSummary } from "./aggregate";
 import type {
@@ -16,6 +17,7 @@ import type {
   YahooStockPriceData,
   YahooDividendMap,
   CashAccount,
+  BaseCurrency,
 } from "@/lib/types";
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -129,7 +131,7 @@ interface InsightsParams {
   stockAssets: StockAssetWithPositions[];
   stockPrices: YahooStockPriceData;
   cashAccounts: CashAccount[];
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
   fxRates: FXRates;
   summary: PortfolioSummary;
   sp500Price: number;
@@ -209,7 +211,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
 
   // ── Crypto insights ───────────────────────────────────
   const nonStablecoinAssets = cryptoAssets.filter(
-    (a) => a.subcategory?.toLowerCase() !== "stablecoin"
+    (a) => !isStablecoin(a.subcategory)
   );
   const cryptoAssetCount = nonStablecoinAssets.length;
   const cryptoPositionCount = nonStablecoinAssets.reduce(
@@ -459,7 +461,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
 
   // Stablecoin positions with APY
   for (const asset of cryptoAssets) {
-    if (asset.subcategory?.toLowerCase() !== "stablecoin") continue;
+    if (!isStablecoin(asset.subcategory)) continue;
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const priceInBase = price[currencyKey] ?? 0;
@@ -495,7 +497,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   }
   // Stablecoins → grouped by inferred peg currency
   for (const asset of cryptoAssets) {
-    if (asset.subcategory?.toLowerCase() !== "stablecoin") continue;
+    if (!isStablecoin(asset.subcategory)) continue;
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const priceInBase = price[currencyKey] ?? 0;
@@ -550,15 +552,17 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
   }
   // Stablecoins → grouped by inferred peg currency
   for (const asset of cryptoAssets) {
-    if (asset.subcategory?.toLowerCase() !== "stablecoin") continue;
+    if (!isStablecoin(asset.subcategory)) continue;
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const peg = inferPegCurrency(asset.ticker, asset.name);
     const priceInBase = price[currencyKey] ?? 0;
     // Native value: stablecoin quantity ≈ peg currency units (1 USDC ≈ $1, 1 EURS ≈ €1)
     // More precisely: use CoinGecko's price in peg currency if available, else approximate
-    const pegKey = peg.toLowerCase() as "usd" | "eur";
-    const priceInPeg = price[pegKey] ?? priceInBase;
+    const pegLower = peg.toLowerCase();
+    const priceInPeg = (pegLower === "usd" || pegLower === "eur")
+      ? (price[pegLower] ?? priceInBase)
+      : priceInBase; // Non-USD/EUR peg (GBP, CHF) — fall back to base currency price
     for (const pos of asset.positions) {
       const { base, native } = ensureCcy(peg);
       base.cash += pos.quantity * priceInBase;
@@ -581,7 +585,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
 
   // Crypto: non-stablecoins → USD (stablecoins already counted in cash above)
   for (const asset of cryptoAssets) {
-    if (asset.subcategory?.toLowerCase() === "stablecoin") continue;
+    if (isStablecoin(asset.subcategory)) continue;
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const priceInBase = price[currencyKey] ?? 0;

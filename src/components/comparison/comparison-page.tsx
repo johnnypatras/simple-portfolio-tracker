@@ -70,7 +70,7 @@ function BreakdownCard({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <div className="text-[10px] text-zinc-600 uppercase tracking-wider mb-0.5">
+          <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
             {viewerName}
           </div>
           <div className="text-base font-semibold text-zinc-100">
@@ -78,7 +78,7 @@ function BreakdownCard({
           </div>
         </div>
         <div>
-          <div className="text-[10px] text-zinc-600 uppercase tracking-wider mb-0.5">
+          <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
             {ownerName}
           </div>
           <div className="text-base font-semibold text-zinc-400">
@@ -158,7 +158,7 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
           <h1 className="text-xl font-bold text-zinc-100">
             You vs {owner.name}
           </h1>
-          <span className="text-xs text-zinc-600 uppercase tracking-wider">
+          <span className="text-xs text-zinc-500 uppercase tracking-wider">
             All values in {cur}
           </span>
         </div>

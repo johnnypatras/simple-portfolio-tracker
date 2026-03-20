@@ -255,7 +255,7 @@ export function StockPositionEditor({
               type="text"
               value={localName}
               onChange={(e) => setLocalName(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -267,7 +267,7 @@ export function StockPositionEditor({
                 value={localYahooTicker}
                 onChange={(e) => setLocalYahooTicker(e.target.value)}
                 placeholder="e.g. AAPL, BY6.F"
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               />
             </div>
             <div>
@@ -278,7 +278,7 @@ export function StockPositionEditor({
                 value={localIsin}
                 onChange={(e) => setLocalIsin(e.target.value)}
                 placeholder="e.g. US0378331005"
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               />
             </div>
           </div>
@@ -294,7 +294,7 @@ export function StockPositionEditor({
                 id={`${id}-type`}
                 value={category}
                 onChange={(e) => setCategory(e.target.value as AssetCategory)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               >
                 {TYPES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
@@ -318,7 +318,7 @@ export function StockPositionEditor({
                 onFocus={() => setSubcategoryOpen(true)}
                 onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
                 placeholder="e.g. UCITS, Non-UCITS..."
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               />
               {subcategoryOpen && (() => {
                 const seeded = SEEDED_SUBTYPES[category] ?? [];
@@ -355,7 +355,7 @@ export function StockPositionEditor({
           {/* Tags (chip input with autocomplete) */}
           <div className="relative">
             <label htmlFor={`${id}-tags`} className="block text-xs text-zinc-500 mb-1">Tags</label>
-            <div className="w-full min-h-[38px] px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-wrap items-center gap-1 focus-within:ring-2 focus-within:ring-blue-500/40">
+            <div className="w-full min-h-[38px] px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-wrap items-center gap-1 focus-within:ring-2 focus-within:ring-blue-500/70">
               {tags.map((tag) => (
                 <span
                   key={tag}
@@ -540,7 +540,7 @@ export function StockPositionEditor({
                   step="any"
                   value={edits[brokerId] ?? "0"}
                   onChange={(e) => handleQuantityChange(brokerId, e.target.value)}
-                  className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   disabled={isSaving}
                 />
                 <button
@@ -593,7 +593,7 @@ export function StockPositionEditor({
             <select
               value={addingBroker}
               onChange={(e) => setAddingBroker(e.target.value)}
-              className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             >
               <option value="">Add to broker...</option>
               {availableBrokers

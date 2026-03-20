@@ -126,7 +126,7 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
   return (
     <div className="space-y-5">
       {/* Currency note */}
-      <div className="text-[10px] text-zinc-600 uppercase tracking-wider">
+      <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
         All values in {cur}
       </div>
 
@@ -198,10 +198,10 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
         </div>
         {/* Column headers */}
         <div className="grid grid-cols-2 gap-3 pl-4 mb-2">
-          <div className="text-[10px] text-zinc-600 uppercase tracking-wider">
+          <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
             You
           </div>
-          <div className="text-[10px] text-zinc-600 uppercase tracking-wider">
+          <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
             {owner.name}
           </div>
         </div>

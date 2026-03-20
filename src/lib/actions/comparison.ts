@@ -11,6 +11,7 @@ import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe, convertToBase } from "@/lib/prices/fx";
 import { aggregatePortfolio, type PortfolioSummary } from "@/lib/portfolio/aggregate";
+import { isStablecoin } from "@/lib/cashflow";
 import type { PortfolioSnapshot } from "@/lib/types";
 
 // ─── Types ──────────────────────────────────────────────
@@ -19,7 +20,7 @@ export interface ComparisonHoldingItem {
   key: string;             // dedup key: coingecko_id | ticker | "cash:{currency}"
   name: string;            // "Bitcoin", "VWCE", "EUR Cash"
   ticker: string;          // "BTC", "VWCE", "EUR"
-  class: "crypto" | "equities" | "cash";
+  class: "crypto" | "stocks" | "cash";
   imageUrl: string | null; // CoinGecko thumb for crypto, null for others
   viewerValue: number;     // 0 if viewer doesn't hold it
   ownerValue: number;      // 0 if owner doesn't hold it
@@ -69,17 +70,20 @@ export async function getComparisonData(
   const viewerName = viewerProfile.display_name || "You";
 
   // 3. Fetch viewer's portfolio data + snapshots in parallel
-  const [
-    viewerCrypto,
-    viewerStocks,
-    viewerCashAccounts,
-    viewerSnapshots,
-  ] = await Promise.all([
-    getCryptoAssetsWithPositions(),
-    getStockAssetsWithPositions(),
-    getCashAccounts(),
-    getSnapshots(365),
-  ]);
+  let viewerCrypto: Awaited<ReturnType<typeof getCryptoAssetsWithPositions>>;
+  let viewerStocks: Awaited<ReturnType<typeof getStockAssetsWithPositions>>;
+  let viewerCashAccounts: Awaited<ReturnType<typeof getCashAccounts>>;
+  let viewerSnapshots: Awaited<ReturnType<typeof getSnapshots>>;
+  try {
+    [viewerCrypto, viewerStocks, viewerCashAccounts, viewerSnapshots] = await Promise.all([
+      getCryptoAssetsWithPositions(),
+      getStockAssetsWithPositions(),
+      getCashAccounts(),
+      getSnapshots(365),
+    ]);
+  } catch {
+    return { ok: false, error: "Failed to load comparison data" };
+  }
 
   // 4. Build merged ticker/coin/currency lists from BOTH portfolios
   const allCoinIds = [
@@ -188,7 +192,7 @@ export async function getComparisonData(
       const value = totalQty * priceInBase;
       if (value === 0) continue;
 
-      const isStable = asset.subcategory?.toLowerCase() === "stablecoin";
+      const isStable = isStablecoin(asset.subcategory);
       upsertHolding(
         isStable ? `cash:${asset.ticker.toUpperCase()}` : asset.coingecko_id,
         {
@@ -226,7 +230,7 @@ export async function getComparisonData(
           key: `stock:${displayTicker}`,
           name: asset.name,
           ticker: displayTicker,
-          class: "equities",
+          class: "stocks",
           imageUrl: null,
         },
         assets.side,

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   const query = req.nextUrl.searchParams.get("q") ?? "";
 
-  if (query.length < 2) {
+  if (query.length < 2 || query.length > 100) {
     return NextResponse.json([]);
   }
 

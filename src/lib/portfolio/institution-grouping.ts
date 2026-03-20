@@ -16,6 +16,7 @@ import type {
   CashAccount,
   CoinGeckoPriceData,
   YahooStockPriceData,
+  BaseCurrency,
 } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────
@@ -51,7 +52,7 @@ export interface StockRow {
 }
 
 /** Cash item (bank account, exchange deposit, or broker deposit) */
-export interface CashRow {
+export interface CashDepositRow {
   id: string;
   type: "bank" | "exchange_deposit" | "broker_deposit";
   label: string;
@@ -66,7 +67,7 @@ export interface InstitutionGroup {
   institution: InstitutionWithRoles;
   crypto: CryptoRow[];
   stocks: StockRow[];
-  cash: CashRow[];
+  cash: CashDepositRow[];
   totalValue: number;
   change24h: { valueChange: number; percentChange: number };
 }
@@ -81,7 +82,7 @@ export interface GroupingInput {
   cryptoPrices: CoinGeckoPriceData;
   stockPrices: YahooStockPriceData;
   fxRates: FXRates;
-  primaryCurrency: string;
+  primaryCurrency: BaseCurrency;
 }
 
 // ── Main function ──────────────────────────────────────────

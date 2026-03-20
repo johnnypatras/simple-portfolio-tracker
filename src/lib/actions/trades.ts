@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateUUID, validateQuantity, validateAmount, validateCurrency, validateName } from "@/lib/validation";
+import { validateUUID, validateQuantity, validateAmount, validateCurrency, validateName, validateDate } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
 
 /** Lightweight asset name lists for the trade diary dropdown */
@@ -14,6 +14,8 @@ export async function getAssetOptions(): Promise<{
   cash: string[];
 }> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   const [cryptoRes, stockRes, cashRes] = await Promise.all([
     supabase
@@ -46,6 +48,8 @@ export async function getAssetOptions(): Promise<{
 
 export async function getTradeEntries(): Promise<TradeEntry[]> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
   const { data, error } = await supabase
     .from("trade_entries")
     .select("*")
@@ -63,6 +67,7 @@ export async function createTradeEntry(input: TradeEntryInput) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateDate(input.trade_date, "Trade date");
   validateName(input.asset_name, 100, "Asset name");
   validateQuantity(input.quantity, "Quantity");
   validateAmount(input.price, "Price");
@@ -80,7 +85,7 @@ export async function createTradeEntry(input: TradeEntryInput) {
     price: input.price,
     currency: input.currency ?? "USD",
     total_value: Math.round(totalValue * 100) / 100,
-    notes: input.notes?.trim() || null,
+    notes: input.notes?.trim()?.slice(0, 2000) || null,
   }).select("*").single();
 
   if (error) throw new Error(error.message);
@@ -103,6 +108,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateDate(input.trade_date, "Trade date");
   validateName(input.asset_name, 100, "Asset name");
   validateQuantity(input.quantity, "Quantity");
   validateAmount(input.price, "Price");
@@ -130,7 +136,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
       price: input.price,
       currency: input.currency,
       total_value: Math.round(totalValue * 100) / 100,
-      notes: input.notes?.trim() || null,
+      notes: input.notes?.trim()?.slice(0, 2000) || null,
     }))
     .eq("id", id)
     .eq("user_id", user.id);

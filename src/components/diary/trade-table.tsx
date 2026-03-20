@@ -191,7 +191,7 @@ export function TradeTable({
               type="datetime-local"
               value={tradeDate}
               onChange={(e) => setTradeDate(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               required
             />
           </div>
@@ -240,7 +240,7 @@ export function TradeTable({
                 setAssetType(newType);
                 setAssetName("");
               }}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             >
               <option value="crypto">Crypto</option>
               <option value="stock">Stock</option>
@@ -257,7 +257,7 @@ export function TradeTable({
                 id={`${id}-asset-name`}
                 value={assetName}
                 onChange={(e) => setAssetName(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 required
               >
                 <option value="">Select asset…</option>
@@ -278,7 +278,7 @@ export function TradeTable({
                   );
                   if (match) setCurrency(match.currency);
                 }}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 required
               >
                 <option value="">Select asset…</option>
@@ -296,7 +296,7 @@ export function TradeTable({
                   setAssetName(e.target.value);
                   if (e.target.value) setCurrency(e.target.value);
                 }}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 required
               >
                 <option value="">Select currency…</option>
@@ -313,7 +313,7 @@ export function TradeTable({
                 value={assetName}
                 onChange={(e) => setAssetName(e.target.value)}
                 placeholder="e.g. EUR, USD"
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 required
               />
             )}
@@ -333,7 +333,7 @@ export function TradeTable({
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               placeholder="Qty"
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               required
             />
           </div>
@@ -348,7 +348,7 @@ export function TradeTable({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="Price"
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               required
             />
           </div>
@@ -363,7 +363,7 @@ export function TradeTable({
               onChange={(e) => setCurrency(e.target.value.toUpperCase())}
               placeholder="USD"
               maxLength={5}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             />
           </div>
         </div>
@@ -372,7 +372,7 @@ export function TradeTable({
         <div>
           <label htmlFor={`${id}-notes`} className="block text-xs text-zinc-500 mb-1">
             Notes{" "}
-            <span className="text-zinc-600 font-normal">(optional)</span>
+            <span className="text-zinc-500 font-normal">(optional)</span>
           </label>
           <input
             id={`${id}-notes`}
@@ -380,7 +380,7 @@ export function TradeTable({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Why did you make this trade?"
-            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           />
         </div>
 
@@ -434,7 +434,7 @@ export function TradeTable({
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-12 text-center">
           <BookOpen className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
           <p className="text-sm text-zinc-400 mb-1">No trades logged yet</p>
-          <p className="text-xs text-zinc-600 mb-4">
+          <p className="text-xs text-zinc-500 mb-4">
             Record your significant buys and sells for future reference
           </p>
           {!isReadOnly && (
@@ -544,7 +544,7 @@ export function TradeTable({
                 </td>
                 <td className="px-4 py-3">
                   {!isReadOnly && (
-                    <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity">
+                    <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto transition-opacity">
                       <button
                         onClick={() => openEdit(t)}
                         className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
@@ -605,7 +605,7 @@ export function TradeTable({
                     {formatDate(t.trade_date)}
                   </span>
                   {t.notes && (
-                    <span className="text-xs text-zinc-600 truncate max-w-[200px]">
+                    <span className="text-xs text-zinc-500 truncate max-w-[200px]">
                       · {t.notes}
                     </span>
                   )}
@@ -620,12 +620,12 @@ export function TradeTable({
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
-                  <button
-                    onClick={() => handleDelete(t.id)}
+                  <ConfirmButton
+                    onConfirm={() => handleDelete(t.id)}
                     className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </ConfirmButton>
                 </div>
               )}
             </div>

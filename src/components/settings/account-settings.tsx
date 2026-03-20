@@ -67,8 +67,12 @@ export function AccountSettings({ profile }: { profile: Profile }) {
       setPwError("Passwords do not match");
       return;
     }
-    if (newPw.length < 8) {
-      setPwError("New password must be at least 8 characters");
+    if (newPw.length < 8 || newPw.length > 72) {
+      setPwError(newPw.length < 8 ? "New password must be at least 8 characters" : "New password must be at most 72 characters");
+      return;
+    }
+    if (!/[A-Z]/.test(newPw) || !/[a-z]/.test(newPw) || !/\d/.test(newPw)) {
+      setPwError("Password must include uppercase, lowercase, and a number");
       return;
     }
 
@@ -154,7 +158,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
             placeholder="New email address"
-            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
           />
         </div>
@@ -187,12 +191,13 @@ export function AccountSettings({ profile }: { profile: Profile }) {
             value={currentPw}
             onChange={(e) => setCurrentPw(e.target.value)}
             placeholder="Current password"
-            className="w-full pl-10 pr-10 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full pl-10 pr-10 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
           />
           <button
             type="button"
             onClick={() => setShowPw(!showPw)}
+            aria-label={showPw ? "Hide password" : "Show password"}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
           >
             {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -205,7 +210,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
             value={newPw}
             onChange={(e) => setNewPw(e.target.value)}
             placeholder="New password (min. 8 characters)"
-            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
             minLength={8}
           />
@@ -217,7 +222,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
             value={confirmPw}
             onChange={(e) => setConfirmPw(e.target.value)}
             placeholder="Confirm new password"
-            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
             minLength={8}
           />
