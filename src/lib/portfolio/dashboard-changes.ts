@@ -171,9 +171,9 @@ export function getChangeForPeriod(
   const currentValueOther = ctx.primaryCurrency === "EUR" ? ctx.totalValueUsd : ctx.totalValueEur;
 
   const rawPastValue = snapshot[valueKey] ?? 0;
-  if (rawPastValue === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
 
   // Adjustment compensation: add back not-yet-imported value
+  // (must run before the zero-check — rawPast can be 0 pre-import but adjusted > 0)
   const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, ctx.primaryCurrency);
   const finalCum = getCumDeltaFinal(deltas, ctx.primaryCurrency);
   const pastValue = rawPastValue + (finalCum - cumAtSnapshot);
@@ -223,7 +223,6 @@ export function getCryptoChangeForPeriod(
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const rawPastUsd = snapshot.crypto_value_usd ?? 0;
-  if (rawPastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const deltas = ctx.adjustmentDeltas ?? [];
   const snapshotDate = snapshot.snapshot_date;
   const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "crypto");
@@ -255,7 +254,6 @@ export function getStockChangeForPeriod(
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const rawPastUsd = snapshot.stocks_value_usd ?? 0;
-  if (rawPastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const deltas = ctx.adjustmentDeltas ?? [];
   const snapshotDate = snapshot.snapshot_date;
   const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "stocks");
@@ -288,7 +286,6 @@ export function getCashChangeForPeriod(
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const rawPastUsd = snapshot.cash_value_usd ?? 0;
-  if (rawPastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const deltas = ctx.adjustmentDeltas ?? [];
   const snapshotDate = snapshot.snapshot_date;
   const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "cash");
