@@ -637,12 +637,6 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
               </div>
             )}
 
-            {error && (
-              <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
-                {error}
-              </p>
-            )}
-
             <div>
               <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
                 Effective date (optional)
@@ -657,6 +651,12 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
               />
               <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
             </div>
+
+            {error && (
+              <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+                {error}
+              </p>
+            )}
 
             <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
               <input

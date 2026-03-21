@@ -473,6 +473,7 @@ export function ActivityTimeline({
   const [expandedTransfers, setExpandedTransfers] = useState<Set<string>>(new Set());
   const [expandedSplits, setExpandedSplits] = useState<Set<string>>(new Set());
   const [backdatingId, setBackdatingId] = useState<string | null>(null);
+  const [backdateValue, setBackdateValue] = useState("");
   const [splitEntry, setSplitEntry] = useState<ActivityLog | null>(null);
 
   const totalPages = Math.ceil(total / limit);
@@ -939,20 +940,18 @@ export function ActivityTimeline({
                             <div className="flex items-center gap-2 mt-1">
                               <input
                                 type="date"
-                                defaultValue={log.effective_date ?? log.created_at.split("T")[0]}
+                                value={backdateValue}
                                 max={new Date().toISOString().split("T")[0]}
                                 className="px-2 py-1 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-sky-500/70"
+                                onChange={(e) => setBackdateValue(e.target.value)}
                                 onKeyDown={(e) => {
                                   if (e.key === "Escape") setBackdatingId(null);
-                                  if (e.key === "Enter") handleBackdate(log.id, e.currentTarget.value);
+                                  if (e.key === "Enter") handleBackdate(log.id, backdateValue);
                                 }}
                                 autoFocus
                               />
                               <button
-                                onClick={(e) => {
-                                  const input = (e.currentTarget.previousElementSibling) as HTMLInputElement;
-                                  handleBackdate(log.id, input.value);
-                                }}
+                                onClick={() => handleBackdate(log.id, backdateValue)}
                                 className="p-1 rounded text-emerald-400 hover:bg-emerald-500/15 transition-colors"
                                 title="Set effective date"
                               >
@@ -974,7 +973,14 @@ export function ActivityTimeline({
                           {/* Calendar (backdate) button */}
                           {!isReadOnly && !log.undone_at && !log.split_from_id && (
                             <button
-                              onClick={() => setBackdatingId(backdatingId === log.id ? null : log.id)}
+                              onClick={() => {
+                              if (backdatingId === log.id) {
+                                setBackdatingId(null);
+                              } else {
+                                setBackdatingId(log.id);
+                                setBackdateValue(log.effective_date ?? log.created_at.split("T")[0]);
+                              }
+                            }}
                               className={`p-1 rounded transition-all ${
                                 hasEffectiveDate(log)
                                   ? "text-sky-400 bg-sky-500/10"
