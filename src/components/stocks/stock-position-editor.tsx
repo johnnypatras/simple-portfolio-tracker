@@ -58,6 +58,9 @@ export function StockPositionEditor({
   // Optimistic override for last_was_adjustment (bridges gap until props refresh)
   const [adjOverrides, setAdjOverrides] = useState<Record<string, boolean>>({});
 
+  // ─── Effective date (optional backdating) ──────────────
+  const [effectiveDate, setEffectiveDate] = useState("");
+
   // Clear the "just saved" checkmark after 1.5s
   useEffect(() => {
     if (!justSavedId) return;
@@ -94,6 +97,7 @@ export function StockPositionEditor({
     setEdits(map);
     setAdjustmentFlags({});
     setAdjOverrides({});
+    setEffectiveDate("");
   }, [asset.id, asset.name, asset.yahoo_ticker, asset.isin, asset.category, asset.subcategory, asset.tags, asset.positions]);
 
   const nameChanged = localName.trim() !== asset.name;
@@ -184,6 +188,7 @@ export function StockPositionEditor({
         isAdjustment: adjustmentFlags[brokerId] ?? false,
         currentPriceNative: priceData?.price,
         assetCurrency: priceData?.currency ?? asset.currency,
+        ...(effectiveDate ? { effectiveDate } : {}),
       });
       // If zero, remove from local state
       if (qty <= 0) {
@@ -619,6 +624,22 @@ export function StockPositionEditor({
             Add brokers in Settings first to assign positions
           </p>
         )}
+
+        {/* Effective date (optional) */}
+        <div>
+          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
+            Effective date (optional)
+          </label>
+          <input
+            id={`${id}-effective-date`}
+            type="date"
+            max={new Date().toISOString().split("T")[0]}
+            value={effectiveDate}
+            onChange={(e) => setEffectiveDate(e.target.value)}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+          />
+          <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
+        </div>
 
         {error && (
           <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">

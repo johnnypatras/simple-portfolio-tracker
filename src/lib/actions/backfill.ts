@@ -33,7 +33,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
   const { data: cashflowRows } = await supabase
     .from("activity_log")
     .select(
-      "id, action, entity_type, entity_id, entity_table, before_snapshot, after_snapshot, created_at, cashflow_attempted_at"
+      "id, action, entity_type, entity_id, entity_table, before_snapshot, after_snapshot, created_at, effective_date, cashflow_attempted_at"
     )
     .eq("user_id", user.id)
     .eq("is_adjustment", false)
@@ -56,7 +56,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
   const { data: deltaRows } = await supabase
     .from("activity_log")
     .select(
-      "id, action, entity_type, entity_id, entity_table, before_snapshot, after_snapshot, created_at, delta_attempted_at"
+      "id, action, entity_type, entity_id, entity_table, before_snapshot, after_snapshot, created_at, effective_date, delta_attempted_at"
     )
     .eq("user_id", user.id)
     .eq("delta_status", "pending")
@@ -117,14 +117,14 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         if (delta === 0) {
           values = { usd: 0, eur: 0 };
         } else {
-          values = await toUsdAndEur(delta, currency, (row.created_at as string).split("T")[0]);
+          values = await toUsdAndEur(delta, currency, ((row.effective_date as string) ?? (row.created_at as string)).split("T")[0]);
         }
       } else {
         // Position entities: need historical price lookup via CoinGecko/Yahoo
         values = await computeDeltaFromSnapshots(
           entityType,
           row.action as string,
-          row.created_at as string,
+          (row.effective_date as string) ?? (row.created_at as string),
           row.before_snapshot as Record<string, unknown> | null,
           row.after_snapshot as Record<string, unknown> | null
         );
@@ -189,7 +189,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         let hasEstimate = false;
 
         try {
-          const eventDate = (row.created_at as string).split("T")[0];
+          const eventDate = ((row.effective_date as string) ?? (row.created_at as string)).split("T")[0];
           const { data: snapBefore } = await supabase
             .from("portfolio_snapshots")
             .select(
@@ -306,7 +306,7 @@ export async function backfillSingleRow(rowId: string): Promise<{
 
   const { data: row, error: fetchErr } = await supabase
     .from("activity_log")
-    .select("id, action, entity_type, entity_id, before_snapshot, after_snapshot, created_at, is_adjustment, cashflow_status, delta_status")
+    .select("id, action, entity_type, entity_id, before_snapshot, after_snapshot, created_at, effective_date, is_adjustment, cashflow_status, delta_status")
     .eq("id", rowId)
     .eq("user_id", user.id)
     .single();
@@ -337,13 +337,13 @@ export async function backfillSingleRow(rowId: string): Promise<{
       if (delta === 0) {
         values = { usd: 0, eur: 0 };
       } else {
-        values = await toUsdAndEur(delta, currency, (row.created_at as string).split("T")[0]);
+        values = await toUsdAndEur(delta, currency, ((row.effective_date as string) ?? (row.created_at as string)).split("T")[0]);
       }
     } else {
       values = await computeDeltaFromSnapshots(
         entityType,
         row.action as string,
-        row.created_at as string,
+        (row.effective_date as string) ?? (row.created_at as string),
         row.before_snapshot as Record<string, unknown> | null,
         row.after_snapshot as Record<string, unknown> | null
       );

@@ -41,6 +41,9 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
   // ─── Adjustment flag ─────────────────────────────────────
   const [isAdjustment, setIsAdjustment] = useState(false);
 
+  // ─── Effective date (optional backdating) ──────────────
+  const [effectiveDate, setEffectiveDate] = useState("");
+
   // ─── Optional initial position state ───────────────────
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionWalletId, setPositionWalletId] = useState("");
@@ -121,6 +124,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       setPositionApy("");
       setShowAllWallets(false);
       setIsAdjustment(false);
+      setEffectiveDate("");
     }
   }, [open]);
 
@@ -175,6 +179,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
 
     try {
       const adjustOpts = isAdjustment ? { isAdjustment: true } : undefined;
+      const dateOpts = effectiveDate ? { effectiveDate } : undefined;
       const assetId = await createCryptoAsset({
         ticker: selectedCoin.symbol,
         name: selectedCoin.name,
@@ -182,7 +187,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         chain: chain.trim() || null,
         subcategory: subcategory.trim() || null,
         image_url: selectedCoin.thumb || null,
-      }, adjustOpts);
+      }, { ...adjustOpts, ...dateOpts });
 
       const apyVal = parseFloat(positionApy);
       await upsertPosition({
@@ -193,6 +198,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         apy: apyVal > 0 ? apyVal : undefined,
       }, {
         ...adjustOpts,
+        ...dateOpts,
         currentPriceUsd: selectedCoin.price_usd,
       });
 
@@ -565,6 +571,21 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 )}
               </div>
             )}
+
+            <div>
+              <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
+                Effective date (optional)
+              </label>
+              <input
+                id={`${id}-effective-date`}
+                type="date"
+                max={new Date().toISOString().split("T")[0]}
+                value={effectiveDate}
+                onChange={(e) => setEffectiveDate(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+              />
+              <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
+            </div>
 
             {error && (
               <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">

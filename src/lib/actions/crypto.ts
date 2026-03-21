@@ -76,7 +76,7 @@ export async function getCryptoAssetsWithPositions(): Promise<
 }
 
 /** Add a new crypto asset. Returns the new asset's id. */
-export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdjustment?: boolean }): Promise<string> {
+export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdjustment?: boolean; effectiveDate?: string }): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -128,6 +128,7 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
     before_snapshot: null,
     after_snapshot: data,
     is_adjustment: opts?.isAdjustment,
+    effective_date: opts?.effectiveDate,
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");
@@ -312,7 +313,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         cashflow_asset_class: fx.cashflowAssetClass,
         cashflow_status: fx.cashflowStatus,
         transfer_group_id: opts?.transferGroupId,
-        created_at: opts?.effectiveDate,
+        effective_date: opts?.effectiveDate,
       });
     }
   } else {
@@ -403,7 +404,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       cashflow_asset_class: fx.cashflowAssetClass,
       cashflow_status: fx.cashflowStatus,
       transfer_group_id: opts?.transferGroupId,
-      created_at: opts?.effectiveDate,
+      effective_date: opts?.effectiveDate,
     });
   }
 
@@ -468,7 +469,7 @@ export async function deletePosition(positionId: string, opts?: {
     cashflow_asset_class: fx.cashflowAssetClass,
     cashflow_status: fx.cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
-    created_at: opts?.effectiveDate,
+    effective_date: opts?.effectiveDate,
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");

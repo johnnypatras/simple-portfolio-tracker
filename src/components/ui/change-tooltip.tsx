@@ -1,5 +1,7 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { fmtCurrencyCompact, fmtPct, changeColorClass } from "@/lib/format";
+
+const DEPOSIT_BREAKDOWN_LIMIT = 5;
 
 function TooltipRow({
   label, value, cur, colored, bold, pct, indent,
@@ -17,6 +19,38 @@ function TooltipRow({
       <span className={`text-zinc-500 tabular-nums whitespace-nowrap ${bold ? "font-medium" : ""}`}>
         {hasPct ? `(${fmtPct(pct!)})` : ""}
       </span>
+    </>
+  );
+}
+
+function DepositSection({ deposits, depositBreakdown, cur, base }: {
+  deposits: number;
+  depositBreakdown?: { name: string; value: number }[];
+  cur: string;
+  base?: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const items = depositBreakdown ?? [];
+  const hasBreakdown = items.length >= 1;
+  const needsExpand = items.length > DEPOSIT_BREAKDOWN_LIMIT;
+  const visible = expanded ? items : items.slice(0, DEPOSIT_BREAKDOWN_LIMIT);
+
+  return (
+    <>
+      <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />
+      <TooltipRow label={deposits > 0 ? "Deposits" : "Withdrawals"} value={deposits} cur={cur} pct={base ? (deposits / base) * 100 : undefined} />
+      {hasBreakdown && visible.map((e) => (
+        <TooltipRow key={e.name} label={e.name} value={e.value} cur={cur} indent />
+      ))}
+      {needsExpand && (
+        <button
+          type="button"
+          className="col-span-3 text-[9px] text-zinc-500 hover:text-zinc-300 text-left pl-3 transition-colors"
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+        >
+          {expanded ? "Show less" : `+${items.length - DEPOSIT_BREAKDOWN_LIMIT} more`}
+        </button>
+      )}
     </>
   );
 }
@@ -50,13 +84,7 @@ export const ChangeTooltip = memo(function ChangeTooltip({
         {(hasFx || !hasDeposits) && <TooltipRow label="Prices" value={assetPrices} cur={cur} colored={!hasDeposits} indent={hasDeposits} pct={base ? (assetPrices / base) * 100 : undefined} />}
         {hasFx && <TooltipRow label={fxLabel} value={fxValueChange} cur={cur} colored={!hasDeposits} indent={hasDeposits} pct={base ? (fxValueChange / base) * 100 : undefined} />}
         {hasDeposits && (
-          <>
-            <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />
-            <TooltipRow label={deposits > 0 ? "Deposits" : "Withdrawals"} value={deposits} cur={cur} pct={base ? (deposits / base) * 100 : undefined} />
-            {depositBreakdown && depositBreakdown.length > 1 && depositBreakdown.map((e) => (
-              <TooltipRow key={e.name} label={e.name} value={e.value} cur={cur} indent />
-            ))}
-          </>
+          <DepositSection deposits={deposits} depositBreakdown={depositBreakdown} cur={cur} base={base} />
         )}
         {/* Separator + Total row */}
         <div className="col-span-3 border-t border-zinc-700 mt-1 pt-1" />

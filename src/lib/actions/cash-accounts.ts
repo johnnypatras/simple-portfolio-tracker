@@ -323,7 +323,7 @@ export async function createCashAccount(
     cashflow_asset_class: fx.cashflowAssetClass,
     cashflow_status: fx.cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
-    created_at: opts?.effectiveDate,
+    effective_date: opts?.effectiveDate,
   });
 
   revalidateCashPaths();
@@ -430,7 +430,7 @@ export async function updateCashAccount(
     cashflow_asset_class: fx.cashflowAssetClass,
     cashflow_status: fx.cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
-    created_at: opts?.effectiveDate,
+    effective_date: opts?.effectiveDate,
   });
 
   // If name changed, refresh entity_name on ALL activity_log entries for this account
@@ -530,7 +530,7 @@ export async function deleteCashAccount(
     cashflow_asset_class: fx.cashflowAssetClass,
     cashflow_status: fx.cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
-    created_at: opts?.effectiveDate,
+    effective_date: opts?.effectiveDate,
   });
 
   revalidateCashPaths();

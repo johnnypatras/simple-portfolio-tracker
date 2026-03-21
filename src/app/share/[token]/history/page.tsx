@@ -44,6 +44,7 @@ export default async function SharedHistoryPage({
     .from("activity_log")
     .select("*", { count: "exact" })
     .eq("user_id", share.owner_id)
+    .is("split_from_id", null)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -51,6 +52,23 @@ export default async function SharedHistoryPage({
   if (action) query = query.eq("action", action);
 
   const { data, count } = await query;
+
+  const logs = (data ?? []) as ActivityLog[];
+
+  // Fetch split children for any split parents visible on this page
+  const potentialParentIds = logs
+    .filter((l) => l.undone_at && !l.split_from_id)
+    .map((l) => l.id);
+  let splitChildren: ActivityLog[] = [];
+  if (potentialParentIds.length > 0) {
+    const { data: childData } = await admin
+      .from("activity_log")
+      .select("*")
+      .in("split_from_id", potentialParentIds)
+      .is("undone_at", null)
+      .order("effective_date", { ascending: true });
+    splitChildren = (childData ?? []) as ActivityLog[];
+  }
 
   return (
     <div>
@@ -61,12 +79,13 @@ export default async function SharedHistoryPage({
         </p>
       </div>
       <ActivityTimeline
-        logs={(data ?? []) as ActivityLog[]}
+        logs={logs}
         total={count ?? 0}
         page={page}
         limit={limit}
         currentEntityType={entityType}
         currentAction={action}
+        splitChildren={splitChildren}
       />
     </div>
   );

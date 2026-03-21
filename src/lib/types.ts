@@ -604,6 +604,8 @@ export interface ActivityLog {
   cashflow_attempted_at: string | null;
   delta_attempted_at: string | null;
   created_at: string;
+  effective_date?: string | null;
+  split_from_id?: string | null;
 }
 
 // ─── Portfolio Transfers ────────────────────────────────

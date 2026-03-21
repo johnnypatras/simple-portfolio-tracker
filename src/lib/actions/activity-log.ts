@@ -61,6 +61,7 @@ export async function logActivity(params: {
   delta_eur?: number | null;
   transfer_group_id?: string;
   created_at?: string;
+  effective_date?: string;
   // Cashflow tracking (pre-computed at write time)
   cashflow_amount_usd?: number | null;
   cashflow_amount_eur?: number | null;
@@ -91,6 +92,7 @@ export async function logActivity(params: {
       delta_eur: params.delta_eur ?? null,
       transfer_group_id: params.transfer_group_id ?? null,
       ...(params.created_at ? { created_at: params.created_at } : {}),
+      ...(params.effective_date ? { effective_date: params.effective_date } : {}),
       cashflow_amount_usd: params.cashflow_amount_usd ?? null,
       cashflow_amount_eur: params.cashflow_amount_eur ?? null,
       cashflow_asset_class: params.cashflow_asset_class ?? null,
@@ -116,11 +118,12 @@ export async function getActivityLogs(filters?: {
   const limit = Math.max(1, Math.min(filters?.limit ?? 50, 500));
   const offset = Math.max(0, filters?.offset ?? 0);
 
-  // Build filtered query
+  // Build filtered query — exclude split children from main pagination
   let query = supabase
     .from("activity_log")
     .select("*", { count: "exact" })
     .eq("user_id", user.id)
+    .is("split_from_id", null)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -138,6 +141,20 @@ export async function getActivityLogs(filters?: {
     logs: (data ?? []) as ActivityLog[],
     total: count ?? 0,
   };
+}
+
+// ─── Fetch split children for parent entries ────────────
+
+export async function getSplitChildren(parentIds: string[]): Promise<ActivityLog[]> {
+  if (parentIds.length === 0) return [];
+  const supabase = await createServerSupabaseClient();
+  const { data } = await supabase
+    .from("activity_log")
+    .select("*")
+    .in("split_from_id", parentIds)
+    .is("undone_at", null)
+    .order("effective_date", { ascending: true });
+  return (data ?? []) as ActivityLog[];
 }
 
 // ─── Delta computation from snapshots ───────────────────
@@ -306,7 +323,7 @@ export async function toggleActivityAdjustment(
       const deltas = await computeDeltaFromSnapshots(
         row.entity_type,
         row.action,
-        row.created_at,
+        (row.effective_date as string) ?? (row.created_at as string),
         row.before_snapshot as Record<string, unknown> | null,
         row.after_snapshot as Record<string, unknown> | null
       );
@@ -328,7 +345,7 @@ export async function toggleActivityAdjustment(
       const values = await computeDeltaFromSnapshots(
         row.entity_type,
         row.action,
-        row.created_at,
+        (row.effective_date as string) ?? (row.created_at as string),
         row.before_snapshot as Record<string, unknown> | null,
         row.after_snapshot as Record<string, unknown> | null
       );
@@ -411,7 +428,7 @@ export async function getAdjustmentDeltas(
 
   let query = supabase
     .from("activity_log")
-    .select("created_at, delta_usd, delta_eur, entity_type, entity_id, entity_table")
+    .select("created_at, effective_date, delta_usd, delta_eur, entity_type, entity_id, entity_table")
     .eq("is_adjustment", true)
     .is("undone_at", null)
     .not("delta_usd", "is", null)
@@ -426,6 +443,14 @@ export async function getAdjustmentDeltas(
   if (error) throw new Error(error.message);
 
   if (!data?.length) return [];
+
+  // Post-sort by effective_date (falls back to created_at date portion)
+  // so cumulative sums accumulate in correct chronological order
+  const sorted = [...data].sort((a, b) => {
+    const dateA = (a.effective_date as string) ?? (a.created_at as string).split("T")[0];
+    const dateB = (b.effective_date as string) ?? (b.created_at as string).split("T")[0];
+    return dateA.localeCompare(dateB);
+  });
 
   // Entity-type to asset-class mapping
   // Stablecoin crypto_positions are reclassified as cash to match snapshot aggregation
@@ -455,7 +480,7 @@ export async function getAdjustmentDeltas(
   let stocksUsd = 0, stocksEur = 0;
   let cashUsd = 0, cashEur = 0;
 
-  for (const row of data) {
+  for (const row of sorted) {
     const dUsd = (row.delta_usd as number) ?? 0;
     const dEur = (row.delta_eur as number) ?? 0;
     cumUsd += dUsd;
@@ -466,7 +491,7 @@ export async function getAdjustmentDeltas(
     else if (assetClass === "stocks") { stocksUsd += dUsd; stocksEur += dEur; }
     else if (assetClass === "cash") { cashUsd += dUsd; cashEur += dEur; }
 
-    const date = (row.created_at as string).split("T")[0];
+    const date = (row.effective_date as string) ?? (row.created_at as string).split("T")[0];
     byDate.set(date, {
       usd: cumUsd, eur: cumEur,
       cryptoUsd, cryptoEur,
@@ -506,13 +531,14 @@ export async function exportActivityLogsCsv(): Promise<string> {
   const rows = (data ?? []) as ActivityLog[];
 
   const headers = [
-    "Date", "Action", "Type", "Name", "Description",
+    "Date", "Effective Date", "Action", "Type", "Name", "Description",
     "Adjustment", "Delta USD", "Delta EUR",
-    "Transfer Group", "Compensates For", "Undone At",
+    "Transfer Group", "Split From", "Compensates For", "Undone At",
   ];
 
   const csvRows = rows.map((row) => [
     new Date(row.created_at).toISOString(),
+    row.effective_date ?? "",
     row.action,
     row.entity_type,
     row.entity_name,
@@ -521,6 +547,7 @@ export async function exportActivityLogsCsv(): Promise<string> {
     row.delta_usd ?? "",
     row.delta_eur ?? "",
     row.transfer_group_id ?? "",
+    row.split_from_id ?? "",
     row.compensates_for ?? "",
     row.undone_at ?? "",
   ]);

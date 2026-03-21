@@ -29,7 +29,7 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
   // Single DB query — all cashflows pre-computed at write time
   let query = supabase
     .from("activity_log")
-    .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_asset_class, entity_name, created_at")
+    .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_asset_class, entity_name, created_at, effective_date")
     .eq("cashflow_status", "complete")
     .is("undone_at", null)
     .order("created_at", { ascending: true })
@@ -61,9 +61,17 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
   }
   const [pendingResult, failedResult] = await Promise.all([pendingQuery, failedQuery]);
 
+  // Post-sort by effective_date (falls back to created_at date portion)
+  // so cashflow events appear in correct chronological order
+  const sorted = [...(data ?? [])].sort((a, b) => {
+    const dateA = (a.effective_date as string) ?? (a.created_at as string).split("T")[0];
+    const dateB = (b.effective_date as string) ?? (b.created_at as string).split("T")[0];
+    return dateA.localeCompare(dateB);
+  });
+
   return {
-    events: (data ?? []).map((row) => ({
-      date: (row.created_at as string).split("T")[0],
+    events: sorted.map((row) => ({
+      date: (row.effective_date as string) ?? (row.created_at as string).split("T")[0],
       amount_usd: (row.cashflow_amount_usd as number) ?? 0,
       amount_eur: (row.cashflow_amount_eur as number) ?? undefined,
       asset_class: (row.cashflow_asset_class as AssetClass) ?? undefined,

@@ -1,4 +1,4 @@
-import { getActivityLogs } from "@/lib/actions/activity-log";
+import { getActivityLogs, getSplitChildren } from "@/lib/actions/activity-log";
 import { ActivityTimeline } from "@/components/history/activity-timeline";
 import { MobileMenuButton } from "@/components/sidebar";
 import type { ActionType, EntityType } from "@/lib/types";
@@ -41,6 +41,13 @@ export default async function HistoryPage({
     offset,
   });
 
+  // Fetch split children for any split parents visible on this page
+  // Split parents have undone_at set (marked as undone when split) and split_from_id = null
+  const potentialParentIds = logs
+    .filter((l) => l.undone_at && !l.split_from_id)
+    .map((l) => l.id);
+  const splitChildren = await getSplitChildren(potentialParentIds);
+
   return (
     <div>
       <div className="mb-8">
@@ -61,6 +68,7 @@ export default async function HistoryPage({
         limit={limit}
         currentEntityType={entityType}
         currentAction={action}
+        splitChildren={splitChildren}
       />
     </div>
   );
