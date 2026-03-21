@@ -17,7 +17,8 @@
     "test:component": "vitest run --project component",
     "test:integration": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor && vitest run --project integration && supabase stop",
     "test:all": "npm test && npm run test:component && npm run test:integration",
-    "test:watch": "vitest --project unit"
+    "test:watch": "vitest --project unit",
+    "test:coverage": "vitest run --project unit --project component --coverage"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.43.0",
@@ -44,6 +45,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "jsdom": "^28.1.0",
