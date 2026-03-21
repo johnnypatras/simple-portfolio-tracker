@@ -163,15 +163,31 @@ export function getChangeForPeriod(
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
 
+  const deltas = ctx.adjustmentDeltas ?? [];
+  const snapshotDate = snapshot.snapshot_date;
   const valueKey = ctx.primaryCurrency === "EUR" ? "total_value_eur" : "total_value_usd";
   const otherKey = ctx.primaryCurrency === "EUR" ? "total_value_usd" : "total_value_eur";
+  const otherCurrency: BaseCurrency = ctx.primaryCurrency === "EUR" ? "USD" : "EUR";
   const currentValueOther = ctx.primaryCurrency === "EUR" ? ctx.totalValueUsd : ctx.totalValueEur;
 
-  const pastValue = snapshot[valueKey] ?? 0;
-  if (pastValue === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const rawPastValue = snapshot[valueKey] ?? 0;
+  if (rawPastValue === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+
+  // Adjustment compensation: add back not-yet-imported value
+  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, ctx.primaryCurrency);
+  const finalCum = getCumDeltaFinal(deltas, ctx.primaryCurrency);
+  const pastValue = rawPastValue + (finalCum - cumAtSnapshot);
+
+  if (pastValue <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
 
   const primaryReturn = ((ctx.totalValue - pastValue) / pastValue) * 100;
-  const pastOther = snapshot[otherKey] ?? 0;
+
+  // FX decomposition — also adjust the other currency past value
+  const rawPastOther = snapshot[otherKey] ?? 0;
+  const cumAtSnapshotOther = getCumDeltaAtDate(snapshotDate, deltas, otherCurrency);
+  const finalCumOther = getCumDeltaFinal(deltas, otherCurrency);
+  const pastOther = rawPastOther + (finalCumOther - cumAtSnapshotOther);
+
   let fxPct = 0;
   if (pastOther > 0 && currentValueOther > 0) {
     const otherReturn = ((currentValueOther - pastOther) / pastOther) * 100;

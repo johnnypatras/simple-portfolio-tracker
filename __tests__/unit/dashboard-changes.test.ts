@@ -166,6 +166,78 @@ describe("getChangeForPeriod", () => {
   });
 });
 
+// ── getChangeForPeriod with adjustment deltas ──────────────
+
+describe("getChangeForPeriod with adjustment deltas", () => {
+  it("adjusts past value when delta exists before snapshot date", () => {
+    const deltas = [makeDelta("2026-01-10", 78824, 67000)];
+    const snap = makeSnapshot({ total_value_eur: 23000, total_value_usd: 27060 });
+    const ctx = makeCtx({
+      totalValue: 90000,
+      pastSnapshots: { "30d": snap },
+      adjustmentDeltas: deltas,
+    });
+    const result = getChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(true);
+    // adjustedPast = 23000 + (67000 - 0) = 90000
+    // (90000 - 90000) / 90000 = 0%
+    expect(result.percent).toBeCloseTo(0, 0);
+  });
+
+  it("no adjustment when deltas are empty", () => {
+    const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 95000 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: [] });
+    const result = getChangeForPeriod("30d", ctx);
+    expect(result.percent).toBeCloseTo(12.5, 1);
+  });
+
+  it("no adjustment when adjustmentDeltas is undefined", () => {
+    const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 95000 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap } });
+    const result = getChangeForPeriod("30d", ctx);
+    expect(result.percent).toBeCloseTo(12.5, 1);
+  });
+
+  it("adjusts when all deltas are after snapshot date", () => {
+    const deltas = [makeDelta("2026-06-01", 10000, 8500)];
+    const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 95000 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
+    const result = getChangeForPeriod("30d", ctx);
+    // cumAtSnapshot = 0, final = 8500
+    // adjustedPast = 80000 + (8500 - 0) = 88500
+    // (90000 - 88500) / 88500 ≈ 1.69%
+    expect(result.percent).toBeCloseTo(1.69, 0);
+  });
+
+  it("returns unavailable when adjusted past value <= 0", () => {
+    const snap = makeSnapshot({ total_value_eur: 0 });
+    const ctx = makeCtx({ pastSnapshots: { "7d": snap }, adjustmentDeltas: [] });
+    const result = getChangeForPeriod("7d", ctx);
+    expect(result.available).toBe(false);
+  });
+
+  it("24h period unaffected by deltas", () => {
+    const deltas = [makeDelta("2026-01-01", 50000, 42500)];
+    const ctx = makeCtx({ adjustmentDeltas: deltas });
+    const result = getChangeForPeriod("24h", ctx);
+    expect(result.percent).toBe(0.56);
+  });
+
+  it("adjusts FX decomposition too", () => {
+    // With a large delta, both EUR and USD past values should be adjusted
+    // so FX % isn't distorted
+    const deltas = [makeDelta("2026-01-10", 50000, 42500)];
+    const snap = makeSnapshot({ total_value_eur: 40000, total_value_usd: 47000 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
+    const result = getChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(true);
+    // Compare with unadjusted: the FX % should differ when deltas are applied
+    const noAdj = getChangeForPeriod("30d", makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: [] }));
+    // Both should have FX values, but they should differ due to adjustment
+    expect(result.fxPercent).not.toBe(noAdj.fxPercent);
+  });
+});
+
 // ── Per-class change functions ─────────────────────────────
 
 describe("getCryptoChangeForPeriod", () => {
