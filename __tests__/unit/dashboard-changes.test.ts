@@ -294,6 +294,79 @@ describe("getCashChangeForPeriod", () => {
   });
 });
 
+// ── Per-class adjustment delta tests ───────────────────────
+
+function makeClassDelta(date: string, opts: {
+  cryptoUsd?: number; cryptoEur?: number;
+  stocksUsd?: number; stocksEur?: number;
+  cashUsd?: number; cashEur?: number;
+}): AdjustmentDelta {
+  return {
+    date,
+    cumulative_usd: (opts.cryptoUsd ?? 0) + (opts.stocksUsd ?? 0) + (opts.cashUsd ?? 0),
+    cumulative_eur: (opts.cryptoEur ?? 0) + (opts.stocksEur ?? 0) + (opts.cashEur ?? 0),
+    crypto_cumulative_usd: opts.cryptoUsd ?? 0,
+    crypto_cumulative_eur: opts.cryptoEur ?? 0,
+    stocks_cumulative_usd: opts.stocksUsd ?? 0,
+    stocks_cumulative_eur: opts.stocksEur ?? 0,
+    cash_cumulative_usd: opts.cashUsd ?? 0,
+    cash_cumulative_eur: opts.cashEur ?? 0,
+  };
+}
+
+describe("getCryptoChangeForPeriod with adjustment deltas", () => {
+  it("adjusts past USD before deriveClassFx", () => {
+    const deltas = [makeClassDelta("2026-01-10", { cryptoUsd: 20000, cryptoEur: 17000 })];
+    const snap = makeSnapshot({ crypto_value_usd: 10000 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
+    const result = getCryptoChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(true);
+    // adjustedPastUsd = 10000 + (20000 - 0) = 30000 (close to current 31800)
+    // Raw would be 10000 → 27000 = huge %. Adjusted should be small.
+    expect(Math.abs(result.percent)).toBeLessThan(20);
+  });
+
+  it("no adjustment when deltas are empty", () => {
+    const snap = makeSnapshot({ crypto_value_usd: 28000 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: [] });
+    const result = getCryptoChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(true);
+    // Should match raw behavior
+    expect(result.valueChange).not.toBe(0);
+  });
+
+  it("24h unaffected by deltas", () => {
+    const deltas = [makeClassDelta("2026-01-01", { cryptoUsd: 50000, cryptoEur: 42500 })];
+    const ctx = makeCtx({ adjustmentDeltas: deltas });
+    const result = getCryptoChangeForPeriod("24h", ctx);
+    expect(result.percent).toBe(1.1);
+  });
+});
+
+describe("getStockChangeForPeriod with adjustment deltas", () => {
+  it("adjusts past USD before deriveClassFx", () => {
+    const deltas = [makeClassDelta("2026-01-10", { stocksUsd: 30000, stocksEur: 25500 })];
+    const snap = makeSnapshot({ stocks_value_usd: 20000, stocks_eur_denominated_value: 8000 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
+    const result = getStockChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(true);
+    // adjustedPastUsd = 20000 + (30000 - 0) = 50000 (close to current 53000)
+    expect(Math.abs(result.percent)).toBeLessThan(20);
+  });
+});
+
+describe("getCashChangeForPeriod with adjustment deltas", () => {
+  it("adjusts past USD before deriveClassFx", () => {
+    const deltas = [makeClassDelta("2026-01-10", { cashUsd: 15000, cashEur: 12750 })];
+    const snap = makeSnapshot({ cash_value_usd: 5000 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
+    const result = getCashChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(true);
+    // adjustedPastUsd = 5000 + (15000 - 0) = 20000 (close to current 21200)
+    expect(Math.abs(result.percent)).toBeLessThan(20);
+  });
+});
+
 // ── getDepositsForPeriod ───────────────────────────────────
 
 describe("getDepositsForPeriod", () => {

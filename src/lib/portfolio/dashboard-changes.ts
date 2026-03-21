@@ -222,8 +222,14 @@ export function getCryptoChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  const pastUsd = snapshot.crypto_value_usd ?? 0;
-  if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const rawPastUsd = snapshot.crypto_value_usd ?? 0;
+  if (rawPastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const deltas = ctx.adjustmentDeltas ?? [];
+  const snapshotDate = snapshot.snapshot_date;
+  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "crypto");
+  const finalCum = getCumDeltaFinal(deltas, "USD", "crypto");
+  const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
+  if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
     ctx.cryptoValue, ctx.cryptoValueUsd, ctx.cryptoValueEur, pastUsd, snapshot, ctx.primaryCurrency,
   );
@@ -248,8 +254,14 @@ export function getStockChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  const pastUsd = snapshot.stocks_value_usd ?? 0;
-  if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const rawPastUsd = snapshot.stocks_value_usd ?? 0;
+  if (rawPastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const deltas = ctx.adjustmentDeltas ?? [];
+  const snapshotDate = snapshot.snapshot_date;
+  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "stocks");
+  const finalCum = getCumDeltaFinal(deltas, "USD", "stocks");
+  const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
+  if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
     ctx.stocksValue, ctx.stocksValueUsd, ctx.stocksValueEur, pastUsd, snapshot, ctx.primaryCurrency,
     ctx.stocksHomeCurrencyEur, snapshot.stocks_eur_denominated_value,
@@ -275,8 +287,14 @@ export function getCashChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  const pastUsd = snapshot.cash_value_usd ?? 0;
-  if (pastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const rawPastUsd = snapshot.cash_value_usd ?? 0;
+  if (rawPastUsd === 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
+  const deltas = ctx.adjustmentDeltas ?? [];
+  const snapshotDate = snapshot.snapshot_date;
+  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "cash");
+  const finalCum = getCumDeltaFinal(deltas, "USD", "cash");
+  const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
+  if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
     ctx.cashValue, ctx.cashValueUsd, ctx.cashValueEur, pastUsd, snapshot, ctx.primaryCurrency,
     ctx.cashHomeCurrencyEur, snapshot.cash_eur_denominated_value,
