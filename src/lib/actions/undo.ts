@@ -461,6 +461,30 @@ export async function undoActivity(
 
   const log = entry as ActivityLog;
 
+  // ── Split checks (before undone_at guard — split parents have undone_at set) ─
+
+  // Check if this entry has split children (user wants to unsplit)
+  const { data: splitChildren } = await supabase
+    .from("activity_log")
+    .select("id")
+    .eq("split_from_id", log.id)
+    .limit(1);
+
+  if (splitChildren?.length) {
+    const { unsplitActivityEntry } = await import("@/lib/actions/splits");
+    const result = await unsplitActivityEntry(log.id);
+    if (result.success) revalidateDashboard();
+    return result;
+  }
+
+  // Check if this IS a split child (redirect to parent unsplit)
+  if (log.split_from_id) {
+    const { unsplitActivityEntry } = await import("@/lib/actions/splits");
+    const result = await unsplitActivityEntry(log.split_from_id);
+    if (result.success) revalidateDashboard();
+    return result;
+  }
+
   // ── Guard: already undone ─
   if (log.undone_at) {
     return { success: false, message: "This action has already been undone" };
