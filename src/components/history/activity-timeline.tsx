@@ -22,11 +22,17 @@ import {
   BookOpen,
   Undo2,
   SlidersHorizontal,
+  Calendar,
+  GitBranch,
+  Merge,
+  Check,
+  X,
 } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { CashflowStatusIcon } from "@/components/ui/cashflow-status-icon";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 import { exportActivityLogsCsv, toggleActivityAdjustment } from "@/lib/actions/activity-log";
+import { backdateActivityEntry, unsplitActivityEntry } from "@/lib/actions/splits";
 import { undoActivity } from "@/lib/actions/undo";
 import { backfillSingleRow } from "@/lib/actions/backfill";
 import { useSharedView } from "@/components/shared-view-context";
@@ -40,6 +46,8 @@ interface ActivityTimelineProps {
   limit: number;
   currentEntityType?: EntityType;
   currentAction?: ActionType;
+  splitChildren?: ActivityLog[];
+  onSplitRequest?: (log: ActivityLog) => void;
 }
 
 // ─── Entity type display config ─────────────────────────
@@ -282,7 +290,8 @@ export function describeChanges(
 
 type TimelineItem =
   | { type: "single"; entry: ActivityLog }
-  | { type: "transfer"; groupId: string; entries: ActivityLog[] };
+  | { type: "transfer"; groupId: string; entries: ActivityLog[] }
+  | { type: "split"; parent: ActivityLog; children: ActivityLog[] };
 
 /** Merge entries sharing a transfer_group_id into grouped items. */
 function groupTransfers(
@@ -324,6 +333,53 @@ function groupTransfers(
   }
 
   return result;
+}
+
+/** Replace single items whose ID appears as split_from_id with grouped split items. */
+function groupSplits(
+  dateGroups: Map<string, TimelineItem[]>,
+  splitChildren: ActivityLog[]
+): Map<string, TimelineItem[]> {
+  if (splitChildren.length === 0) return dateGroups;
+
+  // Build map: parentId → children
+  const childrenByParent = new Map<string, ActivityLog[]>();
+  for (const child of splitChildren) {
+    if (!child.split_from_id) continue;
+    const existing = childrenByParent.get(child.split_from_id);
+    if (existing) existing.push(child);
+    else childrenByParent.set(child.split_from_id, [child]);
+  }
+
+  const result = new Map<string, TimelineItem[]>();
+  for (const [dateLabel, items] of dateGroups) {
+    const mapped = items.map((item): TimelineItem => {
+      if (item.type !== "single") return item;
+      const children = childrenByParent.get(item.entry.id);
+      if (children && children.length > 0) {
+        return { type: "split", parent: item.entry, children };
+      }
+      return item;
+    });
+    result.set(dateLabel, mapped);
+  }
+  return result;
+}
+
+/** Check if effective_date differs from created_at date. */
+function hasEffectiveDate(log: ActivityLog): boolean {
+  if (!log.effective_date) return false;
+  const createdDate = log.created_at.split("T")[0];
+  return log.effective_date !== createdDate;
+}
+
+/** Format effective_date for display. */
+function formatEffectiveDate(effectiveDate: string): string {
+  return new Date(effectiveDate + "T00:00:00").toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /** Identify source (negative delta) and destination (positive delta) legs. */
@@ -408,12 +464,16 @@ export function ActivityTimeline({
   limit,
   currentEntityType,
   currentAction,
+  splitChildren = [],
+  onSplitRequest,
 }: ActivityTimelineProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const { isReadOnly } = useSharedView();
   const [expandedTransfers, setExpandedTransfers] = useState<Set<string>>(new Set());
+  const [expandedSplits, setExpandedSplits] = useState<Set<string>>(new Set());
+  const [backdatingId, setBackdatingId] = useState<string | null>(null);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -488,7 +548,48 @@ export function ActivityTimeline({
     });
   }
 
-  const grouped = groupTransfers(groupByDate(logs));
+  function toggleSplitExpand(parentId: string) {
+    setExpandedSplits((prev) => {
+      const next = new Set(prev);
+      if (next.has(parentId)) next.delete(parentId);
+      else next.add(parentId);
+      return next;
+    });
+  }
+
+  async function handleBackdate(logId: string, date: string) {
+    try {
+      const result = await backdateActivityEntry(logId, date || null);
+      if (result.success) {
+        toast.success(result.message);
+        setBackdatingId(null);
+        startTransition(() => { router.refresh(); });
+      } else {
+        toast.error(result.message);
+      }
+    } catch {
+      toast.error("Failed to set effective date");
+    }
+  }
+
+  async function handleUnsplit(parentId: string) {
+    try {
+      const result = await unsplitActivityEntry(parentId);
+      if (result.success) {
+        toast.success(result.message);
+        startTransition(() => { router.refresh(); });
+      } else {
+        toast.error(result.message);
+      }
+    } catch {
+      toast.error("Failed to unsplit");
+    }
+  }
+
+  const grouped = groupSplits(
+    groupTransfers(groupByDate(logs)),
+    splitChildren
+  );
 
   return (
     <div className={isPending ? "opacity-60 transition-opacity" : ""}>
@@ -661,11 +762,119 @@ export function ActivityTimeline({
                       );
                     }
 
+                    if (item.type === "split") {
+                      const { parent, children } = item;
+                      const isExpanded = expandedSplits.has(parent.id);
+                      const EntityIcon = getEntityIcon(parent.entity_type);
+                      const entityColor = getEntityBadgeColor(parent.entity_type);
+
+                      return (
+                        <div
+                          key={`split-${parent.id}`}
+                          className="border-l-2 border-violet-500/30 rounded-r-lg"
+                        >
+                          {/* Split header */}
+                          <div className="flex items-start gap-3 px-3 py-2.5 rounded-r-lg hover:bg-zinc-900/50 transition-colors group">
+                            <div className="shrink-0 p-1.5 rounded-lg bg-violet-500/15 text-violet-400 mt-0.5">
+                              <GitBranch className="w-3.5 h-3.5" />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium text-zinc-200 truncate">
+                                  {parent.entity_name}
+                                </span>
+                                <span
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${entityColor}`}
+                                >
+                                  <EntityIcon className="w-2.5 h-2.5" />
+                                  {ENTITY_LABELS[parent.entity_type] ?? parent.entity_type}
+                                </span>
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-violet-500/15 text-violet-400">
+                                  Split
+                                </span>
+                                {parent.is_adjustment && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title="Not a real transaction — portfolio balance correction">
+                                    Adj.
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                                Split into {children.length} date allocations
+                              </p>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-2 mt-0.5">
+                              {!isReadOnly && (
+                                <ConfirmButton
+                                  onConfirm={() => handleUnsplit(parent.id)}
+                                  confirmLabel="Unsplit?"
+                                  confirmLabelClassName="text-violet-400"
+                                  className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-500 hover:text-violet-400 hover:bg-violet-500/10 transition-all"
+                                  title="Unsplit — restore original entry"
+                                >
+                                  <Merge className="w-3.5 h-3.5" />
+                                </ConfirmButton>
+                              )}
+                              <button
+                                onClick={() => toggleSplitExpand(parent.id)}
+                                className="p-1 rounded text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-all"
+                                aria-label={isExpanded ? "Collapse" : "Show split details"}
+                                title={isExpanded ? "Collapse" : "Show split details"}
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <span className="text-xs text-zinc-500">
+                                {getTimeLabel(parent.created_at)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Expanded children */}
+                          {isExpanded && (
+                            <div className="ml-[2.75rem] space-y-0.5 pb-2">
+                              {children.map((child) => {
+                                const ChildActionIcon = getActionIcon(child.action);
+                                const childColor = getActionColor(child.action);
+                                const splitQty = (child.details as Record<string, unknown> | null)?.split_quantity;
+                                return (
+                                  <div key={child.id} className="flex items-center gap-2 px-2 py-1 rounded text-xs">
+                                    <div className={`shrink-0 p-1 rounded ${childColor}`}>
+                                      <ChildActionIcon className="w-2.5 h-2.5" />
+                                    </div>
+                                    {splitQty != null && (
+                                      <span className="text-zinc-300 shrink-0 font-medium">
+                                        {Number(splitQty).toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                                      </span>
+                                    )}
+                                    {child.effective_date && (
+                                      <span className="text-[10px] text-sky-400 flex items-center gap-1 shrink-0">
+                                        <Calendar className="w-3 h-3" />
+                                        {formatEffectiveDate(child.effective_date)}
+                                      </span>
+                                    )}
+                                    <span className="text-zinc-500 truncate">{child.description}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
                     const log = item.entry;
                     const EntityIcon = getEntityIcon(log.entity_type);
                     const ActionIcon = getActionIcon(log.action);
                     const actionColor = getActionColor(log.action);
                     const entityColor = getEntityBadgeColor(log.entity_type);
+                    const canSplit = !log.undone_at && !log.split_from_id
+                      && !log.transfer_group_id && !log.compensates_for
+                      && (log.cashflow_status === "complete" || log.delta_status === "complete");
 
                     return (
                       <div
@@ -718,10 +927,76 @@ export function ActivityTimeline({
                           <p className="text-xs text-zinc-500 mt-0.5 truncate">
                             {(log.action === "updated" && describeChanges(log.before_snapshot, log.after_snapshot)) || log.description}
                           </p>
+                          {/* Effective date annotation */}
+                          {hasEffectiveDate(log) && (
+                            <span className="text-[10px] text-sky-400 flex items-center gap-1 mt-0.5">
+                              <Calendar className="w-3 h-3" />
+                              Effective: {formatEffectiveDate(log.effective_date!)}
+                            </span>
+                          )}
+                          {/* Inline backdate date picker */}
+                          {backdatingId === log.id && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <input
+                                type="date"
+                                defaultValue={log.effective_date ?? log.created_at.split("T")[0]}
+                                max={new Date().toISOString().split("T")[0]}
+                                className="px-2 py-1 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-sky-500/70"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") setBackdatingId(null);
+                                  if (e.key === "Enter") handleBackdate(log.id, e.currentTarget.value);
+                                }}
+                                autoFocus
+                              />
+                              <button
+                                onClick={(e) => {
+                                  const input = (e.currentTarget.previousElementSibling) as HTMLInputElement;
+                                  handleBackdate(log.id, input.value);
+                                }}
+                                className="p-1 rounded text-emerald-400 hover:bg-emerald-500/15 transition-colors"
+                                title="Set effective date"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setBackdatingId(null)}
+                                className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                                title="Cancel"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </div>
 
-                        {/* Adjustment toggle / Undo / Undone badge / Time */}
+                        {/* Action buttons / Adjustment toggle / Undo / Undone badge / Time */}
                         <div className="shrink-0 flex items-center gap-2 mt-0.5">
+                          {/* Calendar (backdate) button */}
+                          {!isReadOnly && !log.undone_at && !log.split_from_id && (
+                            <button
+                              onClick={() => setBackdatingId(backdatingId === log.id ? null : log.id)}
+                              className={`p-1 rounded transition-all ${
+                                hasEffectiveDate(log)
+                                  ? "text-sky-400 bg-sky-500/10"
+                                  : "md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                              }`}
+                              aria-label="Set effective date"
+                              title="Set effective date"
+                            >
+                              <Calendar className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {/* GitBranch (split) button */}
+                          {!isReadOnly && canSplit && (
+                            <button
+                              onClick={() => onSplitRequest?.(log)}
+                              className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-600 hover:text-violet-400 hover:bg-violet-500/10 transition-all"
+                              aria-label="Split into multiple dates"
+                              title="Split into multiple dates"
+                            >
+                              <GitBranch className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {!isReadOnly && !log.undone_at && CASH_FLOW_ENTITIES.includes(log.entity_type) && (
                             <button
                               onClick={() => handleToggleAdjustment(log.id, !log.is_adjustment)}

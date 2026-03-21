@@ -118,11 +118,12 @@ export async function getActivityLogs(filters?: {
   const limit = Math.max(1, Math.min(filters?.limit ?? 50, 500));
   const offset = Math.max(0, filters?.offset ?? 0);
 
-  // Build filtered query
+  // Build filtered query — exclude split children from main pagination
   let query = supabase
     .from("activity_log")
     .select("*", { count: "exact" })
     .eq("user_id", user.id)
+    .is("split_from_id", null)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -140,6 +141,20 @@ export async function getActivityLogs(filters?: {
     logs: (data ?? []) as ActivityLog[],
     total: count ?? 0,
   };
+}
+
+// ─── Fetch split children for parent entries ────────────
+
+export async function getSplitChildren(parentIds: string[]): Promise<ActivityLog[]> {
+  if (parentIds.length === 0) return [];
+  const supabase = await createServerSupabaseClient();
+  const { data } = await supabase
+    .from("activity_log")
+    .select("*")
+    .in("split_from_id", parentIds)
+    .is("undone_at", null)
+    .order("effective_date", { ascending: true });
+  return (data ?? []) as ActivityLog[];
 }
 
 // ─── Delta computation from snapshots ───────────────────
