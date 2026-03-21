@@ -5,7 +5,7 @@
  * FX decomposition, and deposit sums from snapshots and cash flows.
  */
 
-import type { PortfolioSnapshot, AssetClass, CashFlowEvent, BaseCurrency } from "@/lib/types";
+import type { PortfolioSnapshot, AssetClass, CashFlowEvent, BaseCurrency, AdjustmentDelta } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -58,6 +58,7 @@ export interface ChangeContext {
   cryptoChange24hPercent: number;
   pastSnapshots: Record<string, PortfolioSnapshot | null>;
   cashFlows: CashFlowEvent[];
+  adjustmentDeltas?: AdjustmentDelta[];
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -107,6 +108,40 @@ export function deriveClassFx(
   }
 
   return { fxPct, fxAbs, pastClassEur };
+}
+
+/** Cumulative delta at a given date (forward-fill). */
+export function getCumDeltaAtDate(
+  date: string,
+  deltas: AdjustmentDelta[],
+  primaryCurrency: BaseCurrency,
+  assetClass?: "crypto" | "stocks" | "cash",
+): number {
+  let result = 0;
+  for (const d of deltas) {
+    if (d.date > date) break;
+    result = assetClass
+      ? (primaryCurrency === "EUR"
+          ? d[`${assetClass}_cumulative_eur`]
+          : d[`${assetClass}_cumulative_usd`])
+      : (primaryCurrency === "EUR" ? d.cumulative_eur : d.cumulative_usd);
+  }
+  return result;
+}
+
+/** Final cumulative delta (last entry). */
+export function getCumDeltaFinal(
+  deltas: AdjustmentDelta[],
+  primaryCurrency: BaseCurrency,
+  assetClass?: "crypto" | "stocks" | "cash",
+): number {
+  if (deltas.length === 0) return 0;
+  const d = deltas[deltas.length - 1];
+  return assetClass
+    ? (primaryCurrency === "EUR"
+        ? d[`${assetClass}_cumulative_eur`]
+        : d[`${assetClass}_cumulative_usd`])
+    : (primaryCurrency === "EUR" ? d.cumulative_eur : d.cumulative_usd);
 }
 
 // ── Main functions ─────────────────────────────────────────

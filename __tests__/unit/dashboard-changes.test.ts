@@ -6,9 +6,11 @@ import {
   getStockChangeForPeriod,
   getCashChangeForPeriod,
   getDepositsForPeriod,
+  getCumDeltaAtDate,
+  getCumDeltaFinal,
 } from "@/lib/portfolio/dashboard-changes";
 import type { ChangeContext } from "@/lib/portfolio/dashboard-changes";
-import type { PortfolioSnapshot } from "@/lib/types";
+import type { PortfolioSnapshot, AdjustmentDelta } from "@/lib/types";
 
 // ── Test helpers ───────────────────────────────────────────
 
@@ -313,5 +315,88 @@ describe("getDepositsForPeriod", () => {
     const result = getDepositsForPeriod("30d", ctx);
     expect(result.total).toBe(0);
     expect(result.breakdown).toHaveLength(0);
+  });
+});
+
+// ── Delta helpers ──────────────────────────────────────────
+
+function makeDelta(date: string, cumUsd: number, cumEur: number): AdjustmentDelta {
+  return {
+    date, cumulative_usd: cumUsd, cumulative_eur: cumEur,
+    crypto_cumulative_usd: 0, crypto_cumulative_eur: 0,
+    stocks_cumulative_usd: 0, stocks_cumulative_eur: 0,
+    cash_cumulative_usd: 0, cash_cumulative_eur: 0,
+  };
+}
+
+describe("getCumDeltaAtDate", () => {
+  it("returns 0 for empty deltas", () => {
+    expect(getCumDeltaAtDate("2026-01-15", [], "EUR")).toBe(0);
+  });
+
+  it("returns cumulative delta at exact date", () => {
+    const deltas = [makeDelta("2026-01-10", 1000, 850)];
+    expect(getCumDeltaAtDate("2026-01-10", deltas, "EUR")).toBe(850);
+  });
+
+  it("forward-fills to last delta before date", () => {
+    const deltas = [
+      makeDelta("2026-01-05", 500, 425),
+      makeDelta("2026-01-15", 1500, 1275),
+    ];
+    expect(getCumDeltaAtDate("2026-01-10", deltas, "EUR")).toBe(425);
+  });
+
+  it("returns 0 when date is before all deltas", () => {
+    const deltas = [makeDelta("2026-02-01", 1000, 850)];
+    expect(getCumDeltaAtDate("2026-01-01", deltas, "EUR")).toBe(0);
+  });
+
+  it("returns final delta when date is after all deltas", () => {
+    const deltas = [makeDelta("2026-01-01", 1000, 850)];
+    expect(getCumDeltaAtDate("2026-12-31", deltas, "EUR")).toBe(850);
+  });
+
+  it("returns class-specific delta when assetClass provided", () => {
+    const deltas: AdjustmentDelta[] = [{
+      date: "2026-01-10",
+      cumulative_usd: 3000, cumulative_eur: 2550,
+      crypto_cumulative_usd: 1000, crypto_cumulative_eur: 850,
+      stocks_cumulative_usd: 2000, stocks_cumulative_eur: 1700,
+      cash_cumulative_usd: 0, cash_cumulative_eur: 0,
+    }];
+    expect(getCumDeltaAtDate("2026-01-10", deltas, "EUR", "crypto")).toBe(850);
+    expect(getCumDeltaAtDate("2026-01-10", deltas, "USD", "stocks")).toBe(2000);
+  });
+
+  it("uses USD currency correctly", () => {
+    const deltas = [makeDelta("2026-01-10", 1000, 850)];
+    expect(getCumDeltaAtDate("2026-01-10", deltas, "USD")).toBe(1000);
+  });
+});
+
+describe("getCumDeltaFinal", () => {
+  it("returns 0 for empty deltas", () => {
+    expect(getCumDeltaFinal([], "EUR")).toBe(0);
+  });
+
+  it("returns last delta value", () => {
+    const deltas = [
+      makeDelta("2026-01-01", 500, 425),
+      makeDelta("2026-01-15", 1500, 1275),
+    ];
+    expect(getCumDeltaFinal(deltas, "EUR")).toBe(1275);
+    expect(getCumDeltaFinal(deltas, "USD")).toBe(1500);
+  });
+
+  it("returns class-specific final delta", () => {
+    const deltas: AdjustmentDelta[] = [{
+      date: "2026-01-10",
+      cumulative_usd: 3000, cumulative_eur: 2550,
+      crypto_cumulative_usd: 1000, crypto_cumulative_eur: 850,
+      stocks_cumulative_usd: 2000, stocks_cumulative_eur: 1700,
+      cash_cumulative_usd: 0, cash_cumulative_eur: 0,
+    }];
+    expect(getCumDeltaFinal(deltas, "EUR", "crypto")).toBe(850);
   });
 });
