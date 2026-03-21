@@ -77,7 +77,7 @@ describe("ChangeTooltip", () => {
     expect(screen.getByText("Revolut")).toBeInTheDocument();
   });
 
-  it("hides deposit breakdown when only one item", () => {
+  it("shows deposit breakdown even for a single item", () => {
     render(
       <ChangeTooltip
         valueChange={1000}
@@ -87,8 +87,8 @@ describe("ChangeTooltip", () => {
         {...base}
       />,
     );
-    // Single-item breakdown is suppressed (length <= 1 check)
-    expect(screen.queryByText("Alpha Bank")).not.toBeInTheDocument();
+    // Single-item breakdown is shown (always show breakdown when deposits exist)
+    expect(screen.getByText("Alpha Bank")).toBeInTheDocument();
   });
 
   it("shows percentage when startValue is provided", () => {
