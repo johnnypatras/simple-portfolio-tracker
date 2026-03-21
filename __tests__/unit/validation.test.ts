@@ -7,6 +7,7 @@ import {
   validateUUID,
   validateCoinGeckoId,
   validateYahooTicker,
+  validateDate,
 } from "@/lib/validation";
 
 describe("validateAmount", () => {
@@ -308,5 +309,39 @@ describe("validateYahooTicker", () => {
 
   it("rejects URL injection", () => {
     expect(() => validateYahooTicker("AAPL&foo=bar")).toThrow();
+  });
+});
+
+describe("validateDate", () => {
+  it("accepts valid YYYY-MM-DD date", () => {
+    expect(() => validateDate("2026-03-21")).not.toThrow();
+  });
+
+  it("rejects missing leading zero in month", () => {
+    expect(() => validateDate("2026-3-21")).toThrow("must be YYYY-MM-DD format");
+  });
+
+  it("rejects wrong format (DD/MM/YYYY)", () => {
+    expect(() => validateDate("21/03/2026")).toThrow("must be YYYY-MM-DD format");
+  });
+
+  it("rejects empty string", () => {
+    expect(() => validateDate("")).toThrow("must be YYYY-MM-DD format");
+  });
+
+  it("rejects non-date string", () => {
+    expect(() => validateDate("not-a-date")).toThrow("must be YYYY-MM-DD format");
+  });
+
+  it("uses custom label in error message", () => {
+    expect(() => validateDate("bad", "Effective date")).toThrow(
+      "Effective date must be YYYY-MM-DD format",
+    );
+  });
+
+  it("rejects SQL injection attempt", () => {
+    expect(() => validateDate("2026-01-01' OR '1'='1")).toThrow(
+      "must be YYYY-MM-DD format",
+    );
   });
 });

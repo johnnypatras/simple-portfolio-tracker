@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   computeCashflowFromPrices,
   classifyAssetClass,
@@ -71,6 +71,62 @@ describe("computeCashflowFromPrices", () => {
       priceEur: 92,
     });
     expect(result).toEqual({ usd: 0, eur: 0 });
+  });
+
+  it("unsupported currency (GBP) — returns null", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = computeCashflowFromPrices({
+      action: "created",
+      beforeQty: 0,
+      afterQty: 1000,
+      entityCurrency: "GBP",
+      fxRate: 1.08,
+    });
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unsupported currency "GBP"'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("zero fxRate with USD entity — guards against Infinity", () => {
+    // Source: fxRate > 0 check on line 54 of cashflow.ts
+    // When fxRate is 0, the guard makes it fall back to `delta` (raw USD amount)
+    const result = computeCashflowFromPrices({
+      action: "created",
+      beforeQty: 0,
+      afterQty: 1000,
+      entityCurrency: "USD",
+      fxRate: 0,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.usd).toBe(1000);
+    // fxRate 0 → guard triggers → eur = delta (1000) instead of Infinity
+    expect(result!.eur).toBe(1000);
+    expect(Number.isFinite(result!.eur)).toBe(true);
+  });
+
+  it("undefined fxRate — falls back to 1", () => {
+    // Source: `const fxRate = params.fxRate ?? 1;` on line 47
+    const resultEur = computeCashflowFromPrices({
+      action: "created",
+      beforeQty: 0,
+      afterQty: 1000,
+      entityCurrency: "EUR",
+      fxRate: undefined,
+    });
+    // EUR mode with fxRate=1: usd = delta * 1 = 1000, eur = delta = 1000
+    expect(resultEur).toEqual({ usd: 1000, eur: 1000 });
+
+    const resultUsd = computeCashflowFromPrices({
+      action: "created",
+      beforeQty: 0,
+      afterQty: 1000,
+      entityCurrency: "USD",
+      fxRate: undefined,
+    });
+    // USD mode with fxRate=1 (> 0 so division path): usd = 1000, eur = 1000 / 1 = 1000
+    expect(resultUsd).toEqual({ usd: 1000, eur: 1000 });
   });
 });
 

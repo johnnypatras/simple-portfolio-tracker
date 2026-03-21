@@ -44,4 +44,30 @@ describe("DashboardError", () => {
     expect(captureException).toHaveBeenCalledOnce();
     expect(captureException).toHaveBeenCalledWith(error);
   });
+
+  it("handles error with digest property", () => {
+    captureException.mockClear();
+    const error = Object.assign(new Error("server error"), { digest: "abc123" });
+
+    render(
+      <DashboardError error={error} reset={vi.fn()} />,
+    );
+
+    expect(screen.getByText("Failed to load dashboard")).toBeInTheDocument();
+    expect(captureException).toHaveBeenCalledWith(error);
+  });
+
+  it("renders and reports non-standard error objects", () => {
+    captureException.mockClear();
+    // Next.js wraps non-Error throws, but the component receives whatever is passed
+    const error = { message: "string-based error", digest: "xyz" } as unknown as Error & { digest?: string };
+
+    render(
+      <DashboardError error={error} reset={vi.fn()} />,
+    );
+
+    expect(screen.getByText("Failed to load dashboard")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(captureException).toHaveBeenCalledWith(error);
+  });
 });

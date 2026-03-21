@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { CashAccountModal } from "@/components/cash/cash-account-modal";
 import type { CashAccount } from "@/lib/types";
 
@@ -181,5 +181,36 @@ describe("CashAccountModal", () => {
     );
 
     expect(container.innerHTML).toBe("");
+  });
+
+  it("effective date field is rendered", () => {
+    render(
+      <CashAccountModal
+        isOpen
+        onClose={vi.fn()}
+        institutionId="inst-1"
+        institutionName="Revolut"
+      />,
+    );
+
+    expect(screen.getByLabelText(/Effective date/)).toBeInTheDocument();
+    expect(screen.getByText(/Leave empty to use today/)).toBeInTheDocument();
+  });
+
+  it("currency selector can be changed", () => {
+    render(
+      <CashAccountModal
+        isOpen
+        onClose={vi.fn()}
+        institutionId="inst-1"
+        institutionName="Revolut"
+      />,
+    );
+
+    const currencySelect = screen.getByLabelText("Currency") as HTMLSelectElement;
+    expect(currencySelect.value).toBe("EUR");
+
+    fireEvent.change(currencySelect, { target: { value: "USD" } });
+    expect(currencySelect.value).toBe("USD");
   });
 });

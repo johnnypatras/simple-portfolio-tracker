@@ -520,6 +520,95 @@ describe("getCumDeltaAtDate", () => {
   });
 });
 
+// ── Edge case: negative adjusted past value ─────────────
+
+describe("getChangeForPeriod — negative adjusted past value", () => {
+  it("returns unavailable when adjustment makes past value negative", () => {
+    // snapshot total_value_eur: 80000, adjustment cumDelta = -100000
+    // pastValue = 80000 + (-100000 - 0) = -20000 → guard returns available: false
+    const deltas = [makeDelta("2026-06-01", -117647, -100000)];
+    const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 94000 });
+    const ctx = makeCtx({
+      totalValue: 90000,
+      pastSnapshots: { "30d": snap },
+      adjustmentDeltas: deltas,
+    });
+    const result = getChangeForPeriod("30d", ctx);
+    // pastValue = 80000 + (-100000 - 0) = -20000 → <= 0 → unavailable
+    expect(result.available).toBe(false);
+    expect(result.percent).toBe(0);
+    expect(result.valueChange).toBe(0);
+    expect(Number.isNaN(result.percent)).toBe(false);
+  });
+});
+
+// ── Edge case: very small period change ──────────────────
+
+describe("getChangeForPeriod — sub-0.01% change", () => {
+  it("computes tiny percentage without rounding to zero", () => {
+    // ~1,000,000 EUR → 1,000,050 EUR = +0.005%
+    const snap = makeSnapshot({ total_value_eur: 1000000, total_value_usd: 1180000 });
+    const ctx = makeCtx({
+      totalValue: 1000050,
+      totalValueUsd: 1180059,
+      totalValueEur: 1000050,
+      pastSnapshots: { "30d": snap },
+      adjustmentDeltas: [],
+    });
+    const result = getChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(true);
+    // (1000050 - 1000000) / 1000000 × 100 = 0.005%
+    expect(result.percent).toBeCloseTo(0.005, 3);
+    expect(result.valueChange).toBeCloseTo(50, 0);
+    expect(result.percent).not.toBe(0);
+  });
+});
+
+// ── Edge case: missing EUR snapshot value ─────────────────
+
+describe("getChangeForPeriod — null EUR in snapshot", () => {
+  it("returns unavailable when primary currency value is null", () => {
+    // EUR user, but snapshot has total_value_eur: null (old snapshot)
+    // rawPastValue = snapshot[valueKey] ?? 0 = 0 → pastValue = 0 → unavailable
+    const snap = makeSnapshot({
+      total_value_usd: 100000,
+      total_value_eur: null as unknown as number,
+    });
+    const ctx = makeCtx({
+      primaryCurrency: "EUR",
+      pastSnapshots: { "7d": snap },
+      adjustmentDeltas: [],
+    });
+    const result = getChangeForPeriod("7d", ctx);
+    expect(result.available).toBe(false);
+    expect(Number.isNaN(result.percent)).toBe(false);
+    expect(Number.isNaN(result.fxPercent)).toBe(false);
+  });
+
+  it("FX decomposition handles null other-currency snapshot gracefully", () => {
+    // USD user, but snapshot has total_value_eur: null → FX decomposition gets pastOther=0
+    const snap = makeSnapshot({
+      total_value_usd: 80000,
+      total_value_eur: null as unknown as number,
+    });
+    const ctx = makeCtx({
+      primaryCurrency: "USD",
+      totalValue: 90000,
+      totalValueUsd: 90000,
+      totalValueEur: 76500,
+      pastSnapshots: { "30d": snap },
+      adjustmentDeltas: [],
+    });
+    const result = getChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(true);
+    // Primary return works: (90000 - 80000) / 80000 = 12.5%
+    expect(result.percent).toBeCloseTo(12.5, 1);
+    // FX: pastOther = (null ?? 0) + 0 = 0 → fxPct stays 0
+    expect(result.fxPercent).toBe(0);
+    expect(Number.isNaN(result.fxValueChange)).toBe(false);
+  });
+});
+
 describe("getCumDeltaFinal", () => {
   it("returns 0 for empty deltas", () => {
     expect(getCumDeltaFinal([], "EUR")).toBe(0);

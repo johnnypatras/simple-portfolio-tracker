@@ -229,4 +229,100 @@ describe("buildPaletteHoldings", () => {
     expect(result[0].type).toBe("cash");
     expect(result[0].name).toBe("DEGIRO EUR");
   });
+
+  it("stock with yahoo_ticker uses yahoo_ticker for price lookup", () => {
+    const result = buildPaletteHoldings({
+      cryptoAssets: [],
+      cryptoPrices: {},
+      stockAssets: [
+        {
+          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          name: "Vanguard FTSE", currency: "EUR", category: "etf" as const,
+          isin: null, subcategory: null, tags: [], created_at: "",
+          positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
+            broker_name: "DEGIRO", quantity: 10, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
+        },
+      ],
+      stockPrices: {
+        // Price is keyed by yahoo_ticker "VWCE.DE", NOT "VWCE"
+        "VWCE.DE": { price: 120, previousClose: 118, change24h: 1.5, currency: "EUR", name: "Vanguard FTSE" },
+      },
+      cashAccounts: [],
+      fxRates: { EUR: 1 },
+      primaryCurrency: "EUR",
+      pathPrefix: "/dashboard",
+    });
+
+    expect(result).toHaveLength(1);
+    const stock = result[0];
+    expect(stock.type).toBe("stock");
+    expect(stock.ticker).toBe("VWCE"); // display ticker stays as ticker field
+    expect(stock.value).toBeCloseTo(1200, 0); // 10 × 120
+    expect(stock.pricePerUnit).toBeCloseTo(120, 0);
+    expect(stock.change24h).toBe(1.5);
+  });
+
+  it("stock with null yahoo_ticker falls back to ticker for price lookup", () => {
+    const result = buildPaletteHoldings({
+      cryptoAssets: [],
+      cryptoPrices: {},
+      stockAssets: [
+        {
+          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: null,
+          name: "Apple Inc.", currency: "USD", category: "individual_stock" as const,
+          isin: null, subcategory: null, tags: [], created_at: "",
+          positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
+            broker_name: "B", quantity: 5, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
+        },
+      ],
+      stockPrices: {
+        // Keyed by plain ticker since yahoo_ticker is null
+        AAPL: { price: 200, previousClose: 195, change24h: 2.5, currency: "USD", name: "Apple Inc." },
+      },
+      cashAccounts: [],
+      fxRates: { USD: 1 },
+      primaryCurrency: "USD",
+      pathPrefix: "/dashboard",
+    });
+
+    expect(result).toHaveLength(1);
+    const stock = result[0];
+    expect(stock.ticker).toBe("AAPL");
+    expect(stock.value).toBeCloseTo(1000, 0); // 5 × 200
+    expect(stock.pricePerUnit).toBeCloseTo(200, 0);
+    expect(stock.change24h).toBe(2.5);
+  });
+
+  it("stock with missing price returns 0 for value and pricePerUnit", () => {
+    const result = buildPaletteHoldings({
+      cryptoAssets: [],
+      cryptoPrices: {},
+      stockAssets: [
+        {
+          id: "sa1", user_id: "u", ticker: "OBSCURE", yahoo_ticker: "OBSCURE.L",
+          name: "Obscure Stock", currency: "GBP", category: "individual_stock" as const,
+          isin: null, subcategory: null, tags: [], created_at: "",
+          positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
+            broker_name: "B", quantity: 100, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
+        },
+      ],
+      stockPrices: {}, // no price data at all
+      cashAccounts: [],
+      fxRates: { GBP: 0.79, USD: 1 },
+      primaryCurrency: "USD",
+      pathPrefix: "/dashboard",
+    });
+
+    expect(result).toHaveLength(1);
+    const stock = result[0];
+    expect(stock.type).toBe("stock");
+    expect(stock.ticker).toBe("OBSCURE");
+    // price?.price ?? 0 = 0 → value and pricePerUnit should be 0
+    expect(stock.value).toBe(0);
+    expect(stock.pricePerUnit).toBe(0);
+    expect(stock.change24h).toBeUndefined();
+  });
 });

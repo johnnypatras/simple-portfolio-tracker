@@ -88,4 +88,43 @@ describe("Modal", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("has role=\"dialog\" on the panel", () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Accessible Modal">
+        <p>Content</p>
+      </Modal>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it("has aria-modal=\"true\" on the dialog", () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Accessible Modal">
+        <p>Content</p>
+      </Modal>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+  });
+
+  it("title is rendered and accessible via aria-labelledby", () => {
+    render(
+      <Modal open onClose={vi.fn()} title="My Title">
+        <p>Content</p>
+      </Modal>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    const labelledBy = dialog.getAttribute("aria-labelledby");
+    expect(labelledBy).toBeTruthy();
+
+    // The heading with the matching id contains the title text
+    const heading = document.getElementById(labelledBy!);
+    expect(heading).not.toBeNull();
+    expect(heading!.textContent).toBe("My Title");
+  });
 });

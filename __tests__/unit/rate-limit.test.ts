@@ -122,4 +122,44 @@ describe("rateLimit", () => {
     });
     expect(check(differentFirstIp)).toBeNull(); // allowed — different bucket
   });
+
+  it("full purge cleans up stale entries from all IPs after 60s", () => {
+    const check = rateLimit({ windowMs: 30_000, max: 2 });
+
+    // Fill up 3 different IPs
+    check(makeReq("10.0.0.1"));
+    check(makeReq("10.0.0.1"));
+    check(makeReq("10.0.0.2"));
+    check(makeReq("10.0.0.2"));
+    check(makeReq("10.0.0.3"));
+    check(makeReq("10.0.0.3"));
+
+    // All 3 are now at limit
+    expect(check(makeReq("10.0.0.1"))).not.toBeNull(); // blocked
+    expect(check(makeReq("10.0.0.2"))).not.toBeNull(); // blocked
+    expect(check(makeReq("10.0.0.3"))).not.toBeNull(); // blocked
+
+    // Advance past both windowMs (30s) and purge threshold (60s)
+    vi.advanceTimersByTime(61_000);
+
+    // Next request triggers full purge — all old entries removed
+    expect(check(makeReq("10.0.0.1"))).toBeNull(); // allowed (purged)
+    // Other IPs also purged — they can make requests as if fresh
+    expect(check(makeReq("10.0.0.2"))).toBeNull();
+    expect(check(makeReq("10.0.0.3"))).toBeNull();
+  });
+
+  it("treats newline in X-Forwarded-For as part of the key (no split)", () => {
+    const check = rateLimit({ windowMs: 60_000, max: 1 });
+    const newlineReq = () =>
+      new NextRequest("http://localhost/api/test", {
+        headers: { "x-forwarded-for": "1.1.1.1\n1.1.1.2" },
+      });
+    // The whole string "1.1.1.1\n1.1.1.2" becomes the key (split on comma, not newline)
+    expect(check(newlineReq())).toBeNull(); // 1 — allowed
+    expect(check(newlineReq())).not.toBeNull(); // 2 — blocked (same key)
+
+    // A clean "1.1.1.1" is a different bucket
+    expect(check(makeReq("1.1.1.1"))).toBeNull(); // allowed — separate key
+  });
 });

@@ -257,3 +257,124 @@ describe("enrichChartData — S&P seeding FX ratio", () => {
     expect(result[0].adjustedValue).toBe(840);
   });
 });
+
+// ── Naive fallback path (empty cashFlows) ─────────────────
+
+describe("enrichChartData — naive fallback", () => {
+  it("uses portfolio start price ratio for S&P when cashFlows is empty", () => {
+    // With cashFlows=[], enrichNaiveFallback is used:
+    // S&P seeded as (portfolioStart / sp500Start) × sp500Price
+    const points = [
+      makePoint({ date: "2026-01-01", value: 50000, valueUsd: 50000 }),
+      makePoint({ date: "2026-01-02", value: 51000, valueUsd: 51000 }),
+    ];
+
+    const result = enrichChartData(
+      makeInput({
+        points,
+        viewMode: "total",
+        primaryCurrency: "USD",
+        sp500History: [
+          { date: "2026-01-01", close: 5000 },
+          { date: "2026-01-02", close: 5100 },
+        ],
+        cashFlows: [], // empty → triggers naive fallback
+        adjustmentDeltas: [],
+      }),
+    );
+
+    // Naive: sp500Value = (portfolioStart / sp500Start) × close
+    // = (50000 / 5000) × 5000 = 50000 (day 1)
+    // = (50000 / 5000) × 5100 = 51000 (day 2)
+    expect(result[0].sp500Value).toBeCloseTo(50000, 0);
+    expect(result[1].sp500Value).toBeCloseTo(51000, 0);
+  });
+});
+
+// ── Multiple cash flows accumulation ──────────────────────
+
+describe("enrichChartData — cash flow unit accumulation", () => {
+  it("accumulates S&P units from multiple cash flows", () => {
+    const points = [
+      makePoint({ date: "2026-01-01", value: 2000, valueUsd: 2000 }),
+      makePoint({ date: "2026-01-05", value: 2000, valueUsd: 2000 }),
+      makePoint({ date: "2026-01-10", value: 2000, valueUsd: 2000 }),
+    ];
+
+    const result = enrichChartData(
+      makeInput({
+        points,
+        viewMode: "total",
+        primaryCurrency: "USD",
+        sp500History: [
+          { date: "2026-01-01", close: 5000 },
+          { date: "2026-01-05", close: 5100 },
+          { date: "2026-01-10", close: 5200 },
+        ],
+        cashFlows: [
+          { date: "2025-12-01", amount_usd: 1000 }, // pre-chart
+          { date: "2026-01-05", amount_usd: 1000 }, // during chart
+        ],
+        adjustmentDeltas: [],
+      }),
+    );
+
+    // Pre-chart: 1000/5000 = 0.2 units (using forward-filled sp500 price at 2025-12-01)
+    // After seeding, units are adjusted to match the portfolio start value.
+    // The key assertion: each point has a defined sp500Value
+    expect(result).toHaveLength(3);
+    for (const pt of result) {
+      expect(pt.sp500Value).toBeDefined();
+      expect(Number.isFinite(pt.sp500Value)).toBe(true);
+    }
+    // After the second cash flow (day 2), sp500Value should increase
+    // because more units were added
+    expect(result[2].sp500Value!).toBeGreaterThan(result[0].sp500Value!);
+  });
+});
+
+// ── S&P forward-fill gaps ─────────────────────────────────
+
+describe("enrichChartData — S&P forward-fill", () => {
+  it("forward-fills S&P prices for weekend gaps", () => {
+    // Provide S&P only for Mon/Wed/Fri, chart spans Mon-Sun
+    const points = [
+      makePoint({ date: "2026-01-05", value: 10000, valueUsd: 10000 }), // Mon
+      makePoint({ date: "2026-01-06", value: 10000, valueUsd: 10000 }), // Tue
+      makePoint({ date: "2026-01-07", value: 10000, valueUsd: 10000 }), // Wed
+      makePoint({ date: "2026-01-08", value: 10000, valueUsd: 10000 }), // Thu
+      makePoint({ date: "2026-01-09", value: 10000, valueUsd: 10000 }), // Fri
+      makePoint({ date: "2026-01-10", value: 10000, valueUsd: 10000 }), // Sat
+      makePoint({ date: "2026-01-11", value: 10000, valueUsd: 10000 }), // Sun
+    ];
+
+    const result = enrichChartData(
+      makeInput({
+        points,
+        viewMode: "total",
+        primaryCurrency: "USD",
+        sp500History: [
+          { date: "2026-01-05", close: 5000 }, // Mon
+          { date: "2026-01-07", close: 5050 }, // Wed
+          { date: "2026-01-09", close: 5100 }, // Fri
+        ],
+        cashFlows: [],
+        adjustmentDeltas: [],
+      }),
+    );
+
+    // All 7 days should have sp500Value (forward-filled)
+    for (const pt of result) {
+      expect(pt.sp500Value).toBeDefined();
+      expect(Number.isFinite(pt.sp500Value)).toBe(true);
+    }
+    // Tue should forward-fill from Mon's price
+    // Naive: ratio = 10000/5000 = 2, so sp500Value = 2 × close
+    expect(result[1].sp500Value).toBeCloseTo(10000, 0); // Tue: 2 × 5000
+    // Thu should forward-fill from Wed's price
+    expect(result[3].sp500Value).toBeCloseTo(10100, 0); // Thu: 2 × 5050
+    // Sat/Sun should forward-fill from Fri's price
+    expect(result[5].sp500Value).toBeCloseTo(10200, 0); // Sat: 2 × 5100
+    expect(result[6].sp500Value).toBeCloseTo(10200, 0); // Sun: 2 × 5100
+  });
+});

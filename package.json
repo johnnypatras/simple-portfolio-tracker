@@ -18,7 +18,8 @@
     "test:integration": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor && vitest run --project integration && supabase stop",
     "test:all": "npm test && npm run test:component && npm run test:integration",
     "test:watch": "vitest --project unit",
-    "test:coverage": "vitest run --project unit --project component --coverage"
+    "test:coverage": "vitest run --project unit --project component --coverage",
+    "test:coverage:full": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor && vitest run --project unit --project component --project integration --coverage && supabase stop"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.43.0",

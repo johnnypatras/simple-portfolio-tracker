@@ -169,4 +169,45 @@ describe("ConfirmButton", () => {
     await user.click(screen.getByText("Delete"));
     expect(screen.getByRole("checkbox")).not.toBeChecked();
   });
+
+  it("calls onConfirm only once on rapid double-click", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmButton onConfirm={onConfirm}>
+        <span>Delete</span>
+      </ConfirmButton>,
+    );
+
+    // Enter confirming state
+    await user.click(screen.getByText("Delete"));
+    // Click confirm — this calls onConfirm and resets to idle
+    await user.click(screen.getByTitle("Confirm"));
+
+    // After confirm, state resets to idle — original button is back
+    // A second click enters confirming state again, not a second onConfirm
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it("dismisses on click outside without calling onConfirm", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmButton onConfirm={onConfirm}>
+        <span>Delete</span>
+      </ConfirmButton>,
+    );
+
+    // Enter confirming state
+    await user.click(screen.getByText("Delete"));
+    expect(screen.getByText("Delete?")).toBeInTheDocument();
+
+    // Click outside the component (mousedown on document body)
+    fireEvent.mouseDown(document.body);
+
+    // Should return to idle
+    expect(screen.getByText("Delete")).toBeInTheDocument();
+    expect(screen.queryByText("Delete?")).not.toBeInTheDocument();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
 });

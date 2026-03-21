@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { computeDashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 
@@ -364,5 +364,98 @@ describe("computeDashboardInsights", () => {
     expect(result.stocksWeightedYield).toBeCloseTo(1.5, 1);
     // Annual income: 100 shares × $1.50 = $150
     expect(result.stocksDividendIncomeYearly).toBeCloseTo(150, 0);
+  });
+
+  it("filters out tag that duplicates type label (case-insensitive)", () => {
+    // Stock in "individual_stock" category with tag "Stocks" → type label = "Stocks"
+    // The tag should be filtered out since it matches the type label
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [
+        {
+          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
+          name: "Apple", currency: "USD", category: "individual_stock" as const,
+          isin: null, subcategory: null, tags: ["stocks"], created_at: "",
+          positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
+            broker_name: "B", quantity: 10, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
+        },
+      ],
+      stockPrices: {
+        AAPL: { price: 200, previousClose: 200, change24h: 0, currency: "USD", name: "Apple Inc." },
+      },
+      cashAccounts: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, totalValue: 2000, stocksValue: 2000 },
+      ...mkt,
+    });
+    const stocksEntry = result.equitiesBreakdown.find((e) => e.label === "Stocks");
+    expect(stocksEntry).toBeDefined();
+    // tagBreakdown should be undefined — "stocks" tag matches "Stocks" label
+    expect(stocksEntry!.tagBreakdown).toBeUndefined();
+  });
+
+  it("non-matching tag is included in tagBreakdown", () => {
+    // Stock with tag "Tech" under "individual_stock" (label "Stocks") → kept
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [
+        {
+          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
+          name: "Apple", currency: "USD", category: "individual_stock" as const,
+          isin: null, subcategory: null, tags: ["Tech"], created_at: "",
+          positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
+            broker_name: "B", quantity: 10, last_was_adjustment: false,
+            last_was_transfer: false, updated_at: "", deleted_at: null }],
+        },
+      ],
+      stockPrices: {
+        AAPL: { price: 200, previousClose: 200, change24h: 0, currency: "USD", name: "Apple Inc." },
+      },
+      cashAccounts: [],
+      primaryCurrency: "USD", fxRates: { USD: 1 },
+      summary: { ...emptySummary, totalValue: 2000, stocksValue: 2000 },
+      ...mkt,
+    });
+    const stocksEntry = result.equitiesBreakdown.find((e) => e.label === "Stocks");
+    expect(stocksEntry).toBeDefined();
+    expect(stocksEntry!.tagBreakdown).toBeDefined();
+    expect(stocksEntry!.tagBreakdown![0].label).toBe("Tech");
+  });
+
+  it("derives EUR/USD rate from third-currency (CHF) FX rates", () => {
+    // CHF base: fxRates["USD"] = 1.13 (USD per CHF), fxRates["EUR"] = 1.04 (EUR per CHF)
+    // eurUsdRate = usdRate / eurRate = 1.13 / 1.04 ≈ 1.0865
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [], stockPrices: {},
+      cashAccounts: [],
+      primaryCurrency: "CHF" as "USD", // Cast needed — BaseCurrency is EUR|USD but logic handles any
+      fxRates: { CHF: 1, USD: 1.13, EUR: 1.04 },
+      summary: emptySummary,
+      ...mkt,
+    });
+    expect(result.eurUsdRate).toBeCloseTo(1.0865, 3);
+    warnSpy.mockRestore();
+  });
+
+  it("EUR/USD rate is 0 when third-currency FX is missing EUR", () => {
+    // CHF base but no EUR rate → eurUsdRate = 0
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = computeDashboardInsights({
+      cryptoAssets: [], cryptoPrices: {},
+      stockAssets: [], stockPrices: {},
+      cashAccounts: [],
+      primaryCurrency: "CHF" as "USD",
+      fxRates: { CHF: 1, USD: 1.13 }, // EUR missing
+      summary: emptySummary,
+      ...mkt,
+    });
+    expect(result.eurUsdRate).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Missing USD/EUR rates"),
+    );
+    warnSpy.mockRestore();
   });
 });
