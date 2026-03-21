@@ -68,7 +68,7 @@ export async function getStockAssetsWithPositions(): Promise<
 }
 
 /** Add a new stock/ETF asset. Returns the new asset's id. */
-export async function createStockAsset(input: StockAssetInput, opts?: { isAdjustment?: boolean }): Promise<string> {
+export async function createStockAsset(input: StockAssetInput, opts?: { isAdjustment?: boolean; effectiveDate?: string }): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -137,6 +137,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
     before_snapshot: null,
     after_snapshot: data,
     is_adjustment: opts?.isAdjustment,
+    effective_date: opts?.effectiveDate,
   });
   revalidatePath("/dashboard/stocks");
   revalidatePath("/dashboard");

@@ -35,6 +35,7 @@ export function CashAccountModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAdjustment, setIsAdjustment] = useState(false);
+  const [effectiveDate, setEffectiveDate] = useState("");
 
   const id = useId();
 
@@ -69,6 +70,7 @@ export function CashAccountModal({
       setApy(cashAccount.apy.toString());
       setError(null);
       setIsAdjustment(false);
+      setEffectiveDate("");
     } else if (isOpen) {
       setName("");
       setCurrency("EUR");
@@ -76,6 +78,7 @@ export function CashAccountModal({
       setApy("");
       setError(null);
       setIsAdjustment(false);
+      setEffectiveDate("");
     }
   }, [isOpen, cashAccount]);
 
@@ -92,7 +95,10 @@ export function CashAccountModal({
           apy: parseFloat(apy) || 0,
           name: isBankOrigin ? name : undefined,
         };
-        await updateCashAccount(cashAccount.id, input, { isAdjustment });
+        await updateCashAccount(cashAccount.id, input, {
+          isAdjustment,
+          ...(effectiveDate ? { effectiveDate } : {}),
+        });
       } else {
         const input: CashAccountInput = {
           institution_id: institutionId,
@@ -103,7 +109,10 @@ export function CashAccountModal({
           wallet_id: walletId ?? null,
           broker_id: brokerId ?? null,
         };
-        await createCashAccount(input, { isAdjustment });
+        await createCashAccount(input, {
+          isAdjustment,
+          ...(effectiveDate ? { effectiveDate } : {}),
+        });
       }
       onClose();
       const adjLabel = isAdjustment ? " (adjustment)" : "";
@@ -199,6 +208,22 @@ export function CashAccountModal({
             placeholder="0.00"
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           />
+        </div>
+
+        {/* Effective date (optional) */}
+        <div>
+          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
+            Effective date (optional)
+          </label>
+          <input
+            id={`${id}-effective-date`}
+            type="date"
+            max={new Date().toISOString().split("T")[0]}
+            value={effectiveDate}
+            onChange={(e) => setEffectiveDate(e.target.value)}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+          />
+          <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {/* Error display */}

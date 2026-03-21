@@ -96,6 +96,9 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
   // ─── Adjustment flag ─────────────────────────────────────
   const [isAdjustment, setIsAdjustment] = useState(false);
 
+  // ─── Effective date (optional backdating) ──────────────
+  const [effectiveDate, setEffectiveDate] = useState("");
+
   // ─── Optional initial position state ───────────────────
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionBrokerId, setPositionBrokerId] = useState("");
@@ -153,6 +156,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
       setPositionBrokerId("");
       setPositionQuantity("");
       setIsAdjustment(false);
+      setEffectiveDate("");
     }
   }, [open]);
 
@@ -187,6 +191,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
 
     try {
       const adjustOpts = isAdjustment ? { isAdjustment: true } : undefined;
+      const dateOpts = effectiveDate ? { effectiveDate } : undefined;
       const assetId = await createStockAsset({
         ticker: ticker.trim(),
         name: name.trim(),
@@ -196,7 +201,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
         tags,
         currency,
         subcategory: subcategory.trim() || null,
-      }, adjustOpts);
+      }, { ...adjustOpts, ...dateOpts });
 
       // If user filled in an initial position, create it too
       const qty = parseFloat(positionQuantity);
@@ -207,6 +212,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
           quantity: qty,
         }, {
           ...adjustOpts,
+          ...dateOpts,
           currentPriceNative: selected?.price,
           assetCurrency: selected?.currency,
         });
@@ -636,6 +642,21 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 {error}
               </p>
             )}
+
+            <div>
+              <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
+                Effective date (optional)
+              </label>
+              <input
+                id={`${id}-effective-date`}
+                type="date"
+                max={new Date().toISOString().split("T")[0]}
+                value={effectiveDate}
+                onChange={(e) => setEffectiveDate(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+              />
+              <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
+            </div>
 
             <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
               <input
