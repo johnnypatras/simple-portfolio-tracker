@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
-import type { PortfolioSnapshot } from "@/lib/types";
+import type { PortfolioSnapshot, AdjustmentDelta } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/types";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
 import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
@@ -44,6 +44,7 @@ interface DashboardGridProps {
   insights: DashboardInsights;
   pastSnapshots: Record<string, PortfolioSnapshot | null>;
   cashFlows: CashFlowEvent[];
+  adjustmentDeltas?: AdjustmentDelta[];
 }
 
 // ─── Constants ──────────────────────────────────────────
@@ -104,7 +105,7 @@ function MarketRow({ icon, label, price, change, format }: {
 
 // ─── Component ──────────────────────────────────────────
 
-export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: DashboardGridProps) {
+export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adjustmentDeltas }: DashboardGridProps) {
   const [changePeriod, setChangePeriod] = useState<ChangePeriod>("24h");
   const [apyPeriod, setApyPeriod] = useState<ApyPeriod>("monthly");
   const [fxFlipped, setFxFlipped] = useState(false);
@@ -166,6 +167,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
     cashHomeCurrencyEur: cashHomeCurrencyEur ?? 0,
     cryptoChange24hPercent: insights.cryptoChange24h,
     pastSnapshots, cashFlows,
+    adjustmentDeltas: adjustmentDeltas ?? [],
   };
 
   // APY income for selected period

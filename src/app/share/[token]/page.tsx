@@ -61,6 +61,7 @@ export default async function SharedOverviewPage({
         insights={insights}
         pastSnapshots={pastSnapshots}
         cashFlows={cashFlows}
+        adjustmentDeltas={adjustmentDeltas}
       />
       <div className="mt-6">
         <PortfolioChart
