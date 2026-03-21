@@ -48,7 +48,6 @@ interface ActivityTimelineProps {
   currentEntityType?: EntityType;
   currentAction?: ActionType;
   splitChildren?: ActivityLog[];
-  onSplitRequest?: (log: ActivityLog) => void;
 }
 
 // ─── Entity type display config ─────────────────────────
@@ -466,7 +465,6 @@ export function ActivityTimeline({
   currentEntityType,
   currentAction,
   splitChildren = [],
-  onSplitRequest,
 }: ActivityTimelineProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
