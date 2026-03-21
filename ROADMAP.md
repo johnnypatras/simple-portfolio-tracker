@@ -210,17 +210,78 @@ Accurate per-asset-class Prices vs FX attribution in chart view modes.
 - Entity name resolution in deposit tooltips, FX round-trip rounding elimination
 - CoinGecko-internal FX for stablecoin decomposition accuracy
 
+### Phase 28 — Accessibility, Security Headers & Error Handling ✅
+Comprehensive hardening pass across the full codebase.
+- Focus traps on all modals (`focus-trap-react`), `role="dialog"` + `aria-modal`, `htmlFor`/`id` on form labels
+- `role="alert"` on errors, `aria-label` on icon-only buttons, skip-to-content link
+- `prefers-reduced-motion` in globals.css
+- Security headers in `next.config.ts`: HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy
+- Error boundaries at root, dashboard, and share levels (dark themed, retry button)
+- Loading skeletons with `animate-pulse` zinc-800/900 blocks
+- Fetch timeouts on all price API calls (`fetchWithTimeout`, 8s AbortController)
+
+### Phase 29 — Sentry Monitoring ✅
+Full observability integration for error tracking and performance monitoring.
+- `@sentry/nextjs` with server, edge, and client runtime configs
+- Error tracking + performance tracing + session replay
+- Instrumentation via `src/instrumentation.ts` and `src/instrumentation-client.ts`
+
+### Phase 30 — CI/CD Pipeline Unification ✅
+Single unified CI workflow replacing separate test and deploy pipelines.
+- `.github/workflows/ci.yml` — test job (lint → build → unit → component → supabase start → integration → stop) + preview job (PR deploys) + deploy job (main: migrate → vercel deploy → edge functions)
+- `workflow_dispatch` for manual re-deploys
+- Replaced separate `test.yml` + `deploy-edge-function.yml`
+
+### Phase 31 — Pre-computed Cash Flows ✅
+Write-time delta and cashflow caching for performance and accuracy.
+- `cashflow_amount_usd` / `cashflow_amount_eur` columns on `activity_log`
+- `cashflow_asset_class`, `cashflow_status`, `delta_status` for lifecycle tracking
+- `computeActivityFx` / `computeActivityFxWithConversion` for write-time computation
+- Backfill pipeline for pending/failed rows with retry throttling
+- `deriveCashFlows` reads pre-computed values (single DB query, no historical price fetches)
+
+### Phase 32 — 13-Round Security Audit ✅
+200+ findings across 90+ files, fixed iteratively over 13 review rounds.
+- 16 specialist agents (security, RLS, type safety, dead code, performance, UI consistency, etc.)
+- Input validation hardening: `validateCoinGeckoId`, `validateYahooTicker` prevent URL parameter injection
+- `is_active_user()` RLS function blocks pending users at DB level
+- `SECURITY DEFINER` functions explicitly `REVOKE` from anon/authenticated
+- Proxy auth guard with `/api/` exclusion
+- `TEXT` over Postgres `enum` for stock currency (enum removal is painful)
+
+### Phase 33 — Adjustment-Aware Period Changes & Backdated Entry Splits ✅
+Two features sharing the adjustment/cashflow timeline infrastructure.
+- **Adjustment-aware period percentages** — 7d/30d/1y summary percentages apply the same delta compensation as the chart. Formula: `adjustedPastValue = rawPast + (finalCumDelta - cumDeltaAtSnapshot)`. Fixes inflated percentages after portfolio imports.
+- **Backdated entry splits** — `effective_date DATE` + `split_from_id UUID FK` columns on `activity_log` (migration 011). Users can set when money actually entered the portfolio and split imports across multiple historical dates.
+- Universal date source: all pipelines use `COALESCE(effective_date, created_at)` with post-sort for correct cumulative ordering
+- `backdateActivityEntry`, `splitActivityEntry`, `unsplitActivityEntry` server actions
+- Split-aware undo routing (before `undone_at` guard) with dynamic imports
+- Timeline: split grouping (violet badge), effective date annotations (sky-blue), Calendar/GitBranch/Merge action buttons, split modal
+- Optional effective date field in all add/edit modals
+- Unified backdating: all 9 CRUD `logActivity` calls use `effective_date` (not `created_at` override)
+- Deposit tooltip: breakdown shown for >= 1 source, capped at 5 with expand button
+- 39 new unit tests (399 total), 92 component tests
+- Spec: `docs/superpowers/specs/2026-03-21-adjustment-aware-periods-and-backdated-splits-design.md`
+
+### Phase 34 — Cash Table Consolidation ✅
+Consolidated 3 separate cash tables into unified `cash_accounts`.
+- Merged `bank_accounts`, `exchange_deposits`, `broker_deposits` into single `cash_accounts` table (migration 005)
+- Dropped deprecated tables (migration 006)
+- Backward-compatible undo system for historical entries referencing old table names
+- `deriveLabel()` for consistent entity naming: "Name (Institution)" format
+- `refreshCashEntityNames()` backfills `entity_name` on rename
+- Spec: `docs/superpowers/specs/2026-03-17-cash-table-consolidation-design.md`
+
 ---
 
 ## Future Ideas (Unscoped)
 
 - **Collaborative Portfolios** — Invite others to view or contribute to your portfolio with role-based permissions
 - **Alerts & Notifications** — Price targets, portfolio threshold alerts
-- **Asset Search** — Search functionality per asset showing location (wallets/brokers), quantities per category, etc.
-- **Donate Button** — Donate/tip button with full backend infrastructure (payment processing, thank-you flow, etc.)
+- **Donate Button** — Donate/tip button with full backend infrastructure
 - **Mobile App** — Native mobile experience (PWA or React Native)
 - **API Access** — Public API for programmatic portfolio access
 
 ---
 
-*Last updated after: Phase 27 — FX Decomposition Accuracy*
+*Last updated after: Phase 34 — Cash Table Consolidation*

@@ -1,300 +1,218 @@
 # Simple Portfolio Tracker
 
-A privacy-first, self-hosted portfolio tracker for crypto, stocks/ETFs, and cash holdings. Manual data entry by design — no exchange API keys stored, no third-party access to your financial data.
+A privacy-first portfolio tracker for crypto, stocks/ETFs, and cash holdings. Track everything in one place with live prices, analytics, S&P 500 benchmarking, and multi-currency support.
 
-Built with Next.js, Supabase, and Tailwind CSS. Deployed on Vercel with automated daily snapshots.
+**Your data stays yours** — no exchange API keys stored, no third-party access, manual entry by design. Invite-only access with MFA support.
 
 <!-- TODO: Add screenshot -->
 <!-- ![Dashboard](docs/screenshot.png) -->
 
-## Features
+---
 
-### Portfolio Dashboard
-- **Portfolio value chart** with configurable periods (24H, 3D, 7D, 30D, 90D, 1Y, All)
-- **Chart view modes** — cycle through Total, Investments, Crypto, Stocks, Cash for per-class performance
-- **S&P 500 benchmark** overlay — cash-flow-adjusted "what if" comparison, per-class ratio-based scaling
-- **Adjustment-aware chart** — compensates for portfolio corrections and imports; per-class deltas scoped by entity type
-- **FX decomposition** — tooltips split value changes into Prices vs EUR/USD components
-- **Allocation breakdown** by asset class (crypto, stocks, cash) with visual bars
-- **Market overview** — live BTC, ETH, SOL, Gold, Silver, Brent, S&P 500, Nasdaq, Dow, Stoxx 50, VIX, 10Y UST, EUR/USD
-- **Dual currency** — toggle between EUR and USD at any time
-- **Command palette** — Cmd+K global search across portfolio holdings, CoinGecko, and Yahoo Finance
+## What You Get
+
+### All-in-One Dashboard
+- **Total portfolio value** with period changes (24h, 7d, 30d, 1y) and value/FX decomposition tooltips
+- **Live market overview** — BTC, ETH, SOL, S&P 500, Nasdaq, Dow, Stoxx 50, Gold, Silver, Brent, VIX, 10Y UST, EUR/USD
+- **Dual currency toggle** — switch between EUR and USD instantly
+- **Command palette** (Cmd+K) — search your holdings, CoinGecko, and Yahoo Finance in one place
+
+### Performance Chart
+- Configurable periods: 24H, 3D, 7D, 30D, 90D, 1Y, All
+- **Per-class view modes** — cycle through Total, Investments, Crypto, Stocks, Cash
+- **S&P 500 benchmark** — cash-flow-adjusted "what if I had invested in the S&P instead?"
+- **Adjustment-aware** — compensates for portfolio imports and corrections so the chart shows real growth
+- **Allocation overlay** — see crypto/stocks/cash breakdown over time
+- **Return mode** — toggle cumulative % return view
 
 ### Crypto
-- Live prices from CoinGecko (batch API, 30 calls/min free tier)
+- Live prices from CoinGecko with coin images
 - Search by name, ticker, or contract address
-- Multi-wallet support with custody grouping (exchange / self-custody)
-- Chain detection (Ethereum, Solana, etc.)
-- Stablecoin tracking with separate totals
-- USD primary price + secondary currency line
+- Multi-wallet support with custody grouping (exchange / self-custody / mixed)
+- Chain detection, stablecoin tracking, APY/staking yields
+- USD primary price with secondary currency line
 
 ### Stocks & ETFs
-- Live quotes from Yahoo Finance (v7 batch + v8 chart fallback)
-- Search any listed security by name or ticker
+- Live quotes from Yahoo Finance
+- Search any listed security worldwide
 - Native trading currency display (EUR, USD, GBP, CHF, etc.) with % change
 - Dividend yield tracking and income projections (daily/monthly/yearly)
-- ETF vs individual stock breakdown, sector grouping, UCITS tagging
+- ETF vs stock breakdown, sector grouping, UCITS tagging
 
-### Banks & Deposits
-- Bank accounts, exchange deposits, and broker deposits
-- Interest rate tracking with APY calculations
-- Income projections (daily/monthly/yearly)
+### Cash & Banking
+- Bank accounts, exchange deposits, broker deposits
+- Interest rate tracking with APY and income projections
 - Stablecoin deposits counted as USD cash equivalents
-- Multi-currency aggregation
+- Multi-currency aggregation with currency exposure breakdown
 
-### Accounts & Institutions
-- Organize holdings under institutions with multiple roles (wallet, broker, bank)
+### Institutions & Accounts
+- Organize everything under institutions with multiple roles (wallet, broker, bank)
+- Institution-level grouping across all asset classes
 - Add/remove roles without recreating entities
-- Institution-level grouping across asset classes
 
-### Transfers & Buy Mode
+### Record Transactions
+- **Buy** — guided wizard: search asset, pick/create institution, optionally track cash
 - **Sell** — reduce a position, increase cash at the same institution
-- **Buy** — guided wizard: search for an asset, pick or create an institution, optionally track cash
-- **Move** — relocate a position between brokers/wallets (same asset, different location)
-- **Inline entity creation** — create a new broker, exchange, or asset directly inside the buy flow
-- **Cash tracking** — auto-detects existing deposits; prompts to declare balance or skip
-- **Backdating** — pick a past date for any transfer; prices and FX rates use the historical date
-- **Implicit fees** — if the cash paid differs from the position value, the delta is shown as a fee
+- **Move** — relocate between brokers/wallets (same asset, different location)
+- **Backdating** — pick a past date; prices and FX use that date's historical rates
+- **Effective dates** — set when money actually entered your portfolio (affects benchmarks and analytics)
+- **Entry splitting** — split one import across multiple dates for accurate historical tracking
+- **Inline creation** — create brokers, exchanges, and assets directly inside the buy flow
+- **Implicit fees** — if cash paid differs from position value, the delta shows as a fee
 
 ### Activity & History
-- **Activity log** — full audit trail of every portfolio change with before/after snapshots
-- **Undo** — compensating transaction undo for all entity types (restores via reverse operations)
-- **Transfer pair grouping** — linked sell/buy/move legs displayed together in timeline
-- **Field-level changes** — update diffs show exactly which fields changed
-- **Portfolio adjustment flagging** — mark entries as corrections vs. real transactions
-- **Trade diary** — manual buy/sell trade logging across all asset types
-- **Snapshot history** — browse historical portfolio snapshots with value breakdown
+- Full audit trail of every portfolio change with before/after snapshots
+- **Undo any action** — compensating transactions restore via reverse operations
+- **Transfer grouping** — linked sell/buy/move legs displayed together
+- **Split grouping** — parent entries with expandable date allocations
+- **Effective date annotations** — see when entries really happened vs when recorded
+- Field-level change descriptions ("Qty: 34.365 → 34.393")
+- Portfolio adjustment flagging — mark corrections vs real transactions
+- CSV export
+
+### Trade Diary
+- Manual buy/sell trade logging across all asset types
+- Structured entries with date, quantity, price, notes
 
 ### Sharing & Comparison
-- **Portfolio sharing** via unique token link (read-only, no auth required)
+- **Share your portfolio** via unique link (read-only, no auth required)
 - **Multi-user comparison** — TWR-based performance comparison that strips cash flow noise
 - Shared views mirror the full dashboard (chart, crypto, stocks, cash, history, diary)
+- Configurable scope and expiry
 
 ### Import & Export
-- **JSON export/import** — full portfolio backup and restore
-- **Activity log CSV export** with adjustment deltas
+- Full JSON backup and restore (all portfolio entities)
+- CSV exports per section (crypto, stocks, cash, trades, activity, snapshots)
+- Round-trip preservation of effective dates and split data
 
-### Admin & Security
-- Invite-only registration (admin generates invite codes)
-- MFA support (TOTP two-factor authentication)
-- Row Level Security on every table
-- Auth guards (`getUser()` + 401) on all API routes
-- Sliding-window rate limiting on all endpoints
-- Input validation on all mutation server actions and import flows
-- Customizable columns per table (persisted in localStorage)
-- Password and email change flows with confirmation
+---
 
-### Testing & CI
-- **277 automated tests** — 216 unit + 38 component + 23 integration tests
-- Unit: validation, CSV, rate-limit, FX, aggregate, activity-log, dashboard-insights, holdings, shares, import-backup, format, stock-categories, dashboard-changes, chart-enrichment, institution-grouping
-- Component: ChangeTooltip, ConfirmButton, Modal, ColumnSettingsPopover (React Testing Library + jsdom)
-- Integration: migration bootstrap, RLS enforcement, snapshot validation, cascade soft-delete triggers, crypto server actions (real local Supabase)
-- **GitHub Actions CI** — lint → build → unit tests → component tests → Supabase start → integration tests
+## Security & Privacy
 
-## S&P 500 Benchmark
+| Feature | Detail |
+|---------|--------|
+| **No API keys stored** | Manual data entry — your exchange credentials never touch the server |
+| **Invite-only** | Registration requires an admin-generated invite code |
+| **MFA** | TOTP two-factor authentication |
+| **Row Level Security** | Every database table scoped to the authenticated user |
+| **Auth on every route** | All API endpoints require `getUser()` + 401 |
+| **Rate limiting** | Sliding-window limits on all endpoints |
+| **Input validation** | All mutations and imports validated server-side |
+| **Security headers** | HSTS, X-Frame-Options, CSP, Referrer-Policy |
 
-The dashboard chart includes an S&P 500 Total Return benchmark. It answers: **"What if every dollar I invested had gone into the S&P 500 instead?"**
+---
 
-### How It Works
+## For Developers
 
-The benchmark uses a **cash-flow-adjusted** approach. Each deposit, purchase, or withdrawal is replayed against the S&P 500 TR index — for each cash flow, hypothetical "S&P units" are bought or sold at the index price on that date. The hypothetical portfolio value on any day is `units × S&P price`.
+### Tech Stack
 
-Cash flows are derived from the activity log (bank account changes, exchange/broker deposits, crypto/stock position changes valued at historical prices). All amounts are converted to USD using daily FX rates from Yahoo Finance and Frankfurter (ECB data).
-
-### Per-Asset-Class Benchmark
-
-When viewing a specific asset class (Crypto, Stocks, or Cash), the S&P benchmark scales proportionally. At each cash flow date, the ratio of the selected class's value to total portfolio value determines how many S&P units are allocated.
-
-### Adjustment Awareness
-
-When portfolio corrections are flagged as adjustments (e.g., importing pre-existing holdings), the chart compensates so the line reflects real growth. The S&P benchmark seeds its starting units from the adjusted portfolio value, ensuring both lines start at the same point. Deltas are cached at write-time in USD and EUR using historical FX rates for accuracy. Per-class adjustment deltas are scoped by entity type.
-
-### Known Compromises
-
-1. **Backfilled history is approximate.** Pre-existing positions are recorded as a single "created" event. Intermediate trades before activity logging was enabled are not captured.
-2. **No explicit cash flow ledger.** Cash flows are derived from activity log snapshots rather than a dedicated table.
-3. **FX conversion for chart display** uses the portfolio snapshot's implicit EUR/USD rate rather than a separate FX spot feed.
-
-For the full algorithm deep-dive, see [NOTES-benchmark-algorithm.md](./NOTES-benchmark-algorithm.md).
-
-## How Buying, Selling & Transfers Work
-
-The portfolio tracker doesn't have explicit "deposit" or "withdrawal" buttons. Instead, money movements are modeled as **transfers between entities** — and the system figures out the rest.
-
-### The Two Sides of Every Transaction
-
-Every financial action has two sides. When you buy stock, cash leaves your brokerage account and shares arrive. When you sell crypto, coins leave your wallet and cash arrives at your exchange. The tracker models this as a **two-legged transfer**: one side decreases, the other increases.
-
-```
-SELL 10 shares of VWCE at DEGIRO
-  Source:      VWCE @ DEGIRO     → quantity decreases by 10
-  Destination: EUR cash @ DEGIRO → balance increases by €1,200
-  Fee:         (if cash received ≠ calculated value, difference = implicit fee)
-```
-
-Both legs are linked by a shared `transfer_group_id`, so undoing one automatically reverts both.
-
-### Deposits & Withdrawals — No Separate Buttons Needed
-
-There are no dedicated deposit/withdrawal forms. These happen naturally through transfers:
-
-| Action | How to record it |
-|--------|-----------------|
-| **Deposit cash at broker** | Sell → source: bank account, destination: broker cash |
-| **Withdraw to bank** | Sell → source: broker/exchange cash, destination: bank account |
-| **Buy stock** | Buy → cash decreases at broker, stock position increases |
-| **Sell crypto** | Sell → crypto position decreases, exchange cash increases |
-| **Move between wallets** | Move → same asset, different location |
-
-### The Buy Wizard — Start from Nothing
-
-The **Record Buy** button opens a guided flow designed for the common case: you just bought something and want to record it.
-
-1. **Search** for the asset (Yahoo Finance for stocks, CoinGecko for crypto)
-2. **Pick a location** — select an existing broker/exchange, or type a name to create one on the spot
-3. **Cash tracking** — if you have cash tracked at that institution, it auto-deducts. If not, you can declare your current balance (as a portfolio adjustment or real deposit), or skip cash tracking entirely
-4. **Review & submit** — summary shows what will be created and modified
-
-If you skip cash tracking, the buy is recorded as a simple position addition — identical to clicking "Add Asset" directly.
-
-### Portfolio Adjustments vs. Real Transactions
-
-When importing existing holdings or correcting data, you can flag entries as **portfolio adjustments**. The S&P 500 benchmark ignores adjustments — they represent money that was already invested, not new capital entering the portfolio. All internal transfers (buy/sell/move) are automatically flagged as adjustments since they don't change total portfolio value.
-
-## Tech Stack
-
-| Layer | Tech |
-|-------|------|
-| Framework | [Next.js 16](https://nextjs.org) (App Router, Turbopack, React 19) |
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 (App Router, Turbopack, React 19) |
 | Language | TypeScript |
-| Database & Auth | [Supabase](https://supabase.com) (PostgreSQL, 18 tables, 50 migrations, RLS, JWT + MFA) |
-| Styling | [Tailwind CSS 4](https://tailwindcss.com) |
-| Charts | [Recharts](https://recharts.org) |
-| Crypto prices | [CoinGecko](https://www.coingecko.com/en/api) (free Demo plan) |
-| Stock prices | [Yahoo Finance](https://finance.yahoo.com) (v7 batch + v8 chart) |
-| FX rates | [Frankfurter](https://www.frankfurter.app) (ECB data) + Yahoo for EUR/USD |
-| Daily snapshots | pg_cron + pg_net → Supabase Edge Function |
-| Testing | [Vitest](https://vitest.dev) (unit + integration), GitHub Actions CI |
-| Hosting | [Vercel](https://vercel.com) |
-| Icons | [Lucide React](https://lucide.dev) |
-| Fonts | [Geist](https://vercel.com/font) (Sans + Mono) |
+| Database & Auth | Supabase PostgreSQL (18 tables, 11 migrations, RLS, JWT + MFA) |
+| Styling | Tailwind CSS 4, Geist fonts |
+| Charts | Recharts |
+| Crypto prices | CoinGecko (free Demo plan, 30 calls/min) |
+| Stock prices | Yahoo Finance v7 batch + v8 chart fallback |
+| FX rates | Frankfurter (ECB) + Yahoo for EUR/USD |
+| Monitoring | Sentry (error tracking + tracing + replay) |
+| Daily snapshots | pg_cron + pg_net + Supabase Edge Function |
+| Testing | Vitest (unit + component + integration) |
+| CI/CD | GitHub Actions (lint, build, test, deploy) |
+| Hosting | Vercel |
 
-## Getting Started
+### Running Locally
 
-### Prerequisites
-
-- [Node.js](https://nodejs.org) 18+
-- A [Supabase](https://supabase.com) project (free tier works)
-
-### 1. Clone and install
+**Prerequisites:** Node.js 20+, Docker (for local Supabase)
 
 ```bash
+# Clone and install
 git clone https://github.com/johnnypatras/simple-portfolio-tracker.git
 cd simple-portfolio-tracker
 npm install
-```
 
-### 2. Set up Supabase
+# Start local Supabase (applies all migrations automatically)
+npx supabase start
 
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Go to the **SQL Editor** in your Supabase dashboard
-3. Run each migration file from `supabase/migrations/` **in numerical order** (001 through 050)
-
-### 3. Configure environment variables
-
-```bash
-cp .env.example .env.local
-```
-
-| Variable | Where to find it |
-|----------|-----------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → **Project URL** |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API → **anon / public** key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → **service_role / secret** key |
-| `NEXT_PUBLIC_COINGECKO_API_KEY` | *(Optional)* [CoinGecko API](https://www.coingecko.com/en/api/pricing) — free Demo key for higher rate limits |
-
-> If environment variables are missing, the app shows a setup page with these instructions.
-
-### 4. Create your first user
-
-The app uses invite-only registration:
-
-1. Generate an invite code from the **Settings** page (or insert one directly into the `invite_codes` table)
-2. Open `/register` and use the invite code to create your account
-
-### 5. Run the dev server
-
-```bash
+# Start dev server (auto-syncs production data if linked)
 npm run dev
+
+# Or skip sync and use existing local data
+npm run dev:skip-sync
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in.
+The dev server runs at [http://localhost:3000](http://localhost:3000).
 
-### Running Tests
+### Running in Production (Vercel)
+
+1. Push to GitHub — CI pipeline runs automatically
+2. PRs get preview deployments
+3. Merging to `main` triggers: migrate Supabase → deploy to Vercel → deploy Edge Functions
+
+**Environment variables** (set in Vercel dashboard or `.env.local`):
+
+| Variable | Source |
+|----------|--------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → API → anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → API → service_role key |
+| `COINGECKO_API_KEY` | CoinGecko API (optional, for higher rate limits) |
+| `NEXT_PUBLIC_SENTRY_DSN` | Sentry project DSN |
+
+### First-Time Setup
+
+1. Set up a Supabase project and configure environment variables
+2. Apply migrations: `npx supabase db push` (or they run automatically in CI)
+3. Generate an invite code from Settings (or insert into `invite_codes` table)
+4. Register at `/register` with the invite code
+
+### Testing
 
 ```bash
-npm test                  # Unit tests (216 cases, ~300ms)
-npm run test:component    # Component tests (38 cases, ~700ms)
-npm run test:integration  # Integration tests (23 cases, requires local Supabase via Docker)
-npm run test:all          # Both unit + integration
+npm test                  # Unit tests (399 cases, ~500ms)
+npm run test:component    # Component tests (92 cases, ~1.3s)
+npm run test:integration  # Integration tests (54 cases, needs local Supabase)
+npm run test:all          # All three layers
 npm run test:watch        # Unit tests in watch mode
 ```
 
-Integration tests require a running local Supabase instance (`supabase start`).
-
-### Daily Snapshots (optional)
-
-To enable automated daily portfolio snapshots:
-
-1. Enable `pg_cron` and `pg_net` extensions in Supabase (migration 039 handles this)
-2. Deploy the `daily-snapshot` Edge Function from `supabase/functions/`
-3. Set the `CRON_SECRET` secret via `supabase secrets set`
-4. The cron job runs at 23:55 UTC daily, snapshotting all users' portfolios
-
-## Project Structure
+### Project Structure
 
 ```
 src/
-├── app/                        # Next.js App Router
-│   ├── api/                    #   API routes (auth, crypto search, stock quotes, holdings)
-│   ├── dashboard/              #   Main app (accounts, crypto, stocks, cash, etc.)
-│   ├── share/[token]/          #   Public shared portfolio views
-│   ├── login/                  #   Authentication pages
-│   ├── register/               #   Invite-only registration
-│   └── setup/                  #   First-run setup (missing env vars)
-├── components/                 # React components by domain
-│   ├── accounts/               #   Institution & account management
-│   ├── cash/                   #   Bank accounts & deposits
-│   ├── comparison/             #   Multi-user portfolio comparison
-│   ├── crypto/                 #   Crypto positions & modals
-│   ├── dashboard/              #   Portfolio chart, summary cards, insights
-│   ├── diary/                  #   Trade diary
-│   ├── history/                #   Activity log & snapshots
-│   ├── settings/               #   User settings & admin
-│   ├── stocks/                 #   Stock/ETF positions & modals
-│   └── ui/                     #   Shared primitives (modals, tooltips, command palette)
-├── lib/
-│   ├── actions/                #   21 server action modules (mutations + queries)
-│   ├── portfolio/              #   Aggregate calculations, dashboard insights, holdings
-│   ├── prices/                 #   Price clients (CoinGecko, Yahoo, Frankfurter)
-│   ├── supabase/               #   4 Supabase clients (browser, server, middleware, admin)
-│   ├── hooks/                  #   Custom React hooks
-│   ├── types.ts                #   TypeScript type definitions
-│   ├── format.ts               #   Currency & number formatting
-│   ├── validation.ts           #   Input validators (amount, quantity, currency, etc.)
-│   ├── rate-limit.ts           #   Sliding-window rate limiter for API routes
-│   ├── csv.ts                  #   CSV utilities (export + activity log)
-│   └── deltas.ts               #   Pure delta computation (cash, position quantity)
+  app/                    # Next.js App Router (dashboard, api, share, login, register)
+  components/             # React components by domain (crypto, stocks, cash, etc.)
+  lib/
+    actions/              # 23 server action modules
+    portfolio/            # Aggregation, chart enrichment, dashboard logic
+    prices/               # CoinGecko, Yahoo Finance, Frankfurter clients
+    supabase/             # 4 Supabase clients (browser, server, middleware, admin)
+    hooks/                # Custom React hooks
+    types.ts              # TypeScript definitions
+    validation.ts         # Input validators
+    split-helpers.ts      # Entry splitting utilities
 __tests__/
-├── unit/                       # 216 unit tests across 15 files (~300ms)
-├── component/                  # 38 component tests across 4 files (RTL + jsdom, ~700ms)
-├── integration/                # 23 integration tests across 5 files (local Supabase)
+  unit/                   # 399 unit tests (27 files)
+  component/              # 92 component tests (12 files)
+  integration/            # 54 integration tests (10 files)
 supabase/
-├── migrations/                 # 50 SQL migrations (schema, RLS, triggers, cron, FX columns)
-└── functions/                  # Edge Functions (daily-snapshot)
+  migrations/             # 001 through 011 (consolidated schema)
+  migrations-archive/     # Original 52 migrations (reference only)
+  functions/              # Edge Functions (daily-snapshot)
 .github/
-└── workflows/test.yml          # CI: lint → build → unit → component → supabase → integration
+  workflows/ci.yml        # CI: lint → build → test → deploy
 ```
+
+### Daily Snapshots
+
+Automated daily portfolio snapshots via pg_cron:
+1. Enable `pg_cron` and `pg_net` extensions (handled by migrations)
+2. Deploy the `daily-snapshot` Edge Function
+3. Set `CRON_SECRET` via `supabase secrets set`
+4. Runs at 23:59 UTC, snapshotting all users
+
+---
 
 ## License
 
