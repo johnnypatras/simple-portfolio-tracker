@@ -313,7 +313,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         cashflow_asset_class: fx.cashflowAssetClass,
         cashflow_status: fx.cashflowStatus,
         transfer_group_id: opts?.transferGroupId,
-        created_at: opts?.effectiveDate,
+        effective_date: opts?.effectiveDate,
       });
     }
   } else {
@@ -404,7 +404,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       cashflow_asset_class: fx.cashflowAssetClass,
       cashflow_status: fx.cashflowStatus,
       transfer_group_id: opts?.transferGroupId,
-      created_at: opts?.effectiveDate,
+      effective_date: opts?.effectiveDate,
     });
   }
 
@@ -469,7 +469,7 @@ export async function deletePosition(positionId: string, opts?: {
     cashflow_asset_class: fx.cashflowAssetClass,
     cashflow_status: fx.cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
-    created_at: opts?.effectiveDate,
+    effective_date: opts?.effectiveDate,
   });
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard");

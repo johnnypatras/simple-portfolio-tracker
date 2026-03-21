@@ -338,7 +338,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         cashflow_asset_class: fx.cashflowAssetClass,
         cashflow_status: fx.cashflowStatus,
         transfer_group_id: opts?.transferGroupId,
-        created_at: opts?.effectiveDate,
+        effective_date: opts?.effectiveDate,
       });
     }
   } else {
@@ -422,7 +422,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       cashflow_asset_class: fx.cashflowAssetClass,
       cashflow_status: fx.cashflowStatus,
       transfer_group_id: opts?.transferGroupId,
-      created_at: opts?.effectiveDate,
+      effective_date: opts?.effectiveDate,
     });
   }
 
@@ -484,7 +484,7 @@ export async function deleteStockPosition(positionId: string, opts?: {
     cashflow_asset_class: fx.cashflowAssetClass,
     cashflow_status: fx.cashflowStatus,
     transfer_group_id: opts?.transferGroupId,
-    created_at: opts?.effectiveDate,
+    effective_date: opts?.effectiveDate,
   });
   revalidatePath("/dashboard/stocks");
   revalidatePath("/dashboard");
