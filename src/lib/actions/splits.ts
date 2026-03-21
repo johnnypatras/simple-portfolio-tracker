@@ -60,7 +60,8 @@ export async function backdateActivityEntry(
     const { error: updateErr } = await supabase
       .from("activity_log")
       .update({ effective_date: effectiveDate })
-      .eq("id", entryId);
+      .eq("id", entryId)
+      .eq("user_id", user.id);
     if (updateErr) return { success: false, message: updateErr.message };
   }
 
