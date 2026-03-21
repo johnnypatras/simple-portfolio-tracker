@@ -87,6 +87,9 @@ export async function getStockQuote(
 
 let cachedCrumb: { crumb: string; cookie: string; expiry: number } | null = null;
 
+/** @internal — test-only: reset cached crumb so each test starts with clean auth state */
+export function _resetCrumbForTesting(): void { cachedCrumb = null; }
+
 /**
  * Acquire a Yahoo Finance crumb + session cookie.
  * Yahoo v7 requires cookie-based auth with a CSRF-like crumb token.

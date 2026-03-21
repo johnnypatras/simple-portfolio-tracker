@@ -67,7 +67,7 @@ export async function getPrices(
       return {};
     }
 
-    return res.json();
+    return await res.json();
   } catch (err) {
     console.error("[coingecko] Price fetch error:", err);
     return {};
