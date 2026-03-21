@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { CashflowStatusIcon } from "@/components/ui/cashflow-status-icon";
+import { SplitModal } from "@/components/history/split-modal";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
 import { exportActivityLogsCsv, toggleActivityAdjustment } from "@/lib/actions/activity-log";
 import { backdateActivityEntry, unsplitActivityEntry } from "@/lib/actions/splits";
@@ -474,6 +475,7 @@ export function ActivityTimeline({
   const [expandedTransfers, setExpandedTransfers] = useState<Set<string>>(new Set());
   const [expandedSplits, setExpandedSplits] = useState<Set<string>>(new Set());
   const [backdatingId, setBackdatingId] = useState<string | null>(null);
+  const [splitEntry, setSplitEntry] = useState<ActivityLog | null>(null);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -989,7 +991,7 @@ export function ActivityTimeline({
                           {/* GitBranch (split) button */}
                           {!isReadOnly && canSplit && (
                             <button
-                              onClick={() => onSplitRequest?.(log)}
+                              onClick={() => setSplitEntry(log)}
                               className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-600 hover:text-violet-400 hover:bg-violet-500/10 transition-all"
                               aria-label="Split into multiple dates"
                               title="Split into multiple dates"
@@ -1078,6 +1080,19 @@ export function ActivityTimeline({
           )}
         </>
       )}
+      <SplitModal
+        entry={splitEntry}
+        onClose={() => setSplitEntry(null)}
+        onSplit={async (parentId, legs) => {
+          const { splitActivityEntry } = await import("@/lib/actions/splits");
+          const result = await splitActivityEntry(parentId, legs);
+          if (result.success) {
+            toast.success(result.message);
+            startTransition(() => { router.refresh(); });
+          }
+          return result;
+        }}
+      />
     </div>
   );
 }
