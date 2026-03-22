@@ -333,6 +333,59 @@ describe("enrichChartData — cash flow unit accumulation", () => {
   });
 });
 
+// ── Weekend chart start (regression: S&P seeding failure) ─
+
+describe("enrichChartData — weekend chart start", () => {
+  it("seeds S&P correctly when chart starts on a weekend (no trading data)", () => {
+    // Regression: 7D chart starting on Sunday had no S&P price for the first
+    // date. The seeding condition (sp500StartPrice > 0) failed, so S&P only
+    // tracked tiny actual cash flows instead of matching the portfolio value.
+    // Fix: forward-fill seeds lastPrice from the most recent trading day
+    // BEFORE chartStart.
+    const points = [
+      makePoint({ date: "2026-03-15", value: 110000, valueUsd: 128000 }), // Sunday
+      makePoint({ date: "2026-03-16", value: 110500, valueUsd: 128500 }), // Monday
+      makePoint({ date: "2026-03-17", value: 111000, valueUsd: 129000 }), // Tuesday
+    ];
+
+    const result = enrichChartData(
+      makeInput({
+        points,
+        viewMode: "total",
+        primaryCurrency: "EUR",
+        sp500History: [
+          // Only trading days — no weekend prices
+          { date: "2026-03-13", close: 13000 }, // Friday (before chart)
+          { date: "2026-03-16", close: 13050 }, // Monday
+          { date: "2026-03-17", close: 13100 }, // Tuesday
+        ],
+        cashFlows: [
+          { date: "2026-03-03", amount_usd: 700 }, // tiny real cash flow
+        ],
+        adjustmentDeltas: [
+          makeDelta({
+            date: "2026-02-20",
+            cumulative_usd: 127000,
+            cumulative_eur: 109000,
+          }),
+        ],
+      }),
+    );
+
+    // Sunday must have a forward-filled S&P price from Friday
+    expect(result[0].sp500Value).toBeDefined();
+    // The S&P should start near the portfolio value (~€110k), not at ~€1,500
+    // (which would happen if seeding failed and only the tiny $700 cash flow
+    // determined the S&P units)
+    expect(result[0].sp500Value!).toBeGreaterThan(50000);
+    // All points should have finite S&P values
+    for (const pt of result) {
+      expect(pt.sp500Value).toBeDefined();
+      expect(Number.isFinite(pt.sp500Value)).toBe(true);
+    }
+  });
+});
+
 // ── S&P forward-fill gaps ─────────────────────────────────
 
 describe("enrichChartData — S&P forward-fill", () => {

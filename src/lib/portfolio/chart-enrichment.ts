@@ -153,7 +153,17 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
   if (points.length > 0 && sp500History.length > 0) {
     const startDate = points[0].date;
     const endDate = points[points.length - 1].date;
+
+    // Seed lastPrice from the most recent trading day BEFORE chartStart.
+    // Without this, a chart starting on a weekend has no S&P price for
+    // the first date, which breaks the seeding logic (sp500StartPrice
+    // is undefined → S&P benchmark uses only tiny actual cash flows).
     let lastPrice: number | undefined;
+    for (const p of sp500History) {
+      if (p.date >= startDate) break;
+      lastPrice = p.close;
+    }
+
     const cursor = new Date(startDate);
     const end = new Date(endDate);
     while (cursor <= end) {
