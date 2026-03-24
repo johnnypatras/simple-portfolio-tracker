@@ -196,7 +196,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={() => setChangePeriod(p)}
-                  className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
                       : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
@@ -261,7 +261,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                   </span>
                 )}
                 {!c.available && (
-                  <span className="text-sm text-zinc-500">—</span>
+                  <span className="text-sm text-zinc-400">—</span>
                 )}
               </div>
             );
@@ -313,7 +313,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
           {/* ── Currency exposure bars ── */}
           {insights.currencyExposure.length > 1 && (
             <div className="mt-4 pt-4 border-t border-zinc-800/50 space-y-1">
-              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Currency Exposure</span>
+              <span className="text-[10px] text-zinc-400 uppercase tracking-wider">Currency Exposure</span>
               {insights.currencyExposure.map((e) => {
                 const textColor = CURRENCY_TEXT_COLORS[e.currency] ?? "text-zinc-400";
                 const showBase = exposureInBase && e.currency !== cur;
@@ -457,7 +457,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         <div
           role="link"
           tabIndex={0}
-          aria-label="Crypto holdings — click to view details"
+          aria-labelledby="crypto-panel-label"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -472,7 +472,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Bitcoin className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+              <span id="crypto-panel-label" className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Crypto
               </span>
             </div>
@@ -481,7 +481,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
-                  className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
                       : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
@@ -507,7 +507,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       onClick={(e) => toggleTooltip("crypto", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("crypto", e as unknown as React.MouseEvent); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
                         isReadOnly ? (
@@ -541,15 +541,15 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       })()}
                     </span>
                   ) : (
-                    <span className="text-xs text-zinc-500">—</span>
+                    <span className="text-xs text-zinc-400">—</span>
                   )}
                 </div>
                 {summary.stablecoinValue > 0 && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                  <p className="text-[11px] text-zinc-400 mt-0.5 tabular-nums">
                     excl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
                   </p>
                 )}
-                <p className="text-[11px] text-zinc-500 mt-0.5">
+                <p className="text-[11px] text-zinc-400 mt-0.5">
                   {insights.cryptoAssetCount} asset{insights.cryptoAssetCount !== 1 ? "s" : ""} · {insights.cryptoPositionCount} position{insights.cryptoPositionCount !== 1 ? "s" : ""}
                 </p>
               </>
@@ -628,7 +628,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 );
               })
             ) : (
-              <p className="text-xs text-zinc-500">No crypto holdings yet</p>
+              <p className="text-xs text-zinc-400">No crypto holdings yet</p>
             )}
           </div>
         </div>
@@ -640,7 +640,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         <div
           role="link"
           tabIndex={0}
-          aria-label="Stocks and ETF holdings — click to view details"
+          aria-labelledby="equities-panel-label"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -655,7 +655,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+              <span id="equities-panel-label" className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Equities
               </span>
             </div>
@@ -664,7 +664,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
-                  className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
                       : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
@@ -690,7 +690,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       onClick={(e) => toggleTooltip("equities", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("equities", e as unknown as React.MouseEvent); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
                         isReadOnly ? (
@@ -724,7 +724,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       })()}
                     </span>
                   ) : (
-                    <span className="text-xs text-zinc-500">—</span>
+                    <span className="text-xs text-zinc-400">—</span>
                   )}
                 </div>
                 {insights.stocksWeightedYield > 0 && (() => {
@@ -747,7 +747,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                     </p>
                   );
                 })()}
-                <p className="text-[11px] text-zinc-500 mt-0.5">
+                <p className="text-[11px] text-zinc-400 mt-0.5">
                   {insights.stockAssetCount} asset{insights.stockAssetCount !== 1 ? "s" : ""} · {insights.stockPositionCount} position{insights.stockPositionCount !== 1 ? "s" : ""}
                 </p>
               </>
@@ -848,7 +848,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         <div
           role="link"
           tabIndex={0}
-          aria-label="Cash accounts — click to view details"
+          aria-labelledby="cash-panel-label"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -863,7 +863,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Banknote className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+              <span id="cash-panel-label" className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Banks & Deposits
               </span>
             </div>
@@ -872,7 +872,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
-                  className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
                       : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
@@ -898,7 +898,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       onClick={(e) => toggleTooltip("cash", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("cash", e as unknown as React.MouseEvent); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
                         isReadOnly ? (
@@ -932,7 +932,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       })()}
                     </span>
                   ) : (
-                    <span className="text-xs text-zinc-500">—</span>
+                    <span className="text-xs text-zinc-400">—</span>
                   )}
                 </div>
                 {insights.weightedAvgApy > 0 && (
@@ -961,11 +961,11 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                   </div>
                 )}
                 {summary.stablecoinValue > 0 && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                  <p className="text-[11px] text-zinc-400 mt-0.5 tabular-nums">
                     incl. {fmtCurrencyCompact(summary.stablecoinValue, cur)} stablecoins
                   </p>
                 )}
-                <p className="text-[11px] text-zinc-500 mt-0.5">
+                <p className="text-[11px] text-zinc-400 mt-0.5">
                   {insights.cashAccountCount} account{insights.cashAccountCount !== 1 ? "s" : ""}
                 </p>
               </>

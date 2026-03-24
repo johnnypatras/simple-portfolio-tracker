@@ -298,7 +298,7 @@ export function PortfolioChart({
           />
         </div>
         <div className="h-48 flex items-center justify-center">
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-zinc-400">
             Chart will appear after a few days of data
           </p>
         </div>
@@ -463,7 +463,7 @@ export function PortfolioChart({
                     </p>
                     <p className="text-sm font-medium text-zinc-100">
                       {viewMode !== "total" && (
-                        <span className="text-zinc-500 mr-1">{VIEW_MODE_LABELS[viewMode]}</span>
+                        <span className="text-zinc-400 mr-1">{VIEW_MODE_LABELS[viewMode]}</span>
                       )}
                       {fmtVal(displayValue)}
                       {showBenchmark && point.sp500Value != null && point.sp500Value !== 0 && (() => {
@@ -472,18 +472,18 @@ export function PortfolioChart({
                           : ((displayValue - point.sp500Value) / point.sp500Value) * 100;
                         return (
                           <span className={`ml-1.5 text-[10px] font-medium ${diff >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                            ({diff >= 0 ? "+" : ""}{diff.toFixed(1)}{returnMode ? "pp" : "%"} <span className="text-zinc-500 font-normal">vs S&P</span>)
+                            ({diff >= 0 ? "+" : ""}{diff.toFixed(1)}{returnMode ? "pp" : "%"} <span className="text-zinc-400 font-normal">vs S&P</span>)
                           </span>
                         );
                       })()}
                     </p>
                     {!returnMode && hasDeltas && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
+                      <p className="text-[10px] text-zinc-400 mt-0.5">
                         Raw: {fmtCurrencyCompact(point.rawValue, primaryCurrency)}
                       </p>
                     )}
                     {showBenchmark && point.sp500Value != null && (
-                      <p className="text-xs text-zinc-500 mt-0.5">
+                      <p className="text-xs text-zinc-400 mt-0.5">
                         S&P 500 TR {fmtVal(point.sp500Value)}
                       </p>
                     )}
@@ -577,11 +577,11 @@ export function PortfolioChart({
           {showBenchmark && (
             <>
               <LegendItem color="bg-zinc-500" label="S&P 500 TR" dashed />
-              <span className="text-[9px] text-zinc-500">
+              <span className="text-[9px] text-zinc-400">
                 {cashFlows.length > 0 ? "adjusted" : "naive"}
               </span>
               <span className="relative group">
-                <Info className="w-3 h-3 text-zinc-500 cursor-help" />
+                <Info className="w-3 h-3 text-zinc-400 cursor-help" />
                 <span className="absolute bottom-full right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mb-1.5 w-56 max-w-[calc(100vw-3rem)] px-2.5 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-[10px] leading-relaxed text-zinc-300 shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
                   {cashFlows.length > 0
                     ? "\"What if I\u2019d put every dollar into the S&P 500 instead?\" Each deposit, purchase, and withdrawal is replayed at the S&P price on that day. Accuracy improves over time as more changes are tracked."
@@ -621,7 +621,7 @@ function PeriodSelector({
         <button
           key={p.label}
           onClick={() => onChange(i)}
-          className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
+          className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
             i === activeIdx
               ? "bg-zinc-700 text-zinc-100"
               : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
@@ -647,7 +647,7 @@ function LegendItem({ color, label, dashed }: { color: string; label: string; da
       ) : (
         <div className={`w-2.5 h-0.5 rounded-full ${color}`} />
       )}
-      <span className="text-[10px] text-zinc-500">{label}</span>
+      <span className="text-[10px] text-zinc-400">{label}</span>
     </div>
   );
 }
