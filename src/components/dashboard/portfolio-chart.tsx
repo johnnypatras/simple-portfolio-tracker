@@ -310,9 +310,9 @@ export function PortfolioChart({
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <h3 className="text-sm font-medium text-zinc-400 sm:min-w-[9rem]">
+          <h2 className="text-sm font-medium text-zinc-400 sm:min-w-[9rem]">
             {returnMode ? `${VIEW_MODE_LABELS[viewMode]} Return` : CHART_TITLES[viewMode]}
-          </h3>
+          </h2>
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -621,10 +621,10 @@ function PeriodSelector({
         <button
           key={p.label}
           onClick={() => onChange(i)}
-          className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+          className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
             i === activeIdx
               ? "bg-zinc-700 text-zinc-100"
-              : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+              : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
           }`}
         >
           {p.label}

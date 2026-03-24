@@ -148,7 +148,7 @@ export function Sidebar({ email }: { email: string }) {
 
         {/* User email */}
         <div className="px-3 pt-3">
-          <p className="text-xs text-zinc-500 truncate">{email}</p>
+          <p className="text-xs text-zinc-400 truncate">{email}</p>
         </div>
 
         {/* Dev mode indicator */}

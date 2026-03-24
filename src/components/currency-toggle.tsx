@@ -46,7 +46,7 @@ export function CurrencyToggle({
             className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
               isActive
                 ? "bg-zinc-700 text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300"
+                : "text-zinc-400 hover:text-zinc-300"
             }`}
           >
             {opt.symbol} {opt.value}

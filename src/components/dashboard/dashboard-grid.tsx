@@ -186,8 +186,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
           {/* ── Header row: title + period toggle ── */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-zinc-500" />
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              <Wallet className="w-4 h-4 text-zinc-400" />
+              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Portfolio
               </span>
             </div>
@@ -196,10 +196,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={() => setChangePeriod(p)}
-                  className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                      : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
                   }`}
                 >
                   {PERIOD_LABELS[p]}
@@ -359,8 +359,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         {/* Market */}
         <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 flex flex-col">
           <div className="flex items-center gap-2 mb-2">
-            <Activity className="w-4 h-4 text-zinc-500" />
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+            <Activity className="w-4 h-4 text-zinc-400" />
+            <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
               Market
             </span>
           </div>
@@ -435,9 +435,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
 
             {/* ── Mobile expand toggle ──────────────── */}
             <button
-              className="flex items-center justify-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 pt-3 transition-colors md:hidden"
+              className="flex items-center justify-center gap-1 text-xs text-zinc-400 hover:text-zinc-300 pt-3 transition-colors md:hidden"
               onClick={() => setMarketExpanded((e) => !e)}
               aria-expanded={marketExpanded}
+              aria-label={marketExpanded ? "Show fewer market rows" : "Show more market rows"}
             >
               {marketExpanded ? (
                 <>Less <ChevronUp className="w-3 h-3" /></>
@@ -456,7 +457,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         <div
           role="link"
           tabIndex={0}
-          aria-label="View crypto holdings"
+          aria-label="Crypto holdings — click to view details"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -470,8 +471,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Bitcoin className="w-4 h-4 text-zinc-500" />
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              <Bitcoin className="w-4 h-4 text-zinc-400" />
+              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Crypto
               </span>
             </div>
@@ -480,10 +481,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
-                  className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                      : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
                   }`}
                 >
                   {PERIOD_LABELS[p]}
@@ -559,8 +560,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         {/* Crypto Breakdown — spans 2 columns for wider bars */}
         <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           <div className="flex items-center gap-2 mb-2">
-            <PieChart className="w-4 h-4 text-zinc-500" />
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+            <PieChart className="w-4 h-4 text-zinc-400" />
+            <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
               Crypto Breakdown
             </span>
           </div>
@@ -639,7 +640,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         <div
           role="link"
           tabIndex={0}
-          aria-label="View stock and ETF holdings"
+          aria-label="Stocks and ETF holdings — click to view details"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -653,8 +654,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-zinc-500" />
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              <BarChart3 className="w-4 h-4 text-zinc-400" />
+              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Equities
               </span>
             </div>
@@ -663,10 +664,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
-                  className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                      : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
                   }`}
                 >
                   {PERIOD_LABELS[p]}
@@ -757,8 +758,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         {/* Breakdown — spans 2 columns for wider bars */}
         <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           <div className="flex items-center gap-2 mb-2">
-            <Layers className="w-4 h-4 text-zinc-500" />
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+            <Layers className="w-4 h-4 text-zinc-400" />
+            <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
               Breakdown
             </span>
           </div>
@@ -847,7 +848,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         <div
           role="link"
           tabIndex={0}
-          aria-label="View cash accounts"
+          aria-label="Cash accounts — click to view details"
           className="block bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-colors cursor-pointer"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("button")) return;
@@ -861,8 +862,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Banknote className="w-4 h-4 text-zinc-500" />
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              <Banknote className="w-4 h-4 text-zinc-400" />
+              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Banks & Deposits
               </span>
             </div>
@@ -871,10 +872,10 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
-                  className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 min-h-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                      : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
                   }`}
                 >
                   {PERIOD_LABELS[p]}
@@ -975,8 +976,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
         {/* Currency Breakdown — spans 2 columns for wider bars */}
         <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           <div className="flex items-center gap-2 mb-2">
-            <PieChart className="w-4 h-4 text-zinc-500" />
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+            <PieChart className="w-4 h-4 text-zinc-400" />
+            <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
               Cash Currencies
             </span>
           </div>
