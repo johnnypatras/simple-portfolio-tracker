@@ -170,10 +170,10 @@ jobs:
           BEFORE="${{ github.event.before }}"
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE" ]; then
             echo "First push or manual dispatch — deploying edge functions..."
-            supabase functions deploy daily-snapshot --project-ref "$SUPABASE_PROJECT_REF"
+            supabase functions deploy daily-snapshot --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
           elif git diff "$BEFORE".."${{ github.sha }}" --name-only | grep -q '^supabase/functions/'; then
             echo "Edge Functions changed — deploying..."
-            supabase functions deploy daily-snapshot --project-ref "$SUPABASE_PROJECT_REF"
+            supabase functions deploy daily-snapshot --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
           else
             echo "No Edge Function changes — skipping."
           fi
