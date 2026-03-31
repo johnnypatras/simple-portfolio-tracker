@@ -41,11 +41,19 @@ export function CashflowStatusIcon({ cashflowStatus, deltaStatus, onRetry }: Cas
   };
 
   const statusIcon = isFailed ? (
-    <span title={parts.join(". ") + ". Chart uses estimate."}>
+    <span
+      title={parts.join(". ") + ". Chart uses estimate."}
+      role="img"
+      aria-label={parts.join(". ") + ". Chart uses estimate."}
+    >
       <AlertTriangle className="w-3 h-3 text-red-400" />
     </span>
   ) : (
-    <span title={parts.join(". ") + ". Will retry automatically."}>
+    <span
+      title={parts.join(". ") + ". Will retry automatically."}
+      role="img"
+      aria-label={parts.join(". ") + ". Will retry automatically."}
+    >
       <Clock className="w-3 h-3 text-amber-400" />
     </span>
   );
@@ -58,6 +66,7 @@ export function CashflowStatusIcon({ cashflowStatus, deltaStatus, onRetry }: Cas
           onClick={handleRetry}
           className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
           title="Retry computation"
+          aria-label="Retry computation"
         >
           <RefreshCw className="w-3 h-3" />
         </button>

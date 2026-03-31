@@ -203,7 +203,7 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
 
         {/* Allocations */}
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">Allocations</label>
+          <label className="block text-xs text-zinc-400 mb-1">Allocations</label>
           <div className="space-y-2">
             {legs.map((leg, i) => (
               <div key={i} className="flex items-center gap-2">

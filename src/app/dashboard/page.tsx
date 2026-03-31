@@ -51,8 +51,10 @@ export default async function DashboardPage() {
 
   const primaryCurrency = profile.primary_currency;
 
-  // Pass the latest snapshot date to the chart — the banner computes staleness client-side.
-  const latestSnapshotDate = chartSnapshots[chartSnapshots.length - 1]?.snapshot_date as string | undefined;
+  // Pass the latest snapshot's created_at timestamp to the chart for staleness detection.
+  // Using created_at (not snapshot_date) because snapshot_date is a DATE without time —
+  // new Date("2026-03-30") anchors to midnight UTC, making a 23:59 cron snapshot look 24h stale.
+  const latestSnapshotDate = chartSnapshots[chartSnapshots.length - 1]?.created_at as string | undefined;
 
   // ── Round 2: Prices, aggregation, insights ─────────────
   const { summary, insights, paletteHoldings, fxStale, fxUnavailable } =

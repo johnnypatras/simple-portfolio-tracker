@@ -71,10 +71,11 @@ export function ConfirmButton({
               onChange={(e) => setAdjChecked(e.target.checked)}
               className="w-3 h-3 accent-amber-500"
             />
-            <span className="text-[10px] text-zinc-500">Adj.</span>
+            <span className="text-[10px] text-zinc-400">Adj.</span>
           </label>
         )}
         <button
+          type="button"
           onClick={() => {
             setConfirming(false);
             onConfirm(showAdjustmentCheckbox ? { isAdjustment: adjChecked } : undefined);
@@ -86,6 +87,7 @@ export function ConfirmButton({
           <Check className="w-3.5 h-3.5" />
         </button>
         <button
+          type="button"
           onClick={() => { setConfirming(false); setAdjChecked(false); }}
           className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
           title="Cancel"

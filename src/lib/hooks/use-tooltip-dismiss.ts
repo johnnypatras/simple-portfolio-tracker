@@ -17,7 +17,7 @@ export function useTooltipDismiss() {
   const [openTooltip, setOpenTooltip] = useState<string | null>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
 
-  const toggleTooltip = useCallback((id: string, e: React.MouseEvent) => {
+  const toggleTooltip = useCallback((id: string, e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setOpenTooltip((prev) => (prev === id ? null : id));

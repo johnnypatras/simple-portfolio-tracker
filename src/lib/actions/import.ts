@@ -7,6 +7,7 @@ import { VALID_THEMES } from "@/lib/constants";
 import type { PortfolioBackup } from "@/lib/actions/export";
 import {
   validateAmount,
+  validateDate,
   validateQuantity,
   validateCurrency,
   validateName,
@@ -193,8 +194,12 @@ export async function validateBackup(
       validateAmount(Number(ca.balance), `cashAccounts[${i}].balance`);
     }
     for (const [i, t] of (d.tradeEntries as Record<string, unknown>[]).entries()) {
+      if (t.trade_date) validateDate(String(t.trade_date), `tradeEntries[${i}].trade_date`);
       validateQuantity(Number(t.quantity), `tradeEntries[${i}].quantity`);
       validateAmount(Number(t.price), `tradeEntries[${i}].price`);
+    }
+    for (const [i, s] of (d.snapshots as Record<string, unknown>[]).entries()) {
+      validateDate(String(s.snapshot_date), `snapshots[${i}].snapshot_date`);
     }
     // Crypto/stock positions are nested — validate quantities
     for (const [i, asset] of (d.cryptoAssets as Record<string, unknown>[]).entries()) {
@@ -211,6 +216,11 @@ export async function validateBackup(
         for (const [j, pos] of (positions as Record<string, unknown>[]).entries()) {
           validateQuantity(Number(pos.quantity), `stockAssets[${i}].positions[${j}].quantity`);
         }
+      }
+    }
+    if (Array.isArray(d.diaryEntries)) {
+      for (const [i, e] of (d.diaryEntries as Record<string, unknown>[]).entries()) {
+        if (e.entry_date) validateDate(String(e.entry_date), `diaryEntries[${i}].entry_date`);
       }
     }
   } catch (err) {
@@ -292,7 +302,7 @@ export async function importFromJson(
   const skipped = {
     institutions: 0, wallets: 0, brokers: 0, cashAccounts: 0,
     cryptoAssets: 0, stockAssets: 0,
-    snapshots: 0,
+    snapshots: 0, goalPrices: 0,
   };
 
   // ── 1. Institutions ───────────────────────────────────
@@ -551,7 +561,7 @@ export async function importFromJson(
           },
           { onConflict: "crypto_asset_id,label" }
         );
-      if (error) continue; // best-effort — don't fail import for goal prices
+      if (error) { skipped.goalPrices++; continue; } // best-effort — don't fail import for goal prices
       counts.goalPrices++;
     }
   }

@@ -10,7 +10,7 @@ interface RateLimitOptions {
  * Returns a function that checks the limit and returns a 429 response
  * if exceeded, or null if the request is allowed.
  */
-export function rateLimit({ windowMs, max }: RateLimitOptions) {
+export function rateLimit({ windowMs, max }: RateLimitOptions): (req: NextRequest) => NextResponse | null {
   const hits = new Map<string, number[]>();
   let lastPurge = Date.now();
 

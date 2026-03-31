@@ -51,9 +51,9 @@ describe("export legacy array derivation", () => {
     expect(bankAccounts[0].id).toBe("1");
   });
 
-  it("export version field is 3", () => {
-    // The export function sets version: 3 — verify the contract
-    const version = 3;
-    expect(version).toBe(3);
+  it("export version field is 3 — all three categories sum to total", () => {
+    // When all three categories are derived, no account should be lost
+    const { bankAccounts, exchangeDeposits, brokerDeposits } = deriveLegacyArrays(accounts);
+    expect(bankAccounts.length + exchangeDeposits.length + brokerDeposits.length).toBe(accounts.length);
   });
 });

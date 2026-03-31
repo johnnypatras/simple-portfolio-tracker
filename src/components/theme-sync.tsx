@@ -14,6 +14,12 @@ import { DEFAULT_THEME } from "@/lib/themes";
  * current next-themes value, we push the profile theme into next-themes.
  * This handles the case where a user changes theme on device A,
  * then opens device B — the profile wins over stale localStorage.
+ *
+ * The effect intentionally omits `theme` and `setTheme` from deps to
+ * avoid a feedback loop (setTheme → theme change → re-run → setTheme…).
+ * `setTheme` is stable (from next-themes), and `theme` is only read
+ * for the initial comparison — subsequent local toggles should not
+ * re-trigger sync.
  */
 export function ThemeSync({ profileTheme }: { profileTheme: string | null }) {
   const { theme, setTheme } = useTheme();
@@ -23,9 +29,8 @@ export function ThemeSync({ profileTheme }: { profileTheme: string | null }) {
     if (theme !== target) {
       setTheme(target);
     }
-  }, [profileTheme]); // eslint-disable-line react-hooks/exhaustive-deps
-  // ^ Intentionally omit theme/setTheme — we only want to sync on mount
-  // and when the profile changes, not on every local theme toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: sync on mount + profile change only
+  }, [profileTheme]);
 
   return null;
 }

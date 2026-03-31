@@ -619,6 +619,7 @@ function PeriodSelector({
     <div className="flex gap-1">
       {periods.map((p, i) => (
         <button
+          type="button"
           key={p.label}
           onClick={() => onChange(i)}
           className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${

@@ -58,7 +58,7 @@ function toDisplayFromUsd(
   primaryCurrency: BaseCurrency,
 ): number {
   if (primaryCurrency === "USD") return usd;
-  if (p.valueUsd === 0) return usd;
+  if (p.valueUsd === 0) return 0;
   return usd * (p.value / p.valueUsd);
 }
 

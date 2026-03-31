@@ -1,0 +1,16 @@
+graph LR
+    B[Browser] --> P[proxy.ts<br/>Auth Guard]
+    P --> SC[Server<br/>Components]
+    P --> API[API Routes]
+    SC --> SA[Server Actions]
+    SA --> SB4[4 Supabase Clients]
+    API --> SB4
+    SB4 --> DB[(PostgreSQL)]
+
+    style B fill:#3b82f6,color:#fff,stroke:#1e40af
+    style P fill:#ef4444,color:#fff,stroke:#dc2626
+    style SC fill:#18181b,color:#fff,stroke:#3b82f6
+    style API fill:#18181b,color:#fff,stroke:#3b82f6
+    style SA fill:#18181b,color:#fff,stroke:#3b82f6
+    style SB4 fill:#22c55e,color:#fff,stroke:#16a34a
+    style DB fill:#22c55e,color:#fff,stroke:#16a34a

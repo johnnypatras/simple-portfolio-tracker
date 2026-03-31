@@ -89,7 +89,7 @@ describe("getPrices", () => {
     const result = await getPrices(["bitcoin"]);
     expect(result).toEqual({});
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining("Price fetch error"),
+      expect.stringContaining("Fetch failed"),
       expect.any(Error),
     );
   });
@@ -179,7 +179,7 @@ describe("searchCoins", () => {
     expect(result).toEqual([]);
   });
 
-  it("returns empty array when fetch throws", async () => {
+  it("propagates fetch errors", async () => {
     mockFetch.mockRejectedValueOnce(new Error("Timeout"));
 
     await expect(searchCoins("bitcoin")).rejects.toThrow("Timeout");

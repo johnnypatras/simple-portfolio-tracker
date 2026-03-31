@@ -4,7 +4,7 @@
  */
 
 import { positionQtyDelta, cashDelta } from "@/lib/deltas";
-import type { AssetClass } from "@/lib/types";
+import type { ActionType, AssetClass, EntityType } from "@/lib/types";
 
 /** Shared predicate for stablecoin detection — single source of truth. */
 export function isStablecoin(subcategory: string | null | undefined): boolean {
@@ -19,7 +19,7 @@ export function isStablecoin(subcategory: string | null | undefined): boolean {
  * 2. Cash entities (bank/deposit): pass entityCurrency + fxRate (EUR/USD)
  */
 export function computeCashflowFromPrices(params: {
-  action: string;
+  action: ActionType;
   beforeQty: number;
   afterQty: number;
   /** For position entities: USD price per unit */
@@ -64,7 +64,7 @@ export function computeCashflowFromPrices(params: {
  * Returns null for entity types that don't produce cashflows.
  */
 export function classifyAssetClass(
-  entityType: string,
+  entityType: EntityType,
   isStablecoin?: boolean
 ): AssetClass | null {
   if (entityType === "crypto_position") {

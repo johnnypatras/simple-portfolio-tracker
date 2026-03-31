@@ -1,0 +1,15 @@
+graph TB
+    AL[activity_log] -->|cashflow_amount_usd| CF[Cash Flow Events]
+    CF --> REPLAY[Replay against S&P 500 TR]
+    REPLAY --> UNITS[Hypothetical S&P Units]
+    SP[S&P 500 Price<br/>Yahoo Finance] --> VAL[Daily Value<br/>units x price]
+    UNITS --> VAL
+    VAL --> CHART[Benchmark Line<br/>on Chart]
+
+    style AL fill:#22c55e,color:#fff,stroke:#16a34a
+    style CF fill:#18181b,color:#fff,stroke:#3b82f6
+    style REPLAY fill:#18181b,color:#fff,stroke:#3b82f6
+    style UNITS fill:#18181b,color:#fff,stroke:#3b82f6
+    style SP fill:#f97316,color:#fff,stroke:#ea580c
+    style VAL fill:#18181b,color:#fff,stroke:#3b82f6
+    style CHART fill:#3b82f6,color:#fff,stroke:#1e40af

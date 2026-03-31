@@ -14,7 +14,7 @@ export const SCOPE_RANK: Record<ShareScope, number> = {
 interface ShareValidationInput {
   expires_at: string | null;
   revoked_at: string | null;
-  scope: string;
+  scope: ShareScope;
 }
 
 /**
@@ -23,7 +23,7 @@ interface ShareValidationInput {
  */
 export function isShareValid(
   row: ShareValidationInput | null
-): { valid: boolean; scope?: string } {
+): { valid: boolean; scope?: ShareScope } {
   if (!row) return { valid: false };
   if (row.revoked_at) return { valid: false };
   if (row.expires_at && new Date(row.expires_at) < new Date())

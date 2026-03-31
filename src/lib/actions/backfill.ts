@@ -2,15 +2,16 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { classifyAssetClass, isStablecoin } from "@/lib/cashflow";
-import { cashAmountField, cashDelta } from "@/lib/deltas";
+import { cashAmountField, cashDelta, CASH_ENTITY_TYPES } from "@/lib/deltas";
 import type { CashEntityType } from "@/lib/deltas";
+import type { ActionType, EntityType } from "@/lib/types";
 import { toUsdAndEur, computeDeltaFromSnapshots } from "./activity-log";
+import { round2 } from "@/lib/format";
 
 const BATCH_SIZE = 10; // Small batch to stay within Vercel 10s timeout
 const THROTTLE_MS = 24 * 60 * 60 * 1000; // 24 hours between retries
 const MAX_DAYS_BEFORE_EXHAUSTED = 3; // 3 days minimum before escalating to failed
 
-const CASH_ENTITY_TYPES = ["exchange_deposit", "broker_deposit", "bank_account", "cash_account"];
 
 export async function backfillCashflowsAndDeltas(): Promise<{
   processed: number;
@@ -65,7 +66,13 @@ export async function backfillCashflowsAndDeltas(): Promise<{
     .order("created_at", { ascending: true })
     .limit(BATCH_SIZE);
 
-  const allRows = [...(cashflowRows ?? []), ...(deltaRows ?? [])];
+  const seen = new Set<string>();
+  const allRows = [...(cashflowRows ?? []), ...(deltaRows ?? [])].filter(r => {
+    const id = r.id as string;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
   if (allRows.length === 0) {
     return { processed: 0, succeeded: 0, pending: 0, failed: 0 };
   }
@@ -97,8 +104,9 @@ export async function backfillCashflowsAndDeltas(): Promise<{
 
   for (const row of allRows) {
     const isCashflow = (cashflowRows ?? []).some((r) => r.id === row.id);
-    const entityType = row.entity_type as string;
-    const isCashEntity = CASH_ENTITY_TYPES.includes(entityType);
+    const isDelta = (deltaRows ?? []).some((r) => r.id === row.id);
+    const entityType = row.entity_type as EntityType;
+    const isCashEntity = CASH_ENTITY_TYPES.includes(entityType as CashEntityType);
 
     try {
       let values: { usd: number; eur: number };
@@ -112,7 +120,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         const beforeAmt = (before?.[field] as number) ?? 0;
         const afterAmt = (after?.[field] as number) ?? 0;
         const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
-        const delta = cashDelta(row.action as string, beforeAmt, afterAmt);
+        const delta = cashDelta(row.action as ActionType, beforeAmt, afterAmt);
 
         if (delta === 0) {
           values = { usd: 0, eur: 0 };
@@ -123,7 +131,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         // Position entities: need historical price lookup via CoinGecko/Yahoo
         values = await computeDeltaFromSnapshots(
           entityType,
-          row.action as string,
+          row.action as ActionType,
           (row.effective_date as string) ?? (row.created_at as string),
           row.before_snapshot as Record<string, unknown> | null,
           row.after_snapshot as Record<string, unknown> | null
@@ -145,20 +153,21 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         const { error: cfWriteErr } = await supabase
           .from("activity_log")
           .update({
-            cashflow_amount_usd: Math.round(values.usd * 100) / 100,
-            cashflow_amount_eur: Math.round(values.eur * 100) / 100,
+            cashflow_amount_usd: round2(values.usd),
+            cashflow_amount_eur: round2(values.eur),
             cashflow_asset_class: assetClass,
             cashflow_status: "complete",
             cashflow_attempted_at: now.toISOString(),
           })
           .eq("id", row.id);
         if (cfWriteErr) console.error(`[backfill] Cashflow write failed for row ${row.id as string}:`, cfWriteErr.message);
-      } else {
+      }
+      if (isDelta) {
         const { error: deltaWriteErr } = await supabase
           .from("activity_log")
           .update({
-            delta_usd: Math.round(values.usd * 100) / 100,
-            delta_eur: Math.round(values.eur * 100) / 100,
+            delta_usd: round2(values.usd),
+            delta_eur: round2(values.eur),
             delta_status: "complete",
             delta_attempted_at: now.toISOString(),
           })
@@ -246,20 +255,21 @@ export async function backfillCashflowsAndDeltas(): Promise<{
           const { error: cfEstErr } = await supabase
             .from("activity_log")
             .update({
-              cashflow_amount_usd: Math.round(estimateUsd * 100) / 100,
-              cashflow_amount_eur: Math.round(estimateEur * 100) / 100,
+              cashflow_amount_usd: round2(estimateUsd),
+              cashflow_amount_eur: round2(estimateEur),
               cashflow_asset_class: assetClass,
               cashflow_status: hasEstimate ? "complete" : "failed",
               cashflow_attempted_at: now.toISOString(),
             })
             .eq("id", row.id);
           if (cfEstErr) console.error(`[backfill] Cashflow fallback write failed for row ${row.id as string}:`, cfEstErr.message);
-        } else {
+        }
+        if (isDelta) {
           const { error: deltaEstErr } = await supabase
             .from("activity_log")
             .update({
-              delta_usd: Math.round(estimateUsd * 100) / 100,
-              delta_eur: Math.round(estimateEur * 100) / 100,
+              delta_usd: round2(estimateUsd),
+              delta_eur: round2(estimateEur),
               delta_status: hasEstimate ? "complete" : "failed",
               delta_attempted_at: now.toISOString(),
             })
@@ -269,14 +279,12 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         failed++;
       } else {
         // Update attempted_at, keep pending
-        const updateField = isCashflow
-          ? "cashflow_attempted_at"
-          : "delta_attempted_at";
+        const pendingUpdate: Record<string, string> = {};
+        if (isCashflow) pendingUpdate["cashflow_attempted_at"] = now.toISOString();
+        if (isDelta) pendingUpdate["delta_attempted_at"] = now.toISOString();
         const { error: pendingWriteErr } = await supabase
           .from("activity_log")
-          .update({
-            [updateField]: now.toISOString(),
-          })
+          .update(pendingUpdate)
           .eq("id", row.id);
         if (pendingWriteErr) console.error(`[backfill] Pending update write failed for row ${row.id as string}:`, pendingWriteErr.message);
         pending++;
@@ -313,8 +321,8 @@ export async function backfillSingleRow(rowId: string): Promise<{
 
   if (fetchErr || !row) return { success: false, error: "Row not found" };
 
-  const entityType = row.entity_type as string;
-  const isCashEntity = CASH_ENTITY_TYPES.includes(entityType);
+  const entityType = row.entity_type as EntityType;
+  const isCashEntity = CASH_ENTITY_TYPES.includes(entityType as CashEntityType);
   const needsCashflow = row.cashflow_status === "pending" || row.cashflow_status === "failed";
   const needsDelta = row.delta_status === "pending" || row.delta_status === "failed";
 
@@ -332,7 +340,7 @@ export async function backfillSingleRow(rowId: string): Promise<{
       const beforeAmt = (before?.[field] as number) ?? 0;
       const afterAmt = (after?.[field] as number) ?? 0;
       const currency = (after?.currency as string) ?? (before?.currency as string) ?? "USD";
-      const delta = cashDelta(row.action as string, beforeAmt, afterAmt);
+      const delta = cashDelta(row.action as ActionType, beforeAmt, afterAmt);
 
       if (delta === 0) {
         values = { usd: 0, eur: 0 };
@@ -342,7 +350,7 @@ export async function backfillSingleRow(rowId: string): Promise<{
     } else {
       values = await computeDeltaFromSnapshots(
         entityType,
-        row.action as string,
+        row.action as ActionType,
         (row.effective_date as string) ?? (row.created_at as string),
         row.before_snapshot as Record<string, unknown> | null,
         row.after_snapshot as Record<string, unknown> | null
@@ -366,22 +374,24 @@ export async function backfillSingleRow(rowId: string): Promise<{
         }
       }
       const assetClass = classifyAssetClass(entityType, isStable);
-      await supabase.from("activity_log").update({
-        cashflow_amount_usd: Math.round(values.usd * 100) / 100,
-        cashflow_amount_eur: Math.round(values.eur * 100) / 100,
+      const { error: cfErr } = await supabase.from("activity_log").update({
+        cashflow_amount_usd: round2(values.usd),
+        cashflow_amount_eur: round2(values.eur),
         cashflow_asset_class: assetClass,
         cashflow_status: "complete",
         cashflow_attempted_at: now,
       }).eq("id", rowId).eq("user_id", user.id);
+      if (cfErr) console.error(`[backfill] Single row cashflow write failed for ${rowId}:`, cfErr.message);
     }
 
     if (needsDelta) {
-      await supabase.from("activity_log").update({
-        delta_usd: Math.round(values.usd * 100) / 100,
-        delta_eur: Math.round(values.eur * 100) / 100,
+      const { error: deltaErr } = await supabase.from("activity_log").update({
+        delta_usd: round2(values.usd),
+        delta_eur: round2(values.eur),
         delta_status: "complete",
         delta_attempted_at: now,
       }).eq("id", rowId).eq("user_id", user.id);
+      if (deltaErr) console.error(`[backfill] Single row delta write failed for ${rowId}:`, deltaErr.message);
     }
 
     return { success: true };

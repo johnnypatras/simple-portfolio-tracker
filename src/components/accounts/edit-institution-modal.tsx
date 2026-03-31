@@ -307,7 +307,7 @@ export function EditInstitutionModal({
 
             {/* Privacy */}
             <div>
-              <label htmlFor={`${id}-privacy`} className="block text-xs text-zinc-500 mb-1">
+              <label htmlFor={`${id}-privacy`} className="block text-xs text-zinc-400 mb-1">
                 Privacy
               </label>
               <select
@@ -394,7 +394,7 @@ export function EditInstitutionModal({
               Bank Settings
             </label>
             <div>
-              <label htmlFor={`${id}-bank-currency`} className="block text-xs text-zinc-500 mb-1">
+              <label htmlFor={`${id}-bank-currency`} className="block text-xs text-zinc-400 mb-1">
                 Currency
               </label>
               <select
@@ -456,7 +456,7 @@ export function EditInstitutionModal({
                 action cannot be undone.
               </p>
               <div>
-                <label htmlFor={`${id}-delete-confirm`} className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-delete-confirm`} className="block text-xs text-zinc-400 mb-1">
                   Type <span className="font-mono text-red-400">{institution.name}</span> to confirm
                 </label>
                 <input

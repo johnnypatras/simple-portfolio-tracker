@@ -63,6 +63,6 @@ export async function GET(req: NextRequest) {
     console.error("[holdings] Failed to build palette holdings:", e);
     const Sentry = await import("@sentry/nextjs");
     Sentry.captureException(e);
-    return NextResponse.json([], { status: 500 });
+    return NextResponse.json({ error: "Failed to load holdings" }, { status: 500 });
   }
 }

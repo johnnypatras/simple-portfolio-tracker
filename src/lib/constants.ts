@@ -20,6 +20,12 @@ export const DEFAULT_WALLET_TYPE = "custodial" as const;
 /** Fetch all snapshots (pass to getSnapshots for export/full-history) */
 export const ALL_SNAPSHOTS_DAYS = 99999;
 
+/** Maximum share/invite expiry in days (~10 years) */
+export const MAX_SHARE_EXPIRY_DAYS = 3650;
+
+/** Upper bound for paginated Supabase queries (prevents unbounded scans) */
+export const MAX_QUERY_LIMIT = 10_000;
+
 /** Snapshot comparison period labels for portfolio cards */
 export const PERIOD_LABELS = {
   "24h": "vs yesterday",

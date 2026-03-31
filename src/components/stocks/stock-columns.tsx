@@ -1,7 +1,8 @@
 import { Pencil, Trash2, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
-import type { ColumnDef } from "@/lib/column-config";
+import type { ColumnDef, SortDirection } from "@/lib/column-config";
+export type { SortDirection } from "@/lib/column-config";
 import { formatCurrency, formatQuantity } from "@/lib/format";
 import type {
   StockAssetWithPositions,
@@ -260,7 +261,6 @@ export function buildTickerGroups(
 // ── Sorting ───────────────────────────────────────────────────
 
 export type SortKey = "value" | "name" | "type" | "change" | "yield" | "currency";
-export type SortDirection = "asc" | "desc";
 
 export const DEFAULT_SORT_KEY: SortKey = "value";
 export const DEFAULT_SORT_DIR: SortDirection = "desc";

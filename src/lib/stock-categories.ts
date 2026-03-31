@@ -8,9 +8,18 @@ const OLD_CAT_MAP: Record<string, AssetCategory> = {
   bond: "bond_fixed_income",
 };
 
+const VALID_CATEGORIES = new Set<AssetCategory>([
+  "individual_stock",
+  "etf",
+  "bond_fixed_income",
+  "other",
+]);
+
 export function normalizeCategory(
   raw: string | null | undefined
 ): AssetCategory {
   if (!raw) return "individual_stock";
-  return OLD_CAT_MAP[raw] ?? (raw as AssetCategory);
+  if (raw in OLD_CAT_MAP) return OLD_CAT_MAP[raw];
+  if (VALID_CATEGORIES.has(raw as AssetCategory)) return raw as AssetCategory;
+  return "individual_stock";
 }

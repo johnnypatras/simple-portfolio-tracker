@@ -57,19 +57,19 @@ export async function getPrices(
     let res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
 
     if (res.status === 429) {
-      console.warn("[coingecko] Rate limited (429), retrying in 2s…");
-      await new Promise((r) => setTimeout(r, 2000));
+      console.warn("[coingecko] Rate limited (429), retrying in 500ms…");
+      await new Promise((r) => setTimeout(r, 500));
       res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
     }
 
     if (!res.ok) {
-      console.error("[coingecko] Price fetch failed:", res.status);
+      console.error(`[coingecko] API error ${res.status} — ${coinIds.length} crypto prices unavailable`);
       return {};
     }
 
     return await res.json();
   } catch (err) {
-    console.error("[coingecko] Price fetch error:", err);
+    console.error(`[coingecko] Fetch failed — ${coinIds.length} crypto prices unavailable:`, err);
     return {};
   }
 }

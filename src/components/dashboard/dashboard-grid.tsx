@@ -226,7 +226,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                     ref={openTooltip === "total" ? tooltipRef : undefined}
                     role="button"
                     onClick={(e) => toggleTooltip("total", e)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("total", e as unknown as React.MouseEvent); } }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("total", e); } }}
                     tabIndex={0}
                     className={`relative group/tip cursor-pointer text-sm font-medium tabular-nums whitespace-nowrap ${changeColorClass(c.percent)}`}
                   >
@@ -464,7 +464,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
             router.push(`${basePath}/crypto`);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !(e.target as HTMLElement).closest("button")) {
+            if ((e.key === "Enter" || e.key === " ") && !(e.target as HTMLElement).closest("button")) {
+              e.preventDefault();
               router.push(`${basePath}/crypto`);
             }
           }}
@@ -505,7 +506,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       ref={openTooltip === "crypto" ? tooltipRef : undefined}
                       role="button"
                       onClick={(e) => toggleTooltip("crypto", e)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("crypto", e as unknown as React.MouseEvent); } }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("crypto", e); } }}
                       tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
                     >
@@ -647,7 +648,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
             router.push(`${basePath}/stocks`);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !(e.target as HTMLElement).closest("button")) {
+            if ((e.key === "Enter" || e.key === " ") && !(e.target as HTMLElement).closest("button")) {
+              e.preventDefault();
               router.push(`${basePath}/stocks`);
             }
           }}
@@ -688,7 +690,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       ref={openTooltip === "equities" ? tooltipRef : undefined}
                       role="button"
                       onClick={(e) => toggleTooltip("equities", e)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("equities", e as unknown as React.MouseEvent); } }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("equities", e); } }}
                       tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
                     >
@@ -855,7 +857,8 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
             router.push(`${basePath}/cash`);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !(e.target as HTMLElement).closest("button")) {
+            if ((e.key === "Enter" || e.key === " ") && !(e.target as HTMLElement).closest("button")) {
+              e.preventDefault();
               router.push(`${basePath}/cash`);
             }
           }}
@@ -896,7 +899,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       ref={openTooltip === "cash" ? tooltipRef : undefined}
                       role="button"
                       onClick={(e) => toggleTooltip("cash", e)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("cash", e as unknown as React.MouseEvent); } }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("cash", e); } }}
                       tabIndex={0}
                       className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
                     >
@@ -948,7 +951,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                         <button
                           key={p}
                           onClick={(e) => { e.stopPropagation(); setApyPeriod(p); }}
-                          className={`px-1 py-0.5 text-[9px] rounded transition-colors ${
+                          className={`px-1 py-0.5 text-[10px] rounded transition-colors ${
                             p === apyPeriod
                               ? "bg-emerald-600/30 text-emerald-400"
                               : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"

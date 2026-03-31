@@ -11,7 +11,7 @@ import { getSnapshots } from "@/lib/actions/snapshots";
 import { getProfile } from "@/lib/actions/profile";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { toCsv } from "@/lib/csv";
-import { ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
+import { ALL_SNAPSHOTS_DAYS, MAX_QUERY_LIMIT } from "@/lib/constants";
 import { getMyShares, type ShareLink } from "@/lib/actions/shares";
 import type {
   Wallet,
@@ -33,7 +33,7 @@ import type {
 // ─── Full JSON backup ───────────────────────────────────
 
 export interface PortfolioBackup {
-  version: number;
+  version: 1 | 2 | 3;
   exportedAt: string;
   primaryCurrency: string;
   // ── v1 entities ──
@@ -99,7 +99,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
       .select("*")
       .eq("user_id", uid)
       .order("created_at", { ascending: false })
-      .limit(10000),
+      .limit(MAX_QUERY_LIMIT),
   ]);
 
   // goal_prices linked through crypto_assets (no direct user_id) — query via asset IDs

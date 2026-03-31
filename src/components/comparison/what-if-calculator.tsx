@@ -269,10 +269,11 @@ export function WhatIfCalculator({
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-lg p-4 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+        <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
           What If Calculator
         </h2>
         <button
+          type="button"
           onClick={reset}
           className="flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
         >
@@ -283,7 +284,7 @@ export function WhatIfCalculator({
 
       {/* ── Total investment input ─────────────────────── */}
       <div>
-        <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-2">
+        <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-2">
           Total Investment
         </div>
         <div className="flex items-center gap-2">
@@ -301,6 +302,7 @@ export function WhatIfCalculator({
             />
           </div>
           <button
+            type="button"
             onClick={matchOwnerTotal}
             className="text-[10px] text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded-md px-2.5 py-2 transition-colors whitespace-nowrap"
           >
@@ -312,10 +314,11 @@ export function WhatIfCalculator({
       {/* ── Allocation sliders ─────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">
+          <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium">
             Allocation
           </span>
           <button
+            type="button"
             onClick={matchOwnerAlloc}
             className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
           >
@@ -338,7 +341,7 @@ export function WhatIfCalculator({
 
       {/* ── Results table ──────────────────────────────── */}
       <div>
-        <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-2">
+        <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-2">
           Result
         </div>
 

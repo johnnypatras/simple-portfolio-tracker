@@ -4,7 +4,7 @@ import type {
   ChartPoint,
   EnrichChartDataInput,
 } from "@/lib/portfolio/chart-enrichment";
-import type { AdjustmentDelta } from "@/lib/actions/activity-log";
+import type { AdjustmentDelta } from "@/lib/types";
 
 // ── Test helpers ───────────────────────────────────────────
 

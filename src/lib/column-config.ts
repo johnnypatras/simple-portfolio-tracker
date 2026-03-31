@@ -36,6 +36,10 @@ export interface ColumnDef<TRow> {
   renderHeader?: (ctx: RenderContext) => ReactNode;
 }
 
+// ── Sort direction ────────────────────────────────────────────
+
+export type SortDirection = "asc" | "desc";
+
 // ── Persisted column configuration state ─────────────────────
 
 export interface ColumnConfigState {

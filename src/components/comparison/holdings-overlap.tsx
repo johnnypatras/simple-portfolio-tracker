@@ -247,7 +247,7 @@ export function HoldingsOverlap({
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-lg p-4 space-y-5">
       {/* ── Summary header ──────────────────────────────── */}
       <div>
-        <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
+        <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
           Holdings Overlap
         </h2>
         <div className="flex items-center justify-between mb-2">
@@ -281,7 +281,7 @@ export function HoldingsOverlap({
       {shared.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">
+            <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium">
               Both Hold
             </span>
             <div className="flex items-center gap-3 text-[10px] text-zinc-500">
@@ -318,7 +318,7 @@ export function HoldingsOverlap({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Viewer-only column */}
           <div>
-            <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-1 flex items-center gap-1.5">
+            <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-blue-500" />
               Only {viewerName}
             </div>
@@ -347,7 +347,7 @@ export function HoldingsOverlap({
 
           {/* Owner-only column */}
           <div>
-            <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-1 flex items-center gap-1.5">
+            <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-orange-500" />
               Only {ownerName}
             </div>

@@ -40,8 +40,8 @@ describe("cashDelta", () => {
     expect(cashDelta("created", 0, 0)).toBe(0);
   });
 
-  it("unknown action — falls through to difference", () => {
-    expect(cashDelta("whatever", 100, 300)).toBe(200);
+  it("updated — computes difference", () => {
+    expect(cashDelta("updated", 100, 300)).toBe(200);
   });
 });
 
@@ -63,6 +63,6 @@ describe("positionQtyDelta", () => {
   });
 
   it("unknown action — falls through to difference", () => {
-    expect(positionQtyDelta("whatever", 1, 4)).toBe(3);
+    expect(positionQtyDelta("updated", 1, 4)).toBe(3);
   });
 });

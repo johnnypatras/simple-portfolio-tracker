@@ -79,6 +79,9 @@ function createMockClient(
       callIndex++;
       return createQueryBuilder(result);
     }),
+    auth: {
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: "test-user-id" } } }),
+    },
   };
 }
 

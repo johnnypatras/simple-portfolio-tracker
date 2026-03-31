@@ -70,7 +70,7 @@ function BreakdownCard({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
+          <div className="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">
             {viewerName}
           </div>
           <div className="text-base font-semibold text-zinc-100">
@@ -78,7 +78,7 @@ function BreakdownCard({
           </div>
         </div>
         <div>
-          <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
+          <div className="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">
             {ownerName}
           </div>
           <div className="text-base font-semibold text-zinc-400">
@@ -158,7 +158,7 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
           <h1 className="text-xl font-bold text-zinc-100">
             You vs {owner.name}
           </h1>
-          <span className="text-xs text-zinc-500 uppercase tracking-wider">
+          <span className="text-xs text-zinc-400 uppercase tracking-wider">
             All values in {cur}
           </span>
         </div>
@@ -200,7 +200,7 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Radar chart */}
         <div className="bg-zinc-900 border border-zinc-800/50 rounded-lg p-4">
-          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
+          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
             Allocation
           </h2>
           <AllocationRadar
@@ -213,7 +213,7 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
 
         {/* Breakdown cards */}
         <div className="space-y-3">
-          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
+          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
             Breakdown
           </h2>
           <BreakdownCard

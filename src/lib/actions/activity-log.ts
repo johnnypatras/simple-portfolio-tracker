@@ -7,10 +7,14 @@ import {
   cashAmountField,
   cashDelta,
   positionQtyDelta,
+  CASH_ENTITY_TYPES,
   type CashEntityType,
 } from "@/lib/deltas";
+import { classifyAssetClass } from "@/lib/cashflow";
 import { toCsv } from "@/lib/csv";
+import { round2 } from "@/lib/format";
 import { validateUUID } from "@/lib/validation";
+import { MAX_QUERY_LIMIT } from "@/lib/constants";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, FlowStatus } from "@/lib/types";
 
@@ -148,12 +152,18 @@ export async function getActivityLogs(filters?: {
 export async function getSplitChildren(parentIds: string[]): Promise<ActivityLog[]> {
   if (parentIds.length === 0) return [];
   const supabase = await createServerSupabaseClient();
-  const { data } = await supabase
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
     .from("activity_log")
     .select("*")
+    .eq("user_id", user.id)
     .in("split_from_id", parentIds)
     .is("undone_at", null)
     .order("effective_date", { ascending: true });
+  if (error) throw new Error(`Failed to fetch split children: ${error.message}`);
   return (data ?? []) as ActivityLog[];
 }
 
@@ -164,19 +174,14 @@ export async function getSplitChildren(parentIds: string[]): Promise<ActivityLog
 
 export async function computeDeltaFromSnapshots(
   entityType: string,
-  action: string,
+  action: ActionType,
   date: string,
   before: Record<string, unknown> | null,
   after: Record<string, unknown> | null,
   supabaseOverride?: SupabaseClient
 ): Promise<{ usd: number; eur: number }> {
   // Cash entities — delta comes from amount/balance fields
-  if (
-    entityType === "bank_account" ||
-    entityType === "exchange_deposit" ||
-    entityType === "broker_deposit" ||
-    entityType === "cash_account"
-  ) {
+  if (CASH_ENTITY_TYPES.includes(entityType as CashEntityType)) {
     const field = cashAmountField(entityType as CashEntityType);
     const beforeAmt = (before?.[field] as number) ?? 0;
     const afterAmt = (after?.[field] as number) ?? 0;
@@ -327,8 +332,8 @@ export async function toggleActivityAdjustment(
         row.before_snapshot as Record<string, unknown> | null,
         row.after_snapshot as Record<string, unknown> | null
       );
-      deltaUsd = Math.round(deltas.usd * 100) / 100;
-      deltaEur = Math.round(deltas.eur * 100) / 100;
+      deltaUsd = round2(deltas.usd);
+      deltaEur = round2(deltas.eur);
       deltaStatus = "complete";
     } catch (err) {
       console.error("[activity-log] Delta computation failed on toggle:", err instanceof Error ? err.message : err);
@@ -349,8 +354,8 @@ export async function toggleActivityAdjustment(
         row.before_snapshot as Record<string, unknown> | null,
         row.after_snapshot as Record<string, unknown> | null
       );
-      cashflowUsd = Math.round(values.usd * 100) / 100;
-      cashflowEur = Math.round(values.eur * 100) / 100;
+      cashflowUsd = round2(values.usd);
+      cashflowEur = round2(values.eur);
 
       // Determine asset class
       const { classifyAssetClass, isStablecoin } = await import("@/lib/cashflow");
@@ -368,7 +373,7 @@ export async function toggleActivityAdjustment(
           isStable = isStablecoin(asset?.subcategory);
         }
       }
-      cashflowAssetClass = classifyAssetClass(row.entity_type, isStable);
+      cashflowAssetClass = classifyAssetClass(row.entity_type as EntityType, isStable);
       cashflowStatus = "complete";
     } catch (err) {
       console.error("[activity-log] Cashflow computation failed on toggle:", err instanceof Error ? err.message : err);
@@ -409,35 +414,36 @@ export async function getAdjustmentDeltas(
     ? createAdminClient()
     : await createServerSupabaseClient();
 
+  // On the non-admin path, resolve the authenticated user for explicit user_id filtering
+  let resolvedUserId = userId;
+  if (!resolvedUserId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    resolvedUserId = user.id;
+  }
+
   // Fetch stablecoin position IDs so we can classify them as cash (matching snapshot logic)
   // Snapshots count stablecoins in cash_value_usd, not crypto_value_usd
-  let stablecoinQuery = supabase
+  const stablecoinQuery = supabase
     .from("crypto_positions")
     .select("id, crypto_assets!inner(subcategory)")
-    .ilike("crypto_assets.subcategory", "stablecoin");
-  if (userId) {
-    stablecoinQuery = stablecoinQuery.eq("crypto_assets.user_id", userId);
-  }
+    .ilike("crypto_assets.subcategory", "stablecoin")
+    .eq("crypto_assets.user_id", resolvedUserId);
   const { data: stablecoinPositions, error: stablecoinErr } = await stablecoinQuery;
-  if (stablecoinErr) {
-    console.error("[activity-log] Failed to fetch stablecoin positions:", stablecoinErr.message);
-  }
+  if (stablecoinErr) throw new Error(`Failed to load stablecoin positions: ${stablecoinErr.message}`);
   const stablecoinPosIds = new Set(
     (stablecoinPositions ?? []).map((p) => p.id as string)
   );
 
-  let query = supabase
+  const query = supabase
     .from("activity_log")
     .select("created_at, effective_date, delta_usd, delta_eur, entity_type, entity_id, entity_table")
     .eq("is_adjustment", true)
+    .eq("user_id", resolvedUserId)
     .is("undone_at", null)
     .not("delta_usd", "is", null)
     .order("created_at", { ascending: true })
-    .limit(10000);
-
-  if (userId) {
-    query = query.eq("user_id", userId);
-  }
+    .limit(MAX_QUERY_LIMIT);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
@@ -462,9 +468,7 @@ export async function getAdjustmentDeltas(
       }
       return "crypto";
     }
-    if (entityType === "stock_position") return "stocks";
-    if (entityType === "bank_account" || entityType === "exchange_deposit" || entityType === "broker_deposit" || entityType === "cash_account") return "cash";
-    return null;
+    return classifyAssetClass(entityType as EntityType);
   };
 
   // Build cumulative sums by date — total + per asset class
@@ -524,7 +528,7 @@ export async function exportActivityLogsCsv(): Promise<string> {
     .select("*")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-    .limit(10000);
+    .limit(MAX_QUERY_LIMIT);
 
   if (error) throw new Error(error.message);
 

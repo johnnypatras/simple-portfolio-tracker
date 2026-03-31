@@ -73,28 +73,42 @@ export async function clearAllData(): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // All user-owned tables in safe deletion order (children before parents).
+  // Delete in parallel batches respecting FK ordering.
   // crypto_positions, stock_positions, goal_prices cascade from their parents.
-  const tablesWithUserId = [
-    "activity_log",
-    "portfolio_snapshots",
-    "diary_entries",
-    "trade_entries",
-    "cash_accounts",
-    "stock_assets",
-    "crypto_assets",
-    "brokers",
-    "wallets",
-    "institutions",
-  ];
 
-  for (const table of tablesWithUserId) {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq("user_id", user.id);
-    if (error) throw new Error(`Failed to clear ${table}: ${error.message}`);
+  // Batch 1: leaf tables (no FK dependents)
+  const batch1Results = await Promise.all([
+    supabase.from("activity_log").delete().eq("user_id", user.id),
+    supabase.from("portfolio_snapshots").delete().eq("user_id", user.id),
+    supabase.from("diary_entries").delete().eq("user_id", user.id),
+    supabase.from("trade_entries").delete().eq("user_id", user.id),
+  ]);
+  for (const { error } of batch1Results) {
+    if (error) throw new Error(`Failed to clear leaf tables: ${error.message}`);
   }
+
+  // Batch 2: tables with cascade-deleted children
+  const batch2Results = await Promise.all([
+    supabase.from("cash_accounts").delete().eq("user_id", user.id),
+    supabase.from("stock_assets").delete().eq("user_id", user.id),
+    supabase.from("crypto_assets").delete().eq("user_id", user.id),
+  ]);
+  for (const { error } of batch2Results) {
+    if (error) throw new Error(`Failed to clear asset tables: ${error.message}`);
+  }
+
+  // Batch 3: infrastructure tables
+  const batch3Results = await Promise.all([
+    supabase.from("brokers").delete().eq("user_id", user.id),
+    supabase.from("wallets").delete().eq("user_id", user.id),
+  ]);
+  for (const { error } of batch3Results) {
+    if (error) throw new Error(`Failed to clear infrastructure tables: ${error.message}`);
+  }
+
+  // Batch 4: root table
+  const { error: instErr } = await supabase.from("institutions").delete().eq("user_id", user.id);
+  if (instErr) throw new Error(`Failed to clear institutions: ${instErr.message}`);
 
   // portfolio_shares uses owner_id instead of user_id
   const { error: sharesErr } = await supabase

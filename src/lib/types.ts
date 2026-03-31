@@ -16,7 +16,7 @@ export type WalletType = "custodial" | "non_custodial";
 export type PrivacyLabel = "anon" | "doxxed";
 /** User's base/display currency (EUR or USD) */
 export type BaseCurrency = "USD" | "EUR";
-/** Any ISO 4217 currency code */
+/** @deprecated Use `string` directly — this alias provides no type safety. Retained for deprecated type consumers. */
 export type CurrencyType = string;
 
 // ─── User Profile ───────────────────────────────────────
@@ -169,16 +169,6 @@ export interface BrokerInput {
   name: string;
 }
 
-/** @deprecated Use CashAccountInput */
-export interface BankAccountInput {
-  name: string;
-  bank_name: string;
-  country?: string;
-  currency?: CurrencyType;
-  balance?: number;
-  apy?: number;
-}
-
 // ─── Countries (for bank/institution country dropdown) ──────
 
 export const COUNTRIES = [
@@ -228,14 +218,6 @@ export function countryName(code: string): string {
   return COUNTRY_MAP.get(code) ?? code;
 }
 
-/** @deprecated Use CashAccountInput */
-export interface ExchangeDepositInput {
-  wallet_id: string;
-  currency: CurrencyType;
-  amount: number;
-  apy?: number;
-}
-
 // ─── Exchange Deposits (fiat on exchanges) ──────────────
 
 /** @deprecated Use CashAccount */
@@ -255,14 +237,6 @@ export interface ExchangeDeposit {
 }
 
 // ─── Broker Deposits (fiat on brokers) ───────────────────
-
-/** @deprecated Use CashAccountInput */
-export interface BrokerDepositInput {
-  broker_id: string;
-  currency: CurrencyType;
-  amount: number;
-  apy?: number;
-}
 
 /** @deprecated Use CashAccount */
 export interface BrokerDeposit {

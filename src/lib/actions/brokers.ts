@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { BrokerInput, WalletType, PrivacyLabel } from "@/lib/types";
+import type { Broker, BrokerInput, WalletType, PrivacyLabel } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import {
   findOrCreateInstitution,
@@ -10,7 +10,7 @@ import {
 } from "@/lib/actions/institutions";
 import { validateUUID, validateName } from "@/lib/validation";
 
-export async function getBrokers() {
+export async function getBrokers(): Promise<Broker[]> {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
@@ -222,6 +222,7 @@ export async function updateBroker(
     .from("brokers")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
@@ -245,6 +246,16 @@ export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  // Verify ownership before cascade deletion
+  const { data: owned } = await supabase
+    .from("brokers")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .single();
+  if (!owned) throw new Error("Not found");
 
   // Delete child stock positions individually so each gets an activity_log entry
   const { deleteStockPosition } = await import("@/lib/actions/stocks");
@@ -279,6 +290,7 @@ export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }
     .from("brokers")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 

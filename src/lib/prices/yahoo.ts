@@ -21,7 +21,10 @@ export async function searchStocks(
       next: { revalidate: 300 },
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`[yahoo] Search failed (${res.status}) for query "${query}"`);
+      return [];
+    }
 
     const json = await res.json();
     const quotes = json?.quotes;
@@ -44,7 +47,7 @@ export async function searchStocks(
         })
       );
   } catch (err) {
-    console.error("[yahoo] Search error:", err);
+    console.warn(`[yahoo] Search error for query "${query}":`, err);
     return [];
   }
 }
@@ -163,7 +166,10 @@ export async function fetchQuotesBatch(
 
   try {
     const auth = await getYahooCrumb();
-    if (!auth) return map; // caller will fall back to v8/chart
+    if (!auth) {
+      console.warn(`[yahoo] Crumb auth failed — ${symbols.length} stock prices unavailable`);
+      return map; // caller will fall back to v8/chart
+    }
 
     const url = `${QUOTE_URL}?symbols=${symbols.join(",")}&crumb=${encodeURIComponent(auth.crumb)}`;
     const res = await fetchWithTimeout(url, {
@@ -174,13 +180,13 @@ export async function fetchQuotesBatch(
     if (!res.ok) {
       // Invalidate crumb on auth failure so next call retries
       if (res.status === 401 || res.status === 403) cachedCrumb = null;
-      console.error("[yahoo] Batch quote fetch failed:", res.status);
+      console.error(`[yahoo] Batch quote fetch failed (${res.status}) — ${symbols.length} stock prices unavailable`);
       return map;
     }
 
     const contentType = res.headers.get("content-type") ?? "";
     if (!contentType.includes("application/json")) {
-      console.warn("[yahoo] Batch quote returned non-JSON (captcha?), content-type:", contentType);
+      console.warn(`[yahoo] Batch quote returned non-JSON (captcha?) — ${symbols.length} stock prices unavailable, content-type: ${contentType}`);
       return map;
     }
 

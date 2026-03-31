@@ -175,6 +175,7 @@ export function SharingSettings() {
                   key={opt.value}
                   type="button"
                   onClick={() => setScope(opt.value)}
+                  aria-pressed={selected}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
                     selected
                       ? "border-blue-500/50 bg-blue-500/10"

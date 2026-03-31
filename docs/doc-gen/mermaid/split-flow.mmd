@@ -1,0 +1,15 @@
+graph TB
+    PARENT[Parent Entry<br/>0.5 BTC, Feb 20] -->|split| MARK[Mark parent<br/>undone_at = now]
+    PARENT -->|create children| C1[Child 1<br/>0.25 BTC<br/>effective: Jan 5]
+    PARENT -->|create children| C2[Child 2<br/>0.20 BTC<br/>effective: Jan 10]
+    PARENT -->|create children| C3[Child 3<br/>0.05 BTC<br/>effective: Feb 20]
+    C1 --> PIPE[All pipelines use<br/>COALESCE effective_date, created_at]
+    C2 --> PIPE
+    C3 --> PIPE
+
+    style PARENT fill:#18181b,color:#fff,stroke:#8b5cf6
+    style MARK fill:#ef4444,color:#fff,stroke:#dc2626
+    style C1 fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style C2 fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style C3 fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style PIPE fill:#3b82f6,color:#fff,stroke:#1e40af

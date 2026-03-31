@@ -3,11 +3,17 @@
  * Extracted from activity-log.ts so tests can import the real logic.
  */
 
+import type { ActionType } from "@/lib/types";
+
 export type CashEntityType =
   | "bank_account"
   | "exchange_deposit"
   | "broker_deposit"
   | "cash_account";
+
+export const CASH_ENTITY_TYPES: readonly CashEntityType[] = [
+  "bank_account", "exchange_deposit", "broker_deposit", "cash_account",
+] as const;
 
 /** Which snapshot field holds the monetary value for a given cash entity type. */
 export function cashAmountField(
@@ -22,7 +28,7 @@ export function cashAmountField(
  * Returns the signed change in the entity's native currency.
  */
 export function cashDelta(
-  action: string,
+  action: ActionType,
   beforeAmt: number,
   afterAmt: number
 ): number {
@@ -36,7 +42,7 @@ export function cashDelta(
  * Returns the signed change in quantity.
  */
 export function positionQtyDelta(
-  action: string,
+  action: ActionType,
   beforeQty: number,
   afterQty: number
 ): number {

@@ -1,0 +1,15 @@
+graph TB
+    REQ[Request] --> HDR[Security Headers<br/>HSTS, X-Frame, CSP]
+    HDR --> RL[Rate Limiting<br/>Sliding Window]
+    RL --> AUTH[Auth Guard<br/>getUser + 401]
+    AUTH --> VAL[Input Validation<br/>Server Actions]
+    VAL --> RLS[Row Level Security<br/>user_id = auth.uid<br/>AND is_active_user]
+    RLS --> DB[(PostgreSQL)]
+
+    style REQ fill:#3b82f6,color:#fff,stroke:#1e40af
+    style HDR fill:#ef4444,color:#fff,stroke:#dc2626
+    style RL fill:#ef4444,color:#fff,stroke:#dc2626
+    style AUTH fill:#ef4444,color:#fff,stroke:#dc2626
+    style VAL fill:#ef4444,color:#fff,stroke:#dc2626
+    style RLS fill:#ef4444,color:#fff,stroke:#dc2626
+    style DB fill:#22c55e,color:#fff,stroke:#16a34a

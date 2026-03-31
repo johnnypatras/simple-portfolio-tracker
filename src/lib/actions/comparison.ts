@@ -81,7 +81,8 @@ export async function getComparisonData(
       getCashAccounts(),
       getSnapshots(365),
     ]);
-  } catch {
+  } catch (err) {
+    console.error("[comparison] Failed to load viewer data:", err);
     return { ok: false, error: "Failed to load comparison data" };
   }
 

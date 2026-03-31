@@ -378,7 +378,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               {/* Chain — dropdown from available platforms (hidden for exchanges) */}
               {!isExchange && (
               <div>
-                <label htmlFor={`${id}-chain`} className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-chain`} className="block text-xs text-zinc-400 mb-1">
                   Chain <span className="text-zinc-500">(optional)</span>
                 </label>
                 {chainOptions.length > 0 ? (
@@ -410,7 +410,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
 
               {/* Type */}
               <div className="relative">
-                <label htmlFor={`${id}-type`} className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-type`} className="block text-xs text-zinc-400 mb-1">
                   Type <span className="text-zinc-500">(optional)</span>
                 </label>
                 <input
@@ -478,7 +478,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                   <div className="px-3 pb-3 pt-1 border-t border-zinc-800/50">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label htmlFor={`${id}-wallet`} className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-wallet`} className="block text-xs text-zinc-400 mb-1">
                           Wallet / Exchange
                         </label>
                         <select
@@ -517,7 +517,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                         )}
                       </div>
                       <div>
-                        <label htmlFor={`${id}-quantity`} className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-quantity`} className="block text-xs text-zinc-400 mb-1">
                           Quantity
                         </label>
                         <input
@@ -534,7 +534,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                     </div>
                     <div className="grid grid-cols-2 gap-3 mt-3">
                       <div>
-                        <label htmlFor={`${id}-acquisition`} className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-acquisition`} className="block text-xs text-zinc-400 mb-1">
                           How was this acquired?
                         </label>
                         <select
@@ -551,7 +551,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                         </select>
                       </div>
                       <div>
-                        <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-500 mb-1">
+                        <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-400 mb-1">
                           APY % <span className="text-zinc-500">(optional)</span>
                         </label>
                         <input
@@ -573,7 +573,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
             )}
 
             <div>
-              <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
+              <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
                 Effective date (optional)
               </label>
               <input
@@ -582,9 +582,9 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 max={new Date().toISOString().split("T")[0]}
                 value={effectiveDate}
                 onChange={(e) => setEffectiveDate(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
               />
-              <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
+              <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
             </div>
 
             {error && (

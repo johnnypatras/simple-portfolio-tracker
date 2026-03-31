@@ -4,6 +4,7 @@ import { cache } from "react";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateUUID } from "@/lib/validation";
+import { MAX_QUERY_LIMIT } from "@/lib/constants";
 
 // ─── Cash Flow Event ─────────────────────────────────────
 
@@ -26,6 +27,9 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
   if (userId) validateUUID(userId, "User ID");
   const supabase = userId ? createAdminClient() : await createServerSupabaseClient();
 
+  // Resolve user ID for explicit row-level filtering on non-admin path
+  const resolvedUserId = userId ?? (await supabase.auth.getUser()).data.user?.id;
+
   // Single DB query — all cashflows pre-computed at write time
   let query = supabase
     .from("activity_log")
@@ -33,8 +37,8 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
     .eq("cashflow_status", "complete")
     .is("undone_at", null)
     .order("created_at", { ascending: true })
-    .limit(10000);
-  if (userId) query = query.eq("user_id", userId);
+    .limit(MAX_QUERY_LIMIT);
+  if (resolvedUserId) query = query.eq("user_id", resolvedUserId);
   const { data, error } = await query;
 
   if (error) {
@@ -55,9 +59,9 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
     .select("*", { count: "exact", head: true })
     .is("undone_at", null)
     .or("cashflow_status.eq.failed,delta_status.eq.failed");
-  if (userId) {
-    pendingQuery = pendingQuery.eq("user_id", userId);
-    failedQuery = failedQuery.eq("user_id", userId);
+  if (resolvedUserId) {
+    pendingQuery = pendingQuery.eq("user_id", resolvedUserId);
+    failedQuery = failedQuery.eq("user_id", resolvedUserId);
   }
   const [pendingResult, failedResult] = await Promise.all([pendingQuery, failedQuery]);
 

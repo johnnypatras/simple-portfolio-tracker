@@ -126,13 +126,13 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
   return (
     <div className="space-y-5">
       {/* Currency note */}
-      <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
+      <div className="text-[10px] text-zinc-400 uppercase tracking-wider">
         All values in {cur}
       </div>
 
       {/* ── Total value comparison ────────────────────── */}
       <div>
-        <div className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
+        <div className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
           Total Value
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -167,7 +167,7 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
 
       {/* ── Allocation comparison ─────────────────────── */}
       <div>
-        <div className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
+        <div className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
           Allocation
         </div>
         <div className="space-y-3">
@@ -193,15 +193,15 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
 
       {/* ── Class-level breakdown ─────────────────────── */}
       <div>
-        <div className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
+        <div className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
           Breakdown
         </div>
         {/* Column headers */}
         <div className="grid grid-cols-2 gap-3 pl-4 mb-2">
-          <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
+          <div className="text-[10px] text-zinc-400 uppercase tracking-wider">
             You
           </div>
-          <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
+          <div className="text-[10px] text-zinc-400 uppercase tracking-wider">
             {owner.name}
           </div>
         </div>

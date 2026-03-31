@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   deriveClassFx,
   getChangeForPeriod,
@@ -67,6 +67,7 @@ function makeCtx(overrides: Partial<ChangeContext> = {}): ChangeContext {
     cryptoChange24hPercent: 1.1,
     pastSnapshots: {},
     cashFlows: [],
+    adjustmentDeltas: [],
     ...overrides,
   };
 }
@@ -191,9 +192,9 @@ describe("getChangeForPeriod with adjustment deltas", () => {
     expect(result.percent).toBeCloseTo(12.5, 1);
   });
 
-  it("no adjustment when adjustmentDeltas is undefined", () => {
+  it("no adjustment when adjustmentDeltas is empty", () => {
     const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 95000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap } });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: [] });
     const result = getChangeForPeriod("30d", ctx);
     expect(result.percent).toBeCloseTo(12.5, 1);
   });
@@ -369,14 +370,24 @@ describe("getCashChangeForPeriod with adjustment deltas", () => {
 
 // ── getDepositsForPeriod ───────────────────────────────────
 
+const PINNED_NOW = "2026-06-15T12:00:00Z";
+const PINNED_TODAY = "2026-06-15";
+
 describe("getDepositsForPeriod", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(PINNED_NOW));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("sums deposits within the period window", () => {
-    const now = new Date();
-    const today = now.toISOString().split("T")[0];
     const ctx = makeCtx({
       cashFlows: [
-        { date: today, amount_usd: 1000, entity_name: "Alpha Bank" },
-        { date: today, amount_usd: 500, entity_name: "DEGIRO" },
+        { date: PINNED_TODAY, amount_usd: 1000, entity_name: "Alpha Bank" },
+        { date: PINNED_TODAY, amount_usd: 500, entity_name: "DEGIRO" },
         { date: "2020-01-01", amount_usd: 9999, entity_name: "Old" }, // outside window
       ],
     });
@@ -389,12 +400,10 @@ describe("getDepositsForPeriod", () => {
   });
 
   it("uses amount_eur when available for EUR users", () => {
-    const now = new Date();
-    const today = now.toISOString().split("T")[0];
     const ctx = makeCtx({
       primaryCurrency: "EUR",
       cashFlows: [
-        { date: today, amount_usd: 1180, amount_eur: 1000, entity_name: "Bank" },
+        { date: PINNED_TODAY, amount_usd: 1180, amount_eur: 1000, entity_name: "Bank" },
       ],
     });
     const result = getDepositsForPeriod("24h", ctx);
@@ -403,14 +412,12 @@ describe("getDepositsForPeriod", () => {
   });
 
   it("filters by asset class when specified", () => {
-    const now = new Date();
-    const today = now.toISOString().split("T")[0];
     const ctx = makeCtx({
       primaryCurrency: "USD",
       totalValueUsd: 100000,
       cashFlows: [
-        { date: today, amount_usd: 500, asset_class: "crypto", entity_name: "Binance" },
-        { date: today, amount_usd: 300, asset_class: "stocks", entity_name: "DEGIRO" },
+        { date: PINNED_TODAY, amount_usd: 500, asset_class: "crypto", entity_name: "Binance" },
+        { date: PINNED_TODAY, amount_usd: 300, asset_class: "stocks", entity_name: "DEGIRO" },
       ],
     });
     const cryptoResult = getDepositsForPeriod("24h", ctx, "crypto");
@@ -420,15 +427,13 @@ describe("getDepositsForPeriod", () => {
   });
 
   it("groups deposits by entity name", () => {
-    const now = new Date();
-    const today = now.toISOString().split("T")[0];
     const ctx = makeCtx({
       primaryCurrency: "USD",
       totalValueUsd: 100000,
       cashFlows: [
-        { date: today, amount_usd: 200, entity_name: "Bank A" },
-        { date: today, amount_usd: 300, entity_name: "Bank A" },
-        { date: today, amount_usd: 100, entity_name: "Bank B" },
+        { date: PINNED_TODAY, amount_usd: 200, entity_name: "Bank A" },
+        { date: PINNED_TODAY, amount_usd: 300, entity_name: "Bank A" },
+        { date: PINNED_TODAY, amount_usd: 100, entity_name: "Bank B" },
       ],
     });
     const result = getDepositsForPeriod("24h", ctx);
@@ -440,14 +445,12 @@ describe("getDepositsForPeriod", () => {
   });
 
   it("filters out tiny amounts (< 0.5)", () => {
-    const now = new Date();
-    const today = now.toISOString().split("T")[0];
     const ctx = makeCtx({
       primaryCurrency: "USD",
       totalValueUsd: 100000,
       cashFlows: [
-        { date: today, amount_usd: 0.3, entity_name: "Dust" },
-        { date: today, amount_usd: 100, entity_name: "Real" },
+        { date: PINNED_TODAY, amount_usd: 0.3, entity_name: "Dust" },
+        { date: PINNED_TODAY, amount_usd: 100, entity_name: "Real" },
       ],
     });
     const result = getDepositsForPeriod("24h", ctx);

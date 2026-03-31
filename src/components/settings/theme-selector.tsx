@@ -43,6 +43,7 @@ export function ThemeSelector() {
               key={t.id}
               type="button"
               onClick={() => handleSelect(t.id)}
+              aria-pressed={isActive}
               className={`group relative rounded-lg border-2 p-3 text-left transition-all ${
                 isActive
                   ? "border-blue-500 ring-1 ring-blue-500/30"

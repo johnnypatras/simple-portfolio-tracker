@@ -281,7 +281,7 @@ export function CashTable({
     <div>
       {/* ── Summary header ─────────────────────────────────── */}
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-4 md:p-5">
-        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+        <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
           Total Banks &amp; Deposits
         </p>
         <div className="flex items-baseline gap-3 mt-1">
@@ -294,7 +294,7 @@ export function CashTable({
               role="button"
               tabIndex={0}
               onClick={(e) => toggleTooltip("summary", e)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("summary", e as unknown as React.MouseEvent); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("summary", e); } }}
               className={`relative group/tip cursor-pointer text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}
             >
               {isReadOnly ? (
@@ -542,7 +542,7 @@ export function CashTable({
                     const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
                     const width = col.width ?? "";
                     return (
-                      <th key={col.key} scope="col" className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width}`}>
+                      <th key={col.key} scope="col" className={`px-4 py-2.5 text-xs font-medium text-zinc-400 uppercase tracking-wider ${align} ${hidden} ${width}`}>
                         {col.renderHeader ? col.renderHeader(ctx) : col.header}
                       </th>
                     );
@@ -819,6 +819,7 @@ function ExpandedCashRow({
                   <button
                     onClick={onEdit}
                     className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                    aria-label="Edit account"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>

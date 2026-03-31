@@ -82,6 +82,7 @@ export function ColumnSettingsPopover({
               Columns
             </span>
             <button
+              type="button"
               onClick={() => {
                 onReset();
               }}

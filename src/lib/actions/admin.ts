@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateUUID } from "@/lib/validation";
+import { MAX_SHARE_EXPIRY_DAYS } from "@/lib/constants";
 import type { Profile, UserStatus } from "@/lib/types";
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -159,8 +160,8 @@ export async function createInviteCode(
   const adminId = await requireAdmin();
   const admin = createAdminClient();
 
-  if (expiresInDays != null && (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 3650)) {
-    throw new Error("Expiry must be between 1 and 3650 days");
+  if (expiresInDays != null && (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > MAX_SHARE_EXPIRY_DAYS)) {
+    throw new Error(`Expiry must be between 1 and ${MAX_SHARE_EXPIRY_DAYS} days`);
   }
 
   const code = nanoid(12);

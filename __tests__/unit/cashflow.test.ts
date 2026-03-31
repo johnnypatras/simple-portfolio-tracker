@@ -46,8 +46,10 @@ describe("computeCashflowFromPrices", () => {
       entityCurrency: "EUR",
       fxRate: 1.08,
     });
-    expect(result.usd).toBeCloseTo(1080);
-    expect(result.eur).toBe(1000);
+    expect(result).not.toBeNull();
+    const r = result!;
+    expect(r.usd).toBeCloseTo(1080);
+    expect(r.eur).toBe(1000);
   });
 
   it("cash entity USD — uses fxRate for EUR conversion", () => {
@@ -58,8 +60,10 @@ describe("computeCashflowFromPrices", () => {
       entityCurrency: "USD",
       fxRate: 1.08,
     });
-    expect(result.usd).toBe(1000);
-    expect(result.eur).toBeCloseTo(925.93, 1);
+    expect(result).not.toBeNull();
+    const r = result!;
+    expect(r.usd).toBe(1000);
+    expect(r.eur).toBeCloseTo(925.93, 1);
   });
 
   it("zero qty change — returns zero", () => {

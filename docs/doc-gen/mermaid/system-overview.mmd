@@ -1,0 +1,46 @@
+graph TB
+    subgraph Client
+        B[Browser]
+    end
+    subgraph Vercel
+        N[Next.js 16<br/>App Router]
+        SA[Server Actions]
+        AR[API Routes]
+    end
+    subgraph Supabase
+        PG[(PostgreSQL<br/>18 tables, RLS)]
+        AUTH[Auth<br/>JWT + MFA]
+        EF[Edge Function<br/>daily-snapshot]
+    end
+    subgraph External APIs
+        CG[CoinGecko<br/>Crypto Prices]
+        YF[Yahoo Finance<br/>Stock Prices]
+        FK[Frankfurter<br/>FX Rates]
+    end
+    subgraph Monitoring
+        SE[Sentry<br/>Error Tracking]
+    end
+
+    B --> N
+    N --> SA
+    N --> AR
+    SA --> PG
+    AR --> CG
+    AR --> YF
+    AR --> FK
+    SA --> AUTH
+    PG -.->|pg_cron 23:59 UTC| EF
+    EF --> PG
+    N --> SE
+
+    style B fill:#3b82f6,color:#fff,stroke:#1e40af
+    style N fill:#18181b,color:#fff,stroke:#3b82f6
+    style SA fill:#18181b,color:#fff,stroke:#3b82f6
+    style AR fill:#18181b,color:#fff,stroke:#3b82f6
+    style PG fill:#22c55e,color:#fff,stroke:#16a34a
+    style AUTH fill:#22c55e,color:#fff,stroke:#16a34a
+    style EF fill:#22c55e,color:#fff,stroke:#16a34a
+    style CG fill:#f97316,color:#fff,stroke:#ea580c
+    style YF fill:#f97316,color:#fff,stroke:#ea580c
+    style FK fill:#f97316,color:#fff,stroke:#ea580c
+    style SE fill:#8b5cf6,color:#fff,stroke:#7c3aed

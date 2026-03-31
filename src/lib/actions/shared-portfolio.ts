@@ -80,65 +80,64 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   const brokers = (brokersRes.data ?? []) as Broker[];
   const snapshots = (snapshotsRes.data ?? []) as PortfolioSnapshot[];
 
-  // ── Build crypto assets with positions ────────────────
+  // ── Build crypto and stock assets with positions (parallel) ──
   const cryptoAssetIds = cryptoAssetsRaw.map((a) => a.id);
-  let cryptoAssets: CryptoAssetWithPositions[] = [];
-  if (cryptoAssetIds.length > 0) {
-    const { data: positions } = await admin
-      .from("crypto_positions")
-      .select("*")
-      .in("crypto_asset_id", cryptoAssetIds)
-      .is("deleted_at", null);
+  const stockAssetIds = stockAssetsRaw.map((a) => a.id);
 
-    const walletsMap: Record<string, { name: string; wallet_type: Wallet["wallet_type"] }> = {};
-    for (const w of wallets) {
-      walletsMap[w.id] = { name: w.name, wallet_type: w.wallet_type };
-    }
+  const [cryptoPositionsData, stockPositionsData] = await Promise.all([
+    cryptoAssetIds.length > 0
+      ? admin
+          .from("crypto_positions")
+          .select("*")
+          .in("crypto_asset_id", cryptoAssetIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+    stockAssetIds.length > 0
+      ? admin
+          .from("stock_positions")
+          .select("*")
+          .in("stock_asset_id", stockAssetIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+  ]);
 
-    cryptoAssets = cryptoAssetsRaw.map((asset) => ({
-      ...asset,
-      positions: (positions ?? [])
-        .filter((p) => p.crypto_asset_id === asset.id)
-        .map((p) => {
-          const walletInfo = walletsMap[p.wallet_id];
-          return {
-            ...p,
-            quantity: Number(p.quantity),
-            apy: Number(p.apy ?? 0),
-            wallet_name: walletInfo?.name ?? "Unknown",
-            wallet_type: walletInfo?.wallet_type ?? ("custodial" as const),
-          };
-        }),
-    }));
+  const walletsMap: Record<string, { name: string; wallet_type: Wallet["wallet_type"] }> = {};
+  for (const w of wallets) {
+    walletsMap[w.id] = { name: w.name, wallet_type: w.wallet_type };
   }
 
-  // ── Build stock assets with positions ─────────────────
-  const stockAssetIds = stockAssetsRaw.map((a) => a.id);
-  let stockAssets: StockAssetWithPositions[] = [];
-  if (stockAssetIds.length > 0) {
-    const { data: positions } = await admin
-      .from("stock_positions")
-      .select("*")
-      .in("stock_asset_id", stockAssetIds)
-      .is("deleted_at", null);
-
-    const brokersMap: Record<string, string> = {};
-    for (const b of brokers) {
-      brokersMap[b.id] = b.name;
-    }
-
-    stockAssets = stockAssetsRaw.map((asset) => ({
-      ...asset,
-      category: normalizeCategory(asset.category),
-      positions: (positions ?? [])
-        .filter((p) => p.stock_asset_id === asset.id)
-        .map((p) => ({
+  const cryptoAssets: CryptoAssetWithPositions[] = cryptoAssetsRaw.map((asset) => ({
+    ...asset,
+    positions: (cryptoPositionsData.data ?? [])
+      .filter((p) => p.crypto_asset_id === asset.id)
+      .map((p) => {
+        const walletInfo = walletsMap[p.wallet_id];
+        return {
           ...p,
           quantity: Number(p.quantity),
-          broker_name: brokersMap[p.broker_id] ?? "Unknown",
-        })),
-    }));
+          apy: Number(p.apy ?? 0),
+          wallet_name: walletInfo?.name ?? "Unknown",
+          wallet_type: walletInfo?.wallet_type ?? ("custodial" as const),
+        };
+      }),
+  }));
+
+  const brokersMap: Record<string, string> = {};
+  for (const b of brokers) {
+    brokersMap[b.id] = b.name;
   }
+
+  const stockAssets: StockAssetWithPositions[] = stockAssetsRaw.map((asset) => ({
+    ...asset,
+    category: normalizeCategory(asset.category),
+    positions: (stockPositionsData.data ?? [])
+      .filter((p) => p.stock_asset_id === asset.id)
+      .map((p) => ({
+        ...p,
+        quantity: Number(p.quantity),
+        broker_name: brokersMap[p.broker_id] ?? "Unknown",
+      })),
+  }));
 
   // ── Flatten cash accounts with joined names ────────────
   const cashAccounts: CashAccount[] = (cashAccountsRes.data ?? []).map((row) => ({

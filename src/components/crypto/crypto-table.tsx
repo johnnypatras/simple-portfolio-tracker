@@ -337,7 +337,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
     <div>
       {/* ── Summary header ─────────────────────────────────── */}
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-4 md:p-5">
-        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+        <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
           Total Crypto
         </p>
         <div className="flex items-baseline gap-3 mt-1">
@@ -349,7 +349,10 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
             return (
               <span
                 ref={openTooltip === "summary" ? tooltipRef : undefined}
+                role="button"
+                tabIndex={0}
                 onClick={(e) => toggleTooltip("summary", e)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleTooltip("summary", e); } }}
                 className={`relative group/tip cursor-pointer text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}
               >
                 {isReadOnly ? (
@@ -414,6 +417,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                   : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
               }`}
               title={GROUP_MODE_LABELS[GROUP_MODE_CYCLE[(GROUP_MODE_CYCLE.indexOf(groupMode) + 1) % GROUP_MODE_CYCLE.length]]}
+              aria-label={GROUP_MODE_LABELS[GROUP_MODE_CYCLE[(GROUP_MODE_CYCLE.indexOf(groupMode) + 1) % GROUP_MODE_CYCLE.length]]}
             >
               {isGrouped ? (
                 <List className="w-4 h-4 shrink-0" />
@@ -432,6 +436,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                 onClick={handleCycleSort}
                 className="md:hidden p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                 title={`Sort: ${CRYPTO_SORT_OPTIONS.find((o) => o.key === sortKey)?.label}`}
+                aria-label={`Sort: ${CRYPTO_SORT_OPTIONS.find((o) => o.key === sortKey)?.label}`}
               >
                 <div className="flex items-center gap-1">
                   <ArrowUpDown className="w-3.5 h-3.5" />
@@ -452,6 +457,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                 onClick={handleResetSort}
                 className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-colors"
                 title="Reset sort"
+                aria-label="Reset sort"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
@@ -460,6 +466,11 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
               onClick={toggleExpandAll}
               className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
               title={
+                isGrouped
+                  ? allGroupAssetsExpanded ? "Collapse all" : "Expand all"
+                  : allExpanded ? "Collapse all" : "Expand all"
+              }
+              aria-label={
                 isGrouped
                   ? allGroupAssetsExpanded ? "Collapse all" : "Expand all"
                   : allExpanded ? "Collapse all" : "Expand all"
@@ -836,7 +847,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                       <th
                         key={col.key}
                         scope="col"
-                        className={`px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wider ${align} ${hidden} ${width} ${
+                        className={`px-4 py-2.5 text-xs font-medium text-zinc-400 uppercase tracking-wider ${align} ${hidden} ${width} ${
                           isSortable ? "cursor-pointer select-none hover:text-zinc-300 transition-colors" : ""
                         }`}
                         onClick={isSortable ? () => handleSort(colSortKey) : undefined}

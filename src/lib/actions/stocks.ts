@@ -10,7 +10,7 @@ import type {
   Broker,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateQuantity, validateUUID, validateYahooTicker } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateYahooTicker, validateName } from "@/lib/validation";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
 
@@ -32,6 +32,7 @@ export async function getStockAssetsWithPositions(): Promise<
     supabase
       .from("brokers")
       .select("id, name")
+      .eq("user_id", user.id)
       .is("deleted_at", null),
   ]);
 
@@ -75,6 +76,8 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateName(input.name, 100, "Name");
+  validateName(input.ticker, 20, "Ticker");
   if (input.yahoo_ticker) validateYahooTicker(input.yahoo_ticker);
 
   const category = input.category ?? "individual_stock";
@@ -203,6 +206,7 @@ export async function updateStockAsset(
     .from("stock_assets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
@@ -283,6 +287,8 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  validateUUID(input.stock_asset_id, "Stock asset ID");
+  validateUUID(input.broker_id, "Broker ID");
   validateQuantity(input.quantity, "Stock quantity");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -443,15 +449,18 @@ export async function deleteStockPosition(positionId: string, opts?: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // Capture full snapshot before soft-delete
+  // Capture full snapshot before soft-delete (join parent to verify ownership)
   const { data: snapshot } = await supabase
     .from("stock_positions")
-    .select("*, stock_assets(ticker)")
+    .select("*, stock_assets(user_id, ticker)")
     .eq("id", positionId)
     .is("deleted_at", null)
     .single();
-  const ticker =
-    (snapshot?.stock_assets as unknown as { ticker: string } | null)?.ticker ?? "Unknown";
+
+  const parentAsset = snapshot?.stock_assets as { user_id: string; ticker: string } | null;
+  if (!parentAsset || parentAsset.user_id !== user.id) throw new Error("Position not found");
+
+  const ticker = parentAsset.ticker ?? "Unknown";
 
   const { error } = await supabase
     .from("stock_positions")

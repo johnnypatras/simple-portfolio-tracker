@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateName, validateUUID } from "@/lib/validation";
+import { MAX_SHARE_EXPIRY_DAYS } from "@/lib/constants";
 import type { ShareScope } from "@/lib/share-utils";
 
 // ─── Types ──────────────────────────────────────────────
@@ -55,8 +56,8 @@ export async function createShareLink(
   const shareLabel = opts.label?.trim() || null;
   if (shareLabel) validateName(shareLabel, 100, "Share label");
 
-  if (opts.expiresInDays != null && (!Number.isInteger(opts.expiresInDays) || opts.expiresInDays < 1 || opts.expiresInDays > 3650)) {
-    throw new Error("Expiry must be between 1 and 3650 days");
+  if (opts.expiresInDays != null && (opts.expiresInDays < 1 / 24 || opts.expiresInDays > MAX_SHARE_EXPIRY_DAYS)) {
+    throw new Error(`Expiry must be between 1 hour and ${MAX_SHARE_EXPIRY_DAYS} days`);
   }
 
   const token = nanoid(21);

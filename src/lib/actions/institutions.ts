@@ -134,6 +134,7 @@ export async function updateInstitutionRoles(
     .from("institutions")
     .select("*")
     .eq("id", institutionId)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
   if (!inst) throw new Error("Institution not found");
@@ -167,6 +168,7 @@ export async function updateInstitutionRoles(
       .from("cash_accounts")
       .update({ region: opts.country })
       .eq("institution_id", institutionId)
+      .eq("user_id", user.id)
       .is("deleted_at", null);
   }
 
@@ -343,12 +345,15 @@ export async function deleteInstitution(institutionId: string, opts?: { isAdjust
   if (!inst) throw new Error("Institution not found");
 
   // Explicitly delete children before soft-deleting institution so each gets logged
-  const { data: instWallets } = await supabase
-    .from("wallets").select("id").eq("institution_id", institutionId).is("deleted_at", null);
-  const { data: instBrokers } = await supabase
-    .from("brokers").select("id").eq("institution_id", institutionId).is("deleted_at", null);
-  const { data: instCashAccounts } = await supabase
-    .from("cash_accounts").select("id").eq("institution_id", institutionId).is("deleted_at", null);
+  const [
+    { data: instWallets },
+    { data: instBrokers },
+    { data: instCashAccounts },
+  ] = await Promise.all([
+    supabase.from("wallets").select("id").eq("institution_id", institutionId).is("deleted_at", null),
+    supabase.from("brokers").select("id").eq("institution_id", institutionId).is("deleted_at", null),
+    supabase.from("cash_accounts").select("id").eq("institution_id", institutionId).is("deleted_at", null),
+  ]);
 
   const { deleteWallet } = await import("@/lib/actions/wallets");
   const { deleteBroker } = await import("@/lib/actions/brokers");

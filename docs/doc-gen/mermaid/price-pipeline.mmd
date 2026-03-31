@@ -1,0 +1,30 @@
+graph LR
+    subgraph Crypto
+        CG[CoinGecko API<br/>30 calls/min]
+    end
+    subgraph Stocks
+        Y7[Yahoo v7 Batch<br/>crumb+cookie auth]
+        Y8[Yahoo v8 Chart<br/>fallback]
+    end
+    subgraph FX
+        FK[Frankfurter<br/>ECB rates]
+        YFX[Yahoo<br/>EUR/USD live]
+    end
+
+    FT[fetchWithTimeout<br/>8s AbortController]
+    DASH[Dashboard]
+
+    CG --> FT
+    Y7 --> FT
+    Y8 -.->|fallback| FT
+    FK --> FT
+    YFX --> FT
+    FT --> DASH
+
+    style CG fill:#f97316,color:#fff,stroke:#ea580c
+    style Y7 fill:#f97316,color:#fff,stroke:#ea580c
+    style Y8 fill:#f97316,color:#fff,stroke:#ea580c
+    style FK fill:#f97316,color:#fff,stroke:#ea580c
+    style YFX fill:#f97316,color:#fff,stroke:#ea580c
+    style FT fill:#ef4444,color:#fff,stroke:#dc2626
+    style DASH fill:#3b82f6,color:#fff,stroke:#1e40af

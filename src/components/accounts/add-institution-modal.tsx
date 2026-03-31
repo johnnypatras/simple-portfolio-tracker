@@ -106,7 +106,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name */}
         <div>
-          <label htmlFor={`${id}-name`} className="block text-xs text-zinc-500 mb-1">
+          <label htmlFor={`${id}-name`} className="block text-xs text-zinc-400 mb-1">
             Institution Name
           </label>
           <input
@@ -170,7 +170,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
             </label>
 
             <div>
-              <label htmlFor={`${id}-privacy`} className="block text-xs text-zinc-500 mb-1">Privacy</label>
+              <label htmlFor={`${id}-privacy`} className="block text-xs text-zinc-400 mb-1">Privacy</label>
               <select
                 id={`${id}-privacy`}
                 value={privacyLabel}
@@ -248,7 +248,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor={`${id}-account-name`} className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-account-name`} className="block text-xs text-zinc-400 mb-1">
                   Account Name
                 </label>
                 <input
@@ -261,7 +261,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 />
               </div>
               <div>
-                <label htmlFor={`${id}-bank-currency`} className="block text-xs text-zinc-500 mb-1">
+                <label htmlFor={`${id}-bank-currency`} className="block text-xs text-zinc-400 mb-1">
                   Currency
                 </label>
                 <select

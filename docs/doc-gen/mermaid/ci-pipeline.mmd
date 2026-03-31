@@ -1,0 +1,21 @@
+graph LR
+    PUSH[Git Push] --> TEST[Test Job]
+    TEST --> LINT[Lint]
+    LINT --> BUILD[Build]
+    BUILD --> UNIT[Unit Tests<br/>399 cases]
+    UNIT --> COMP[Component Tests<br/>92 cases]
+    COMP --> SB[Supabase Start]
+    SB --> INT[Integration Tests<br/>54 cases]
+    INT --> STOP[Supabase Stop]
+
+    PUSH --> PR{PR?}
+    PR -->|Yes| PREVIEW[Preview Deploy]
+    PR -->|No, main| DEPLOY[Deploy Job]
+    DEPLOY --> MIG[Migrate DB]
+    MIG --> VDEP[Vercel Deploy]
+    VDEP --> EDGE[Edge Functions]
+
+    style PUSH fill:#3b82f6,color:#fff,stroke:#1e40af
+    style TEST fill:#18181b,color:#fff,stroke:#3b82f6
+    style DEPLOY fill:#22c55e,color:#fff,stroke:#16a34a
+    style PREVIEW fill:#f59e0b,color:#fff,stroke:#d97706

@@ -5,6 +5,9 @@
  */
 
 import type { ActivityLog } from "@/lib/types";
+import { cashAmountField, type CashEntityType } from "@/lib/deltas";
+
+const CASH_ENTITY_TYPES = new Set<string>(["cash_account", "bank_account", "exchange_deposit", "broker_deposit"]);
 
 export function isValidPastOrTodayDate(dateStr: string): boolean {
   const d = new Date(dateStr + "T00:00:00Z");
@@ -16,12 +19,13 @@ export function isValidPastOrTodayDate(dateStr: string): boolean {
 
 /**
  * Extract the original quantity from an activity log entry's snapshots.
- * Entity-type-aware: crypto/stock use "quantity", cash uses "balance".
+ * Entity-type-aware: crypto/stock use "quantity", cash entities use the
+ * field returned by cashAmountField() ("balance" or "amount" depending on type).
  */
 export function extractQuantity(log: ActivityLog): number | null {
-  const qtyField = log.entity_type === "cash_account" || log.entity_type === "bank_account"
-    || log.entity_type === "exchange_deposit" || log.entity_type === "broker_deposit"
-    ? "balance" : "quantity";
+  const qtyField = CASH_ENTITY_TYPES.has(log.entity_type)
+    ? cashAmountField(log.entity_type as CashEntityType)
+    : "quantity";
 
   if (log.action === "created") {
     const after = log.after_snapshot as Record<string, unknown> | null;

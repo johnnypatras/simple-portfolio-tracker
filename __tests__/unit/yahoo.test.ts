@@ -95,7 +95,7 @@ describe("searchStocks", () => {
 
     const result = await searchStocks("AAPL");
     expect(result).toEqual([]);
-    expect(console.error).toHaveBeenCalledWith(
+    expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining("Search error"),
       expect.any(Error),
     );
@@ -326,7 +326,6 @@ describe("fetchQuotesBatch", () => {
     expect(result.size).toBe(0);
     expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining("non-JSON"),
-      expect.stringContaining("text/html"),
     );
   });
 
@@ -354,7 +353,6 @@ describe("fetchQuotesBatch", () => {
     expect(result.size).toBe(0);
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("Batch quote fetch failed"),
-      401,
     );
   });
 

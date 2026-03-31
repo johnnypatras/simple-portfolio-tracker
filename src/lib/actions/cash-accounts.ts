@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { CashAccount, CashAccountInput } from "@/lib/types";
+import type { ActionType, CashAccount, CashAccountInput } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import { validateAmount, validateCurrency, validateName, validateUUID } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
@@ -135,11 +135,12 @@ export async function refreshCashEntityNames(
     const walletName = (ca.wallets as unknown as { name: string } | null)?.name ?? null;
     const brokerName = (ca.brokers as unknown as { name: string } | null)?.name ?? null;
     const label = deriveLabel({ name: ca.name, institutionName: instName, walletName, brokerName, currency: ca.currency });
-    await supabase
+    const { error: updateErr } = await supabase
       .from("activity_log")
       .update({ entity_name: label })
       .eq("entity_id", ca.id)
       .eq("user_id", userId);
+    if (updateErr) console.warn(`[refreshCashEntityNames] Failed to update entity_name for ${ca.id}:`, updateErr.message);
   }
 }
 
@@ -179,7 +180,7 @@ async function computeAdjustmentDelta(
  * Compute cashflow for real money movements.
  */
 async function computeCashflow(
-  action: string,
+  action: ActionType,
   beforeQty: number,
   afterQty: number,
   currency: string,
@@ -358,6 +359,7 @@ export async function updateCashAccount(
     .from("cash_accounts")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
@@ -612,7 +614,7 @@ export async function mergeCashAccounts(
  * Unified FX computation: routes to adjustment delta or cashflow based on opts.
  */
 async function computeFx(
-  action: string,
+  action: ActionType,
   beforeBal: number,
   afterBal: number,
   currency: string,

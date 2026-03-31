@@ -5,7 +5,7 @@
  */
 
 import { classifyAssetClass } from "@/lib/cashflow";
-import type { FlowStatus, AssetClass } from "@/lib/types";
+import type { FlowStatus, AssetClass, EntityType } from "@/lib/types";
 
 // ─── Shared types ─────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export function computeActivityFx(opts: {
   valUsd: number;
   valEur: number;
   isAdjustment?: boolean;
-  entityType: string;
+  entityType: EntityType;
   isStable?: boolean;
 }): FxResult {
   const result = emptyFx();
@@ -76,7 +76,7 @@ export async function computeActivityFxWithConversion(opts: {
   currency: string;
   effectiveDate?: string;
   isAdjustment?: boolean;
-  entityType: string;
+  entityType: EntityType;
   isStable?: boolean;
 }): Promise<FxResult> {
   const result = emptyFx();

@@ -242,8 +242,8 @@ Deno.serve(async (req: Request) => {
         const quote = yahooQuotes.get(asset.yahoo_ticker);
         if (!quote) continue;
         const valueNative = asset.quantity * quote.price;
-        stocksValueUsd += convertToBase(valueNative, quote.currency, "USD", fxUsd);
-        stocksValueEur += convertToBase(valueNative, quote.currency, "EUR", fxEur);
+        stocksValueUsd += convertToBase(valueNative, asset.currency, "USD", fxUsd);
+        stocksValueEur += convertToBase(valueNative, asset.currency, "EUR", fxEur);
         if (asset.currency === primaryCurrency) {
           stocksHomeCurrencyEur += convertToBase(valueNative, asset.currency, "EUR", fxEur);
         }
@@ -492,7 +492,7 @@ function convertToBase(
   if (fromCurrency === baseCurrency) return amount;
   const rate = rates[fromCurrency];
   if (!rate || rate === 0) {
-    console.error(`[daily-snapshot] convertToBase: no rate for ${fromCurrency}→${baseCurrency}, returning unconverted (SNAPSHOT MAY BE INACCURATE)`);
+    console.error(`[daily-snapshot] CRITICAL: no FX rate for ${fromCurrency}→${baseCurrency}, returning unconverted value (SNAPSHOT WILL BE INACCURATE)`);
     return amount;
   }
   // rates[X] = X per 1 base → base = amount / rates[X]

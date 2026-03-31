@@ -1,9 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
+import { type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { assertLocalSupabase } from "./env-guard";
 assertLocalSupabase();
 
-export async function createServerSupabaseClient() {
+export async function createServerSupabaseClient(): Promise<SupabaseClient> {
   const cookieStore = await cookies();
 
   return createServerClient(

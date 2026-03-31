@@ -128,7 +128,7 @@ export function PerformanceRaceChart({
     return (
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
             Performance
           </h2>
           <PeriodSelector
@@ -165,7 +165,7 @@ export function PerformanceRaceChart({
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
             Performance
           </h2>
           <button
@@ -294,6 +294,7 @@ function PeriodSelector({
     <div className="flex gap-1">
       {periods.map((p, i) => (
         <button
+          type="button"
           key={p.label}
           onClick={() => onChange(i)}
           className={`px-2 py-0.5 text-xs rounded-md transition-colors ${

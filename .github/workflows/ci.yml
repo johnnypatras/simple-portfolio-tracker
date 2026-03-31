@@ -139,6 +139,9 @@ jobs:
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE" ]; then
             echo "First push or manual dispatch — pushing all migrations..."
             supabase db push
+          elif ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            echo "Previous commit unreachable — pushing all migrations to be safe..."
+            supabase db push
           elif git diff "$BEFORE".."${{ github.sha }}" --name-only | grep -q '^supabase/migrations/'; then
             echo "Migrations changed — pushing to production..."
             supabase db push
@@ -170,6 +173,9 @@ jobs:
           BEFORE="${{ github.event.before }}"
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE" ]; then
             echo "First push or manual dispatch — deploying edge functions..."
+            supabase functions deploy daily-snapshot --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+          elif ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            echo "Previous commit unreachable — deploying edge functions to be safe..."
             supabase functions deploy daily-snapshot --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
           elif git diff "$BEFORE".."${{ github.sha }}" --name-only | grep -q '^supabase/functions/'; then
             echo "Edge Functions changed — deploying..."

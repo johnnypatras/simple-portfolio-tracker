@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { WalletInput } from "@/lib/types";
+import type { Wallet, WalletInput } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import {
   findOrCreateInstitution,
@@ -11,7 +11,7 @@ import {
 import { validateUUID, validateName } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
 
-export async function getWallets() {
+export async function getWallets(): Promise<Wallet[]> {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
@@ -183,6 +183,7 @@ export async function updateWallet(
     .from("wallets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
@@ -261,6 +262,7 @@ export async function updateWallet(
     .from("wallets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 
@@ -284,6 +286,16 @@ export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  // Verify ownership before cascade deletion
+  const { data: owned } = await supabase
+    .from("wallets")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .single();
+  if (!owned) throw new Error("Not found");
 
   // Delete child crypto positions individually so each gets an activity_log entry
   const { deletePosition } = await import("@/lib/actions/crypto");
@@ -318,6 +330,7 @@ export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }
     .from("wallets")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .single();
 

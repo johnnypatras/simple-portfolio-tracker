@@ -1,0 +1,15 @@
+graph TB
+    CRON[pg_cron<br/>23:59 UTC] -->|pg_net HTTP| EF[Edge Function<br/>daily-snapshot]
+    DASH[Dashboard Load] -->|fire-and-forget| SAVE[saveSnapshot]
+    EF --> SNAP[(portfolio_snapshots)]
+    SAVE --> SNAP
+    SNAP --> CHART[Chart<br/>Line + S&P]
+    SNAP --> PERIODS[Period Changes<br/>7d / 30d / 1y]
+
+    style CRON fill:#22c55e,color:#fff,stroke:#16a34a
+    style EF fill:#22c55e,color:#fff,stroke:#16a34a
+    style DASH fill:#3b82f6,color:#fff,stroke:#1e40af
+    style SAVE fill:#18181b,color:#fff,stroke:#3b82f6
+    style SNAP fill:#22c55e,color:#fff,stroke:#16a34a
+    style CHART fill:#3b82f6,color:#fff,stroke:#1e40af
+    style PERIODS fill:#3b82f6,color:#fff,stroke:#1e40af

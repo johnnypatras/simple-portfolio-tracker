@@ -146,7 +146,7 @@ export function CashAccountModal({
         {/* Name field — bank-origin only */}
         {isBankOrigin && (
           <div>
-            <label htmlFor={`${id}-name`} className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-name`} className="block text-xs text-zinc-400 mb-1">
               Account Name
             </label>
             <input
@@ -164,7 +164,7 @@ export function CashAccountModal({
         {/* Currency + Balance */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-400 mb-1">
               Currency
             </label>
             <select
@@ -178,7 +178,7 @@ export function CashAccountModal({
             </select>
           </div>
           <div>
-            <label htmlFor={`${id}-balance`} className="block text-xs text-zinc-500 mb-1">
+            <label htmlFor={`${id}-balance`} className="block text-xs text-zinc-400 mb-1">
               {isBankOrigin ? "Balance" : "Amount"}
             </label>
             <input
@@ -196,7 +196,7 @@ export function CashAccountModal({
 
         {/* APY */}
         <div>
-          <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-500 mb-1">
+          <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-400 mb-1">
             APY % <span className="text-zinc-500">(optional)</span>
           </label>
           <input
@@ -212,7 +212,7 @@ export function CashAccountModal({
 
         {/* Effective date (optional) */}
         <div>
-          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
+          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
             Effective date (optional)
           </label>
           <input
@@ -221,9 +221,9 @@ export function CashAccountModal({
             max={new Date().toISOString().split("T")[0]}
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+            className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
           />
-          <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {/* Error display */}

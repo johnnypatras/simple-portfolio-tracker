@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
-import type { ColumnDef } from "@/lib/column-config";
+import type { ColumnDef, SortDirection } from "@/lib/column-config";
+export type { SortDirection } from "@/lib/column-config";
 import type { CryptoAssetWithPositions, CoinGeckoPriceData } from "@/lib/types";
 import { formatCurrency, formatQuantity } from "@/lib/format";
 
@@ -382,7 +383,6 @@ export function buildCryptoRows(
 // ── Sorting ───────────────────────────────────────────────────
 
 export type CryptoSortKey = "value" | "name" | "change" | "source" | "chain" | "subcategory" | "apy";
-export type SortDirection = "asc" | "desc";
 
 export const DEFAULT_SORT_KEY: CryptoSortKey = "value";
 export const DEFAULT_SORT_DIR: SortDirection = "desc";

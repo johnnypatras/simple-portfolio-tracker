@@ -255,7 +255,7 @@ export function AccountsView({
       {/* Summary stat card */}
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-xl p-4 md:p-5">
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+          <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
             Portfolio Total
           </p>
           <div className="flex items-baseline gap-3 mt-1">

@@ -1,21 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { validateUUID } from "@/lib/validation";
 import { isValidPastOrTodayDate, extractQuantity } from "@/lib/split-helpers";
 import type { ActivityLog } from "@/lib/types";
+import { round2 } from "@/lib/format";
 
 // ── Helpers ──────────────────────────────────────────────
-
-function revalidateDashboard() {
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/crypto");
-  revalidatePath("/dashboard/stocks");
-  revalidatePath("/dashboard/accounts");
-  revalidatePath("/dashboard/cash");
-  revalidatePath("/dashboard/history");
-}
 
 // ── Operation 1: Simple Backdate ─────────────────────────
 
@@ -163,8 +155,8 @@ export async function splitActivityEntry(
         childDeltaUsd = (parent.delta_usd ?? 0) - runningDeltaUsd;
         childDeltaEur = (parent.delta_eur ?? 0) - runningDeltaEur;
       } else {
-        childDeltaUsd = Math.round(((parent.delta_usd ?? 0) * fraction) * 100) / 100;
-        childDeltaEur = Math.round(((parent.delta_eur ?? 0) * fraction) * 100) / 100;
+        childDeltaUsd = round2((parent.delta_usd ?? 0) * fraction);
+        childDeltaEur = round2((parent.delta_eur ?? 0) * fraction);
         runningDeltaUsd += childDeltaUsd;
         runningDeltaEur += childDeltaEur;
       }
@@ -173,8 +165,8 @@ export async function splitActivityEntry(
         childCashflowUsd = (parent.cashflow_amount_usd ?? 0) - runningCashflowUsd;
         childCashflowEur = (parent.cashflow_amount_eur ?? 0) - runningCashflowEur;
       } else {
-        childCashflowUsd = Math.round(((parent.cashflow_amount_usd ?? 0) * fraction) * 100) / 100;
-        childCashflowEur = Math.round(((parent.cashflow_amount_eur ?? 0) * fraction) * 100) / 100;
+        childCashflowUsd = round2((parent.cashflow_amount_usd ?? 0) * fraction);
+        childCashflowEur = round2((parent.cashflow_amount_eur ?? 0) * fraction);
         runningCashflowUsd += childCashflowUsd;
         runningCashflowEur += childCashflowEur;
       }

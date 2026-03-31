@@ -76,20 +76,20 @@ describe("extractQuantity", () => {
     expect(extractQuantity(log as never)).toBe(3000);
   });
 
-  it("extracts balance from exchange_deposit entity type", () => {
+  it("extracts amount from exchange_deposit entity type", () => {
     const log = {
       action: "created",
       entity_type: "exchange_deposit",
-      after_snapshot: { balance: 1500 },
+      after_snapshot: { amount: 1500 },
     };
     expect(extractQuantity(log as never)).toBe(1500);
   });
 
-  it("extracts balance from broker_deposit entity type", () => {
+  it("extracts amount from broker_deposit entity type", () => {
     const log = {
       action: "created",
       entity_type: "broker_deposit",
-      after_snapshot: { balance: 2000 },
+      after_snapshot: { amount: 2000 },
     };
     expect(extractQuantity(log as never)).toBe(2000);
   });

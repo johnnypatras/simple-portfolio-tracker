@@ -659,7 +659,7 @@ export function ActivityTimeline({
               <div key={dateLabel}>
                 {/* Date header */}
                 <div className="flex items-center gap-3 mb-3">
-                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                  <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     {dateLabel}
                   </span>
                   <div className="flex-1 h-px bg-zinc-800/50" />

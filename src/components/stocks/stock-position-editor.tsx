@@ -254,7 +254,7 @@ export function StockPositionEditor({
         {/* Asset identity fields */}
         <div className="space-y-3">
           <div>
-            <label htmlFor={`${id}-name`} className="block text-xs text-zinc-500 mb-1">Name</label>
+            <label htmlFor={`${id}-name`} className="block text-xs text-zinc-400 mb-1">Name</label>
             <input
               id={`${id}-name`}
               type="text"
@@ -265,7 +265,7 @@ export function StockPositionEditor({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor={`${id}-yahoo-ticker`} className="block text-xs text-zinc-500 mb-1">Yahoo Ticker</label>
+              <label htmlFor={`${id}-yahoo-ticker`} className="block text-xs text-zinc-400 mb-1">Yahoo Ticker</label>
               <input
                 id={`${id}-yahoo-ticker`}
                 type="text"
@@ -276,7 +276,7 @@ export function StockPositionEditor({
               />
             </div>
             <div>
-              <label htmlFor={`${id}-isin`} className="block text-xs text-zinc-500 mb-1">ISIN</label>
+              <label htmlFor={`${id}-isin`} className="block text-xs text-zinc-400 mb-1">ISIN</label>
               <input
                 id={`${id}-isin`}
                 type="text"
@@ -294,7 +294,7 @@ export function StockPositionEditor({
           <div className="grid grid-cols-2 gap-3">
             {/* Type dropdown */}
             <div>
-              <label htmlFor={`${id}-type`} className="block text-xs text-zinc-500 mb-1">Type</label>
+              <label htmlFor={`${id}-type`} className="block text-xs text-zinc-400 mb-1">Type</label>
               <select
                 id={`${id}-type`}
                 value={category}
@@ -309,7 +309,7 @@ export function StockPositionEditor({
 
             {/* Subtype combobox */}
             <div className="relative">
-              <label htmlFor={`${id}-subtype`} className="block text-xs text-zinc-500 mb-1">
+              <label htmlFor={`${id}-subtype`} className="block text-xs text-zinc-400 mb-1">
                 Subtype
               </label>
               <input
@@ -359,7 +359,7 @@ export function StockPositionEditor({
 
           {/* Tags (chip input with autocomplete) */}
           <div className="relative">
-            <label htmlFor={`${id}-tags`} className="block text-xs text-zinc-500 mb-1">Tags</label>
+            <label htmlFor={`${id}-tags`} className="block text-xs text-zinc-400 mb-1">Tags</label>
             <div className="w-full min-h-[38px] px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-wrap items-center gap-1 focus-within:ring-2 focus-within:ring-blue-500/70">
               {tags.map((tag) => (
                 <span
@@ -553,6 +553,7 @@ export function StockPositionEditor({
                   disabled={isBusy}
                   className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                   title="Save"
+                  aria-label="Save"
                 >
                   {isSaving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -572,6 +573,7 @@ export function StockPositionEditor({
                       disabled={isBusy}
                       className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
                       title="Move to another broker"
+                      aria-label="Move to another broker"
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
                     </button>
@@ -582,6 +584,7 @@ export function StockPositionEditor({
                       disabled={isBusy}
                       className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                       title="Remove"
+                      aria-label="Remove"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -613,6 +616,7 @@ export function StockPositionEditor({
               onClick={handleAddBroker}
               disabled={!addingBroker}
               className="p-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white transition-colors"
+              aria-label="Add to selected broker"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -627,7 +631,7 @@ export function StockPositionEditor({
 
         {/* Effective date (optional) */}
         <div>
-          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
+          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
             Effective date (optional)
           </label>
           <input
@@ -636,9 +640,9 @@ export function StockPositionEditor({
             max={new Date().toISOString().split("T")[0]}
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+            className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
           />
-          <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {error && (

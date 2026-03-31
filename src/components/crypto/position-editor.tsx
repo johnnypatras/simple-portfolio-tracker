@@ -290,7 +290,7 @@ export function PositionEditor({
           <div className="flex items-end gap-2">
             {/* Chain combobox */}
             <div className="relative flex-1">
-              <label htmlFor={`${id}-chain`} className="block text-xs text-zinc-500 mb-1">Chain</label>
+              <label htmlFor={`${id}-chain`} className="block text-xs text-zinc-400 mb-1">Chain</label>
               <input
                 id={`${id}-chain`}
                 type="text"
@@ -334,7 +334,7 @@ export function PositionEditor({
 
             {/* Type combobox */}
             <div className="relative flex-1">
-              <label htmlFor={`${id}-type`} className="block text-xs text-zinc-500 mb-1">
+              <label htmlFor={`${id}-type`} className="block text-xs text-zinc-400 mb-1">
                 Type
               </label>
               <input
@@ -533,6 +533,7 @@ export function PositionEditor({
                   disabled={isBusy}
                   className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                   title="Save"
+                  aria-label="Save"
                 >
                   {isSaving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -552,6 +553,7 @@ export function PositionEditor({
                       disabled={isBusy}
                       className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
                       title="Move to another wallet"
+                      aria-label="Move to another wallet"
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
                     </button>
@@ -562,6 +564,7 @@ export function PositionEditor({
                       disabled={isBusy}
                       className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                       title="Remove"
+                      aria-label="Remove"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -593,6 +596,7 @@ export function PositionEditor({
               onClick={handleAddWallet}
               disabled={!addingWallet}
               className="p-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white transition-colors"
+              aria-label="Add to selected wallet"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -607,7 +611,7 @@ export function PositionEditor({
 
         {/* Effective date (optional) */}
         <div>
-          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-500 mb-1">
+          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
             Effective date (optional)
           </label>
           <input
@@ -616,9 +620,9 @@ export function PositionEditor({
             max={new Date().toISOString().split("T")[0]}
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+            className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
           />
-          <p className="text-[10px] text-zinc-600 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {error && (

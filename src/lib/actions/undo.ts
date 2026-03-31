@@ -1,10 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActivityLog } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
+import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { resolveTable, remapSnapshotFields } from "@/lib/undo-remap";
 import { validateUUID } from "@/lib/validation";
 
@@ -302,18 +302,25 @@ async function undoSingleEntry(
   const { error: undoneAtError } = await supabase
     .from("activity_log")
     .update({ undone_at: new Date().toISOString() })
-    .eq("id", log.id);
+    .eq("id", log.id)
+    .eq("user_id", userId);
   if (undoneAtError) {
-    console.error("[undo] failed to set undone_at on activity_log:", undoneAtError.message);
+    console.error("[undo] failed to set undone_at:", undoneAtError.message);
+    return {
+      success: true,
+      message: `Undid "${log.action}" on ${log.entity_name} — warning: entry may appear re-undoable. Please refresh.`,
+      compensationId,
+    };
   }
 
   // ── If this was a compensation entry being undone (redo), restore the original ─
   if (log.compensates_for) {
-    await supabase
+    const { error: restoreErr } = await supabase
       .from("activity_log")
       .update({ undone_at: null })
       .eq("id", log.compensates_for)
       .eq("user_id", userId);
+    if (restoreErr) console.error("[undo] failed to restore compensated entry:", restoreErr.message);
   }
 
   // For created/removed, log a simple non-undoable undo entry
@@ -533,14 +540,3 @@ export async function undoActivity(
   return result;
 }
 
-/** Revalidate all dashboard paths after a successful undo. */
-function revalidateDashboard() {
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/crypto");
-  revalidatePath("/dashboard/stocks");
-  revalidatePath("/dashboard/accounts");
-  revalidatePath("/dashboard/cash");
-  revalidatePath("/dashboard/diary");
-  revalidatePath("/dashboard/settings");
-  revalidatePath("/dashboard/history");
-}

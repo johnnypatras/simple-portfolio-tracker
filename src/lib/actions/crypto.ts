@@ -11,7 +11,7 @@ import type {
 import { logActivity } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
 import { partialUpdate } from "@/lib/partial-update";
-import { validateQuantity, validateUUID, validateCoinGeckoId } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateCoinGeckoId, validateName } from "@/lib/validation";
 import { computeActivityFx, emptyFx } from "@/lib/activity-fx";
 
 /** Get all crypto assets with their positions and wallet names */
@@ -83,6 +83,8 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  validateName(input.name, 100, "Name");
+  if (input.ticker) validateName(input.ticker, 20, "Ticker");
   validateCoinGeckoId(input.coingecko_id);
 
   const { data, error } = await supabase
@@ -254,6 +256,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  validateUUID(input.crypto_asset_id, "Crypto asset ID");
+  validateUUID(input.wallet_id, "Wallet ID");
   validateQuantity(input.quantity, "Crypto quantity");
 
   const supabase = await createServerSupabaseClient();
@@ -425,17 +429,20 @@ export async function deletePosition(positionId: string, opts?: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // Capture full snapshot before soft-delete
+  // Capture full snapshot before soft-delete (join parent to verify ownership)
   const { data: snapshot } = await supabase
     .from("crypto_positions")
-    .select("*, crypto_assets(ticker, subcategory)")
+    .select("*, crypto_assets(user_id, ticker, subcategory)")
     .eq("id", positionId)
     .is("deleted_at", null)
     .single();
-  const ticker =
-    (snapshot?.crypto_assets as unknown as { ticker: string } | null)?.ticker ?? "Unknown";
+
+  const parentAsset = snapshot?.crypto_assets as { user_id: string; ticker: string; subcategory?: string } | null;
+  if (!parentAsset || parentAsset.user_id !== user.id) throw new Error("Position not found");
+
+  const ticker = parentAsset.ticker ?? "Unknown";
   const { isStablecoin } = await import("@/lib/cashflow");
-  const isStable = isStablecoin((snapshot?.crypto_assets as { subcategory?: string } | null)?.subcategory);
+  const isStable = isStablecoin(parentAsset.subcategory);
 
   const { error } = await supabase
     .from("crypto_positions")
@@ -498,10 +505,11 @@ export async function backfillCryptoImages() {
     batch.map(async (asset) => {
       const thumbUrl = await getCoinImage(asset.coingecko_id);
       if (thumbUrl) {
-        await supabase
+        const { error: updateErr } = await supabase
           .from("crypto_assets")
           .update({ image_url: thumbUrl })
           .eq("id", asset.id);
+        if (updateErr) console.warn(`[backfill] Failed to update image for ${asset.coingecko_id}:`, updateErr.message);
       }
     })
   );

@@ -45,7 +45,7 @@ function DepositSection({ deposits, depositBreakdown, cur, base }: {
       {needsExpand && (
         <button
           type="button"
-          className="col-span-3 text-[9px] text-zinc-500 hover:text-zinc-300 text-left pl-3 transition-colors"
+          className="col-span-3 text-[10px] text-zinc-500 hover:text-zinc-300 text-left pl-3 transition-colors"
           onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
         >
           {expanded ? "Show less" : `+${items.length - DEPOSIT_BREAKDOWN_LIMIT} more`}

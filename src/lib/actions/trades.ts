@@ -6,6 +6,7 @@ import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { validateUUID, validateQuantity, validateAmount, validateCurrency, validateName, validateDate } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
+import { round2 } from "@/lib/format";
 
 /** Lightweight asset name lists for the trade diary dropdown */
 export async function getAssetOptions(): Promise<{
@@ -33,6 +34,10 @@ export async function getAssetOptions(): Promise<{
       .select("currency")
       .is("deleted_at", null),
   ]);
+
+  if (cryptoRes.error) throw new Error(`Failed to load crypto assets: ${cryptoRes.error.message}`);
+  if (stockRes.error) throw new Error(`Failed to load stock assets: ${stockRes.error.message}`);
+  if (cashRes.error) throw new Error(`Failed to load cash accounts: ${cashRes.error.message}`);
 
   // Deduplicate cash currencies into a sorted list
   const cashCurrencies = [
@@ -84,7 +89,7 @@ export async function createTradeEntry(input: TradeEntryInput) {
     quantity: input.quantity,
     price: input.price,
     currency: input.currency ?? "USD",
-    total_value: Math.round(totalValue * 100) / 100,
+    total_value: round2(totalValue),
     notes: input.notes?.trim()?.slice(0, 2000) || null,
   }).select("*").single();
 
@@ -135,7 +140,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
       quantity: input.quantity,
       price: input.price,
       currency: input.currency,
-      total_value: Math.round(totalValue * 100) / 100,
+      total_value: round2(totalValue),
       notes: input.notes?.trim()?.slice(0, 2000) || null,
     }))
     .eq("id", id)

@@ -1,0 +1,16 @@
+graph TB
+    UNDO[undoActivity] --> SPLIT{Has split<br/>children?}
+    SPLIT -->|Yes| UNSPLIT[Unsplit:<br/>delete children<br/>restore parent]
+    SPLIT -->|No| CHILD{Is split<br/>child?}
+    CHILD -->|Yes| UNSPLIT
+    CHILD -->|No| UNDONE{Already<br/>undone?}
+    UNDONE -->|Yes| REJECT[Reject]
+    UNDONE -->|No| XFER{Has transfer<br/>group?}
+    XFER -->|Yes| TXUNDO[Undo Transfer Group<br/>sequential + rollback]
+    XFER -->|No| SINGLE[Undo Single Entry<br/>compensating transaction]
+
+    style UNDO fill:#3b82f6,color:#fff,stroke:#1e40af
+    style UNSPLIT fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style REJECT fill:#ef4444,color:#fff,stroke:#dc2626
+    style TXUNDO fill:#06b6d4,color:#fff,stroke:#0891b2
+    style SINGLE fill:#22c55e,color:#fff,stroke:#16a34a
