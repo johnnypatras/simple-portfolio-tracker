@@ -55,13 +55,19 @@ const ACTIONS = [
 
 // ─── Formatting helpers ───────────────────────────────────
 
+const _valueFmtCache = new Map<string, Intl.NumberFormat>();
 function formatValue(value: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
+  let fmt = _valueFmtCache.get(currency);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+    _valueFmtCache.set(currency, fmt);
+  }
+  return fmt.format(value);
 }
 
 function formatChange(change?: number): string | null {
@@ -75,13 +81,21 @@ function formatQuantity(qty: number): string {
   return qty.toLocaleString(undefined, { maximumFractionDigits: 8 });
 }
 
+const _priceFmtCache = new Map<string, Intl.NumberFormat>();
 function formatPrice(value: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: value < 1 ? 6 : 2,
-  }).format(value);
+  // Cache key includes the decimal tier because max fraction digits depends on value magnitude
+  const key = `${currency}:${value < 1 ? 6 : 2}`;
+  let fmt = _priceFmtCache.get(key);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: value < 1 ? 6 : 2,
+    });
+    _priceFmtCache.set(key, fmt);
+  }
+  return fmt.format(value);
 }
 
 // ─── External search hook ─────────────────────────────────

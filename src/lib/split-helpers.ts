@@ -5,9 +5,9 @@
  */
 
 import type { ActivityLog } from "@/lib/types";
-import { cashAmountField, type CashEntityType } from "@/lib/deltas";
+import { CASH_ENTITY_TYPES as CASH_ENTITY_TYPES_ARRAY, cashAmountField, type CashEntityType } from "@/lib/deltas";
 
-const CASH_ENTITY_TYPES = new Set<string>(["cash_account", "bank_account", "exchange_deposit", "broker_deposit"]);
+const CASH_ENTITY_TYPES = new Set<string>(CASH_ENTITY_TYPES_ARRAY);
 
 export function isValidPastOrTodayDate(dateStr: string): boolean {
   const d = new Date(dateStr + "T00:00:00Z");

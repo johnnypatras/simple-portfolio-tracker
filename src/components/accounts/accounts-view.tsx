@@ -310,6 +310,7 @@ export function AccountsView({
       {!isReadOnly && (
         <div className="flex items-center justify-end gap-2 mt-2 mb-3">
           <button
+            type="button"
             onClick={() => setShowAddWalletModal(true)}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-amber-800/50 bg-amber-950/20 hover:bg-amber-950/40 text-amber-400 transition-colors"
           >
@@ -317,6 +318,7 @@ export function AccountsView({
             Add Wallet
           </button>
           <button
+            type="button"
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
           >

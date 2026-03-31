@@ -12,7 +12,7 @@ export function ChartWarningBanner({ pendingCount, failedCount }: ChartWarningBa
   return (
     <div className="space-y-1.5 mb-3">
       {pendingCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-xs">
+        <div role="status" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-xs">
           <Clock className="w-3.5 h-3.5 shrink-0" />
           <span>
             {pendingCount} {pendingCount === 1 ? "transaction is" : "transactions are"} awaiting price data.{" "}
@@ -23,7 +23,7 @@ export function ChartWarningBanner({ pendingCount, failedCount }: ChartWarningBa
         </div>
       )}
       {failedCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 text-red-400 text-xs">
+        <div role="status" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 text-red-400 text-xs">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
           <span>
             {failedCount} {failedCount === 1 ? "transaction has" : "transactions have"} estimated values.{" "}

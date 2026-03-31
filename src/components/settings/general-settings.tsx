@@ -131,7 +131,7 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
         )}
 
         {saved && (
-          <p className="text-sm text-emerald-400 bg-emerald-400/10 px-3 py-2 rounded-lg">
+          <p role="status" className="text-sm text-emerald-400 bg-emerald-400/10 px-3 py-2 rounded-lg">
             Settings saved
           </p>
         )}

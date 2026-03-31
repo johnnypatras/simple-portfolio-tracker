@@ -7,7 +7,7 @@ import {
   createCashAccount,
   updateCashAccount,
 } from "@/lib/actions/cash-accounts";
-import type { CashAccount, CashAccountInput, CurrencyType } from "@/lib/types";
+import type { CashAccount, CashAccountInput } from "@/lib/types";
 
 interface CashAccountModalProps {
   isOpen: boolean;
@@ -41,7 +41,7 @@ export function CashAccountModal({
 
   // Form state
   const [name, setName] = useState("");
-  const [currency, setCurrency] = useState<CurrencyType>("EUR");
+  const [currency, setCurrency] = useState<string>("EUR");
   const [balance, setBalance] = useState("");
   const [apy, setApy] = useState("");
 
@@ -170,7 +170,7 @@ export function CashAccountModal({
             <select
               id={`${id}-currency`}
               value={currency}
-              onChange={(e) => setCurrency(e.target.value as CurrencyType)}
+              onChange={(e) => setCurrency(e.target.value)}
               className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             >
               <option value="EUR">EUR</option>

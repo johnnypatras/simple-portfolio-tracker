@@ -103,6 +103,7 @@ export function Sidebar({ email }: { email: string }) {
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
+              aria-current={active ? "page" : undefined}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 active
                   ? "bg-zinc-800 text-zinc-100"
@@ -126,6 +127,7 @@ export function Sidebar({ email }: { email: string }) {
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
+              aria-current={active ? "page" : undefined}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 active
                   ? "bg-zinc-800 text-zinc-100"

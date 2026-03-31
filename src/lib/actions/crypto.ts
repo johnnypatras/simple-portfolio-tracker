@@ -1,7 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { revalidateDashboard } from "@/lib/actions/revalidate";
 import type {
   CryptoAssetInput,
   CryptoAssetWithPositions,
@@ -11,7 +11,7 @@ import type {
 import { logActivity } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
 import { partialUpdate } from "@/lib/partial-update";
-import { validateQuantity, validateUUID, validateCoinGeckoId, validateName } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy } from "@/lib/validation";
 import { computeActivityFx, emptyFx } from "@/lib/activity-fx";
 
 /** Get all crypto assets with their positions and wallet names */
@@ -27,6 +27,7 @@ export async function getCryptoAssetsWithPositions(): Promise<
     supabase
       .from("crypto_assets")
       .select("*")
+      .eq("user_id", user.id)
       .is("deleted_at", null)
       .order("created_at", { ascending: true }),
     supabase
@@ -96,7 +97,7 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
       coingecko_id: input.coingecko_id,
       chain: input.chain ?? null,
       subcategory: input.subcategory?.trim() || null,
-      image_url: input.image_url ?? null,
+      image_url: validateImageUrl(input.image_url),
     })
     .select("*")
     .single();
@@ -112,8 +113,7 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
         .is("deleted_at", null)
         .single();
       if (existing) {
-        revalidatePath("/dashboard/crypto");
-  revalidatePath("/dashboard");
+        revalidateDashboard();
         return existing.id;
       }
       throw new Error("This crypto asset is already in your portfolio");
@@ -132,8 +132,7 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
     is_adjustment: opts?.isAdjustment,
     effective_date: opts?.effectiveDate,
   });
-  revalidatePath("/dashboard/crypto");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
   return data.id;
 }
 
@@ -190,8 +189,7 @@ export async function updateCryptoAsset(
     before_snapshot: before,
     after_snapshot: after,
   });
-  revalidatePath("/dashboard/crypto");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
 }
 
 /** Soft-delete a crypto asset — individually deletes child positions first for activity logging */
@@ -244,8 +242,7 @@ export async function deleteCryptoAsset(id: string, opts?: { isAdjustment?: bool
     before_snapshot: snapshot,
     after_snapshot: null,
   });
-  revalidatePath("/dashboard/crypto");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
 }
 
 /** Upsert a position (set quantity for a crypto asset in a specific wallet) */
@@ -259,6 +256,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   validateUUID(input.crypto_asset_id, "Crypto asset ID");
   validateUUID(input.wallet_id, "Wallet ID");
   validateQuantity(input.quantity, "Crypto quantity");
+  if (input.apy != null) validateApy(input.apy, "APY");
 
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -412,8 +410,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
     });
   }
 
-  revalidatePath("/dashboard/crypto");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
 }
 
 /** Soft-delete a specific position */
@@ -478,8 +475,7 @@ export async function deletePosition(positionId: string, opts?: {
     transfer_group_id: opts?.transferGroupId,
     effective_date: opts?.effectiveDate,
   });
-  revalidatePath("/dashboard/crypto");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
 }
 
 /**
@@ -504,10 +500,11 @@ export async function backfillCryptoImages() {
   const results = await Promise.allSettled(
     batch.map(async (asset) => {
       const thumbUrl = await getCoinImage(asset.coingecko_id);
-      if (thumbUrl) {
+      const safeUrl = validateImageUrl(thumbUrl);
+      if (safeUrl) {
         const { error: updateErr } = await supabase
           .from("crypto_assets")
-          .update({ image_url: thumbUrl })
+          .update({ image_url: safeUrl })
           .eq("id", asset.id);
         if (updateErr) console.warn(`[backfill] Failed to update image for ${asset.coingecko_id}:`, updateErr.message);
       }
@@ -520,7 +517,6 @@ export async function backfillCryptoImages() {
   }
 
   if (batch.length > 0) {
-    revalidatePath("/dashboard/crypto");
-    revalidatePath("/dashboard");
+    revalidateDashboard();
   }
 }

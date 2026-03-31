@@ -89,6 +89,7 @@ vi.mock("@/lib/cashflow", () => ({
 // Mock validation (pass-through — not testing validation here)
 vi.mock("@/lib/validation", () => ({
   validateAmount: vi.fn(),
+  validateApy: vi.fn(),
   validateCurrency: vi.fn(),
   validateName: vi.fn(),
   validateUUID: vi.fn(),

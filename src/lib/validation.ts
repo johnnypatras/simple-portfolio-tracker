@@ -65,3 +65,35 @@ export function validateUUID(s: string, label = "ID"): void {
     throw new Error(`${label} is not a valid UUID`);
   }
 }
+
+export function validateApy(n: number, label = "APY"): void {
+  if (!Number.isFinite(n)) throw new Error(`${label} must be a valid number`);
+  if (n < 0 || n > 100) throw new Error(`${label} must be between 0 and 100`);
+}
+
+const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{10}$/;
+
+export function validateIsin(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const trimmed = s.trim().toUpperCase();
+  if (!ISIN_RE.test(trimmed)) {
+    throw new Error("ISIN must be 12 alphanumeric characters starting with a 2-letter country code");
+  }
+  return trimmed;
+}
+
+const ALLOWED_IMAGE_ORIGINS = [
+  "https://assets.coingecko.com",
+  "https://coin-images.coingecko.com",
+];
+
+export function validateImageUrl(s: string | null | undefined): string | null {
+  if (!s) return null;
+  try {
+    const url = new URL(s);
+    if (!ALLOWED_IMAGE_ORIGINS.some((o) => url.href.startsWith(o))) return null;
+    return s;
+  } catch {
+    return null;
+  }
+}

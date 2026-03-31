@@ -407,17 +407,28 @@ function extractLocation(entityName: string): string | null {
   return null;
 }
 
+const _transferFmtCache = new Map<string, Intl.NumberFormat>();
+function getTransferFmt(currency: string, maxFractionDigits: number): Intl.NumberFormat {
+  const key = `${currency}:${maxFractionDigits}`;
+  let fmt = _transferFmtCache.get(key);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: maxFractionDigits,
+    });
+    _transferFmtCache.set(key, fmt);
+  }
+  return fmt;
+}
+
 /** Format absolute delta as currency string. */
 function formatTransferAmount(log: ActivityLog): string | null {
   const delta = log.delta_eur ?? log.delta_usd;
   if (delta == null || delta === 0) return null;
   const abs = Math.abs(delta);
   const cur = log.delta_eur != null ? "EUR" : "USD";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: cur,
-    maximumFractionDigits: abs >= 100 ? 0 : 2,
-  }).format(abs);
+  return getTransferFmt(cur, abs >= 100 ? 0 : 2).format(abs);
 }
 
 /** Extract quantity change from before/after snapshots. */

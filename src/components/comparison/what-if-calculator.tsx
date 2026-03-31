@@ -143,6 +143,7 @@ function AllocationRow({
           max={100}
           value={Math.round(value)}
           onChange={(e) => onChange(Number(e.target.value))}
+          aria-label={`${label} allocation percentage`}
           className="w-12 bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-xs text-zinc-100 text-right
                      focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-blue-500/70 [appearance:textfield]
                      [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"

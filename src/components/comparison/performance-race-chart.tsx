@@ -23,9 +23,6 @@ interface PerformanceRaceChartProps {
   currency: string;
 }
 
-const TODAY = new Date().toISOString().split("T")[0];
-const TODAY_MS = new Date(TODAY + "T00:00:00").getTime();
-
 const PERIODS = [
   { label: "7D", days: 7 },
   { label: "30D", days: 30 },
@@ -64,6 +61,8 @@ export function PerformanceRaceChart({
     currency === "EUR" ? "total_value_eur" : "total_value_usd";
 
   const data = useMemo(() => {
+    const TODAY = new Date().toISOString().split("T")[0];
+    const TODAY_MS = new Date(TODAY + "T00:00:00").getTime();
     const cutoff =
       period.days === Infinity
         ? null
@@ -169,7 +168,9 @@ export function PerformanceRaceChart({
             Performance
           </h2>
           <button
+            type="button"
             onClick={() => setNormalized(!normalized)}
+            aria-pressed={normalized}
             className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
               normalized
                 ? "bg-zinc-700 text-zinc-200"

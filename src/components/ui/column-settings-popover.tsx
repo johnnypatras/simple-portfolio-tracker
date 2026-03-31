@@ -127,16 +127,20 @@ export function ColumnSettingsPopover({
                   {col.visible && (
                     <div className="flex items-center gap-0.5 shrink-0">
                       <button
+                        type="button"
                         onClick={() => onMove(col.key, "up")}
                         disabled={isFirst}
+                        aria-label={`Move ${col.label} up`}
                         className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 disabled:cursor-not-allowed transition-colors"
                         title="Move up"
                       >
                         <ChevronUp className="w-3 h-3" />
                       </button>
                       <button
+                        type="button"
                         onClick={() => onMove(col.key, "down")}
                         disabled={isLast}
+                        aria-label={`Move ${col.label} down`}
                         className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 disabled:cursor-not-allowed transition-colors"
                         title="Move down"
                       >

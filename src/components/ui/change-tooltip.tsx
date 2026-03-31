@@ -45,6 +45,7 @@ function DepositSection({ deposits, depositBreakdown, cur, base }: {
       {needsExpand && (
         <button
           type="button"
+          aria-expanded={expanded}
           className="col-span-3 text-[10px] text-zinc-500 hover:text-zinc-300 text-left pl-3 transition-colors"
           onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
         >

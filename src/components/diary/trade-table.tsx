@@ -28,14 +28,20 @@ function formatDate(iso: string): string {
   });
 }
 
+const _moneyFmtCache = new Map<string, Intl.NumberFormat>();
 function formatMoney(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    let fmt = _moneyFmtCache.get(currency);
+    if (!fmt) {
+      fmt = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      _moneyFmtCache.set(currency, fmt);
+    }
+    return fmt.format(amount);
   } catch {
     // Fallback for unsupported currency codes
     return `${currency} ${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;

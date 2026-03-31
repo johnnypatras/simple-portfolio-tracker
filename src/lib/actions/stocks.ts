@@ -1,7 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { revalidateDashboard } from "@/lib/actions/revalidate";
 import type {
   AssetCategory,
   StockAssetInput,
@@ -10,7 +10,7 @@ import type {
   Broker,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateQuantity, validateUUID, validateYahooTicker, validateName } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin } from "@/lib/validation";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
 
@@ -27,6 +27,7 @@ export async function getStockAssetsWithPositions(): Promise<
     supabase
       .from("stock_assets")
       .select("*")
+      .eq("user_id", user.id)
       .is("deleted_at", null)
       .order("created_at", { ascending: true }),
     supabase
@@ -79,6 +80,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
   validateName(input.name, 100, "Name");
   validateName(input.ticker, 20, "Ticker");
   if (input.yahoo_ticker) validateYahooTicker(input.yahoo_ticker);
+  const isin = validateIsin(input.isin);
 
   const category = input.category ?? "individual_stock";
   const tags = input.tags ?? [];
@@ -89,7 +91,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
       user_id: user.id,
       ticker: input.ticker.toUpperCase(),
       name: input.name,
-      isin: input.isin ?? null,
+      isin,
       yahoo_ticker: input.yahoo_ticker ?? null,
       category,
       tags,
@@ -142,8 +144,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
     is_adjustment: opts?.isAdjustment,
     effective_date: opts?.effectiveDate,
   });
-  revalidatePath("/dashboard/stocks");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
   return data.id;
 }
 
@@ -172,7 +173,7 @@ export async function updateStockAsset(
     if (fields.yahoo_ticker?.trim()) validateYahooTicker(fields.yahoo_ticker.trim());
     updatePayload.yahoo_ticker = fields.yahoo_ticker?.trim() || null;
   }
-  if (fields.isin !== undefined) updatePayload.isin = fields.isin?.trim() || null;
+  if (fields.isin !== undefined) updatePayload.isin = validateIsin(fields.isin);
   if (fields.category !== undefined) updatePayload.category = fields.category;
   if (fields.tags !== undefined) updatePayload.tags = fields.tags;
   if (fields.subcategory !== undefined) updatePayload.subcategory = fields.subcategory?.trim() || null;
@@ -221,8 +222,7 @@ export async function updateStockAsset(
     before_snapshot: before,
     after_snapshot: after,
   });
-  revalidatePath("/dashboard/stocks");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
 }
 
 /** Soft-delete a stock asset — individually deletes child positions first for activity logging */
@@ -275,8 +275,7 @@ export async function deleteStockAsset(id: string, opts?: { isAdjustment?: boole
     before_snapshot: snapshot,
     after_snapshot: null,
   });
-  revalidatePath("/dashboard/stocks");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
 }
 
 /** Upsert a position (set quantity for a stock asset at a specific broker) */
@@ -432,8 +431,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
     });
   }
 
-  revalidatePath("/dashboard/stocks");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
 }
 
 /** Soft-delete a specific stock position */
@@ -495,6 +493,5 @@ export async function deleteStockPosition(positionId: string, opts?: {
     transfer_group_id: opts?.transferGroupId,
     effective_date: opts?.effectiveDate,
   });
-  revalidatePath("/dashboard/stocks");
-  revalidatePath("/dashboard");
+  revalidateDashboard();
 }

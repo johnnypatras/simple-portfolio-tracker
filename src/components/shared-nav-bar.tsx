@@ -83,6 +83,7 @@ export function SharedNavBar({ token, scope, ownerName, isAuthenticated, onCompa
               <Link
                 key={tab.id}
                 href={href}
+                aria-current={isActive ? "page" : undefined}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive
                     ? "bg-zinc-800 text-zinc-100"

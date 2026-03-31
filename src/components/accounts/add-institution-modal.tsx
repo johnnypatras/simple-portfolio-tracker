@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { createWallet } from "@/lib/actions/wallets";
 import { createBroker } from "@/lib/actions/brokers";
 import { createCashAccount } from "@/lib/actions/cash-accounts";
-import type { PrivacyLabel, CurrencyType } from "@/lib/types";
+import type { PrivacyLabel } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains } from "@/lib/types";
 
 interface AddInstitutionModalProps {
@@ -33,7 +33,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
 
   // Bank config
   const [bankAccountName, setBankAccountName] = useState("");
-  const [bankCurrency, setBankCurrency] = useState<CurrencyType>("EUR");
+  const [bankCurrency, setBankCurrency] = useState<string>("EUR");
 
   const hasAnyRole = wantWallet || wantBroker || wantBank;
 
@@ -267,7 +267,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 <select
                   id={`${id}-bank-currency`}
                   value={bankCurrency}
-                  onChange={(e) => setBankCurrency(e.target.value as CurrencyType)}
+                  onChange={(e) => setBankCurrency(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 >
                   <option value="EUR">EUR</option>

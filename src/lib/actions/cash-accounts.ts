@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionType, CashAccount, CashAccountInput } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
-import { validateAmount, validateCurrency, validateName, validateUUID } from "@/lib/validation";
+import { validateAmount, validateApy, validateCurrency, validateName, validateUUID } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
 import { round2 } from "@/lib/format";
 import { type FxResult, emptyFx } from "@/lib/activity-fx";
@@ -254,6 +254,7 @@ export async function createCashAccount(
   // Validate
   validateCurrency(input.currency);
   validateAmount(input.balance, "Balance");
+  if (input.apy != null) validateApy(input.apy, "APY");
   if (input.institution_id) validateUUID(input.institution_id, "Institution ID");
   if (input.wallet_id) validateUUID(input.wallet_id, "Wallet ID");
   if (input.broker_id) validateUUID(input.broker_id, "Broker ID");
@@ -346,6 +347,7 @@ export async function updateCashAccount(
   validateUUID(id, "Cash account ID");
   validateCurrency(input.currency);
   validateAmount(input.balance, "Balance");
+  if (input.apy != null) validateApy(input.apy, "APY");
   if (input.institution_id) validateUUID(input.institution_id, "Institution ID");
   if (input.wallet_id) validateUUID(input.wallet_id, "Wallet ID");
   if (input.broker_id) validateUUID(input.broker_id, "Broker ID");

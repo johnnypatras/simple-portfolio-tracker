@@ -60,7 +60,7 @@ Deno.serve(async (req: Request) => {
     // 1. Fetch all active users
     const { data: users, error: usersErr } = await supabase
       .from("profiles")
-      .select("id, primary_currency")
+      .select("id")
       .eq("status", "active");
 
     if (usersErr) throw new Error(`Failed to fetch users: ${usersErr.message}`);
@@ -69,12 +69,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const userIds = users.map((u: { id: string }) => u.id);
-    const userCurrencyMap = new Map<string, string>(
-      users.map((u: { id: string; primary_currency: string | null }) => [
-        u.id,
-        u.primary_currency ?? "EUR",
-      ])
-    );
 
     // 2. Bulk-fetch all holdings across all users (service-role bypasses RLS)
     const [
@@ -213,8 +207,6 @@ Deno.serve(async (req: Request) => {
     }[] = [];
 
     for (const [userId, holdings] of userHoldings) {
-      const primaryCurrency = userCurrencyMap.get(userId) ?? "EUR";
-
       let cryptoValueUsd = 0;
       let cryptoValueEur = 0;
       let stablecoinValueUsd = 0;
@@ -244,7 +236,7 @@ Deno.serve(async (req: Request) => {
         const valueNative = asset.quantity * quote.price;
         stocksValueUsd += convertToBase(valueNative, asset.currency, "USD", fxUsd);
         stocksValueEur += convertToBase(valueNative, asset.currency, "EUR", fxEur);
-        if (asset.currency === primaryCurrency) {
+        if (asset.currency === "EUR") {
           stocksHomeCurrencyEur += convertToBase(valueNative, asset.currency, "EUR", fxEur);
         }
       }
@@ -256,7 +248,7 @@ Deno.serve(async (req: Request) => {
       for (const item of holdings.cashItems) {
         fiatCashValueUsd += convertToBase(item.amount, item.currency, "USD", fxUsd);
         fiatCashValueEur += convertToBase(item.amount, item.currency, "EUR", fxEur);
-        if (item.currency === primaryCurrency) {
+        if (item.currency === "EUR") {
           cashHomeCurrencyEur += convertToBase(item.amount, item.currency, "EUR", fxEur);
         }
       }

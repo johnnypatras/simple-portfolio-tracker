@@ -81,6 +81,7 @@ export function ConfirmButton({
             onConfirm(showAdjustmentCheckbox ? { isAdjustment: adjChecked } : undefined);
             setAdjChecked(false);
           }}
+          aria-label="Confirm"
           className="p-1 rounded text-emerald-400 hover:bg-emerald-500/15 transition-colors"
           title="Confirm"
         >
@@ -89,6 +90,7 @@ export function ConfirmButton({
         <button
           type="button"
           onClick={() => { setConfirming(false); setAdjChecked(false); }}
+          aria-label="Cancel"
           className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
           title="Cancel"
         >
@@ -99,7 +101,7 @@ export function ConfirmButton({
   }
 
   return (
-    <button onClick={() => setConfirming(true)} className={className} title={title}>
+    <button type="button" onClick={() => setConfirming(true)} className={className} title={title}>
       {children}
     </button>
   );

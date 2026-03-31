@@ -426,7 +426,7 @@ export function CashTable({
                     const groupExpanded = expandedGroups.has(row.id);
                     return (
                       <div key={row.id} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-                        <button onClick={() => toggleExpand(row.id)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
+                        <button type="button" onClick={() => toggleExpand(row.id)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
                           <div className="text-left min-w-0">
                             <p className="text-sm font-medium text-zinc-200 truncate">{row.data.groupName}</p>
                             <p className="text-xs text-zinc-500">
@@ -458,7 +458,7 @@ export function CashTable({
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(acctValueBase, primaryCurrency)}</span>
                                     {!isReadOnly && (
                                       <>
-                                        <button onClick={() => openEditCash(acct)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
+                                        <button type="button" aria-label={`Edit ${acct.name ?? acct.currency}`} onClick={() => openEditCash(acct)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
                                         <ConfirmButton showAdjustmentCheckbox onConfirm={(opts) => handleDeleteCash(acct.id, opts)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                       </>
                                     )}
@@ -498,7 +498,7 @@ export function CashTable({
                     const groupExpanded = expandedGroups.has(groupId);
                     return (
                       <div key={groupId} className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-                        <button onClick={() => toggleExpand(groupId)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
+                        <button type="button" onClick={() => toggleExpand(groupId)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
                           <div className="text-left min-w-0">
                             <p className="text-sm font-medium text-zinc-200 truncate">{group.walletName}</p>
                             <p className="text-xs text-zinc-500">{group.positions.length} stablecoin{group.positions.length !== 1 ? "s" : ""}</p>

@@ -204,7 +204,8 @@ export async function splitActivityEntry(
   const { error: undoErr } = await supabase
     .from("activity_log")
     .update({ undone_at: new Date().toISOString() })
-    .eq("id", parentId);
+    .eq("id", parentId)
+    .eq("user_id", user.id);
   if (undoErr) return { success: false, message: `Failed to mark parent as undone: ${undoErr.message}` };
 
   revalidateDashboard();

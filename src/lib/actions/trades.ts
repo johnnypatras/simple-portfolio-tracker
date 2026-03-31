@@ -5,6 +5,9 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { validateUUID, validateQuantity, validateAmount, validateCurrency, validateName, validateDate } from "@/lib/validation";
+
+const VALID_ASSET_TYPES = new Set(["crypto", "stock", "cash", "other"]);
+const VALID_TRADE_ACTIONS = new Set(["buy", "sell"]);
 import { partialUpdate } from "@/lib/partial-update";
 import { round2 } from "@/lib/format";
 
@@ -77,6 +80,8 @@ export async function createTradeEntry(input: TradeEntryInput) {
   validateQuantity(input.quantity, "Quantity");
   validateAmount(input.price, "Price");
   if (input.currency) validateCurrency(input.currency);
+  if (!VALID_ASSET_TYPES.has(input.asset_type)) throw new Error(`Invalid asset type: "${input.asset_type}"`);
+  if (!VALID_TRADE_ACTIONS.has(input.action)) throw new Error(`Invalid action: "${input.action}"`);
 
   const totalValue = input.quantity * input.price;
 
@@ -118,6 +123,8 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
   validateQuantity(input.quantity, "Quantity");
   validateAmount(input.price, "Price");
   if (input.currency) validateCurrency(input.currency);
+  if (!VALID_ASSET_TYPES.has(input.asset_type)) throw new Error(`Invalid asset type: "${input.asset_type}"`);
+  if (!VALID_TRADE_ACTIONS.has(input.action)) throw new Error(`Invalid action: "${input.action}"`);
 
   const totalValue = input.quantity * input.price;
 

@@ -315,10 +315,12 @@ export function PortfolioChart({
           </h2>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => {
                 const nextIdx = (VIEW_MODES.indexOf(viewMode) + 1) % VIEW_MODES.length;
                 setViewMode(VIEW_MODES[nextIdx]);
               }}
+              aria-pressed={viewMode !== "total"}
               className={`flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
                 viewMode !== "total"
                   ? VIEW_MODE_BUTTON_CLASSES[viewMode]
