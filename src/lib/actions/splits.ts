@@ -226,12 +226,17 @@ export async function unsplitActivityEntry(
   // Find children
   const { data: children, error: childErr } = await supabase
     .from("activity_log")
-    .select("id")
+    .select("id, undone_at")
     .eq("split_from_id", parentId)
     .eq("user_id", user.id);
 
   if (childErr) return { success: false, message: childErr.message };
   if (!children?.length) return { success: false, message: "No split children found" };
+
+  // Block unsplit if any child has been individually undone
+  if (children.some((c) => c.undone_at !== null)) {
+    return { success: false, message: "Cannot unsplit — one or more split legs have been individually undone. Redo them first." };
+  }
 
   // Hard-delete children
   const { error: deleteErr } = await supabase

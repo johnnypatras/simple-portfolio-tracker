@@ -33,3 +33,14 @@ export const PERIOD_LABELS = {
   "30d": "vs 30 days ago",
   "1y": "vs 1 year ago",
 } as const;
+
+/** Valid entity type strings for activity log filtering */
+export const VALID_ENTITY_TYPES = [
+  "crypto_asset", "stock_asset", "wallet", "broker",
+  "bank_account", "exchange_deposit", "crypto_position",
+  "stock_position", "broker_deposit", "diary_entry", "goal_price",
+  "trade_entry", "institution", "cash_account",
+] as const;
+
+/** Valid action strings for activity log filtering */
+export const VALID_ACTIONS = ["created", "updated", "removed", "undone"] as const;

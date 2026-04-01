@@ -39,6 +39,7 @@ export interface ImportResult {
     cryptoAssets: number;
     stockAssets: number;
     snapshots: number;
+    goalPrices: number;
   };
 }
 

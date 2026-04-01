@@ -316,11 +316,11 @@ export async function toggleActivityAdjustment(
 
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
-  let deltaStatus: string | null = null;
+  let deltaStatus: FlowStatus | null = null;
   let cashflowUsd: number | null = null;
   let cashflowEur: number | null = null;
-  let cashflowAssetClass: string | null = null;
-  let cashflowStatus: string | null = null;
+  let cashflowAssetClass: AssetClass | null = null;
+  let cashflowStatus: FlowStatus | null = null;
 
   if (isAdjustment) {
     // Toggling ON (becomes adjustment) → compute delta, clear cashflow

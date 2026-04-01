@@ -33,6 +33,7 @@ export async function getCryptoAssetsWithPositions(): Promise<
     supabase
       .from("wallets")
       .select("id, name, wallet_type")
+      .eq("user_id", user.id)
       .is("deleted_at", null),
   ]);
 

@@ -1,7 +1,9 @@
+"use server";
+
 import { revalidatePath } from "next/cache";
 
 /** Revalidate all dashboard paths after a successful mutation. */
-export function revalidateDashboard() {
+export async function revalidateDashboard() {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard/stocks");

@@ -1,16 +1,8 @@
 import { getActivityLogs, getSplitChildren } from "@/lib/actions/activity-log";
 import { ActivityTimeline } from "@/components/history/activity-timeline";
 import { MobileMenuButton } from "@/components/sidebar";
+import { VALID_ENTITY_TYPES, VALID_ACTIONS } from "@/lib/constants";
 import type { ActionType, EntityType } from "@/lib/types";
-
-const VALID_ENTITY_TYPES: EntityType[] = [
-  "crypto_asset", "stock_asset", "wallet", "broker",
-  "bank_account", "exchange_deposit", "crypto_position",
-  "stock_position", "broker_deposit", "diary_entry", "goal_price",
-  "trade_entry", "institution", "cash_account",
-];
-
-const VALID_ACTIONS: ActionType[] = ["created", "updated", "removed", "undone"];
 
 export default async function HistoryPage({
   searchParams,

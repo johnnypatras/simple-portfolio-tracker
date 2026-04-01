@@ -119,6 +119,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
         const res = await fetch(
           `/api/stocks/search?q=${encodeURIComponent(query)}`
         );
+        if (!res.ok) return;
         const data = await res.json();
         setResults(data);
       } catch {

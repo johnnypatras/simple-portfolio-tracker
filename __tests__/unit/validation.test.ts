@@ -8,6 +8,9 @@ import {
   validateCoinGeckoId,
   validateYahooTicker,
   validateDate,
+  validateApy,
+  validateIsin,
+  validateImageUrl,
 } from "@/lib/validation";
 
 describe("validateAmount", () => {
@@ -309,6 +312,106 @@ describe("validateYahooTicker", () => {
 
   it("rejects URL injection", () => {
     expect(() => validateYahooTicker("AAPL&foo=bar")).toThrow();
+  });
+});
+
+describe("validateApy", () => {
+  it("accepts 0 (no yield)", () => {
+    expect(() => validateApy(0)).not.toThrow();
+  });
+
+  it("accepts 50 (mid-range)", () => {
+    expect(() => validateApy(50)).not.toThrow();
+  });
+
+  it("accepts 100 (maximum)", () => {
+    expect(() => validateApy(100)).not.toThrow();
+  });
+
+  it("rejects NaN", () => {
+    expect(() => validateApy(NaN)).toThrow("valid number");
+  });
+
+  it("rejects Infinity", () => {
+    expect(() => validateApy(Infinity)).toThrow("valid number");
+  });
+
+  it("rejects -Infinity", () => {
+    expect(() => validateApy(-Infinity)).toThrow("valid number");
+  });
+
+  it("rejects negative APY", () => {
+    expect(() => validateApy(-1)).toThrow("between 0 and 100");
+  });
+
+  it("rejects APY above 100", () => {
+    expect(() => validateApy(100.1)).toThrow("between 0 and 100");
+  });
+
+  it("uses custom label in error message", () => {
+    expect(() => validateApy(-1, "Staking yield")).toThrow("Staking yield must be between 0 and 100");
+  });
+});
+
+describe("validateIsin", () => {
+  it("accepts a valid ISIN", () => {
+    expect(validateIsin("US0378331005")).toBe("US0378331005");
+  });
+
+  it("uppercases and accepts a lowercase ISIN", () => {
+    expect(validateIsin("us0378331005")).toBe("US0378331005");
+  });
+
+  it("returns null for null input", () => {
+    expect(validateIsin(null)).toBeNull();
+  });
+
+  it("returns null for undefined input", () => {
+    expect(validateIsin(undefined)).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(validateIsin("")).toBeNull();
+  });
+
+  it("rejects a string that is too short", () => {
+    expect(() => validateIsin("short")).toThrow("ISIN must be 12");
+  });
+
+  it("rejects a 12-digit numeric string (no country code)", () => {
+    expect(() => validateIsin("123456789012")).toThrow("ISIN must be 12");
+  });
+});
+
+describe("validateImageUrl", () => {
+  it("accepts a valid assets.coingecko.com URL", () => {
+    const url = "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png";
+    expect(validateImageUrl(url)).toBe(url);
+  });
+
+  it("accepts a valid coin-images.coingecko.com URL", () => {
+    const url = "https://coin-images.coingecko.com/coins/images/1/small/bitcoin.png";
+    expect(validateImageUrl(url)).toBe(url);
+  });
+
+  it("returns null for a non-CoinGecko URL", () => {
+    expect(validateImageUrl("https://example.com/image.png")).toBeNull();
+  });
+
+  it("returns null for a malformed URL", () => {
+    expect(validateImageUrl("not-a-url")).toBeNull();
+  });
+
+  it("returns null for null input", () => {
+    expect(validateImageUrl(null)).toBeNull();
+  });
+
+  it("returns null for undefined input", () => {
+    expect(validateImageUrl(undefined)).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(validateImageUrl("")).toBeNull();
   });
 });
 

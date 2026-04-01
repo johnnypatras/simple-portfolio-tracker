@@ -154,10 +154,12 @@ export function AccountSettings({ profile }: { profile: Profile }) {
         <div className="relative">
           <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
           <input
+            id="account-new-email"
             type="email"
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
             placeholder="New email address"
+            aria-label="New email address"
             className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
           />
@@ -187,10 +189,12 @@ export function AccountSettings({ profile }: { profile: Profile }) {
         <div className="relative">
           <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
           <input
+            id="account-current-password"
             type={showPw ? "text" : "password"}
             value={currentPw}
             onChange={(e) => setCurrentPw(e.target.value)}
             placeholder="Current password"
+            aria-label="Current password"
             className="w-full pl-10 pr-10 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
           />
@@ -206,10 +210,12 @@ export function AccountSettings({ profile }: { profile: Profile }) {
         <div className="relative">
           <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
           <input
+            id="account-new-password"
             type={showPw ? "text" : "password"}
             value={newPw}
             onChange={(e) => setNewPw(e.target.value)}
             placeholder="New password (min. 8 characters)"
+            aria-label="New password"
             className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
             minLength={8}
@@ -218,10 +224,12 @@ export function AccountSettings({ profile }: { profile: Profile }) {
         <div className="relative">
           <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
           <input
+            id="account-confirm-password"
             type={showPw ? "text" : "password"}
             value={confirmPw}
             onChange={(e) => setConfirmPw(e.target.value)}
             placeholder="Confirm new password"
+            aria-label="Confirm new password"
             className="w-full pl-10 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             required
             minLength={8}

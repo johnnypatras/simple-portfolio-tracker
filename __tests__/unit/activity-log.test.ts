@@ -40,7 +40,7 @@ describe("cashDelta", () => {
     expect(cashDelta("created", 0, 0)).toBe(0);
   });
 
-  it("updated — computes difference", () => {
+  it("updated — computes difference (larger delta)", () => {
     expect(cashDelta("updated", 100, 300)).toBe(200);
   });
 });

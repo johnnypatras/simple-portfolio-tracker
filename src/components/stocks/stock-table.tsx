@@ -379,6 +379,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               <span
                 ref={openTooltip === "summary" ? tooltipRef : undefined}
                 role="button"
+                aria-label="Show equities change breakdown"
                 tabIndex={0}
                 onClick={(e) => toggleTooltip("summary", e)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleTooltip("summary", e); } }}
@@ -868,6 +869,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                             tabIndex={0}
                             role="button"
                             aria-expanded={isGroupOpen}
+                            aria-label={`${group.label} group, ${isGroupOpen ? "collapse" : "expand"}`}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
@@ -928,6 +930,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                             tabIndex={0}
                             role="button"
                             aria-expanded={isGroupOpen}
+                            aria-label={`${group.brokerName} group, ${isGroupOpen ? "collapse" : "expand"}`}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
@@ -1042,6 +1045,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                             tabIndex={0}
                             role="button"
                             aria-expanded={isGroupOpen}
+                            aria-label={`${group.currency} group, ${isGroupOpen ? "collapse" : "expand"}`}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
@@ -1137,6 +1141,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                             tabIndex={0}
                             role="button"
                             aria-expanded={isGroupOpen}
+                            aria-label={`${group.subcategory || "Uncategorized"} group, ${isGroupOpen ? "collapse" : "expand"}`}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
@@ -1593,6 +1598,7 @@ function TickerGroupRows({
         tabIndex={0}
         role="button"
         aria-expanded={isOpen}
+        aria-label={`${group.ticker} group, ${isOpen ? "collapse" : "expand"}`}
       >
         {groupHeaderCells(orderedColumns,
           <div className="flex items-center gap-2 min-w-0">

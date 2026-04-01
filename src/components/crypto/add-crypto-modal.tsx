@@ -90,6 +90,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         const res = await fetch(
           `/api/crypto/search?q=${encodeURIComponent(query)}`
         );
+        if (!res.ok) return;
         const data = await res.json();
         setResults(data);
       } catch {

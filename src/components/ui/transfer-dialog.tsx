@@ -199,7 +199,7 @@ export function TransferDialog({
   // ── Reset form when dialog opens ──
   useEffect(() => {
     if (!open) return;
-    setSourceQty(currentQtyRef.current?.toString() ?? "");
+    setSourceQty("");
     setDestType("cash_account");
     setDestLocationId("");
     setDestCurrency("EUR");
@@ -273,6 +273,7 @@ export function TransferDialog({
           ? `/api/stocks/search?q=${encodeURIComponent(buySearchQuery)}`
           : `/api/crypto/search?q=${encodeURIComponent(buySearchQuery)}`;
         const res = await fetch(endpoint);
+        if (!res.ok) return;
         const data = await res.json();
         setBuySearchResults(data);
       } catch {

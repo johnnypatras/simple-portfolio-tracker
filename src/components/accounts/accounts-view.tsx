@@ -421,6 +421,7 @@ export function AccountsView({
                         isExpanded ? "opacity-100" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
                       }`}
                       title="Transfer"
+                      aria-label="Transfer"
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
                     </button>
@@ -535,6 +536,7 @@ export function AccountsView({
                                   }}
                                   className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                                   title="Edit positions"
+                                  aria-label="Edit positions"
                                 >
                                   <Pencil className="w-3 h-3" />
                                 </button>
@@ -545,6 +547,7 @@ export function AccountsView({
                                   }}
                                   className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                                   title="Remove asset"
+                                  aria-label="Remove asset"
                                 >
                                   <Trash2 className="w-3 h-3" />
                                 </button>
@@ -644,6 +647,7 @@ export function AccountsView({
                                   }}
                                   className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                                   title="Edit positions"
+                                  aria-label="Edit positions"
                                 >
                                   <Pencil className="w-3 h-3" />
                                 </button>
@@ -654,6 +658,7 @@ export function AccountsView({
                                   }}
                                   className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                                   title="Remove asset"
+                                  aria-label="Remove asset"
                                 >
                                   <Trash2 className="w-3 h-3" />
                                 </button>

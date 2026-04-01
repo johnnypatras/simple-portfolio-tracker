@@ -292,6 +292,7 @@ export function CashTable({
             <span
               ref={openTooltip === "summary" ? tooltipRef : undefined}
               role="button"
+              aria-label="Show cash change breakdown"
               tabIndex={0}
               onClick={(e) => toggleTooltip("summary", e)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("summary", e); } }}
@@ -875,6 +876,7 @@ function StablecoinWalletGroupRow({
       tabIndex={0}
       role="button"
       aria-expanded={expanded}
+      aria-label={`${group.walletName} group, ${expanded ? "collapse" : "expand"}`}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
     >
       {orderedColumns.map((col) => {

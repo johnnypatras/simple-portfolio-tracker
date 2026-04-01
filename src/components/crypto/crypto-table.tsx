@@ -350,6 +350,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
               <span
                 ref={openTooltip === "summary" ? tooltipRef : undefined}
                 role="button"
+                aria-label="Show crypto change breakdown"
                 tabIndex={0}
                 onClick={(e) => toggleTooltip("summary", e)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleTooltip("summary", e); } }}
@@ -885,6 +886,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                             tabIndex={0}
                             role="button"
                             aria-expanded={isGroupOpen}
+                            aria-label={`${group.label} group, ${isGroupOpen ? "collapse" : "expand"}`}
                           >
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
@@ -948,6 +950,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               tabIndex={0}
                               role="button"
                               aria-expanded={isGroupOpen}
+                              aria-label={`${group.walletName} group, ${isGroupOpen ? "collapse" : "expand"}`}
                             >
                               {groupHeaderCells(orderedColumns,
                                 <div className="flex items-center gap-2">
@@ -1011,6 +1014,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 tabIndex={0}
                                 role="button"
                                 aria-expanded={isGroupOpen}
+                                aria-label={`${group.custodyType} group, ${isGroupOpen ? "collapse" : "expand"}`}
                               >
                                 {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">
@@ -1071,6 +1075,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 tabIndex={0}
                                 role="button"
                                 aria-expanded={isGroupOpen}
+                                aria-label={`${group.label} group, ${isGroupOpen ? "collapse" : "expand"}`}
                               >
                                 {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">
@@ -1166,6 +1171,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 tabIndex={0}
                                 role="button"
                                 aria-expanded={isGroupOpen}
+                                aria-label={`${group.label} group, ${isGroupOpen ? "collapse" : "expand"}`}
                               >
                                 {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">

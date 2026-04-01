@@ -1,16 +1,8 @@
 import { requireScope } from "../scope-gate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ActivityTimeline } from "@/components/history/activity-timeline";
+import { VALID_ENTITY_TYPES, VALID_ACTIONS } from "@/lib/constants";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
-
-const VALID_ENTITY_TYPES: EntityType[] = [
-  "crypto_asset", "stock_asset", "wallet", "broker",
-  "bank_account", "exchange_deposit", "crypto_position",
-  "stock_position", "broker_deposit", "diary_entry", "goal_price",
-  "trade_entry", "institution", "cash_account",
-];
-
-const VALID_ACTIONS: ActionType[] = ["created", "updated", "removed", "undone"];
 
 export default async function SharedHistoryPage({
   params,

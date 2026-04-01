@@ -196,6 +196,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={() => setChangePeriod(p)}
+                  aria-pressed={p === changePeriod}
                   className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
@@ -225,6 +226,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                   <span
                     ref={openTooltip === "total" ? tooltipRef : undefined}
                     role="button"
+                    aria-label="Show portfolio change breakdown"
                     onClick={(e) => toggleTooltip("total", e)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("total", e); } }}
                     tabIndex={0}
@@ -482,6 +484,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
+                  aria-pressed={p === changePeriod}
                   className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
@@ -505,6 +508,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                     <span
                       ref={openTooltip === "crypto" ? tooltipRef : undefined}
                       role="button"
+                      aria-label="Show crypto change breakdown"
                       onClick={(e) => toggleTooltip("crypto", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("crypto", e); } }}
                       tabIndex={0}
@@ -666,6 +670,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
+                  aria-pressed={p === changePeriod}
                   className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
@@ -689,6 +694,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                     <span
                       ref={openTooltip === "equities" ? tooltipRef : undefined}
                       role="button"
+                      aria-label="Show equities change breakdown"
                       onClick={(e) => toggleTooltip("equities", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("equities", e); } }}
                       tabIndex={0}
@@ -875,6 +881,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <button
                   key={p}
                   onClick={(e) => { e.stopPropagation(); setChangePeriod(p); }}
+                  aria-pressed={p === changePeriod}
                   className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
                     p === changePeriod
                       ? "bg-zinc-700 text-zinc-100"
@@ -898,6 +905,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                     <span
                       ref={openTooltip === "cash" ? tooltipRef : undefined}
                       role="button"
+                      aria-label="Show cash change breakdown"
                       onClick={(e) => toggleTooltip("cash", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("cash", e); } }}
                       tabIndex={0}

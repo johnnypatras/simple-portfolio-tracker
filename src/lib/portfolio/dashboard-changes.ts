@@ -225,8 +225,9 @@ export function getCryptoChangeForPeriod(
   const rawPastUsd = snapshot.crypto_value_usd ?? 0;
   const deltas = ctx.adjustmentDeltas;
   const snapshotDate = snapshot.snapshot_date;
-  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, ctx.primaryCurrency, "crypto");
-  const finalCum = getCumDeltaFinal(deltas, ctx.primaryCurrency, "crypto");
+  // Force "USD" — rawPastUsd is always from *_value_usd columns, so deltas must match
+  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "crypto");
+  const finalCum = getCumDeltaFinal(deltas, "USD", "crypto");
   const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
@@ -256,8 +257,9 @@ export function getStockChangeForPeriod(
   const rawPastUsd = snapshot.stocks_value_usd ?? 0;
   const deltas = ctx.adjustmentDeltas;
   const snapshotDate = snapshot.snapshot_date;
-  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, ctx.primaryCurrency, "stocks");
-  const finalCum = getCumDeltaFinal(deltas, ctx.primaryCurrency, "stocks");
+  // Force "USD" — rawPastUsd is always from *_value_usd columns, so deltas must match
+  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "stocks");
+  const finalCum = getCumDeltaFinal(deltas, "USD", "stocks");
   const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
@@ -288,8 +290,9 @@ export function getCashChangeForPeriod(
   const rawPastUsd = snapshot.cash_value_usd ?? 0;
   const deltas = ctx.adjustmentDeltas;
   const snapshotDate = snapshot.snapshot_date;
-  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, ctx.primaryCurrency, "cash");
-  const finalCum = getCumDeltaFinal(deltas, ctx.primaryCurrency, "cash");
+  // Force "USD" — rawPastUsd is always from *_value_usd columns, so deltas must match
+  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "cash");
+  const finalCum = getCumDeltaFinal(deltas, "USD", "cash");
   const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
