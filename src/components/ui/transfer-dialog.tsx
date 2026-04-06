@@ -706,7 +706,11 @@ export function TransferDialog({
         }
       } else {
         const r = buySelectedAsset as CoinGeckoSearchResult;
-        const existing = cryptoAssets.find((a) => a.coingecko_id === r.id);
+        // Match chain too: prefer exact chain match, fall back to any if no chain specified
+        const existing = cryptoAssets.find((a) =>
+          a.coingecko_id === r.id &&
+          (buyDetectedChain == null || a.chain === buyDetectedChain || a.chain == null)
+        );
         if (existing) {
           existingAssetId = existing.id;
         } else {
@@ -1353,7 +1357,10 @@ export function TransferDialog({
                 if (buyAssetType === "stock" && !stockAssets.find((a) => a.yahoo_ticker === (buySelectedAsset as YahooSearchResult).symbol)) {
                   creating.push(`${(buySelectedAsset as YahooSearchResult).symbol} (asset)`);
                 }
-                if (buyAssetType === "crypto" && !cryptoAssets.find((a) => a.coingecko_id === (buySelectedAsset as CoinGeckoSearchResult).id)) {
+                if (buyAssetType === "crypto" && !cryptoAssets.find((a) =>
+                  a.coingecko_id === (buySelectedAsset as CoinGeckoSearchResult).id &&
+                  (buyDetectedChain == null || a.chain === buyDetectedChain || a.chain == null)
+                )) {
                   creating.push(`${(buySelectedAsset as CoinGeckoSearchResult).symbol.toUpperCase()} (asset)`);
                 }
                 if (cashState === "prompt" && cashBalance) creating.push(`${buyAssetCurrency} deposit`);

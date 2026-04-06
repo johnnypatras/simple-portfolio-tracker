@@ -35,6 +35,12 @@ export function buildPaletteHoldings({
   primaryCurrency,
   pathPrefix,
 }: BuildPaletteHoldingsInput): HoldingItem[] {
+  // Detect coingecko_ids with multiple chains — append chain to name for disambiguation
+  const chainCounts = new Map<string, number>();
+  for (const a of cryptoAssets) {
+    chainCounts.set(a.coingecko_id, (chainCounts.get(a.coingecko_id) ?? 0) + 1);
+  }
+
   return [
     ...cryptoAssets.map((a) => {
       const price = cryptoPrices[a.coingecko_id];
@@ -42,10 +48,11 @@ export function buildPaletteHoldings({
       const priceUsd = price?.usd ?? 0;
       const valueBase = convertToBase(priceUsd * totalQty, "USD", primaryCurrency, fxRates);
       const priceBase = convertToBase(priceUsd, "USD", primaryCurrency, fxRates);
+      const needsChainLabel = (chainCounts.get(a.coingecko_id) ?? 0) > 1;
       return {
         id: a.id,
         type: "crypto" as const,
-        name: a.name,
+        name: needsChainLabel && a.chain ? `${a.name} (${a.chain})` : a.name,
         ticker: a.ticker.toUpperCase(),
         value: valueBase,
         change24h: price?.usd_24h_change,

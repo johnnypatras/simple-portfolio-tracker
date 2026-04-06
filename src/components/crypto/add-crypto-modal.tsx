@@ -9,15 +9,21 @@ import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
 import type { CoinGeckoSearchResult, Wallet } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains, getWalletChainTokens } from "@/lib/types";
 
+interface ExistingCryptoEntry {
+  coingecko_id: string;
+  chain: string | null;
+}
+
 interface AddCryptoModalProps {
   open: boolean;
   onClose: () => void;
   wallets: Wallet[];
   existingSubcategories: string[];
   existingChains: string[];
+  existingAssets?: ExistingCryptoEntry[];
 }
 
-export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, existingChains }: AddCryptoModalProps) {
+export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, existingChains, existingAssets = [] }: AddCryptoModalProps) {
   const id = useId();
 
   // ─── Search phase state ──────────────────────────────────
@@ -36,6 +42,14 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
   const [chain, setChain] = useState("");
   const [availableChains, setAvailableChains] = useState<string[]>([]);
   const [subcategory, setSubcategory] = useState("");
+
+  // ─── Multi-chain info message ────────────────────────────
+  const existingChainsForSelected = useMemo(() => {
+    if (!selectedCoin) return [];
+    return existingAssets
+      .filter((a) => a.coingecko_id === selectedCoin.id)
+      .map((a) => a.chain);
+  }, [selectedCoin, existingAssets]);
   const [subcategoryDropdownOpen, setSubcategoryDropdownOpen] = useState(false);
 
   // ─── Adjustment flag ─────────────────────────────────────
@@ -366,6 +380,13 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
             <div className="flex items-center gap-2 text-xs text-zinc-500 mb-3">
               <Loader2 className="w-3 h-3 animate-spin" />
               Detecting chain &amp; category…
+            </div>
+          )}
+
+          {!detecting && existingChainsForSelected.length > 0 && (
+            <div className="text-xs text-blue-400 bg-blue-950/30 border border-blue-900/40 rounded px-3 py-2 mb-3">
+              You already have {selectedCoin!.symbol.toUpperCase()} on {existingChainsForSelected.map((c) => c ?? "no chain").join(", ")}.
+              {chain && !existingChainsForSelected.includes(chain) ? " Adding on a different chain will create a separate entry." : ""}
             </div>
           )}
 

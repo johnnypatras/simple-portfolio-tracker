@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 
 describe("import constraints", () => {
-  // ── 1. Duplicate crypto_asset (same coingecko_id + user_id) ───
+  // ── 1. Duplicate crypto_asset (same coingecko_id + chain + user_id) ───
 
   describe("duplicate crypto_asset unique constraint", () => {
     let user: { client: SupabaseClient; userId: string; cleanup: () => void };
@@ -29,8 +29,8 @@ describe("import constraints", () => {
 
     afterAll(() => user.cleanup());
 
-    it("rejects duplicate coingecko_id for same user", async () => {
-      // uq_crypto_assets_active: UNIQUE (user_id, coingecko_id) WHERE deleted_at IS NULL
+    it("rejects duplicate coingecko_id + chain for same user", async () => {
+      // uq_crypto_assets_active: UNIQUE (user_id, coingecko_id, COALESCE(chain, '')) WHERE deleted_at IS NULL
       const { error } = await user.client.from("crypto_assets").insert({
         user_id: user.userId,
         name: "Bitcoin Duplicate",
@@ -187,6 +187,73 @@ describe("import constraints", () => {
       // RLS blocks before FK check when wallet doesn't belong to user (42501)
       // or FK violation (23503) if RLS passes first — both are valid defenses
       expect(["42501", "23503"]).toContain(error!.code);
+    });
+  });
+
+  // ── 5. Multi-chain crypto constraint ────────────────────────
+
+  describe("multi-chain crypto_asset constraint", () => {
+    let user: { client: SupabaseClient; userId: string; cleanup: () => void };
+
+    beforeAll(async () => {
+      user = await createTestUser("import-multichain@test.local");
+    });
+
+    afterAll(() => user.cleanup());
+
+    it("allows same coingecko_id with different chains", async () => {
+      const { error: e1 } = await user.client.from("crypto_assets").insert({
+        user_id: user.userId,
+        name: "Ethereum",
+        ticker: "ETH",
+        coingecko_id: "ethereum",
+        chain: "Ethereum",
+      });
+      expect(e1).toBeNull();
+
+      const { error: e2 } = await user.client.from("crypto_assets").insert({
+        user_id: user.userId,
+        name: "Ethereum",
+        ticker: "ETH",
+        coingecko_id: "ethereum",
+        chain: "Linea",
+      });
+      expect(e2).toBeNull();
+    });
+
+    it("rejects same coingecko_id with same chain", async () => {
+      const { error } = await user.client.from("crypto_assets").insert({
+        user_id: user.userId,
+        name: "Ethereum Dup",
+        ticker: "ETH2",
+        coingecko_id: "ethereum",
+        chain: "Ethereum",
+      });
+
+      expect(error).not.toBeNull();
+      expect(error!.code).toBe("23505");
+    });
+
+    it("rejects same coingecko_id with both null chains", async () => {
+      const { error: e1 } = await user.client.from("crypto_assets").insert({
+        user_id: user.userId,
+        name: "Bitcoin",
+        ticker: "BTC",
+        coingecko_id: "bitcoin",
+        chain: null,
+      });
+      expect(e1).toBeNull();
+
+      const { error: e2 } = await user.client.from("crypto_assets").insert({
+        user_id: user.userId,
+        name: "Bitcoin Dup",
+        ticker: "BTC2",
+        coingecko_id: "bitcoin",
+        chain: null,
+      });
+
+      expect(e2).not.toBeNull();
+      expect(e2!.code).toBe("23505");
     });
   });
 });

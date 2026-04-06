@@ -1319,7 +1319,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
       {/* Modals */}
       {!isReadOnly && (
         <>
-          <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} existingChains={existingChains} />
+          <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} existingChains={existingChains} existingAssets={assets.map((a) => ({ coingecko_id: a.coingecko_id, chain: a.chain }))} />
           <TransferDialog
             open={buyOpen}
             onClose={() => setBuyOpen(false)}

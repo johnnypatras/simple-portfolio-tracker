@@ -481,16 +481,16 @@ export async function importFromJson(
   if (!isReplace) {
     const { data: existingCrypto } = await supabase
       .from("crypto_assets")
-      .select("id, coingecko_id")
+      .select("id, coingecko_id, chain")
       .eq("user_id", uid)
       .is("deleted_at", null);
     for (const c of existingCrypto ?? []) {
-      existingCryptoMap.set(c.coingecko_id, c.id);
+      existingCryptoMap.set(`${c.coingecko_id}|${c.chain ?? ""}`, c.id);
     }
   }
 
   for (const asset of data.cryptoAssets) {
-    const existingId = isReplace ? null : (existingCryptoMap.get(asset.coingecko_id) ?? null);
+    const existingId = isReplace ? null : (existingCryptoMap.get(`${asset.coingecko_id}|${asset.chain ?? ""}`) ?? null);
 
     let newAssetId: string;
     if (existingId) {

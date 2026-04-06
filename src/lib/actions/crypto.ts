@@ -106,13 +106,16 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
   if (error) {
     if (error.code === "23505") {
       // Asset already exists — return the existing id so a position can still be added
-      const { data: existing } = await supabase
+      // Must match chain too: constraint is (user_id, coingecko_id, COALESCE(chain, ''))
+      const q = supabase
         .from("crypto_assets")
         .select("id")
         .eq("user_id", user.id)
         .eq("coingecko_id", input.coingecko_id)
-        .is("deleted_at", null)
-        .single();
+        .is("deleted_at", null);
+      if (input.chain) q.eq("chain", input.chain);
+      else q.is("chain", null);
+      const { data: existing } = await q.single();
       if (existing) {
         revalidateDashboard();
         return existing.id;
@@ -168,7 +171,16 @@ export async function updateCryptoAsset(
     .eq("id", id)
     .eq("user_id", user.id);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "23505") {
+      const ticker = before?.ticker?.toUpperCase() ?? "this asset";
+      const chain = updatePayload.chain as string | null;
+      throw new Error(
+        `You already have ${ticker} on the "${chain ?? "no chain"}" chain. Use the existing entry instead.`
+      );
+    }
+    throw new Error(error.message);
+  }
 
   // Capture after snapshot
   const { data: after } = await supabase

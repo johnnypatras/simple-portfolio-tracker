@@ -294,4 +294,96 @@ describe("crypto server actions (integration)", () => {
       .eq("action", "removed");
     expect(assetLogs!.length).toBe(1);
   });
+
+  // ── Multi-chain tests ──────────────────────────────────────
+
+  describe("multi-chain support", () => {
+    const ethCoingeckoId = "ethereum-multichain-" + Date.now();
+    let ethMainnetId: string;
+    let ethLineaId: string;
+
+    it("creates same coingecko_id with different chains as separate assets", async () => {
+      ethMainnetId = await createCryptoAsset({
+        ticker: "ETH",
+        name: "Ethereum",
+        coingecko_id: ethCoingeckoId,
+        chain: "Ethereum",
+      });
+
+      ethLineaId = await createCryptoAsset({
+        ticker: "ETH",
+        name: "Ethereum",
+        coingecko_id: ethCoingeckoId,
+        chain: "Linea",
+      });
+
+      expect(ethMainnetId).toBeDefined();
+      expect(ethLineaId).toBeDefined();
+      expect(ethMainnetId).not.toBe(ethLineaId);
+    });
+
+    it("dedup returns existing ID for same coingecko_id + same chain", async () => {
+      const dupeId = await createCryptoAsset({
+        ticker: "ETH",
+        name: "Ethereum",
+        coingecko_id: ethCoingeckoId,
+        chain: "Ethereum",
+      });
+
+      expect(dupeId).toBe(ethMainnetId);
+    });
+
+    it("positions on different chain assets are independent", async () => {
+      await upsertPosition({
+        crypto_asset_id: ethMainnetId,
+        wallet_id: walletId,
+        quantity: 10,
+      });
+
+      await upsertPosition({
+        crypto_asset_id: ethLineaId,
+        wallet_id: walletId,
+        quantity: 3,
+      });
+
+      const { data: mainnetPos } = await client
+        .from("crypto_positions")
+        .select("quantity")
+        .eq("crypto_asset_id", ethMainnetId)
+        .eq("wallet_id", walletId)
+        .is("deleted_at", null)
+        .single();
+
+      const { data: lineaPos } = await client
+        .from("crypto_positions")
+        .select("quantity")
+        .eq("crypto_asset_id", ethLineaId)
+        .eq("wallet_id", walletId)
+        .is("deleted_at", null)
+        .single();
+
+      expect(Number(mainnetPos!.quantity)).toBe(10);
+      expect(Number(lineaPos!.quantity)).toBe(3);
+    });
+
+    it("deleting one chain asset does not affect the other", async () => {
+      await deleteCryptoAsset(ethLineaId);
+
+      // Linea asset should be soft-deleted
+      const { data: deleted } = await client
+        .from("crypto_assets")
+        .select("deleted_at")
+        .eq("id", ethLineaId)
+        .single();
+      expect(deleted!.deleted_at).not.toBeNull();
+
+      // Mainnet asset should still be active
+      const { data: active } = await client
+        .from("crypto_assets")
+        .select("deleted_at")
+        .eq("id", ethMainnetId)
+        .single();
+      expect(active!.deleted_at).toBeNull();
+    });
+  });
 });
