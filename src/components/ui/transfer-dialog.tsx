@@ -25,6 +25,7 @@ import type {
   CryptoAssetInput,
   AssetCategory,
 } from "@/lib/types";
+import { parseWalletChains } from "@/lib/types";
 
 // ─── Destination type tabs ──────────────────────────────────
 
@@ -595,14 +596,26 @@ export function TransferDialog({
   const moveLocations = useMemo(() => {
     if (mode !== "move" || !prefilled) return [];
     if (prefilled.type === "crypto_position") {
-      return wallets
-        .filter((w) => w.id !== prefilled.locationId)
-        .map((w) => ({ id: w.id, name: w.name }));
+      // Look up the source asset's chain for compatibility filtering
+      const sourceAsset = cryptoAssets.find((a) => a.id === prefilled.assetId);
+      const assetChain = sourceAsset?.chain ?? null;
+
+      const others = wallets.filter((w) => w.id !== prefilled.locationId);
+      // Filter by chain compatibility: wallets with no chain (multi-chain/exchange)
+      // always pass; wallets with a chain must match the asset's chain
+      const compatible = assetChain
+        ? others.filter((w) => !w.chain || parseWalletChains(w.chain).includes(assetChain))
+        : others;
+
+      // Fall back to all wallets if no compatible ones exist
+      const result = compatible.length > 0 ? compatible : others;
+      return result.map((w) => ({ id: w.id, name: w.name }));
     }
+    // Brokers have no chain concept — all are valid destinations for stocks
     return brokers
       .filter((b) => b.id !== prefilled.locationId)
       .map((b) => ({ id: b.id, name: b.name }));
-  }, [mode, prefilled, wallets, brokers]);
+  }, [mode, prefilled, wallets, brokers, cryptoAssets]);
 
   // ── Destination location options ──
   const destLocationOptions = useMemo(() => {
@@ -625,8 +638,11 @@ export function TransferDialog({
               name: `${ca.ticker} on ${p.wallet_name}`,
             });
           }
-          // Also show wallets without positions for this asset
-          for (const w of wallets) {
+          // Also show chain-compatible wallets without positions for this asset
+          const compatibleWallets = ca.chain
+            ? wallets.filter((w) => !w.chain || parseWalletChains(w.chain).includes(ca.chain!))
+            : wallets;
+          for (const w of compatibleWallets) {
             const hasPos = ca.positions.some((p) => p.wallet_id === w.id);
             if (!hasPos) {
               opts.push({
