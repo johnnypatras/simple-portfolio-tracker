@@ -1135,6 +1135,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                               value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
                                               apy={pos.apy}
                                               acquisitionMethod={pos.acquisition_method ?? "bought"}
+                                              network={pos.network}
                                               orderedColumns={orderedColumns}
                                               grouped
                                             />
@@ -1231,6 +1232,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                               value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
                                               apy={pos.apy}
                                               acquisitionMethod={pos.acquisition_method ?? "bought"}
+                                              network={pos.network}
                                               orderedColumns={orderedColumns}
                                               grouped
                                             />
@@ -1290,6 +1292,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                             value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
                                             apy={pos.apy}
                                             acquisitionMethod={pos.acquisition_method ?? "bought"}
+                                            network={pos.network}
                                             orderedColumns={orderedColumns}
                                           />
                                         );
@@ -1425,6 +1428,7 @@ function GroupedCryptoEntryRows({
                     value={posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}
                     apy={pos.apy}
                     acquisitionMethod={pos.acquisition_method ?? "bought"}
+                    network={pos.network}
                     orderedColumns={orderedColumns}
                     grouped
                   />
@@ -1543,6 +1547,7 @@ function ExpandedCryptoRow({
   value,
   apy,
   acquisitionMethod,
+  network,
   orderedColumns,
   grouped,
 }: {
@@ -1552,6 +1557,7 @@ function ExpandedCryptoRow({
   value: string;
   apy?: number;
   acquisitionMethod: string;
+  network?: string | null;
   orderedColumns: ColumnDef<CryptoRow>[];
   grouped?: boolean;
 }) {
@@ -1567,6 +1573,9 @@ function ExpandedCryptoRow({
           return (
             <td key={col.key} className={`${assetPl} pr-4 py-2`}>
               <span className="text-xs text-zinc-500">{walletName}</span>
+              {network && (
+                <span className="ml-1.5 text-[10px] text-zinc-600">· {network}</span>
+              )}
             </td>
           );
         }
@@ -1747,6 +1756,7 @@ function MobileCryptoCard({
                       <div key={pos.id} className="flex gap-2 text-xs min-w-0">
                         <span className="text-zinc-500 truncate shrink min-w-0">
                           {pos.wallet_name}
+                          {pos.network && <span className="text-zinc-600"> · {pos.network}</span>}
                         </span>
                         <span className="text-zinc-400 tabular-nums shrink-0 text-right whitespace-nowrap ml-auto">
                           {formatQuantity(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}

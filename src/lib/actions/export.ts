@@ -149,6 +149,7 @@ export async function exportCryptoCsv(): Promise<string> {
   const headers = [
     "Ticker", "Name", "CoinGecko ID", "Chain", "Subcategory",
     "Wallet", "Wallet Type", "Quantity", "Acquisition Method", "APY %",
+    "Network",
     "Adjustment", "Transfer",
     "Asset Created", "Position Updated",
   ];
@@ -167,6 +168,7 @@ export async function exportCryptoCsv(): Promise<string> {
         pos.quantity,
         pos.acquisition_method,
         pos.apy,
+        pos.network,
         pos.last_was_adjustment ? "Yes" : "No",
         pos.last_was_transfer ? "Yes" : "No",
         asset.created_at,

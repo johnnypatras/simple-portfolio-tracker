@@ -343,6 +343,7 @@ export interface CryptoPosition {
   quantity: number;
   acquisition_method: string;
   apy: number;
+  network: string | null;
   last_was_adjustment?: boolean;
   last_was_transfer?: boolean;
   updated_at: string;
@@ -369,6 +370,7 @@ export interface CryptoPositionInput {
   quantity: number;
   acquisition_method?: string;
   apy?: number;
+  network?: string | null;
 }
 
 // ─── Stock/ETF entities ─────────────────────────────────

@@ -24,6 +24,7 @@ interface PositionEdit {
   quantity: string;
   acquisition: string;
   apy: string;
+  network: string;
   isAdjustment: boolean;
 }
 
@@ -88,6 +89,7 @@ export function PositionEditor({
         quantity: p.quantity.toString(),
         acquisition: p.acquisition_method ?? "bought",
         apy: (p.apy ?? 0).toString(),
+        network: p.network ?? "",
         isAdjustment: false,
       };
     });
@@ -121,6 +123,7 @@ export function PositionEditor({
         quantity: p.quantity.toString(),
         acquisition: p.acquisition_method ?? "bought",
         apy: (p.apy ?? 0).toString(),
+        network: p.network ?? "",
         isAdjustment: false,
       };
     });
@@ -135,6 +138,7 @@ export function PositionEditor({
         quantity: p.quantity.toString(),
         acquisition: p.acquisition_method ?? "bought",
         apy: (p.apy ?? 0).toString(),
+        network: p.network ?? "",
         isAdjustment: false,
       };
     });
@@ -150,7 +154,8 @@ export function PositionEditor({
       return (
         edit.quantity !== orig.quantity ||
         edit.acquisition !== orig.acquisition ||
-        edit.apy !== orig.apy
+        edit.apy !== orig.apy ||
+        edit.network !== orig.network
       );
     },
     [edits, originals]
@@ -191,6 +196,22 @@ export function PositionEditor({
     }));
   }
 
+  function handleNetworkChange(walletId: string, value: string) {
+    setEdits((prev) => ({
+      ...prev,
+      [walletId]: { ...prev[walletId], network: value },
+    }));
+  }
+
+  // Collect existing networks for datalist suggestions
+  const existingNetworks = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of asset.positions) {
+      if (p.network?.trim()) set.add(p.network.trim());
+    }
+    return [...set].sort();
+  }, [asset.positions]);
+
   function handleAdjustmentChange(walletId: string, checked: boolean) {
     setEdits((prev) => ({
       ...prev,
@@ -214,6 +235,7 @@ export function PositionEditor({
         quantity: qty,
         acquisition_method: method,
         apy: apy || undefined,
+        network: edit?.network?.trim() || null,
       }, {
         isAdjustment: edit.isAdjustment,
         currentPriceUsd: priceData?.usd,
@@ -270,7 +292,7 @@ export function PositionEditor({
     if (!addingWallet) return;
     setEdits((prev) => ({
       ...prev,
-      [addingWallet]: { quantity: "0", acquisition: "bought", apy: "0", isAdjustment: false },
+      [addingWallet]: { quantity: "0", acquisition: "bought", apy: "0", network: "", isAdjustment: false },
     }));
     setAddingWallet("");
   }
@@ -528,6 +550,16 @@ export function PositionEditor({
                   />
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-500 pointer-events-none">%</span>
                 </div>
+                <input
+                  type="text"
+                  list={`${id}-networks`}
+                  value={edit?.network ?? ""}
+                  onChange={(e) => handleNetworkChange(walletId, e.target.value)}
+                  className="w-20 sm:w-24 px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70 shrink-0"
+                  disabled={isSaving}
+                  placeholder="Network"
+                  title="L2/Network (e.g. Linea, Base, Arbitrum)"
+                />
                 <button
                   onClick={() => handleSave(walletId)}
                   disabled={isBusy}
@@ -630,6 +662,19 @@ export function PositionEditor({
             {error}
           </p>
         )}
+
+        {/* Network datalist suggestions */}
+        <datalist id={`${id}-networks`}>
+          {existingNetworks.map((n) => (
+            <option key={n} value={n} />
+          ))}
+          {!existingNetworks.includes("Ethereum") && <option value="Ethereum" />}
+          {!existingNetworks.includes("Arbitrum") && <option value="Arbitrum" />}
+          {!existingNetworks.includes("Base") && <option value="Base" />}
+          {!existingNetworks.includes("Linea") && <option value="Linea" />}
+          {!existingNetworks.includes("Optimism") && <option value="Optimism" />}
+          {!existingNetworks.includes("Polygon") && <option value="Polygon" />}
+        </datalist>
       </div>
 
       {transferOpen && transferMode && (() => {

@@ -345,6 +345,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         quantity: input.quantity,
         acquisition_method: input.acquisition_method,
         apy: input.apy,
+        network: input.network,
         last_was_adjustment: opts?.isAdjustment ?? false,
         last_was_transfer: opts?.transferGroupId != null,
       })).eq("id", before.id);
@@ -356,6 +357,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         quantity: input.quantity,
         acquisition_method: input.acquisition_method ?? "bought",
         apy: input.apy ?? 0,
+        network: input.network?.trim() || null,
         last_was_adjustment: opts?.isAdjustment ?? false,
         last_was_transfer: opts?.transferGroupId != null,
       });
@@ -373,6 +375,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
             quantity: input.quantity,
             acquisition_method: input.acquisition_method,
             apy: input.apy,
+            network: input.network,
             last_was_adjustment: opts?.isAdjustment ?? false,
             last_was_transfer: opts?.transferGroupId != null,
           })).eq("id", existing.id);

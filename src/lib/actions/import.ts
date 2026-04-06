@@ -533,6 +533,7 @@ export async function importFromJson(
         quantity: pos.quantity,
         acquisition_method: pos.acquisition_method ?? "bought",
         apy: pos.apy ?? 0,
+        network: pos.network ?? null,
         last_was_adjustment: pos.last_was_adjustment ?? false,
         last_was_transfer: pos.last_was_transfer ?? false,
       });
