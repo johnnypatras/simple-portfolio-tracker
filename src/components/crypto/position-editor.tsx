@@ -550,16 +550,6 @@ export function PositionEditor({
                   />
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-500 pointer-events-none">%</span>
                 </div>
-                <input
-                  type="text"
-                  list={`${id}-networks`}
-                  value={edit?.network ?? ""}
-                  onChange={(e) => handleNetworkChange(walletId, e.target.value)}
-                  className="w-20 sm:w-24 px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70 shrink-0"
-                  disabled={isSaving}
-                  placeholder="Network"
-                  title="L2/Network (e.g. Linea, Base, Arbitrum)"
-                />
                 <button
                   onClick={() => handleSave(walletId)}
                   disabled={isBusy}
@@ -602,6 +592,23 @@ export function PositionEditor({
                     </button>
                   </>
                 )}
+              </div>
+              {/* Network — L2/chain label for this specific position */}
+              <div className="flex items-center gap-2 mt-1.5">
+                <label htmlFor={`${id}-network-${walletId}`} className="text-[10px] text-zinc-500 shrink-0">
+                  Network
+                </label>
+                <input
+                  id={`${id}-network-${walletId}`}
+                  type="text"
+                  list={`${id}-networks`}
+                  value={edit?.network ?? ""}
+                  onChange={(e) => handleNetworkChange(walletId, e.target.value)}
+                  className="flex-1 min-w-0 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  disabled={isSaving}
+                  placeholder="e.g. Ethereum, Linea, Base, Arbitrum"
+                  title="L2/Network for this position"
+                />
               </div>
             </div>
           );
