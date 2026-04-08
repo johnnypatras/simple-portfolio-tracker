@@ -508,8 +508,8 @@ export function PositionEditor({
                   Adj.
                 </label>
               </div>
-              {/* Quantity + Acquisition + APY + Actions */}
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Row 1: Quantity (full flex) + Save/Move/Delete actions */}
+              <div className="flex items-center gap-2">
                 <input
                   type="number"
                   step="any"
@@ -517,43 +517,14 @@ export function PositionEditor({
                   onChange={(e) =>
                     handleQuantityChange(walletId, e.target.value)
                   }
-                  className="min-w-0 flex-1 px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  className="min-w-0 flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   disabled={isSaving}
                   placeholder="Quantity"
                 />
-                <select
-                  value={edit?.acquisition ?? "bought"}
-                  onChange={(e) =>
-                    handleAcquisitionChange(walletId, e.target.value)
-                  }
-                  className="w-24 sm:w-28 px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70 shrink-0"
-                  disabled={isSaving}
-                >
-                  {ACQUISITION_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="relative shrink-0 w-16 sm:w-20">
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={edit?.apy ?? "0"}
-                    onChange={(e) => handleApyChange(walletId, e.target.value)}
-                    className="w-full px-2 py-2 pr-6 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-                    disabled={isSaving}
-                    placeholder="APY"
-                    title="APY %"
-                  />
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-500 pointer-events-none">%</span>
-                </div>
                 <button
                   onClick={() => handleSave(walletId)}
                   disabled={isBusy}
-                  className="p-1.5 sm:p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                  className="p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                   title="Save"
                   aria-label="Save"
                 >
@@ -573,18 +544,18 @@ export function PositionEditor({
                         setTransferOpen(true);
                       }}
                       disabled={isBusy}
-                      className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
+                      className="p-1.5 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
                       title="Move to another wallet"
                       aria-label="Move to another wallet"
                     >
-                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                      <ArrowRightLeft className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() =>
                         handleDelete(existingPosition.id, walletId)
                       }
                       disabled={isBusy}
-                      className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                      className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                       title="Remove"
                       aria-label="Remove"
                     >
@@ -593,20 +564,47 @@ export function PositionEditor({
                   </>
                 )}
               </div>
-              {/* Network — L2/chain label for this specific position */}
+              {/* Row 2: Metadata — Acquisition + APY + Network */}
               <div className="flex items-center gap-2 mt-1.5">
-                <label htmlFor={`${id}-network-${walletId}`} className="text-[10px] text-zinc-500 shrink-0">
-                  Network
-                </label>
+                <select
+                  value={edit?.acquisition ?? "bought"}
+                  onChange={(e) =>
+                    handleAcquisitionChange(walletId, e.target.value)
+                  }
+                  className="w-24 px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70 shrink-0"
+                  disabled={isSaving}
+                  title="Acquisition method"
+                >
+                  {ACQUISITION_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="relative shrink-0 w-16">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={edit?.apy ?? "0"}
+                    onChange={(e) => handleApyChange(walletId, e.target.value)}
+                    className="w-full px-2 py-1.5 pr-5 bg-zinc-950 border border-zinc-800 rounded text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                    disabled={isSaving}
+                    placeholder="APY"
+                    title="APY %"
+                  />
+                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 pointer-events-none">%</span>
+                </div>
                 <input
                   id={`${id}-network-${walletId}`}
                   type="text"
                   list={`${id}-networks`}
                   value={edit?.network ?? ""}
                   onChange={(e) => handleNetworkChange(walletId, e.target.value)}
-                  className="flex-1 min-w-0 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  className="flex-1 min-w-0 px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   disabled={isSaving}
-                  placeholder="e.g. Ethereum, Linea, Base, Arbitrum"
+                  placeholder="Network (e.g. Linea, Base, Arbitrum)"
                   title="L2/Network for this position"
                 />
               </div>
