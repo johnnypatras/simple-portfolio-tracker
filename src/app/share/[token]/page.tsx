@@ -24,7 +24,7 @@ export default async function SharedOverviewPage({
 
   const {
     profile, cryptoAssets, stockAssets, cashAccounts,
-    snapshots, snap7d, snap30d, snap1y,
+    snapshots, snap3d, snap7d, snap30d, snap90d, snap1y, snapAll,
   } = data;
   const primaryCurrency = profile.primary_currency;
 
@@ -45,9 +45,12 @@ export default async function SharedOverviewPage({
 
   const pastSnapshots = {
     "24h": null,
+    "3d": snap3d,
     "7d": snap7d,
     "30d": snap30d,
+    "90d": snap90d,
     "1y": snap1y,
+    "all": snapAll,
   };
 
   return (

@@ -17,7 +17,7 @@ export interface ClassChange {
   fxValueChange: number;
 }
 
-export type ChangePeriod = "24h" | "7d" | "30d" | "1y";
+export type ChangePeriod = "24h" | "3d" | "7d" | "30d" | "90d" | "1y" | "all";
 
 export interface DepositResult {
   total: number;
@@ -329,7 +329,8 @@ export function computeDeposits(
 ): DepositResult {
   const now = new Date();
   const msMap: Record<ChangePeriod, number> = {
-    "24h": 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000, "1y": 365 * 86400000,
+    "24h": 86400000, "3d": 3 * 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000,
+    "90d": 90 * 86400000, "1y": 365 * 86400000, "all": 100 * 365 * 86400000,
   };
   const cutoff = new Date(now.getTime() - msMap[period]);
   cutoff.setUTCHours(0, 0, 0, 0);

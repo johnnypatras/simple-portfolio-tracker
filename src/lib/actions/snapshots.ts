@@ -137,6 +137,31 @@ export async function getSnapshots(
 }
 
 /**
+ * Get the earliest snapshot the user has.
+ * Used for computing "all-time" change.
+ */
+export async function getEarliestSnapshot(): Promise<PortfolioSnapshot | null> {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("portfolio_snapshots")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("snapshot_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[snapshots] Failed to fetch earliest snapshot:", error.message);
+    throw new Error(`Failed to load earliest snapshot: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
  * Get the snapshot closest to N days ago.
  * Used for computing "change vs X days ago".
  *

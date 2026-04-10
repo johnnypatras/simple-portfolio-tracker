@@ -11,6 +11,7 @@ import {
   saveSnapshot,
   getSnapshots,
   getSnapshotAt,
+  getEarliestSnapshot,
 } from "@/lib/actions/snapshots";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -29,7 +30,7 @@ export default async function DashboardPage() {
   // so they run alongside DB queries.
   const [
     profile, cryptoAssets, stockAssets, cashAccounts,
-    chartSnapshots, snap7d, snap30d, snap1y,
+    chartSnapshots, snap3d, snap7d, snap30d, snap90d, snap1y, snapAll,
     sp500TRHistory,
     cashFlowResult,
     adjustmentDeltas,
@@ -39,9 +40,12 @@ export default async function DashboardPage() {
     getStockAssetsWithPositions(),
     getCashAccounts(),
     getSnapshots(365),           // up to 1 year of history for the chart
+    getSnapshotAt(3),            // for 3d change
     getSnapshotAt(7),            // for 7d change
     getSnapshotAt(30),           // for 30d change
+    getSnapshotAt(90),           // for 90d change
     getSnapshotAt(365),          // for 1y change
+    getEarliestSnapshot(),       // for all-time change
     fetchIndexHistory("^SP500TR", 365), // S&P 500 Total Return (benchmark line)
     deriveCashFlows(),
     getAdjustmentDeltas(),
@@ -84,9 +88,12 @@ export default async function DashboardPage() {
 
   const pastSnapshots = {
     "24h": null,
+    "3d": snap3d,
     "7d": snap7d,
     "30d": snap30d,
+    "90d": snap90d,
     "1y": snap1y,
+    "all": snapAll,
   };
 
   return (

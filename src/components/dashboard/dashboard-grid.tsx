@@ -49,9 +49,9 @@ interface DashboardGridProps {
 
 // ─── Constants ──────────────────────────────────────────
 
-const CHANGE_PERIODS: readonly ChangePeriod[] = ["24h", "7d", "30d", "1y"];
+const CHANGE_PERIODS: readonly ChangePeriod[] = ["24h", "3d", "7d", "30d", "90d", "1y", "all"];
 
-const PERIOD_LABELS: Record<ChangePeriod, string> = { "24h": "24h", "7d": "7d", "30d": "30d", "1y": "1y" };
+const PERIOD_LABELS: Record<ChangePeriod, string> = { "24h": "24H", "3d": "3D", "7d": "7D", "30d": "30D", "90d": "90D", "1y": "1Y", "all": "All" };
 
 const APY_PERIODS = ["daily", "monthly", "yearly"] as const;
 type ApyPeriod = (typeof APY_PERIODS)[number];
@@ -737,15 +737,21 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 </div>
                 {insights.stocksWeightedYield > 0 && (() => {
                   const yearly = insights.stocksDividendIncomeYearly;
+                  // Prorated yearly dividend income for the selected period.
+                  // "1y" and "all" show the full annual estimate.
                   const periodIncome =
                     changePeriod === "24h" ? yearly / 365 :
-                    changePeriod === "7d" ? yearly / 365 * 7 :
+                    changePeriod === "3d"  ? yearly / 365 * 3 :
+                    changePeriod === "7d"  ? yearly / 365 * 7 :
                     changePeriod === "30d" ? yearly / 12 :
+                    changePeriod === "90d" ? yearly / 4 :
                     yearly;
                   const periodLabel =
                     changePeriod === "24h" ? "/day" :
-                    changePeriod === "7d" ? "/7d" :
+                    changePeriod === "3d"  ? "/3d" :
+                    changePeriod === "7d"  ? "/7d" :
                     changePeriod === "30d" ? "/mo" :
+                    changePeriod === "90d" ? "/qtr" :
                     "/yr";
                   return (
                     <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">

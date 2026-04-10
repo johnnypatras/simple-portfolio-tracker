@@ -28,9 +28,12 @@ export interface SharedPortfolioData {
   brokers: Broker[];
   institutions: InstitutionWithRoles[];
   snapshots: PortfolioSnapshot[];
+  snap3d: PortfolioSnapshot | null;
   snap7d: PortfolioSnapshot | null;
   snap30d: PortfolioSnapshot | null;
+  snap90d: PortfolioSnapshot | null;
   snap1y: PortfolioSnapshot | null;
+  snapAll: PortfolioSnapshot | null;
 }
 
 /**
@@ -194,8 +197,12 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     brokers,
     institutions,
     snapshots,
+    snap3d: findSnapshotAt(3),
     snap7d: findSnapshotAt(7),
     snap30d: findSnapshotAt(30),
+    snap90d: findSnapshotAt(90),
     snap1y: findSnapshotAt(365),
+    // "All" = earliest snapshot in the loaded 365-day window
+    snapAll: snapshots.length > 0 ? snapshots[0] : null,
   };
 });
