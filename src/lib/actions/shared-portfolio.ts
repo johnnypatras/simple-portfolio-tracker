@@ -60,6 +60,7 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     brokersRes,
     institutionsRes,
     snapshotsRes,
+    earliestSnapshotRes,
   ] = await Promise.all([
     admin.from("profiles").select("*").eq("id", userId).single(),
     admin.from("crypto_assets").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
@@ -72,6 +73,11 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     admin.from("portfolio_snapshots").select("*").eq("user_id", userId)
       .gte("snapshot_date", new Date(Date.now() - 365 * 86_400_000).toISOString().split("T")[0])
       .order("snapshot_date", { ascending: true }),
+    // Earliest snapshot (for true all-time change — the chart still shows 365d)
+    admin.from("portfolio_snapshots").select("*").eq("user_id", userId)
+      .order("snapshot_date", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (profileRes.error || !profileRes.data) return null;
@@ -202,7 +208,7 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     snap30d: findSnapshotAt(30),
     snap90d: findSnapshotAt(90),
     snap1y: findSnapshotAt(365),
-    // "All" = earliest snapshot in the loaded 365-day window
-    snapAll: snapshots.length > 0 ? snapshots[0] : null,
+    // "All" = true earliest snapshot ever (may be older than the 365-day chart window)
+    snapAll: (earliestSnapshotRes.data ?? null) as PortfolioSnapshot | null,
   };
 });
