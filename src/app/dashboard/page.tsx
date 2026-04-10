@@ -11,8 +11,8 @@ import {
   saveSnapshot,
   getSnapshots,
   getSnapshotAt,
-  getEarliestSnapshot,
 } from "@/lib/actions/snapshots";
+import { ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { MobileMenuButton } from "@/components/sidebar";
 import { RegisterHoldings } from "@/components/ui/command-palette-provider";
@@ -30,7 +30,7 @@ export default async function DashboardPage() {
   // so they run alongside DB queries.
   const [
     profile, cryptoAssets, stockAssets, cashAccounts,
-    chartSnapshots, snap3d, snap7d, snap30d, snap90d, snap1y, snapAll,
+    chartSnapshots, snap3d, snap7d, snap30d, snap90d, snap1y,
     sp500TRHistory,
     cashFlowResult,
     adjustmentDeltas,
@@ -39,17 +39,22 @@ export default async function DashboardPage() {
     getCryptoAssetsWithPositions(),
     getStockAssetsWithPositions(),
     getCashAccounts(),
-    getSnapshots(365),           // up to 1 year of history for the chart
+    // All snapshots — chart "All" period and panel all-time change share this data
+    getSnapshots(ALL_SNAPSHOTS_DAYS),
     getSnapshotAt(3),            // for 3d change
     getSnapshotAt(7),            // for 7d change
     getSnapshotAt(30),           // for 30d change
     getSnapshotAt(90),           // for 90d change
     getSnapshotAt(365),          // for 1y change
-    getEarliestSnapshot(),       // for all-time change
-    fetchIndexHistory("^SP500TR", 365), // S&P 500 Total Return (benchmark line)
+    // S&P 500 Total Return — fetch max history so the benchmark line
+    // matches the chart's "All" extent (Yahoo maps days > 365 to range="max")
+    fetchIndexHistory("^SP500TR", ALL_SNAPSHOTS_DAYS),
     deriveCashFlows(),
     getAdjustmentDeltas(),
   ]);
+
+  // Earliest snapshot for all-time change — reuse data already loaded for the chart
+  const snapAll = chartSnapshots.length > 0 ? chartSnapshots[0] : null;
 
   const { events: cashFlows, pendingCount: cfPendingCount, failedCount: cfFailedCount } = cashFlowResult;
 

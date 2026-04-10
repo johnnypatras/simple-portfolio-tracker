@@ -122,11 +122,14 @@ export async function getSnapshots(
   since.setDate(since.getDate() - days);
   const sinceStr = since.toISOString().split("T")[0];
 
+  // Explicit limit overrides PostgREST's 1000-row default, so callers
+  // requesting ALL_SNAPSHOTS_DAYS (99999) actually get all rows.
   const { data, error } = await supabase
     .from("portfolio_snapshots")
     .select("*")
     .gte("snapshot_date", sinceStr)
-    .order("snapshot_date", { ascending: true });
+    .order("snapshot_date", { ascending: true })
+    .limit(100_000);
 
   if (error) {
     console.error("[snapshots] Failed to fetch snapshots:", error.message);
@@ -134,31 +137,6 @@ export async function getSnapshots(
   }
 
   return data ?? [];
-}
-
-/**
- * Get the earliest snapshot the user has.
- * Used for computing "all-time" change.
- */
-export async function getEarliestSnapshot(): Promise<PortfolioSnapshot | null> {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from("portfolio_snapshots")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("snapshot_date", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[snapshots] Failed to fetch earliest snapshot:", error.message);
-    throw new Error(`Failed to load earliest snapshot: ${error.message}`);
-  }
-
-  return data;
 }
 
 /**

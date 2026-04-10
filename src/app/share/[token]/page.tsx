@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
+import { ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { assemblePortfolioView } from "@/lib/portfolio/assemble";
@@ -34,7 +35,8 @@ export default async function SharedOverviewPage({
       { cryptoAssets, stockAssets, cashAccounts, primaryCurrency },
       `/share/${token}`,
     ),
-    fetchIndexHistory("^SP500TR", 365),
+    // Fetch S&P 500 TR with max history — matches the chart's "All" extent
+    fetchIndexHistory("^SP500TR", ALL_SNAPSHOTS_DAYS),
     deriveCashFlows(data.share.owner_id),
     getAdjustmentDeltas(data.share.owner_id),
   ]);
