@@ -279,6 +279,7 @@ Deno.serve(async (req: Request) => {
       snapshots.push({
         user_id: userId,
         snapshot_date: today,
+        created_at: new Date().toISOString(),
         total_value_usd: round2(totalValueUsd),
         total_value_eur: round2(totalValueEur),
         crypto_value_usd: round2(cryptoValueUsd),
