@@ -47,7 +47,10 @@ jobs:
 
       - name: Install Supabase CLI
         id: supabase-cli
-        run: npm install -g supabase@2.78.1
+        run: |
+          curl -fsSL -o /tmp/supabase.deb \
+            https://github.com/supabase/cli/releases/download/v2.78.1/supabase_2.78.1_linux_amd64.deb
+          sudo dpkg -i /tmp/supabase.deb
 
       - name: Cache Supabase Docker images
         uses: actions/cache@v5
@@ -124,7 +127,10 @@ jobs:
           node-version: 24
 
       - name: Install Supabase CLI
-        run: npm install -g supabase@2.78.1
+        run: |
+          curl -fsSL -o /tmp/supabase.deb \
+            https://github.com/supabase/cli/releases/download/v2.78.1/supabase_2.78.1_linux_amd64.deb
+          sudo dpkg -i /tmp/supabase.deb
 
       - name: Link Supabase project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
