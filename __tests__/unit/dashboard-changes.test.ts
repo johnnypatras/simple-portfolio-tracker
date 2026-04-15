@@ -464,6 +464,52 @@ describe("getDepositsForPeriod", () => {
     expect(result.total).toBe(0);
     expect(result.breakdown).toHaveLength(0);
   });
+
+  // ── Newly added ChangePeriod values: 3d, 90d, all ───────────
+  it("3d period includes flows in the last 3 days, excludes older", () => {
+    const ctx = makeCtx({
+      primaryCurrency: "USD",
+      totalValueUsd: 100000,
+      cashFlows: [
+        { date: "2026-06-13", amount_usd: 100, entity_name: "Recent" }, // within 3d
+        { date: "2026-06-10", amount_usd: 999, entity_name: "Older" }, // 5 days ago — outside
+      ],
+    });
+    const result = getDepositsForPeriod("3d", ctx);
+    expect(result.total).toBeCloseTo(100, 0);
+    expect(result.breakdown).toHaveLength(1);
+    expect(result.breakdown[0].name).toBe("Recent");
+  });
+
+  it("90d period includes flows in the last 90 days, excludes older", () => {
+    const ctx = makeCtx({
+      primaryCurrency: "USD",
+      totalValueUsd: 100000,
+      cashFlows: [
+        { date: "2026-04-01", amount_usd: 200, entity_name: "Within90d" }, // ~75 days ago
+        { date: "2025-12-01", amount_usd: 999, entity_name: "Outside90d" }, // ~196 days ago
+      ],
+    });
+    const result = getDepositsForPeriod("90d", ctx);
+    expect(result.total).toBeCloseTo(200, 0);
+    expect(result.breakdown).toHaveLength(1);
+    expect(result.breakdown[0].name).toBe("Within90d");
+  });
+
+  it("all period includes flows from any historical date", () => {
+    const ctx = makeCtx({
+      primaryCurrency: "USD",
+      totalValueUsd: 100000,
+      cashFlows: [
+        { date: "2020-01-01", amount_usd: 50, entity_name: "Old" },
+        { date: "2010-06-15", amount_usd: 30, entity_name: "Older" },
+        { date: PINNED_TODAY, amount_usd: 10, entity_name: "Today" },
+      ],
+    });
+    const result = getDepositsForPeriod("all", ctx);
+    expect(result.total).toBeCloseTo(90, 0);
+    expect(result.breakdown).toHaveLength(3);
+  });
 });
 
 // ── Delta helpers ──────────────────────────────────────────

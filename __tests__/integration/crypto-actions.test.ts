@@ -302,7 +302,7 @@ describe("crypto server actions (integration)", () => {
     let ethMainnetId: string;
     let ethLineaId: string;
 
-    it("creates same coingecko_id with different chains as separate assets", async () => {
+    beforeAll(async () => {
       ethMainnetId = await createCryptoAsset({
         ticker: "ETH",
         name: "Ethereum",
@@ -316,9 +316,13 @@ describe("crypto server actions (integration)", () => {
         coingecko_id: ethCoingeckoId,
         chain: "Linea",
       });
+    });
 
-      expect(ethMainnetId).toBeDefined();
-      expect(ethLineaId).toBeDefined();
+    it("creates same coingecko_id with different chains as separate assets", () => {
+      expect(typeof ethMainnetId).toBe("string");
+      expect(ethMainnetId).not.toBe("");
+      expect(typeof ethLineaId).toBe("string");
+      expect(ethLineaId).not.toBe("");
       expect(ethMainnetId).not.toBe(ethLineaId);
     });
 

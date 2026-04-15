@@ -88,6 +88,8 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
   validateName(input.name, 100, "Name");
   if (input.ticker) validateName(input.ticker, 20, "Ticker");
   validateCoinGeckoId(input.coingecko_id);
+  const trimmedChain = input.chain?.trim() || null;
+  if (trimmedChain) validateName(trimmedChain, 50, "Chain");
 
   const { data, error } = await supabase
     .from("crypto_assets")
@@ -96,7 +98,7 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
       ticker: input.ticker.toUpperCase(),
       name: input.name,
       coingecko_id: input.coingecko_id,
-      chain: input.chain ?? null,
+      chain: trimmedChain,
       subcategory: input.subcategory?.trim() || null,
       image_url: validateImageUrl(input.image_url),
     })
@@ -107,14 +109,14 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
     if (error.code === "23505") {
       // Asset already exists — return the existing id so a position can still be added
       // Must match chain too: constraint is (user_id, coingecko_id, COALESCE(chain, ''))
-      const q = supabase
+      // Supabase query builder methods return new builders — must reassign, not chain in-place
+      const baseQ = supabase
         .from("crypto_assets")
         .select("id")
         .eq("user_id", user.id)
         .eq("coingecko_id", input.coingecko_id)
         .is("deleted_at", null);
-      if (input.chain) q.eq("chain", input.chain);
-      else q.is("chain", null);
+      const q = trimmedChain ? baseQ.eq("chain", trimmedChain) : baseQ.is("chain", null);
       const { data: existing } = await q.single();
       if (existing) {
         revalidateDashboard();
@@ -152,7 +154,12 @@ export async function updateCryptoAsset(
 
   // Build dynamic payload — only include fields that were explicitly passed
   const updatePayload: Record<string, unknown> = {};
-  if (fields.chain !== undefined) updatePayload.chain = fields.chain?.trim() || null;
+  let normalizedChain: string | null | undefined;
+  if (fields.chain !== undefined) {
+    normalizedChain = fields.chain?.trim() || null;
+    if (normalizedChain) validateName(normalizedChain, 50, "Chain");
+    updatePayload.chain = normalizedChain;
+  }
   if (fields.subcategory !== undefined) updatePayload.subcategory = fields.subcategory?.trim() || null;
   if (Object.keys(updatePayload).length === 0) return;
 
@@ -174,9 +181,8 @@ export async function updateCryptoAsset(
   if (error) {
     if (error.code === "23505") {
       const ticker = before?.ticker?.toUpperCase() ?? "this asset";
-      const chain = updatePayload.chain as string | null;
       throw new Error(
-        `You already have ${ticker} on the "${chain ?? "no chain"}" chain. Use the existing entry instead.`
+        `You already have ${ticker} on the "${normalizedChain ?? "no chain"}" chain. Use the existing entry instead.`
       );
     }
     throw new Error(error.message);
@@ -270,6 +276,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   validateUUID(input.wallet_id, "Wallet ID");
   validateQuantity(input.quantity, "Crypto quantity");
   if (input.apy != null) validateApy(input.apy, "APY");
+  const normalizedNetwork = input.network?.trim() || null;
+  if (normalizedNetwork) validateName(normalizedNetwork, 50, "Network");
 
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -345,7 +353,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         quantity: input.quantity,
         acquisition_method: input.acquisition_method,
         apy: input.apy,
-        network: input.network,
+        network: normalizedNetwork,
         last_was_adjustment: opts?.isAdjustment ?? false,
         last_was_transfer: opts?.transferGroupId != null,
       })).eq("id", before.id);
@@ -357,7 +365,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         quantity: input.quantity,
         acquisition_method: input.acquisition_method ?? "bought",
         apy: input.apy ?? 0,
-        network: input.network?.trim() || null,
+        network: normalizedNetwork,
         last_was_adjustment: opts?.isAdjustment ?? false,
         last_was_transfer: opts?.transferGroupId != null,
       });
@@ -375,7 +383,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
             quantity: input.quantity,
             acquisition_method: input.acquisition_method,
             apy: input.apy,
-            network: input.network,
+            network: normalizedNetwork,
             last_was_adjustment: opts?.isAdjustment ?? false,
             last_was_transfer: opts?.transferGroupId != null,
           })).eq("id", existing.id);

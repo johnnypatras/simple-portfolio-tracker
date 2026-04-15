@@ -1574,7 +1574,7 @@ function ExpandedCryptoRow({
             <td key={col.key} className={`${assetPl} pr-4 py-2`}>
               <span className="text-xs text-zinc-500">{walletName}</span>
               {network && (
-                <span className="ml-1.5 text-[10px] text-zinc-600">· {network}</span>
+                <span className="ml-1.5 text-[10px] text-zinc-400">· {network}</span>
               )}
             </td>
           );
@@ -1756,7 +1756,7 @@ function MobileCryptoCard({
                       <div key={pos.id} className="flex gap-2 text-xs min-w-0">
                         <span className="text-zinc-500 truncate shrink min-w-0">
                           {pos.wallet_name}
-                          {pos.network && <span className="text-zinc-600"> · {pos.network}</span>}
+                          {pos.network && <span className="text-zinc-400"> · {pos.network}</span>}
                         </span>
                         <span className="text-zinc-400 tabular-nums shrink-0 text-right whitespace-nowrap ml-auto">
                           {formatQuantity(pos.quantity, 8)} · {posValue > 0 ? formatCurrency(posValue, primaryCurrency) : "—"}

@@ -6,6 +6,7 @@ import type { PortfolioSnapshot } from "@/lib/types";
 
 /** Round to 2 decimal places (matching Edge Function's round2) */
 import { round2 } from "@/lib/format";
+import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
 
 /**
  * Save (upsert) today's portfolio snapshot.
@@ -129,7 +130,7 @@ export async function getSnapshots(
     .select("*")
     .gte("snapshot_date", sinceStr)
     .order("snapshot_date", { ascending: true })
-    .limit(100_000);
+    .limit(MAX_SNAPSHOTS_LIMIT);
 
   if (error) {
     console.error("[snapshots] Failed to fetch snapshots:", error.message);

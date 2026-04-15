@@ -33,7 +33,7 @@ import type {
 // ─── Full JSON backup ───────────────────────────────────
 
 export interface PortfolioBackup {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   exportedAt: string;
   primaryCurrency: string;
   // ── v1 entities ──
@@ -115,7 +115,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
   }
 
   return {
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     primaryCurrency: profile.primary_currency,
     institutions,

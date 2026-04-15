@@ -295,6 +295,87 @@ describe("buildPaletteHoldings", () => {
     expect(stock.change24h).toBe(2.5);
   });
 
+  describe("chain disambiguation", () => {
+    const baseAsset = (overrides: Partial<CryptoAssetWithPositions>): CryptoAssetWithPositions => ({
+      id: "ca1",
+      name: "Ethereum",
+      coingecko_id: "ethereum",
+      ticker: "eth",
+      chain: null,
+      image_url: null,
+      subcategory: null,
+      user_id: "u",
+      created_at: "",
+      positions: [
+        {
+          id: "p1",
+          quantity: 1,
+          crypto_asset_id: "ca1",
+          wallet_id: "w1",
+          acquisition_method: "bought",
+          apy: 0,
+          wallet_name: "W",
+          wallet_type: "non_custodial",
+          updated_at: "",
+        },
+      ],
+      ...overrides,
+    });
+
+    it("single coingecko_id keeps the original name unchanged", () => {
+      const result = buildPaletteHoldings({
+        cryptoAssets: [baseAsset({ chain: "Ethereum" })],
+        cryptoPrices: { ethereum: { usd: 3000, eur: 2700, usd_24h_change: 0, eur_24h_change: 0 } },
+        stockAssets: [],
+        stockPrices: {},
+        cashAccounts: [],
+        fxRates: { USD: 1 },
+        primaryCurrency: "USD",
+        pathPrefix: "/dashboard",
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("Ethereum");
+    });
+
+    it("duplicate coingecko_ids with chains get '(Chain)' suffix on each name", () => {
+      const result = buildPaletteHoldings({
+        cryptoAssets: [
+          baseAsset({ id: "ca1", chain: "Ethereum" }),
+          baseAsset({ id: "ca2", chain: "Linea" }),
+        ],
+        cryptoPrices: { ethereum: { usd: 3000, eur: 2700, usd_24h_change: 0, eur_24h_change: 0 } },
+        stockAssets: [],
+        stockPrices: {},
+        cashAccounts: [],
+        fxRates: { USD: 1 },
+        primaryCurrency: "USD",
+        pathPrefix: "/dashboard",
+      });
+      expect(result).toHaveLength(2);
+      const names = result.map((r) => r.name).sort();
+      expect(names).toEqual(["Ethereum (Ethereum)", "Ethereum (Linea)"]);
+    });
+
+    it("duplicate coingecko_ids with null chain on one asset leaves that name unchanged", () => {
+      const result = buildPaletteHoldings({
+        cryptoAssets: [
+          baseAsset({ id: "ca1", chain: null }),
+          baseAsset({ id: "ca2", chain: "Arbitrum" }),
+        ],
+        cryptoPrices: { ethereum: { usd: 3000, eur: 2700, usd_24h_change: 0, eur_24h_change: 0 } },
+        stockAssets: [],
+        stockPrices: {},
+        cashAccounts: [],
+        fxRates: { USD: 1 },
+        primaryCurrency: "USD",
+        pathPrefix: "/dashboard",
+      });
+      expect(result).toHaveLength(2);
+      const names = result.map((r) => r.name).sort();
+      expect(names).toEqual(["Ethereum", "Ethereum (Arbitrum)"]);
+    });
+  });
+
   it("stock with missing price returns 0 for value and pricePerUnit", () => {
     const result = buildPaletteHoldings({
       cryptoAssets: [],

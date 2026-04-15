@@ -15,6 +15,7 @@ import type {
   PortfolioSnapshot,
 } from "@/lib/types";
 import { normalizeCategory } from "@/lib/stock-categories";
+import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
 
 // ─── Shared portfolio bundle ───────────────────────────
 
@@ -72,7 +73,7 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     // Explicit .limit() overrides PostgREST's 1000-row default.
     admin.from("portfolio_snapshots").select("*").eq("user_id", userId)
       .order("snapshot_date", { ascending: true })
-      .limit(100_000),
+      .limit(MAX_SNAPSHOTS_LIMIT),
   ]);
 
   if (profileRes.error || !profileRes.data) return null;

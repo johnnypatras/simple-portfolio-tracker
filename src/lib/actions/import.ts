@@ -65,12 +65,12 @@ export async function validateBackup(
 
   const d = data as Record<string, unknown>;
 
-  // Accept v1, v2, and v3
-  if (d.version !== 1 && d.version !== 2 && d.version !== 3) {
+  // Accept v1, v2, v3, and v4 (v4 added network field on crypto_positions)
+  if (d.version !== 1 && d.version !== 2 && d.version !== 3 && d.version !== 4) {
     return { ok: false, error: `Unsupported backup version: ${d.version}` };
   }
 
-  const isV3 = d.version === 3;
+  const isUnifiedCash = d.version === 3 || d.version === 4;
 
   // Required arrays differ by version
   const requiredArrays = [
@@ -85,7 +85,7 @@ export async function validateBackup(
   }
 
   // v3 requires cashAccounts; v1/v2 requires the 3 legacy arrays
-  if (isV3) {
+  if (isUnifiedCash) {
     if (!Array.isArray(d.cashAccounts)) {
       return { ok: false, error: "Missing or invalid field: cashAccounts" };
     }
@@ -109,7 +109,7 @@ export async function validateBackup(
   };
 
   // Add cash shape rules based on version
-  if (isV3) {
+  if (isUnifiedCash) {
     shapeRules.cashAccounts = ["currency", "balance"];
   } else {
     shapeRules.bankAccounts = ["name", "currency", "balance"];
@@ -145,7 +145,7 @@ export async function validateBackup(
 
   // ── Normalize v1/v2 → v3 format ────────────────────────
   // Convert 3 legacy arrays into unified cashAccounts for consistent processing
-  if (!isV3) {
+  if (!isUnifiedCash) {
     const cashAccounts: Record<string, unknown>[] = [];
 
     for (const ba of (d.bankAccounts as Record<string, unknown>[])) {
@@ -204,10 +204,16 @@ export async function validateBackup(
     }
     // Crypto/stock positions are nested — validate quantities
     for (const [i, asset] of (d.cryptoAssets as Record<string, unknown>[]).entries()) {
+      if (asset.chain != null && String(asset.chain).trim()) {
+        validateName(String(asset.chain).trim(), 50, `cryptoAssets[${i}].chain`);
+      }
       const positions = (asset as Record<string, unknown>).positions;
       if (Array.isArray(positions)) {
         for (const [j, pos] of (positions as Record<string, unknown>[]).entries()) {
           validateQuantity(Number(pos.quantity), `cryptoAssets[${i}].positions[${j}].quantity`);
+          if (pos.network != null && String(pos.network).trim()) {
+            validateName(String(pos.network).trim(), 50, `cryptoAssets[${i}].positions[${j}].network`);
+          }
         }
       }
     }
@@ -507,7 +513,7 @@ export async function importFromJson(
           coingecko_id: /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(asset.coingecko_id)
             ? asset.coingecko_id
             : asset.coingecko_id.replace(/[^a-z0-9-]/gi, "").toLowerCase(),
-          chain: asset.chain ?? null,
+          chain: asset.chain?.trim() || null,
           subcategory: asset.subcategory ?? null,
           image_url: asset.image_url ?? null,
         })
@@ -533,7 +539,7 @@ export async function importFromJson(
         quantity: pos.quantity,
         acquisition_method: pos.acquisition_method ?? "bought",
         apy: pos.apy ?? 0,
-        network: pos.network ?? null,
+        network: pos.network?.trim() || null,
         last_was_adjustment: pos.last_was_adjustment ?? false,
         last_was_transfer: pos.last_was_transfer ?? false,
       });

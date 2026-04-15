@@ -196,7 +196,7 @@ describe("import constraints", () => {
     let user: { client: SupabaseClient; userId: string; cleanup: () => void };
 
     beforeAll(async () => {
-      user = await createTestUser("import-multichain@test.local");
+      user = await createTestUser();
     });
 
     afterAll(() => user.cleanup());

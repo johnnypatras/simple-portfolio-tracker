@@ -385,7 +385,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
 
           {!detecting && existingChainsForSelected.length > 0 && (
             <div className="text-xs text-blue-400 bg-blue-950/30 border border-blue-900/40 rounded px-3 py-2 mb-3">
-              You already have {selectedCoin!.symbol.toUpperCase()} on {existingChainsForSelected.map((c) => c ?? "no chain").join(", ")}.
+              You already have {selectedCoin?.symbol.toUpperCase()} on {existingChainsForSelected.map((c) => c ?? "no chain").join(", ")}.
               {chain && !existingChainsForSelected.includes(chain) ? " Adding on a different chain will create a separate entry." : ""}
             </div>
           )}
