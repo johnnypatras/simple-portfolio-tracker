@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { validateUUID } from "@/lib/validation";
 import { MAX_SHARE_EXPIRY_DAYS } from "@/lib/constants";
 import type { Profile, UserStatus, InviteCode } from "@/lib/types";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export async function getUsers(): Promise<Profile[]> {
 }
 
 export async function approveUser(userId: string): Promise<void> {
+  return captureAction("admin.approveUser", async () => {
   validateUUID(userId, "User ID");
   await requireAdmin();
   const admin = createAdminClient();
@@ -54,9 +56,11 @@ export async function approveUser(userId: string): Promise<void> {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  });
 }
 
 export async function rejectUser(userId: string): Promise<void> {
+  return captureAction("admin.rejectUser", async () => {
   validateUUID(userId, "User ID");
   await requireAdmin();
   const admin = createAdminClient();
@@ -72,9 +76,11 @@ export async function rejectUser(userId: string): Promise<void> {
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  });
 }
 
 export async function suspendUser(userId: string): Promise<void> {
+  return captureAction("admin.suspendUser", async () => {
   validateUUID(userId, "User ID");
   const adminId = await requireAdmin();
   if (userId === adminId) throw new Error("Cannot suspend yourself");
@@ -87,9 +93,11 @@ export async function suspendUser(userId: string): Promise<void> {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  });
 }
 
 export async function unsuspendUser(userId: string): Promise<void> {
+  return captureAction("admin.unsuspendUser", async () => {
   validateUUID(userId, "User ID");
   await requireAdmin();
   const admin = createAdminClient();
@@ -101,6 +109,7 @@ export async function unsuspendUser(userId: string): Promise<void> {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  });
 }
 
 // ─── Invite Codes ─────────────────────────────────────────
@@ -145,6 +154,7 @@ export async function getInviteCodes(): Promise<InviteCode[]> {
 export async function createInviteCode(
   expiresInDays?: number | null
 ): Promise<string> {
+  return captureAction("admin.createInviteCode", async () => {
   const adminId = await requireAdmin();
   const admin = createAdminClient();
 
@@ -167,9 +177,11 @@ export async function createInviteCode(
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
   return code;
+  });
 }
 
 export async function deleteInviteCode(codeId: string): Promise<void> {
+  return captureAction("admin.deleteInviteCode", async () => {
   validateUUID(codeId, "Invite code ID");
   await requireAdmin();
   const admin = createAdminClient();
@@ -182,4 +194,5 @@ export async function deleteInviteCode(codeId: string): Promise<void> {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  });
 }

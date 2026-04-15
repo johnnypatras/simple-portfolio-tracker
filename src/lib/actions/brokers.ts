@@ -9,6 +9,7 @@ import {
   renameInstitution,
 } from "@/lib/actions/institutions";
 import { validateUUID, validateName } from "@/lib/validation";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 export async function getBrokers(): Promise<Broker[]> {
   const supabase = await createServerSupabaseClient();
@@ -35,6 +36,7 @@ export async function createBroker(
     also_bank?: boolean;
   }
 ): Promise<string> {
+  return captureAction("brokers.createBroker", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -125,6 +127,7 @@ export async function createBroker(
 
   if (!created) throw new Error("Failed to create broker");
   return created.id;
+  });
 }
 
 export async function updateBroker(
@@ -138,6 +141,7 @@ export async function updateBroker(
     also_bank?: boolean;
   }
 ) {
+  return captureAction("brokers.updateBroker", async () => {
   validateUUID(id, "Broker ID");
   validateName(input.name.trim(), 100, "Broker name");
   const supabase = await createServerSupabaseClient();
@@ -244,9 +248,11 @@ export async function updateBroker(
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
+  });
 }
 
 export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }) {
+  return captureAction("brokers.deleteBroker", async () => {
   validateUUID(id, "Broker ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -323,4 +329,5 @@ export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }
 
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
+  });
 }

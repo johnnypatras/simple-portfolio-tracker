@@ -9,6 +9,7 @@ import { validateName, validateUUID } from "@/lib/validation";
 import { MAX_SHARE_EXPIRY_DAYS } from "@/lib/constants";
 import type { ShareScope } from "@/lib/share-utils";
 import type { ShareLink, CreateShareLinkOpts, ValidatedShare } from "@/lib/types";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 // ─── Types ──────────────────────────────────────────────
 //
@@ -25,6 +26,7 @@ import type { ShareLink, CreateShareLinkOpts, ValidatedShare } from "@/lib/types
 export async function createShareLink(
   opts: CreateShareLinkOpts = {}
 ): Promise<string> {
+  return captureAction("shares.createShareLink", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -56,10 +58,12 @@ export async function createShareLink(
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
   return token;
+  });
 }
 
 /** Revoke a share (sets revoked_at). */
 export async function revokeShare(shareId: string): Promise<void> {
+  return captureAction("shares.revokeShare", async () => {
   validateUUID(shareId, "Share ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -73,6 +77,7 @@ export async function revokeShare(shareId: string): Promise<void> {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/settings");
+  });
 }
 
 /** List all link shares created by the current user. */

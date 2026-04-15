@@ -11,6 +11,7 @@ import {
 import { validateUUID, validateName } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
 import { VALID_WALLET_TYPES, MAX_LABEL_LENGTH } from "@/lib/constants";
+import { captureAction } from "@/lib/actions/with-sentry";
 import type { WalletType } from "@/lib/types";
 
 function assertWalletType(v: unknown): asserts v is WalletType {
@@ -44,6 +45,7 @@ export async function createWallet(
   input: WalletInput,
   opts?: { also_broker?: boolean; also_bank?: boolean }
 ): Promise<string> {
+  return captureAction("wallets.createWallet", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -140,6 +142,7 @@ export async function createWallet(
 
   if (!created) throw new Error("Failed to create wallet");
   return created.id;
+  });
 }
 
 /**
@@ -147,6 +150,7 @@ export async function createWallet(
  * Used for non-custodial wallets like MetaMask, Ledger, etc.
  */
 export async function createStandaloneWallet(input: WalletInput): Promise<void> {
+  return captureAction("wallets.createStandaloneWallet", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -181,6 +185,7 @@ export async function createStandaloneWallet(input: WalletInput): Promise<void> 
 
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
+  });
 }
 
 export async function updateWallet(
@@ -188,6 +193,7 @@ export async function updateWallet(
   input: WalletInput,
   opts?: { also_broker?: boolean; also_bank?: boolean }
 ) {
+  return captureAction("wallets.updateWallet", async () => {
   validateUUID(id, "Wallet ID");
   validateName(input.name.trim(), 100, "Wallet name");
   assertWalletType(input.wallet_type);
@@ -303,9 +309,11 @@ export async function updateWallet(
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
   if (opts?.also_bank) revalidatePath("/dashboard/cash");
+  });
 }
 
 export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }) {
+  return captureAction("wallets.deleteWallet", async () => {
   validateUUID(id, "Wallet ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -382,4 +390,5 @@ export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }
 
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
+  });
 }

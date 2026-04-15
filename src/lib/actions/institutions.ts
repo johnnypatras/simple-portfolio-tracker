@@ -6,6 +6,7 @@ import type { InstitutionWithRoles, InstitutionRole, PrivacyLabel } from "@/lib/
 import { logActivity } from "@/lib/actions/activity-log";
 import { validateUUID, validateName, validateCurrency } from "@/lib/validation";
 import { MAX_LABEL_LENGTH } from "@/lib/constants";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 /**
  * Fetch all institutions for the current user with computed roles.
@@ -53,6 +54,7 @@ export async function getInstitutionsWithRoles(): Promise<InstitutionWithRoles[]
  * Returns the institution id.
  */
 export async function findOrCreateInstitution(name: string): Promise<string> {
+  return captureAction("institutions.findOrCreateInstitution", async () => {
   const trimmed = name.trim();
   validateName(trimmed, 100, "Institution name");
   const supabase = await createServerSupabaseClient();
@@ -81,6 +83,7 @@ export async function findOrCreateInstitution(name: string): Promise<string> {
 
   if (error) throw new Error(error.message);
   return created.id;
+  });
 }
 
 /**
@@ -88,6 +91,7 @@ export async function findOrCreateInstitution(name: string): Promise<string> {
  * change to all linked wallets, brokers, and cash_accounts.
  */
 export async function renameInstitution(id: string, newName: string): Promise<void> {
+  return captureAction("institutions.renameInstitution", async () => {
   validateUUID(id, "Institution ID");
   validateName(newName.trim(), 100, "Institution name");
   const supabase = await createServerSupabaseClient();
@@ -105,6 +109,7 @@ export async function renameInstitution(id: string, newName: string): Promise<vo
   // Refresh entity_name on activity_log for all cash accounts at this institution
   const { refreshCashEntityNames } = await import("@/lib/actions/cash-accounts");
   await refreshCashEntityNames(supabase, user.id, { institution_id: id });
+  });
 }
 
 /**
@@ -124,6 +129,7 @@ export async function updateInstitutionRoles(
     bank_currency?: string;
   }
 ): Promise<void> {
+  return captureAction("institutions.updateInstitutionRoles", async () => {
   validateUUID(institutionId, "Institution ID");
   if (opts.newName) validateName(opts.newName.trim(), 100, "Institution name");
   if (opts.country !== undefined && opts.country.trim()) validateName(opts.country.trim(), MAX_LABEL_LENGTH, "Country");
@@ -268,6 +274,7 @@ export async function updateInstitutionRoles(
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/cash");
+  });
 }
 
 /**
@@ -280,6 +287,7 @@ export async function removeInstitutionRole(
   role: "wallet" | "broker" | "bank",
   opts?: { isAdjustment?: boolean }
 ): Promise<void> {
+  return captureAction("institutions.removeInstitutionRole", async () => {
   validateUUID(institutionId, "Institution ID");
   const supabase = await createServerSupabaseClient();
   const {
@@ -328,12 +336,14 @@ export async function removeInstitutionRole(
   // Institution persists even if empty — user can delete it explicitly via the edit modal
   revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/cash");
+  });
 }
 
 /**
  * Delete an institution and all its children (cascade trigger handles soft-deletes).
  */
 export async function deleteInstitution(institutionId: string, opts?: { isAdjustment?: boolean }): Promise<void> {
+  return captureAction("institutions.deleteInstitution", async () => {
   validateUUID(institutionId, "Institution ID");
   const supabase = await createServerSupabaseClient();
   const {
@@ -395,4 +405,5 @@ export async function deleteInstitution(institutionId: string, opts?: { isAdjust
   revalidatePath("/dashboard/cash");
   revalidatePath("/dashboard/crypto");
   revalidatePath("/dashboard/stocks");
+  });
 }

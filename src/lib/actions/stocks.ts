@@ -11,8 +11,10 @@ import type {
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin, validateTags } from "@/lib/validation";
+import { partialUpdate } from "@/lib/partial-update";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 /** Get all stock assets with their positions and broker names */
 export async function getStockAssetsWithPositions(): Promise<
@@ -71,6 +73,7 @@ export async function getStockAssetsWithPositions(): Promise<
 
 /** Add a new stock/ETF asset. Returns the new asset's id. */
 export async function createStockAsset(input: StockAssetInput, opts?: { isAdjustment?: boolean; effectiveDate?: string }): Promise<string> {
+  return captureAction("stocks.createStockAsset", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -147,6 +150,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
   });
   revalidateDashboard();
   return data.id;
+  });
 }
 
 /** Update a stock asset's editable fields (name, yahoo_ticker, isin, category, subcategory, tags) */
@@ -161,6 +165,7 @@ export async function updateStockAsset(
     tags?: string[];
   }
 ) {
+  return captureAction("stocks.updateStockAsset", async () => {
   validateUUID(id, "Stock asset ID");
   const supabase = await createServerSupabaseClient();
   const {
@@ -168,24 +173,37 @@ export async function updateStockAsset(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const updatePayload: Record<string, unknown> = {};
+  // Normalize + validate each field once, keeping `undefined` for fields the
+  // caller didn't pass so partialUpdate() can strip them. Explicit-null
+  // (e.g. `isin: null`) is preserved — that's the FK-wipe bug fix point.
+  let normalizedName: string | undefined;
   if (fields.name !== undefined) {
-    const trimmed = fields.name.trim();
-    validateName(trimmed, 100, "Name");
-    updatePayload.name = trimmed;
+    normalizedName = fields.name.trim();
+    validateName(normalizedName, 100, "Name");
   }
+  let normalizedYahoo: string | null | undefined;
   if (fields.yahoo_ticker !== undefined) {
-    if (fields.yahoo_ticker?.trim()) validateYahooTicker(fields.yahoo_ticker.trim());
-    updatePayload.yahoo_ticker = fields.yahoo_ticker?.trim() || null;
+    const trimmed = fields.yahoo_ticker?.trim();
+    if (trimmed) validateYahooTicker(trimmed);
+    normalizedYahoo = trimmed || null;
   }
-  if (fields.isin !== undefined) updatePayload.isin = validateIsin(fields.isin);
-  if (fields.category !== undefined) updatePayload.category = fields.category;
-  if (fields.tags !== undefined) updatePayload.tags = validateTags(fields.tags);
+  const normalizedIsin = fields.isin !== undefined ? validateIsin(fields.isin) : undefined;
+  let normalizedSubcategory: string | null | undefined;
   if (fields.subcategory !== undefined) {
     const trimmed = fields.subcategory?.trim();
     if (trimmed) validateName(trimmed, 100, "Subcategory");
-    updatePayload.subcategory = trimmed || null;
+    normalizedSubcategory = trimmed || null;
   }
+  const normalizedTags = fields.tags !== undefined ? validateTags(fields.tags) : undefined;
+
+  const updatePayload = partialUpdate({
+    name: normalizedName,
+    yahoo_ticker: normalizedYahoo,
+    isin: normalizedIsin,
+    category: fields.category,
+    tags: normalizedTags,
+    subcategory: normalizedSubcategory,
+  });
 
   if (Object.keys(updatePayload).length === 0) return;
 
@@ -232,10 +250,12 @@ export async function updateStockAsset(
     after_snapshot: after,
   });
   revalidateDashboard();
+  });
 }
 
 /** Soft-delete a stock asset — individually deletes child positions first for activity logging */
 export async function deleteStockAsset(id: string, opts?: { isAdjustment?: boolean }) {
+  return captureAction("stocks.deleteStockAsset", async () => {
   validateUUID(id, "Stock asset ID");
   const supabase = await createServerSupabaseClient();
   const {
@@ -285,6 +305,7 @@ export async function deleteStockAsset(id: string, opts?: { isAdjustment?: boole
     after_snapshot: null,
   });
   revalidateDashboard();
+  });
 }
 
 /** Upsert a position (set quantity for a stock asset at a specific broker) */
@@ -295,6 +316,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  return captureAction("stocks.upsertStockPosition", async () => {
   validateUUID(input.stock_asset_id, "Stock asset ID");
   validateUUID(input.broker_id, "Broker ID");
   validateQuantity(input.quantity, "Stock quantity");
@@ -446,6 +468,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   }
 
   revalidateDashboard();
+  });
 }
 
 /** Soft-delete a specific stock position */
@@ -456,6 +479,7 @@ export async function deleteStockPosition(positionId: string, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  return captureAction("stocks.deleteStockPosition", async () => {
   validateUUID(positionId, "Stock position ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -512,4 +536,5 @@ export async function deleteStockPosition(positionId: string, opts?: {
     effective_date: opts?.effectiveDate,
   });
   revalidateDashboard();
+  });
 }

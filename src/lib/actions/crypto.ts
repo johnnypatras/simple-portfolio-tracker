@@ -13,6 +13,7 @@ import { getCoinImage } from "@/lib/prices/coingecko";
 import { partialUpdate } from "@/lib/partial-update";
 import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy } from "@/lib/validation";
 import { computeActivityFx, emptyFx } from "@/lib/activity-fx";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 /** Get all crypto assets with their positions and wallet names */
 export async function getCryptoAssetsWithPositions(): Promise<
@@ -79,6 +80,7 @@ export async function getCryptoAssetsWithPositions(): Promise<
 
 /** Add a new crypto asset. Returns the new asset's id. */
 export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdjustment?: boolean; effectiveDate?: string }): Promise<string> {
+  return captureAction("crypto.createCryptoAsset", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -140,6 +142,7 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
   });
   revalidateDashboard();
   return data.id;
+  });
 }
 
 /** Update mutable fields on an existing crypto asset (chain, subcategory) */
@@ -147,20 +150,28 @@ export async function updateCryptoAsset(
   id: string,
   fields: { chain?: string | null; subcategory?: string | null }
 ) {
+  return captureAction("crypto.updateCryptoAsset", async () => {
   validateUUID(id, "Crypto asset ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // Build dynamic payload — only include fields that were explicitly passed
-  const updatePayload: Record<string, unknown> = {};
+  // Normalize inputs once; partialUpdate() strips `undefined` keys so that
+  // "not provided" is distinguished from "explicitly null". validateName
+  // runs only when a non-empty trimmed value is provided.
   let normalizedChain: string | null | undefined;
   if (fields.chain !== undefined) {
     normalizedChain = fields.chain?.trim() || null;
     if (normalizedChain) validateName(normalizedChain, 50, "Chain");
-    updatePayload.chain = normalizedChain;
   }
-  if (fields.subcategory !== undefined) updatePayload.subcategory = fields.subcategory?.trim() || null;
+  const normalizedSubcategory = fields.subcategory !== undefined
+    ? (fields.subcategory?.trim() || null)
+    : undefined;
+
+  const updatePayload = partialUpdate({
+    chain: normalizedChain,
+    subcategory: normalizedSubcategory,
+  });
   if (Object.keys(updatePayload).length === 0) return;
 
   // Capture before snapshot
@@ -209,10 +220,12 @@ export async function updateCryptoAsset(
     after_snapshot: after,
   });
   revalidateDashboard();
+  });
 }
 
 /** Soft-delete a crypto asset — individually deletes child positions first for activity logging */
 export async function deleteCryptoAsset(id: string, opts?: { isAdjustment?: boolean }) {
+  return captureAction("crypto.deleteCryptoAsset", async () => {
   validateUUID(id, "Crypto asset ID");
   const supabase = await createServerSupabaseClient();
   const {
@@ -262,6 +275,7 @@ export async function deleteCryptoAsset(id: string, opts?: { isAdjustment?: bool
     after_snapshot: null,
   });
   revalidateDashboard();
+  });
 }
 
 /** Upsert a position (set quantity for a crypto asset in a specific wallet) */
@@ -272,6 +286,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  return captureAction("crypto.upsertPosition", async () => {
   validateUUID(input.crypto_asset_id, "Crypto asset ID");
   validateUUID(input.wallet_id, "Wallet ID");
   validateQuantity(input.quantity, "Crypto quantity");
@@ -439,6 +454,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   }
 
   revalidateDashboard();
+  });
 }
 
 /** Soft-delete a specific position */
@@ -449,6 +465,7 @@ export async function deletePosition(positionId: string, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
 }) {
+  return captureAction("crypto.deletePosition", async () => {
   validateUUID(positionId, "Crypto position ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -508,6 +525,7 @@ export async function deletePosition(positionId: string, opts?: {
     effective_date: opts?.effectiveDate,
   });
   revalidateDashboard();
+  });
 }
 
 /**
@@ -516,6 +534,7 @@ export async function deletePosition(positionId: string, opts?: {
  * and processes sequentially to respect CoinGecko rate limits.
  */
 export async function backfillCryptoImages() {
+  return captureAction("crypto.backfillCryptoImages", async () => {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
@@ -551,4 +570,5 @@ export async function backfillCryptoImages() {
   if (batch.length > 0) {
     revalidateDashboard();
   }
+  });
 }

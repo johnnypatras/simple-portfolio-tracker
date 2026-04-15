@@ -8,6 +8,7 @@ import { validateUUID, validateQuantity, validateAmount, validateCurrency, valid
 import { partialUpdate } from "@/lib/partial-update";
 import { round2 } from "@/lib/format";
 import { MAX_NOTES_LENGTH } from "@/lib/constants";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 const VALID_ASSET_TYPES = new Set(["crypto", "stock", "cash", "other"]);
 const VALID_TRADE_ACTIONS = new Set(["buy", "sell"]);
@@ -71,6 +72,7 @@ export async function getTradeEntries(): Promise<TradeEntry[]> {
 }
 
 export async function createTradeEntry(input: TradeEntryInput) {
+  return captureAction("trades.createTradeEntry", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -112,9 +114,11 @@ export async function createTradeEntry(input: TradeEntryInput) {
     after_snapshot: created,
   });
   revalidatePath("/dashboard/diary");
+  });
 }
 
 export async function updateTradeEntry(id: string, input: TradeEntryInput) {
+  return captureAction("trades.updateTradeEntry", async () => {
   validateUUID(id, "Trade entry ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -177,9 +181,11 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
     after_snapshot: after,
   });
   revalidatePath("/dashboard/diary");
+  });
 }
 
 export async function deleteTradeEntry(id: string) {
+  return captureAction("trades.deleteTradeEntry", async () => {
   validateUUID(id, "Trade entry ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -215,4 +221,5 @@ export async function deleteTradeEntry(id: string) {
     after_snapshot: null,
   });
   revalidatePath("/dashboard/diary");
+  });
 }

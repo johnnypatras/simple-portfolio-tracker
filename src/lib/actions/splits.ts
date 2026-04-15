@@ -6,6 +6,7 @@ import { validateUUID } from "@/lib/validation";
 import { isValidPastOrTodayDate, extractQuantity } from "@/lib/split-helpers";
 import type { ActivityLog, SplitLeg } from "@/lib/types";
 import { round2 } from "@/lib/format";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ export async function backdateActivityEntry(
   entryId: string,
   effectiveDate: string | null,
 ): Promise<{ success: boolean; message: string }> {
+  return captureAction("splits.backdateActivityEntry", async () => {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, message: "Not authenticated" };
@@ -59,6 +61,7 @@ export async function backdateActivityEntry(
 
   revalidateDashboard();
   return { success: true, message: effectiveDate ? `Effective date set to ${effectiveDate}` : "Effective date cleared" };
+  });
 }
 
 // ── Operation 2: Split + Backdate ────────────────────────
@@ -67,6 +70,7 @@ export async function splitActivityEntry(
   parentId: string,
   legs: SplitLeg[],
 ): Promise<{ success: boolean; message: string }> {
+  return captureAction("splits.splitActivityEntry", async () => {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, message: "Not authenticated" };
@@ -205,6 +209,7 @@ export async function splitActivityEntry(
 
   revalidateDashboard();
   return { success: true, message: `Split into ${legs.length} date allocations` };
+  });
 }
 
 // ── Operation 3: Unsplit ─────────────────────────────────
@@ -212,6 +217,7 @@ export async function splitActivityEntry(
 export async function unsplitActivityEntry(
   parentId: string,
 ): Promise<{ success: boolean; message: string }> {
+  return captureAction("splits.unsplitActivityEntry", async () => {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, message: "Not authenticated" };
@@ -251,4 +257,5 @@ export async function unsplitActivityEntry(
 
   revalidateDashboard();
   return { success: true, message: "Split reversed — original entry restored" };
+  });
 }

@@ -9,6 +9,7 @@ import { validateAmount, validateApy, validateCurrency, validateName, validateUU
 import { partialUpdate } from "@/lib/partial-update";
 import { round2 } from "@/lib/format";
 import { type FxResult, emptyFx } from "@/lib/activity-fx";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 // CashAccountOpts is defined in @/lib/types — Turbopack strips re-exports
 // from "use server" modules.
@@ -111,6 +112,7 @@ export async function refreshCashEntityNames(
   userId: string,
   filter: { institution_id?: string; wallet_id?: string; broker_id?: string; cash_id?: string },
 ): Promise<void> {
+  return captureAction("cash-accounts.refreshCashEntityNames", async () => {
   let query = supabase
     .from("cash_accounts")
     .select("id, name, currency, institution_id, wallet_id, broker_id, institutions(name), wallets(name), brokers(name)")
@@ -150,6 +152,7 @@ export async function refreshCashEntityNames(
       .eq("user_id", userId);
     if (updateErr) console.warn(`[refreshCashEntityNames] Failed to update entity_name for ${ca.id}:`, updateErr.message);
   }
+  });
 }
 
 // ─── FX computation helpers ──────────────────────────────
@@ -253,6 +256,7 @@ export async function createCashAccount(
   input: CashAccountInput,
   opts?: CashAccountOpts,
 ): Promise<string> {
+  return captureAction("cash-accounts.createCashAccount", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -339,6 +343,7 @@ export async function createCashAccount(
   revalidateCashPaths();
   if (!created) throw new Error("Failed to create cash account");
   return created.id;
+  });
 }
 
 export async function updateCashAccount(
@@ -346,6 +351,7 @@ export async function updateCashAccount(
   input: CashAccountInput,
   opts?: CashAccountOpts,
 ): Promise<void> {
+  return captureAction("cash-accounts.updateCashAccount", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -452,12 +458,14 @@ export async function updateCashAccount(
   }
 
   revalidateCashPaths();
+  });
 }
 
 export async function deleteCashAccount(
   id: string,
   opts?: CashAccountOpts,
 ): Promise<void> {
+  return captureAction("cash-accounts.deleteCashAccount", async () => {
   validateUUID(id, "Cash account ID");
   const supabase = await createServerSupabaseClient();
   const {
@@ -547,6 +555,7 @@ export async function deleteCashAccount(
   });
 
   revalidateCashPaths();
+  });
 }
 
 // ─── Merge duplicates ────────────────────────────────────
@@ -560,6 +569,7 @@ export async function mergeCashAccounts(
   survivorId: string,
   duplicateId: string,
 ): Promise<void> {
+  return captureAction("cash-accounts.mergeCashAccounts", async () => {
   validateUUID(survivorId, "Survivor account ID");
   validateUUID(duplicateId, "Duplicate account ID");
   if (survivorId === duplicateId) {
@@ -617,6 +627,7 @@ export async function mergeCashAccounts(
 
   // Soft-delete the duplicate
   await deleteCashAccount(duplicateId, { isAdjustment: true });
+  });
 }
 
 // ─── Internal helpers ────────────────────────────────────

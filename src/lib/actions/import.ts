@@ -539,28 +539,31 @@ export async function importFromJson(
   }
 
   // ── 5b. Goal Prices ───────────────────────────────────
+  // Collect into a single batch upsert instead of N round-trips per goal.
+  // Goals whose crypto_asset_id doesn't map to a newly-created asset
+  // (e.g. cross-portfolio restore) are silently dropped — same as before.
   if (data.goalPrices?.length) {
+    const goalRows: Record<string, unknown>[] = [];
     for (const gp of data.goalPrices) {
       const mappedAssetId = cryptoAssetMap.get(gp.crypto_asset_id);
       if (!mappedAssetId) continue;
-
+      goalRows.push({
+        crypto_asset_id: mappedAssetId,
+        target_price: gp.target_price,
+        weight: gp.weight ?? 0.25,
+        label: gp.label ?? null,
+      });
+    }
+    if (goalRows.length > 0) {
       const { error } = await supabase
         .from("goal_prices")
-        .upsert(
-          {
-            crypto_asset_id: mappedAssetId,
-            target_price: gp.target_price,
-            weight: gp.weight ?? 0.25,
-            label: gp.label ?? null,
-          },
-          { onConflict: "crypto_asset_id,label" }
-        );
+        .upsert(goalRows, { onConflict: "crypto_asset_id,label" });
       if (error) {
-        console.warn(`[import] Goal price upsert failed for asset ${mappedAssetId}:`, error.message);
-        skipped.goalPrices++;
-        continue; // best-effort — don't fail import for goal prices
+        console.warn(`[import] Goal prices batch upsert failed (${goalRows.length} rows):`, error.message);
+        skipped.goalPrices += goalRows.length;
+      } else {
+        counts.goalPrices += goalRows.length;
       }
-      counts.goalPrices++;
     }
   }
 

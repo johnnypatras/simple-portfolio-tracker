@@ -7,6 +7,7 @@ import type { CashEntityType } from "@/lib/deltas";
 import type { ActionType, EntityType } from "@/lib/types";
 import { toUsdAndEur, computeDeltaFromSnapshots } from "./activity-log";
 import { round2 } from "@/lib/format";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 const BATCH_SIZE = 10; // Small batch to stay within Vercel 10s timeout
 const THROTTLE_MS = 24 * 60 * 60 * 1000; // 24 hours between retries
@@ -19,6 +20,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
   pending: number;
   failed: number;
 }> {
+  return captureAction("backfill.backfillCashflowsAndDeltas", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -304,6 +306,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
   }
 
   return { processed: allRows.length, succeeded, pending, failed };
+  });
 }
 
 /**
@@ -314,6 +317,7 @@ export async function backfillSingleRow(rowId: string): Promise<{
   success: boolean;
   error?: string;
 }> {
+  return captureAction("backfill.backfillSingleRow", async () => {
   const { validateUUID } = await import("@/lib/validation");
   validateUUID(rowId, "Activity log row ID");
 
@@ -410,4 +414,5 @@ export async function backfillSingleRow(rowId: string): Promise<{
     console.error(`[backfill] Single row retry failed ${rowId}:`, err instanceof Error ? err.message : err);
     return { success: false, error: err instanceof Error ? err.message : "Computation failed" };
   }
+  });
 }

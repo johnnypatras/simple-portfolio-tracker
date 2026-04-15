@@ -190,13 +190,30 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   });
 
   // ── Snapshot lookups for change calculations ──────────
+  // `snapshots` is sorted ascending by snapshot_date (DB query ORDER BY),
+  // so we can binary-search for the rightmost entry on-or-before the target
+  // date. Previously this filtered the full array 5× per request — O(5n).
+  // Binary search is O(5 log n); negligible at 52-snapshot scale today but
+  // future-proofs the 100k snapshot ceiling.
   const findSnapshotAt = (daysAgo: number): PortfolioSnapshot | null => {
+    if (snapshots.length === 0) return null;
     const target = new Date();
     target.setDate(target.getDate() - daysAgo);
     const targetStr = target.toISOString().split("T")[0];
-    // Find the most recent snapshot on or before the target date
-    const candidates = snapshots.filter((s) => s.snapshot_date <= targetStr);
-    return candidates.length > 0 ? candidates[candidates.length - 1] : null;
+    // Binary search: largest index i such that snapshots[i].snapshot_date <= targetStr
+    let lo = 0;
+    let hi = snapshots.length - 1;
+    let result = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1;
+      if (snapshots[mid].snapshot_date <= targetStr) {
+        result = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return result >= 0 ? snapshots[result] : null;
   };
 
   return {

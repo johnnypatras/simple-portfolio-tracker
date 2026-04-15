@@ -7,6 +7,7 @@ import type { Profile, BaseCurrency } from "@/lib/types";
 import { partialUpdate } from "@/lib/partial-update";
 import { validateName } from "@/lib/validation";
 import { VALID_THEMES } from "@/lib/constants";
+import { captureAction } from "@/lib/actions/with-sentry";
 
 /** Fetch the current user's profile. */
 export async function getProfile(): Promise<Profile> {
@@ -34,6 +35,7 @@ export async function updateProfile(input: {
   primary_currency?: BaseCurrency;
   theme?: string | null;
 }): Promise<void> {
+  return captureAction("profile.updateProfile", async () => {
   // Validate string fields
   if (input.first_name) validateName(input.first_name, 100, "First name");
   if (input.last_name) validateName(input.last_name, 100, "Last name");
@@ -58,6 +60,7 @@ export async function updateProfile(input: {
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
+  });
 }
 
 /**
@@ -67,6 +70,7 @@ export async function updateProfile(input: {
  * are cleaned up automatically via ON DELETE CASCADE.
  */
 export async function clearAllData(): Promise<void> {
+  return captureAction("profile.clearAllData", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -118,6 +122,7 @@ export async function clearAllData(): Promise<void> {
   if (sharesErr) throw new Error(`Failed to clear portfolio_shares: ${sharesErr.message}`);
 
   revalidatePath("/dashboard");
+  });
 }
 
 /**
@@ -126,6 +131,7 @@ export async function clearAllData(): Promise<void> {
  * which cascades to profiles and all portfolio data via ON DELETE CASCADE.
  */
 export async function deleteAccount(): Promise<void> {
+  return captureAction("profile.deleteAccount", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -142,6 +148,7 @@ export async function deleteAccount(): Promise<void> {
   // Clean up client session. Non-critical — the user is already deleted,
   // so any future getUser() call would fail regardless.
   await supabase.auth.signOut().catch(() => {});
+  });
 }
 
 /**
@@ -149,6 +156,7 @@ export async function deleteAccount(): Promise<void> {
  * Supabase sends a verification link to the new address automatically.
  */
 export async function changeEmail(newEmail: string): Promise<void> {
+  return captureAction("profile.changeEmail", async () => {
   const trimmed = newEmail.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
     throw new Error("Invalid email address");
@@ -166,6 +174,7 @@ export async function changeEmail(newEmail: string): Promise<void> {
 
   const { error } = await supabase.auth.updateUser({ email: trimmed });
   if (error) throw new Error(error.message);
+  });
 }
 
 /**
@@ -176,6 +185,7 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<void> {
+  return captureAction("profile.changePassword", async () => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -202,4 +212,5 @@ export async function changePassword(
 
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw new Error(error.message);
+  });
 }
