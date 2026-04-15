@@ -10,7 +10,7 @@ import type {
   Broker,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin, validateTags } from "@/lib/validation";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
 
@@ -81,9 +81,10 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
   validateName(input.ticker, 20, "Ticker");
   if (input.yahoo_ticker) validateYahooTicker(input.yahoo_ticker);
   const isin = validateIsin(input.isin);
+  if (input.subcategory?.trim()) validateName(input.subcategory.trim(), 100, "Subcategory");
 
   const category = input.category ?? "individual_stock";
-  const tags = input.tags ?? [];
+  const tags = validateTags(input.tags);
 
   const { data, error } = await supabase
     .from("stock_assets")
@@ -168,15 +169,23 @@ export async function updateStockAsset(
   if (!user) throw new Error("Not authenticated");
 
   const updatePayload: Record<string, unknown> = {};
-  if (fields.name !== undefined) updatePayload.name = fields.name.trim();
+  if (fields.name !== undefined) {
+    const trimmed = fields.name.trim();
+    validateName(trimmed, 100, "Name");
+    updatePayload.name = trimmed;
+  }
   if (fields.yahoo_ticker !== undefined) {
     if (fields.yahoo_ticker?.trim()) validateYahooTicker(fields.yahoo_ticker.trim());
     updatePayload.yahoo_ticker = fields.yahoo_ticker?.trim() || null;
   }
   if (fields.isin !== undefined) updatePayload.isin = validateIsin(fields.isin);
   if (fields.category !== undefined) updatePayload.category = fields.category;
-  if (fields.tags !== undefined) updatePayload.tags = fields.tags;
-  if (fields.subcategory !== undefined) updatePayload.subcategory = fields.subcategory?.trim() || null;
+  if (fields.tags !== undefined) updatePayload.tags = validateTags(fields.tags);
+  if (fields.subcategory !== undefined) {
+    const trimmed = fields.subcategory?.trim();
+    if (trimmed) validateName(trimmed, 100, "Subcategory");
+    updatePayload.subcategory = trimmed || null;
+  }
 
   if (Object.keys(updatePayload).length === 0) return;
 

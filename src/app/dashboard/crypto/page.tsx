@@ -31,8 +31,11 @@ export default async function CryptoPage() {
   ]);
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
-  // Fire-and-forget: backfill missing icons from CoinGecko
-  backfillCryptoImages().catch(() => {});
+  // Fire-and-forget: backfill missing icons from CoinGecko. Log failures instead
+  // of swallowing silently so operational issues surface in logs.
+  backfillCryptoImages().catch((err) => {
+    console.warn("[crypto-page] backfillCryptoImages failed:", err instanceof Error ? err.message : err);
+  });
 
   // Compute crypto-only aggregate for summary header enrichment
   const summary = aggregatePortfolio({

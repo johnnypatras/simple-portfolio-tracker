@@ -5,11 +5,12 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { TradeEntry, TradeEntryInput } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { validateUUID, validateQuantity, validateAmount, validateCurrency, validateName, validateDate } from "@/lib/validation";
+import { partialUpdate } from "@/lib/partial-update";
+import { round2 } from "@/lib/format";
+import { MAX_NOTES_LENGTH } from "@/lib/constants";
 
 const VALID_ASSET_TYPES = new Set(["crypto", "stock", "cash", "other"]);
 const VALID_TRADE_ACTIONS = new Set(["buy", "sell"]);
-import { partialUpdate } from "@/lib/partial-update";
-import { round2 } from "@/lib/format";
 
 /** Lightweight asset name lists for the trade diary dropdown */
 export async function getAssetOptions(): Promise<{
@@ -61,6 +62,7 @@ export async function getTradeEntries(): Promise<TradeEntry[]> {
   const { data, error } = await supabase
     .from("trade_entries")
     .select("*")
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("trade_date", { ascending: false });
 
@@ -95,7 +97,7 @@ export async function createTradeEntry(input: TradeEntryInput) {
     price: input.price,
     currency: input.currency ?? "USD",
     total_value: round2(totalValue),
-    notes: input.notes?.trim()?.slice(0, 2000) || null,
+    notes: input.notes?.trim()?.slice(0, MAX_NOTES_LENGTH) || null,
   }).select("*").single();
 
   if (error) throw new Error(error.message);
@@ -148,7 +150,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
       price: input.price,
       currency: input.currency,
       total_value: round2(totalValue),
-      notes: input.notes?.trim()?.slice(0, 2000) || null,
+      notes: input.notes?.trim()?.slice(0, MAX_NOTES_LENGTH) || null,
     }))
     .eq("id", id)
     .eq("user_id", user.id);

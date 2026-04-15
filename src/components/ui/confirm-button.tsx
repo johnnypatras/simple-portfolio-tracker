@@ -11,6 +11,8 @@ interface ConfirmButtonProps {
   children: React.ReactNode;
   className?: string;
   title?: string;
+  /** Accessible name for the trigger button; falls back to `title` when omitted. */
+  ariaLabel?: string;
   /** Show an "Adj" checkbox in the confirming state */
   showAdjustmentCheckbox?: boolean;
 }
@@ -27,6 +29,7 @@ export function ConfirmButton({
   children,
   className = "",
   title,
+  ariaLabel,
   showAdjustmentCheckbox,
 }: ConfirmButtonProps) {
   const [confirming, setConfirming] = useState(false);
@@ -101,7 +104,13 @@ export function ConfirmButton({
   }
 
   return (
-    <button type="button" onClick={() => setConfirming(true)} className={className} title={title}>
+    <button
+      type="button"
+      onClick={() => setConfirming(true)}
+      className={className}
+      title={title}
+      aria-label={ariaLabel ?? title}
+    >
       {children}
     </button>
   );

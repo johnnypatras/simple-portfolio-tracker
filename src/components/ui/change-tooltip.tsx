@@ -10,13 +10,13 @@ function TooltipRow({
   pct?: number; indent?: boolean;
 }) {
   const formatted = `${value > 0 ? "+" : ""}${fmtCurrencyCompact(value, cur)}`;
-  const colorCls = colored ? changeColorClass(value) : indent ? "text-zinc-500" : "text-zinc-300";
+  const colorCls = colored ? changeColorClass(value) : indent ? "text-zinc-400" : "text-zinc-300";
   const hasPct = pct != null && isFinite(pct) && Math.abs(pct) >= 0.05;
   return (
     <>
-      <span className={`${indent ? "pl-3 text-zinc-500" : "text-zinc-400"} ${bold ? "font-medium" : ""} whitespace-nowrap`}>{label}</span>
+      <span className={`${indent ? "pl-3 text-zinc-400" : "text-zinc-400"} ${bold ? "font-medium" : ""} whitespace-nowrap`}>{label}</span>
       <span className={`${colorCls} ${bold ? "font-medium" : ""} tabular-nums whitespace-nowrap text-right`}>{formatted}</span>
-      <span className={`text-zinc-500 tabular-nums whitespace-nowrap ${bold ? "font-medium" : ""}`}>
+      <span className={`text-zinc-400 tabular-nums whitespace-nowrap ${bold ? "font-medium" : ""}`}>
         {hasPct ? `(${fmtPct(pct!)})` : ""}
       </span>
     </>
@@ -46,7 +46,7 @@ function DepositSection({ deposits, depositBreakdown, cur, base }: {
         <button
           type="button"
           aria-expanded={expanded}
-          className="col-span-3 text-[10px] text-zinc-500 hover:text-zinc-300 text-left pl-3 transition-colors"
+          className="col-span-3 text-[10px] text-zinc-400 hover:text-zinc-300 text-left pl-3 transition-colors"
           onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
         >
           {expanded ? "Show less" : `+${items.length - DEPOSIT_BREAKDOWN_LIMIT} more`}

@@ -198,15 +198,23 @@ export function PortfolioChart({
     });
   }, [snapshots, liveValue, liveValueUsd, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, adjustmentDeltas, viewMode]);
 
-  // Use the active dataKey for y-axis domain
+  // Use the active dataKey for y-axis domain.
+  // Note: uses a reduce loop instead of `Math.min(...arr)` spread to avoid
+  // V8 call-stack overflow if `data` grows to tens of thousands of points
+  // (MAX_SNAPSHOTS_LIMIT = 100_000 caps fetch size).
   const yDomain = useMemo(() => {
     if (data.length === 0) return [0, 100] as const;
-    const allValues = data.flatMap((d) => {
+    let minValue = Infinity;
+    let maxValue = -Infinity;
+    for (const d of data) {
       const v = (hasDeltas ? d.adjustedValue : d.value) ?? d.value;
-      return showBenchmark && d.sp500Value != null ? [v, d.sp500Value] : [v];
-    });
-    const minValue = Math.min(...allValues);
-    const maxValue = Math.max(...allValues);
+      if (v < minValue) minValue = v;
+      if (v > maxValue) maxValue = v;
+      if (showBenchmark && d.sp500Value != null) {
+        if (d.sp500Value < minValue) minValue = d.sp500Value;
+        if (d.sp500Value > maxValue) maxValue = d.sp500Value;
+      }
+    }
     return [Math.floor(minValue * 0.99), Math.ceil(maxValue * 1.01)] as const;
   }, [data, hasDeltas, showBenchmark]);
 
@@ -266,12 +274,17 @@ export function PortfolioChart({
       };
     });
 
-    const allVals = transformed.flatMap((d) => {
-      const v = d.value;
-      return showBenchmark && d.sp500Value != null ? [v, d.sp500Value] : [v];
-    });
-    const minVal = Math.min(...allVals);
-    const maxVal = Math.max(...allVals);
+    // Reduce loop to avoid spread-args stack overflow at scale.
+    let minVal = Infinity;
+    let maxVal = -Infinity;
+    for (const d of transformed) {
+      if (d.value < minVal) minVal = d.value;
+      if (d.value > maxVal) maxVal = d.value;
+      if (showBenchmark && d.sp500Value != null) {
+        if (d.sp500Value < minVal) minVal = d.sp500Value;
+        if (d.sp500Value > maxVal) maxVal = d.sp500Value;
+      }
+    }
     // Add padding: at least ±1% so the 0% line isn't at the edge
     return {
       finalData: transformed,
@@ -324,7 +337,7 @@ export function PortfolioChart({
               className={`flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
                 viewMode !== "total"
                   ? VIEW_MODE_BUTTON_CLASSES[viewMode]
-                  : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                  : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
               }`}
               title="Cycle view: Total → Investments → Crypto → Stocks → Cash"
             >
@@ -340,7 +353,7 @@ export function PortfolioChart({
                   ? "text-zinc-700 cursor-not-allowed"
                   : showAllocation
                     ? "bg-zinc-700 text-zinc-200"
-                    : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                    : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
               }`}
               title={returnMode ? "Allocation overlay not available in % return mode" : "Toggle allocation overlay"}
             >
@@ -354,7 +367,7 @@ export function PortfolioChart({
                 className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
                   showBenchmark
                     ? "bg-zinc-700 text-zinc-200"
-                    : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                    : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
                 }`}
                 title={cashFlows.length > 0
                   ? "S&P 500 TR benchmark (adjusted for cash flows from activity history)"
@@ -370,7 +383,7 @@ export function PortfolioChart({
               className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors ${
                 returnMode
                   ? "bg-zinc-700 text-zinc-200"
-                  : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
+                  : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
               }`}
               title="Toggle cumulative % return view"
             >

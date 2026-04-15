@@ -17,6 +17,7 @@ export async function getBrokers(): Promise<Broker[]> {
   const { data, error } = await supabase
     .from("brokers")
     .select("*")
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
@@ -80,7 +81,9 @@ export async function createBroker(
         chain: opts.wallet_chain?.trim() || null,
         institution_id: institutionId,
       }).select("*").single();
-      if (!walletErr && walletCreated) {
+      if (walletErr) {
+        console.error(`[brokers] Sibling wallet creation failed for broker "${trimmedName}":`, walletErr.message);
+      } else if (walletCreated) {
         await logActivity({
           action: "created",
           entity_type: "wallet",
@@ -181,7 +184,9 @@ export async function updateBroker(
           chain: opts.wallet_chain?.trim() || null,
           institution_id: before.institution_id,
         }).select("*").single();
-        if (!walletErr && walletCreated) {
+        if (walletErr) {
+          console.error(`[brokers] Sibling wallet creation failed during updateBroker "${trimmedName}":`, walletErr.message);
+        } else if (walletCreated) {
           await logActivity({
             action: "created",
             entity_type: "wallet",
@@ -266,9 +271,11 @@ export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }
     .is("deleted_at", null);
 
   if (stockPositions?.length) {
-    for (const pos of stockPositions) {
-      await deleteStockPosition(pos.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
-    }
+    await Promise.all(
+      stockPositions.map((pos) =>
+        deleteStockPosition(pos.id, opts ? { isAdjustment: opts.isAdjustment } : undefined)
+      )
+    );
   }
 
   // Delete child cash accounts (broker deposits) individually so each gets an activity_log entry
@@ -280,9 +287,11 @@ export async function deleteBroker(id: string, opts?: { isAdjustment?: boolean }
     .is("deleted_at", null);
 
   if (brokerCashAccounts?.length) {
-    for (const dep of brokerCashAccounts) {
-      await deleteCashAccount(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
-    }
+    await Promise.all(
+      brokerCashAccounts.map((dep) =>
+        deleteCashAccount(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined)
+      )
+    );
   }
 
   // Capture full snapshot before soft-delete

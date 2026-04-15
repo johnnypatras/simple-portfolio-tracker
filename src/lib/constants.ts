@@ -47,3 +47,24 @@ export const VALID_ENTITY_TYPES = [
 
 /** Valid action strings for activity log filtering */
 export const VALID_ACTIONS = ["created", "updated", "removed", "undone"] as const;
+
+/** Valid wallet_type strings (matches TypeScript union + DB CHECK) */
+export const VALID_WALLET_TYPES = ["custodial", "non_custodial"] as const;
+
+/** Maximum length for user-supplied free-text label fields (chain, network, subcategory, etc.) */
+export const MAX_LABEL_LENGTH = 50;
+
+/** Maximum length for user-supplied name fields (entity names, asset names) */
+export const MAX_NAME_LENGTH = 100;
+
+/** Maximum length for trade/diary notes */
+export const MAX_NOTES_LENGTH = 2000;
+
+/** Maximum length for diary entry content */
+export const MAX_DIARY_CONTENT_LENGTH = 50_000;
+
+/** Current backup schema version emitted by export */
+export const CURRENT_BACKUP_VERSION = 4 as const;
+
+/** Minimum backup schema version that uses unified cash_accounts (v1/v2 use legacy arrays) */
+export const UNIFIED_CASH_MIN_VERSION = 3 as const;

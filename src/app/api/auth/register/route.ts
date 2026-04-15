@@ -57,10 +57,17 @@ export async function POST(req: NextRequest) {
 
     // 1. If invite code provided, validate it exists and is available
     if (hasCode) {
+      const trimmedCode = code.trim();
+      if (trimmedCode.length > 64) {
+        return NextResponse.json(
+          { error: "Invalid or already used invite code" },
+          { status: 400 }
+        );
+      }
       const { data: invite, error: inviteError } = await admin
         .from("invite_codes")
         .select("id, expires_at")
-        .eq("code", code.trim())
+        .eq("code", trimmedCode)
         .is("used_by", null)
         .single();
 

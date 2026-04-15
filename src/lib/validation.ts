@@ -33,6 +33,28 @@ export function validateName(s: string, maxLen = 100, label = "Name"): void {
   }
 }
 
+/**
+ * Validate and normalize a tag array. Each tag is trimmed and must be
+ * a non-empty string ≤ 50 chars. Returns the normalized array; empty
+ * strings are filtered out. Throws on oversized or non-string elements.
+ */
+export function validateTags(tags: unknown, maxPerTag = 50, maxCount = 20): string[] {
+  if (tags == null) return [];
+  if (!Array.isArray(tags)) throw new Error("Tags must be an array");
+  if (tags.length > maxCount) throw new Error(`Too many tags (max ${maxCount})`);
+  const result: string[] = [];
+  for (const t of tags) {
+    if (typeof t !== "string") throw new Error("Each tag must be a string");
+    const trimmed = t.trim();
+    if (trimmed.length === 0) continue;
+    if (trimmed.length > maxPerTag) {
+      throw new Error(`Tag is too long (max ${maxPerTag} characters)`);
+    }
+    result.push(trimmed);
+  }
+  return result;
+}
+
 // CoinGecko IDs: lowercase alphanumeric, hyphens, digits (e.g., "bitcoin", "usd-coin", "0x-protocol")
 const COINGECKO_ID_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 
@@ -82,17 +104,21 @@ export function validateIsin(s: string | null | undefined): string | null {
   return trimmed;
 }
 
-const ALLOWED_IMAGE_ORIGINS = [
+const ALLOWED_IMAGE_ORIGINS = new Set([
   "https://assets.coingecko.com",
   "https://coin-images.coingecko.com",
-];
+]);
 
 export function validateImageUrl(s: string | null | undefined): string | null {
   if (!s) return null;
   try {
     const url = new URL(s);
-    if (!ALLOWED_IMAGE_ORIGINS.some((o) => url.href.startsWith(o))) return null;
-    return s;
+    // Compare parsed `origin` (not `href.startsWith(...)`) to reject subdomain
+    // spoofing like `https://assets.coingecko.com.evil.com/image.png`.
+    // Also forbid non-https protocols (rejects javascript:, data:, etc.).
+    if (url.protocol !== "https:") return null;
+    if (!ALLOWED_IMAGE_ORIGINS.has(url.origin)) return null;
+    return url.toString();
   } catch {
     return null;
   }

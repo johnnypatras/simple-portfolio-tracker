@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { InstitutionWithRoles, InstitutionRole, PrivacyLabel } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateUUID, validateName } from "@/lib/validation";
+import { validateUUID, validateName, validateCurrency } from "@/lib/validation";
+import { MAX_LABEL_LENGTH } from "@/lib/constants";
 
 /**
  * Fetch all institutions for the current user with computed roles.
@@ -17,11 +18,12 @@ export async function getInstitutionsWithRoles(): Promise<InstitutionWithRoles[]
   if (!user) return [];
 
   // Fetch institutions and all child records in parallel (exclude soft-deleted)
+  // All queries explicitly scoped by user_id for defense-in-depth (on top of RLS).
   const [instRes, walletsRes, brokersRes, banksRes] = await Promise.all([
-    supabase.from("institutions").select("*").is("deleted_at", null).order("name"),
-    supabase.from("wallets").select("institution_id").is("deleted_at", null),
-    supabase.from("brokers").select("institution_id").is("deleted_at", null),
-    supabase.from("cash_accounts").select("institution_id").is("deleted_at", null),
+    supabase.from("institutions").select("*").eq("user_id", user.id).is("deleted_at", null).order("name"),
+    supabase.from("wallets").select("institution_id").eq("user_id", user.id).is("deleted_at", null),
+    supabase.from("brokers").select("institution_id").eq("user_id", user.id).is("deleted_at", null),
+    supabase.from("cash_accounts").select("institution_id").eq("user_id", user.id).is("deleted_at", null),
   ]);
 
   if (instRes.error) throw new Error(instRes.error.message);
@@ -124,6 +126,9 @@ export async function updateInstitutionRoles(
 ): Promise<void> {
   validateUUID(institutionId, "Institution ID");
   if (opts.newName) validateName(opts.newName.trim(), 100, "Institution name");
+  if (opts.country !== undefined && opts.country.trim()) validateName(opts.country.trim(), MAX_LABEL_LENGTH, "Country");
+  if (opts.bank_currency) validateCurrency(opts.bank_currency);
+  if (opts.wallet_chain !== undefined && opts.wallet_chain?.trim()) validateName(opts.wallet_chain.trim(), MAX_LABEL_LENGTH, "Chain");
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -190,7 +195,9 @@ export async function updateInstitutionRoles(
         chain: opts.wallet_chain?.trim() || null,
         institution_id: institutionId,
       }).select("*").single();
-      if (!walletErr && walletCreated) {
+      if (walletErr) {
+        console.error(`[institutions] Sibling wallet creation failed for "${instName}":`, walletErr.message);
+      } else if (walletCreated) {
         await logActivity({
           action: "created",
           entity_type: "wallet",
@@ -220,7 +227,9 @@ export async function updateInstitutionRoles(
         name: instName,
         institution_id: institutionId,
       }).select("*").single();
-      if (!brokerErr && brokerCreated) {
+      if (brokerErr) {
+        console.error(`[institutions] Sibling broker creation failed for "${instName}":`, brokerErr.message);
+      } else if (brokerCreated) {
         await logActivity({
           action: "created",
           entity_type: "broker",
@@ -283,39 +292,36 @@ export async function removeInstitutionRole(
       .from("wallets")
       .select("id")
       .eq("institution_id", institutionId)
+      .eq("user_id", user.id)
       .is("deleted_at", null);
 
     if (wallets?.length) {
       const { deleteWallet } = await import("@/lib/actions/wallets");
-      for (const w of wallets) {
-        await deleteWallet(w.id, opts);
-      }
+      await Promise.all(wallets.map((w) => deleteWallet(w.id, opts)));
     }
   } else if (role === "broker") {
     const { data: brokers } = await supabase
       .from("brokers")
       .select("id")
       .eq("institution_id", institutionId)
+      .eq("user_id", user.id)
       .is("deleted_at", null);
 
     if (brokers?.length) {
       const { deleteBroker } = await import("@/lib/actions/brokers");
-      for (const b of brokers) {
-        await deleteBroker(b.id, opts);
-      }
+      await Promise.all(brokers.map((b) => deleteBroker(b.id, opts)));
     }
   } else if (role === "bank") {
     const { data: banks } = await supabase
       .from("cash_accounts")
       .select("id")
       .eq("institution_id", institutionId)
+      .eq("user_id", user.id)
       .is("deleted_at", null);
 
     if (banks?.length) {
       const { deleteCashAccount } = await import("@/lib/actions/cash-accounts");
-      for (const ba of banks) {
-        await deleteCashAccount(ba.id, opts);
-      }
+      await Promise.all(banks.map((ba) => deleteCashAccount(ba.id, opts)));
     }
   }
 

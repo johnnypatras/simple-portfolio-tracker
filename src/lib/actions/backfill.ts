@@ -160,7 +160,11 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             cashflow_attempted_at: now.toISOString(),
           })
           .eq("id", row.id);
-        if (cfWriteErr) console.error(`[backfill] Cashflow write failed for row ${row.id as string}:`, cfWriteErr.message);
+        if (cfWriteErr) {
+          console.error(`[backfill] Cashflow write failed for row ${row.id as string}:`, cfWriteErr.message);
+          pending++;
+          continue;
+        }
       }
       if (isDelta) {
         const { error: deltaWriteErr } = await supabase
@@ -172,7 +176,11 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             delta_attempted_at: now.toISOString(),
           })
           .eq("id", row.id);
-        if (deltaWriteErr) console.error(`[backfill] Delta write failed for row ${row.id as string}:`, deltaWriteErr.message);
+        if (deltaWriteErr) {
+          console.error(`[backfill] Delta write failed for row ${row.id as string}:`, deltaWriteErr.message);
+          pending++;
+          continue;
+        }
       }
       succeeded++;
     } catch (err) {

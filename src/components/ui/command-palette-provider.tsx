@@ -67,7 +67,9 @@ export function CommandPaletteProvider({
           } catch { /* quota exceeded */ }
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn("[command-palette] Holdings refresh failed:", err instanceof Error ? err.message : err);
+      });
   }, [cacheWasEmpty]);
 
   const setHoldings = useCallback((items: HoldingItem[]) => {

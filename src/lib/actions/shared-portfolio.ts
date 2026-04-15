@@ -76,7 +76,24 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
       .limit(MAX_SNAPSHOTS_LIMIT),
   ]);
 
-  if (profileRes.error || !profileRes.data) return null;
+  if (profileRes.error || !profileRes.data) {
+    console.error("[shared-portfolio] Profile fetch failed:", profileRes.error?.message);
+    return null;
+  }
+  for (const [label, res] of [
+    ["crypto_assets", cryptoAssetsRes],
+    ["stock_assets", stockAssetsRes],
+    ["cash_accounts", cashAccountsRes],
+    ["wallets", walletsRes],
+    ["brokers", brokersRes],
+    ["institutions", institutionsRes],
+    ["snapshots", snapshotsRes],
+  ] as const) {
+    if (res.error) {
+      console.error(`[shared-portfolio] ${label} fetch failed:`, res.error.message);
+      return null;
+    }
+  }
 
   const profile = profileRes.data as Profile;
   const cryptoAssetsRaw = cryptoAssetsRes.data ?? [];
@@ -96,15 +113,23 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
           .select("*")
           .in("crypto_asset_id", cryptoAssetIds)
           .is("deleted_at", null)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     stockAssetIds.length > 0
       ? admin
           .from("stock_positions")
           .select("*")
           .in("stock_asset_id", stockAssetIds)
           .is("deleted_at", null)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
   ]);
+  if (cryptoPositionsData.error) {
+    console.error("[shared-portfolio] crypto_positions fetch failed:", cryptoPositionsData.error.message);
+    return null;
+  }
+  if (stockPositionsData.error) {
+    console.error("[shared-portfolio] stock_positions fetch failed:", stockPositionsData.error.message);
+    return null;
+  }
 
   const walletsMap: Record<string, { name: string; wallet_type: Wallet["wallet_type"] }> = {};
   for (const w of wallets) {

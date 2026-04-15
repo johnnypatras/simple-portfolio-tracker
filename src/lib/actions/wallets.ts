@@ -10,6 +10,20 @@ import {
 } from "@/lib/actions/institutions";
 import { validateUUID, validateName } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
+import { VALID_WALLET_TYPES, MAX_LABEL_LENGTH } from "@/lib/constants";
+import type { WalletType } from "@/lib/types";
+
+function assertWalletType(v: unknown): asserts v is WalletType {
+  if (v !== "custodial" && v !== "non_custodial") {
+    throw new Error(`Invalid wallet type: must be one of ${VALID_WALLET_TYPES.join(", ")}`);
+  }
+}
+
+function normalizeChain(raw: string | null | undefined): string | null {
+  const trimmed = raw?.trim() || null;
+  if (trimmed) validateName(trimmed, MAX_LABEL_LENGTH, "Chain");
+  return trimmed;
+}
 
 export async function getWallets(): Promise<Wallet[]> {
   const supabase = await createServerSupabaseClient();
@@ -37,7 +51,9 @@ export async function createWallet(
   if (!user) throw new Error("Not authenticated");
 
   validateName(input.name, 100, "Wallet name");
+  assertWalletType(input.wallet_type);
   const trimmedName = input.name.trim();
+  const normalizedChain = normalizeChain(input.chain);
 
   // Find or create institution
   const institutionId = await findOrCreateInstitution(trimmedName);
@@ -47,7 +63,7 @@ export async function createWallet(
     name: trimmedName,
     wallet_type: input.wallet_type,
     privacy_label: input.privacy_label ?? null,
-    chain: input.chain?.trim() || null,
+    chain: normalizedChain,
     institution_id: institutionId,
   }).select("*").single();
 
@@ -80,7 +96,9 @@ export async function createWallet(
         name: trimmedName,
         institution_id: institutionId,
       }).select("*").single();
-      if (!brokerErr && brokerCreated) {
+      if (brokerErr) {
+        console.error(`[wallets] Sibling broker creation failed for wallet "${trimmedName}":`, brokerErr.message);
+      } else if (brokerCreated) {
         await logActivity({
           action: "created",
           entity_type: "broker",
@@ -137,13 +155,14 @@ export async function createStandaloneWallet(input: WalletInput): Promise<void> 
 
   validateName(input.name, 100, "Wallet name");
   const trimmedName = input.name.trim();
+  const normalizedChain = normalizeChain(input.chain);
 
   const { data: created, error } = await supabase.from("wallets").insert({
     user_id: user.id,
     name: trimmedName,
     wallet_type: "non_custodial",
     privacy_label: input.privacy_label ?? null,
-    chain: input.chain?.trim() || null,
+    chain: normalizedChain,
     institution_id: null,
   }).select("*").single();
 
@@ -171,6 +190,7 @@ export async function updateWallet(
 ) {
   validateUUID(id, "Wallet ID");
   validateName(input.name.trim(), 100, "Wallet name");
+  assertWalletType(input.wallet_type);
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -178,6 +198,7 @@ export async function updateWallet(
   if (!user) throw new Error("Not authenticated");
 
   const trimmedName = input.name.trim();
+  const normalizedChain = normalizeChain(input.chain);
 
   // Capture before snapshot
   const { data: before } = await supabase
@@ -194,7 +215,7 @@ export async function updateWallet(
       name: trimmedName,
       wallet_type: input.wallet_type,
       privacy_label: input.privacy_label,
-      chain: input.chain?.trim() || null,
+      chain: normalizedChain,
     }))
     .eq("id", id)
     .eq("user_id", user.id);
@@ -222,7 +243,9 @@ export async function updateWallet(
         name: trimmedName,
         institution_id: before.institution_id,
       }).select("*").single();
-      if (!brokerErr && brokerCreated) {
+      if (brokerErr) {
+        console.error(`[wallets] Sibling broker creation failed during updateWallet "${trimmedName}":`, brokerErr.message);
+      } else if (brokerCreated) {
         await logActivity({
           action: "created",
           entity_type: "broker",
@@ -307,9 +330,11 @@ export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }
     .is("deleted_at", null);
 
   if (cryptoPositions?.length) {
-    for (const pos of cryptoPositions) {
-      await deletePosition(pos.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
-    }
+    await Promise.all(
+      cryptoPositions.map((pos) =>
+        deletePosition(pos.id, opts ? { isAdjustment: opts.isAdjustment } : undefined)
+      )
+    );
   }
 
   // Delete child cash accounts (exchange deposits) individually so each gets an activity_log entry
@@ -321,9 +346,11 @@ export async function deleteWallet(id: string, opts?: { isAdjustment?: boolean }
     .is("deleted_at", null);
 
   if (walletCashAccounts?.length) {
-    for (const dep of walletCashAccounts) {
-      await deleteCashAccount(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined);
-    }
+    await Promise.all(
+      walletCashAccounts.map((dep) =>
+        deleteCashAccount(dep.id, opts ? { isAdjustment: opts.isAdjustment } : undefined)
+      )
+    );
   }
 
   // Capture full snapshot before soft-delete

@@ -56,7 +56,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /tmp/supabase-docker-cache
-          key: supabase-docker-${{ runner.os }}
+          # Include the pinned Supabase CLI version in the cache key so a CLI bump
+          # automatically invalidates any stale cached images from an older version.
+          key: supabase-docker-${{ runner.os }}-v2.78.1
 
       - name: Load cached Docker images
         run: |
@@ -88,6 +90,9 @@ jobs:
     needs: test
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
 
@@ -114,6 +119,9 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     concurrency:
       group: deploy-production
       cancel-in-progress: false

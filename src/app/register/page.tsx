@@ -124,7 +124,7 @@ function InviteForm() {
           <Lock className="w-6 h-6 text-zinc-300" />
         </div>
         <h1 className="text-xl font-semibold text-zinc-100">Create Account</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <p className="text-sm text-zinc-400 mt-1">
           Register to track your portfolio
         </p>
       </div>
@@ -133,7 +133,7 @@ function InviteForm() {
         {/* Invite Code (optional) */}
         <div>
           <label htmlFor="register-invite-code" className="block text-sm text-zinc-400 mb-1.5">
-            Invite Code <span className="text-zinc-600">(optional)</span>
+            Invite Code <span className="text-zinc-400">(optional)</span>
           </label>
           <div className="relative">
             <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -151,7 +151,7 @@ function InviteForm() {
         {/* Display Name (optional) */}
         <div>
           <label htmlFor="register-display-name" className="block text-sm text-zinc-400 mb-1.5">
-            Display Name <span className="text-zinc-600">(optional)</span>
+            Display Name <span className="text-zinc-400">(optional)</span>
           </label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -170,7 +170,7 @@ function InviteForm() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="register-first-name" className="block text-sm text-zinc-400 mb-1.5">
-              First Name <span className="text-zinc-600">(optional)</span>
+              First Name <span className="text-zinc-400">(optional)</span>
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -186,7 +186,7 @@ function InviteForm() {
           </div>
           <div>
             <label htmlFor="register-last-name" className="block text-sm text-zinc-400 mb-1.5">
-              Last Name <span className="text-zinc-600">(optional)</span>
+              Last Name <span className="text-zinc-400">(optional)</span>
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -286,11 +286,11 @@ function InviteForm() {
         </button>
       </form>
 
-      <p className="text-xs text-zinc-600 text-center mt-4">
+      <p className="text-xs text-zinc-400 text-center mt-4">
         Without an invite code, your account will require admin approval.
       </p>
 
-      <p className="text-xs text-zinc-600 text-center mt-2">
+      <p className="text-xs text-zinc-400 text-center mt-2">
         Already have an account?{" "}
         <a
           href="/login"

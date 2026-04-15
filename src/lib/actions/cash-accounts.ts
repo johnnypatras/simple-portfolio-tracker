@@ -36,6 +36,7 @@ export async function getCashAccounts(): Promise<CashAccount[]> {
   const { data, error } = await supabase
     .from("cash_accounts")
     .select("*, institutions(name), wallets(name), brokers(name)")
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
@@ -127,7 +128,11 @@ export async function refreshCashEntityNames(
   else if (filter.institution_id) query = query.eq("institution_id", filter.institution_id);
   else return;
 
-  const { data: accounts } = await query;
+  const { data: accounts, error: accountsErr } = await query;
+  if (accountsErr) {
+    console.error("[refreshCashEntityNames] Failed to fetch cash accounts:", accountsErr.message);
+    return;
+  }
   if (!accounts?.length) return;
 
   for (const ca of accounts) {
@@ -329,7 +334,8 @@ export async function createCashAccount(
   });
 
   revalidateCashPaths();
-  return created!.id;
+  if (!created) throw new Error("Failed to create cash account");
+  return created.id;
 }
 
 export async function updateCashAccount(
@@ -409,10 +415,10 @@ export async function updateCashAccount(
   });
 
   // Compute FX on balance delta
-  const beforeBal = (before?.balance as number) ?? 0;
-  const afterBal = (after?.balance as number) ?? 0;
+  const beforeBal = Number(before?.balance ?? 0);
+  const afterBal = Number(after?.balance ?? 0);
   const currency =
-    (after?.currency as string) ?? (before?.currency as string) ?? "EUR";
+    String(after?.currency ?? before?.currency ?? "EUR");
 
   const fx = await computeFx("updated", beforeBal, afterBal, currency, opts);
 
