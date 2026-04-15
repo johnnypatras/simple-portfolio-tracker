@@ -322,10 +322,15 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       .single();
 
     if (existing) {
+      // Defense-in-depth: scope update by stock_asset_id. stock_positions has
+      // no direct user_id column — RLS + explicit scope via the validated
+      // input.stock_asset_id prevents mis-wired call sites from deleting
+      // a position through a stale id.
       const { error } = await supabase
         .from("stock_positions")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", existing.id);
+        .eq("id", existing.id)
+        .eq("stock_asset_id", input.stock_asset_id);
       if (error) throw new Error(error.message);
 
       const qty = (existing.quantity as number) ?? 0;
@@ -469,10 +474,14 @@ export async function deleteStockPosition(positionId: string, opts?: {
 
   const ticker = parentAsset.ticker ?? "Unknown";
 
+  // Defense-in-depth: scope by stock_asset_id derived from parent ownership
+  // check above. Prevents a stale positionId from deleting a row under a
+  // different user's asset.
   const { error } = await supabase
     .from("stock_positions")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", positionId);
+    .eq("id", positionId)
+    .eq("stock_asset_id", snapshot.stock_asset_id);
 
   if (error) throw new Error(error.message);
 

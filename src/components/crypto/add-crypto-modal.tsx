@@ -6,7 +6,7 @@ import { Search, Loader2, ChevronDown, ChevronRight, ArrowLeft } from "lucide-re
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
-import type { CoinGeckoSearchResult, Wallet } from "@/lib/types";
+import type { CoinGeckoSearchResult, Wallet, AcquisitionType } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains, getWalletChainTokens } from "@/lib/types";
 
 interface ExistingCryptoEntry {
@@ -62,7 +62,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionWalletId, setPositionWalletId] = useState("");
   const [positionQuantity, setPositionQuantity] = useState("");
-  const [acquisitionType, setAcquisitionType] = useState("bought");
+  const [acquisitionType, setAcquisitionType] = useState<AcquisitionType>("bought");
   const [positionApy, setPositionApy] = useState("");
   const [showAllWallets, setShowAllWallets] = useState(false);
 
@@ -562,7 +562,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                         <select
                           id={`${id}-acquisition`}
                           value={acquisitionType}
-                          onChange={(e) => setAcquisitionType(e.target.value)}
+                          onChange={(e) => setAcquisitionType(e.target.value as AcquisitionType)}
                           className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                         >
                           {ACQUISITION_TYPES.map((t) => (

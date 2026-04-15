@@ -171,7 +171,7 @@ export function EditInstitutionModal({
             required
           />
           {name !== institution.name && (
-            <p className="text-xs text-zinc-500 mt-1">
+            <p className="text-xs text-zinc-400 mt-1">
               Renaming will update all linked wallets, brokers, and bank accounts.
             </p>
           )}
@@ -250,7 +250,7 @@ export function EditInstitutionModal({
                 </span>
               ))}
               {institution.roles.length === 0 && (
-                <span className="text-xs text-zinc-500">No roles yet</span>
+                <span className="text-xs text-zinc-400">No roles yet</span>
               )}
             </div>
           )}
@@ -258,7 +258,7 @@ export function EditInstitutionModal({
           {/* Add new roles */}
           {(!hasWallet || !hasBroker || !hasBank) && !confirmRemoveRole && (
             <div className="pt-2 border-t border-zinc-800/50">
-              <p className="text-xs text-zinc-500 mb-2">Add roles</p>
+              <p className="text-xs text-zinc-400 mb-2">Add roles</p>
               <div className="space-y-2">
                 {!hasWallet && (
                   <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
@@ -326,7 +326,7 @@ export function EditInstitutionModal({
 
             {/* Chains */}
             <div className="space-y-2">
-              <label className="text-xs text-zinc-500">Chains</label>
+              <label className="text-xs text-zinc-400">Chains</label>
               <button
                 type="button"
                 onClick={() => {

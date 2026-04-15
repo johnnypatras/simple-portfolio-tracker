@@ -93,10 +93,60 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     cryptoAssets,
     stockAssets,
     cashAccounts,
-    // Legacy arrays for backward compat with v1/v2 importers
-    bankAccounts: cashAccounts.filter((c) => !c.wallet_id && !c.broker_id) as unknown as BankAccount[],
-    exchangeDeposits: cashAccounts.filter((c) => c.wallet_id != null) as unknown as ExchangeDeposit[],
-    brokerDeposits: cashAccounts.filter((c) => c.broker_id != null) as unknown as BrokerDeposit[],
+    // Legacy arrays for backward compat with v1/v2 importers. Map the unified
+    // CashAccount shape to each legacy type so v1/v2 consumers (which expect
+    // `amount` not `balance`, and `bank_name`/`wallet_name`/`broker_name`
+    // joined-in) get usable rows rather than silently-mis-shaped objects.
+    bankAccounts: cashAccounts
+      .filter((c) => !c.wallet_id && !c.broker_id)
+      .map<BankAccount>((c) => ({
+        id: c.id,
+        user_id: c.user_id,
+        name: c.name ?? "",
+        bank_name: c.name ?? "",
+        region: c.region ?? "",
+        currency: c.currency,
+        balance: c.balance,
+        apy: c.apy,
+        institution_id: c.institution_id,
+        last_was_adjustment: c.last_was_adjustment,
+        last_was_transfer: c.last_was_transfer,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        deleted_at: c.deleted_at,
+      })),
+    exchangeDeposits: cashAccounts
+      .filter((c): c is typeof c & { wallet_id: string } => c.wallet_id != null)
+      .map<ExchangeDeposit>((c) => ({
+        id: c.id,
+        user_id: c.user_id,
+        wallet_id: c.wallet_id,
+        wallet_name: c.name ?? "",
+        currency: c.currency,
+        amount: c.balance,
+        apy: c.apy,
+        last_was_adjustment: c.last_was_adjustment,
+        last_was_transfer: c.last_was_transfer,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        deleted_at: c.deleted_at,
+      })),
+    brokerDeposits: cashAccounts
+      .filter((c): c is typeof c & { broker_id: string } => c.broker_id != null)
+      .map<BrokerDeposit>((c) => ({
+        id: c.id,
+        user_id: c.user_id,
+        broker_id: c.broker_id,
+        broker_name: c.name ?? "",
+        currency: c.currency,
+        amount: c.balance,
+        apy: c.apy,
+        last_was_adjustment: c.last_was_adjustment,
+        last_was_transfer: c.last_was_transfer,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        deleted_at: c.deleted_at,
+      })),
     tradeEntries,
     snapshots,
     diaryEntries: (diaryRows ?? []) as DiaryEntry[],

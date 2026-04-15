@@ -134,7 +134,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 className="accent-blue-500"
               />
               Exchange
-              <span className="text-xs text-zinc-500">— for crypto assets</span>
+              <span className="text-xs text-zinc-400">— for crypto assets</span>
             </label>
             <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
               <input
@@ -144,7 +144,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 className="accent-blue-500"
               />
               Broker
-              <span className="text-xs text-zinc-500">— for stocks &amp; ETFs</span>
+              <span className="text-xs text-zinc-400">— for stocks &amp; ETFs</span>
             </label>
             <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
               <input
@@ -154,7 +154,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 className="accent-blue-500"
               />
               Bank
-              <span className="text-xs text-zinc-500">— for cash accounts</span>
+              <span className="text-xs text-zinc-400">— for cash accounts</span>
             </label>
           </div>
           {!hasAnyRole && (
@@ -185,7 +185,7 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
 
             {/* Chains */}
             <div className="space-y-2">
-              <label className="text-xs text-zinc-500">Chains</label>
+              <label className="text-xs text-zinc-400">Chains</label>
               <button
                 type="button"
                 onClick={() => {

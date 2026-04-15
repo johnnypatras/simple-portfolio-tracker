@@ -243,7 +243,7 @@ export function ImportExportSettings() {
               <p className="text-sm text-zinc-300">
                 JSON Backup
               </p>
-              <p className="text-xs text-zinc-500 mt-0.5">
+              <p className="text-xs text-zinc-400 mt-0.5">
                 Complete portfolio export — all assets, positions, wallets, brokers,
                 cash accounts, trades, and daily snapshots in a single file
               </p>
@@ -278,7 +278,7 @@ export function ImportExportSettings() {
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-zinc-300">{item.label}</p>
-                <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                <p className="text-xs text-zinc-400 mt-0.5 truncate">
                   {item.desc}
                 </p>
               </div>
@@ -321,7 +321,7 @@ export function ImportExportSettings() {
             <div className="flex items-start gap-4">
               <div className="flex-1">
                 <p className="text-sm text-zinc-300">Restore from JSON Backup</p>
-                <p className="text-xs text-zinc-500 mt-0.5">
+                <p className="text-xs text-zinc-400 mt-0.5">
                   Upload a previously exported <code className="text-zinc-400">.json</code> backup
                   file to restore your portfolio data
                 </p>
@@ -356,7 +356,7 @@ export function ImportExportSettings() {
               </button>
             </div>
 
-            <div className="text-xs text-zinc-500">
+            <div className="text-xs text-zinc-400">
               Exported {new Date(previewData.exportedAt).toLocaleDateString()} · Currency: {previewData.primaryCurrency}
             </div>
 
@@ -472,7 +472,7 @@ export function ImportExportSettings() {
           <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-6 flex flex-col items-center gap-3">
             <Loader2 className="w-6 h-6 text-zinc-400 animate-spin" />
             <p className="text-sm text-zinc-400">Importing data…</p>
-            <p className="text-xs text-zinc-500">This may take a moment</p>
+            <p className="text-xs text-zinc-400">This may take a moment</p>
           </div>
         )}
 
@@ -528,7 +528,7 @@ export function ImportExportSettings() {
 
             <button
               onClick={handleCancelImport}
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
             >
               Done
             </button>

@@ -201,7 +201,7 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
               </span>
             )}
           </p>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          <p className="text-xs text-zinc-400 mt-0.5">
             Recorded: {formatOriginalDate(entry)}
           </p>
         </div>

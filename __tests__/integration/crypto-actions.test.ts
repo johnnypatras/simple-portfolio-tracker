@@ -370,6 +370,46 @@ describe("crypto server actions (integration)", () => {
       expect(Number(lineaPos!.quantity)).toBe(3);
     });
 
+    it("writes and reads the position-level `network` field (migration 013)", async () => {
+      // Position-level network is distinct from asset-level chain — regression
+      // guard for the `normalizedNetwork` normalization in upsertPosition.
+      await upsertPosition({
+        crypto_asset_id: ethLineaId,
+        wallet_id: walletId,
+        quantity: 5,
+        network: "Linea",
+      });
+
+      const { data: pos } = await client
+        .from("crypto_positions")
+        .select("network")
+        .eq("crypto_asset_id", ethLineaId)
+        .eq("wallet_id", walletId)
+        .is("deleted_at", null)
+        .single();
+
+      expect(pos?.network).toBe("Linea");
+    });
+
+    it("trims leading/trailing whitespace on network (regression guard)", async () => {
+      await upsertPosition({
+        crypto_asset_id: ethMainnetId,
+        wallet_id: walletId,
+        quantity: 11,
+        network: "  Arbitrum  ",
+      });
+
+      const { data: pos } = await client
+        .from("crypto_positions")
+        .select("network")
+        .eq("crypto_asset_id", ethMainnetId)
+        .eq("wallet_id", walletId)
+        .is("deleted_at", null)
+        .single();
+
+      expect(pos?.network).toBe("Arbitrum");
+    });
+
     it("deleting one chain asset does not affect the other", async () => {
       await deleteCryptoAsset(ethLineaId);
 

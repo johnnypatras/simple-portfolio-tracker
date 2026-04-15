@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { convertToBase, getFXRates, getFXRatesSafe } from "@/lib/prices/fx";
+import { convertToBase, getFXRates, getFXRatesSafe, fxChangeForCurrency } from "@/lib/prices/fx";
 
 describe("convertToBase", () => {
   afterEach(() => {
@@ -27,6 +27,48 @@ describe("convertToBase", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = convertToBase(100, "GBP", "USD", { GBP: 0, USD: 1 });
     expect(result).toBe(100);
+  });
+
+  it("converts GBP → EUR when GBP rate is present (tiered non-USD/EUR base)", () => {
+    // rates[GBP] = 0.85 (GBP per 1 EUR) — so 500 GBP = 500 / 0.85 ≈ 588.24 EUR
+    const result = convertToBase(500, "GBP", "EUR", { EUR: 1, GBP: 0.85, USD: 1.09 });
+    expect(result).toBeCloseTo(500 / 0.85, 2);
+  });
+});
+
+describe("fxChangeForCurrency", () => {
+  it("returns 0 when asset currency matches primary currency", () => {
+    expect(fxChangeForCurrency("USD", "USD", 1.5)).toBe(0);
+    expect(fxChangeForCurrency("EUR", "EUR", 1.5)).toBe(0);
+  });
+
+  it("EUR primary + USD asset returns -eurUsdChange24h", () => {
+    // EUR weakens vs USD (EUR/USD +1.5%) means USD-denominated holdings
+    // translate to fewer EUR — negative impact for the EUR user.
+    expect(fxChangeForCurrency("USD", "EUR", 1.5)).toBe(-1.5);
+    expect(fxChangeForCurrency("USD", "EUR", -0.8)).toBe(0.8);
+  });
+
+  it("USD primary + EUR asset returns +eurUsdChange24h", () => {
+    // EUR strengthens vs USD (EUR/USD +1.5%) means EUR-denominated holdings
+    // translate to more USD — positive impact for the USD user.
+    expect(fxChangeForCurrency("EUR", "USD", 1.5)).toBe(1.5);
+    expect(fxChangeForCurrency("EUR", "USD", -0.8)).toBe(-0.8);
+  });
+
+  it("returns 0 for unsupported currency pairs", () => {
+    // No 24h FX data for GBP, JPY, CHF, etc.
+    expect(fxChangeForCurrency("GBP", "USD", 1.5)).toBe(0);
+    expect(fxChangeForCurrency("JPY", "EUR", 1.5)).toBe(0);
+    expect(fxChangeForCurrency("EUR", "GBP", 1.5)).toBe(0);
+  });
+
+  it("handles eurUsdChange24h = 0 (no FX move) for every pair", () => {
+    // `-eurUsdChange24h` when input is 0 yields -0, which is `!== 0` under
+    // Object.is equality. toBeCloseTo normalizes the sign.
+    expect(fxChangeForCurrency("USD", "EUR", 0)).toBeCloseTo(0, 10);
+    expect(fxChangeForCurrency("EUR", "USD", 0)).toBe(0);
+    expect(fxChangeForCurrency("GBP", "USD", 0)).toBe(0);
   });
 });
 

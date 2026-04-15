@@ -97,7 +97,7 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
             placeholder="Your name"
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           />
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-xs text-zinc-400 mt-1">
             Shown in the dashboard header
           </p>
         </div>
@@ -119,7 +119,7 @@ export function GeneralSettings({ profile }: { profile: Profile }) {
               </option>
             ))}
           </select>
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-xs text-zinc-400 mt-1">
             Portfolio totals and conversions will use this currency
           </p>
         </div>

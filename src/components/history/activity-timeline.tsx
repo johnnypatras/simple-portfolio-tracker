@@ -648,7 +648,7 @@ export function ActivityTimeline({
           )}
         </div>
 
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-zinc-400">
           {total} {total === 1 ? "entry" : "entries"}
         </span>
       </div>
@@ -657,8 +657,8 @@ export function ActivityTimeline({
       {logs.length === 0 ? (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-12 text-center">
           <Clock className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
-          <p className="text-sm text-zinc-500 font-medium">No activity yet</p>
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-400 font-medium">No activity yet</p>
+          <p className="text-xs text-zinc-400 mt-1">
             Changes to your portfolio will appear here
           </p>
         </div>
@@ -713,7 +713,7 @@ export function ActivityTimeline({
                                   );
                                 })}
                               </div>
-                              <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                              <p className="text-xs text-zinc-400 mt-0.5 truncate">
                                 {summaryText}
                               </p>
                             </div>
@@ -746,7 +746,7 @@ export function ActivityTimeline({
                                   <Undo2 className="w-3.5 h-3.5" />
                                 </ConfirmButton>
                               ) : null}
-                              <span className="text-xs text-zinc-500">
+                              <span className="text-xs text-zinc-400">
                                 {getTimeLabel(source.created_at)}
                               </span>
                             </div>
@@ -811,7 +811,7 @@ export function ActivityTimeline({
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                              <p className="text-xs text-zinc-400 mt-0.5 truncate">
                                 Split into {children.length} date allocations
                               </p>
                             </div>
@@ -840,7 +840,7 @@ export function ActivityTimeline({
                                   <ChevronDown className="w-3.5 h-3.5" />
                                 )}
                               </button>
-                              <span className="text-xs text-zinc-500">
+                              <span className="text-xs text-zinc-400">
                                 {getTimeLabel(parent.created_at)}
                               </span>
                             </div>
@@ -936,7 +936,7 @@ export function ActivityTimeline({
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                          <p className="text-xs text-zinc-400 mt-0.5 truncate">
                             {(log.action === "updated" && describeChanges(log.before_snapshot, log.after_snapshot)) || log.description}
                           </p>
                           {/* Effective date annotation */}
@@ -1055,7 +1055,7 @@ export function ActivityTimeline({
                               return result;
                             } : undefined}
                           />
-                          <span className="text-xs text-zinc-500">
+                          <span className="text-xs text-zinc-400">
                             {getTimeLabel(log.created_at)}
                           </span>
                         </div>
@@ -1070,7 +1070,7 @@ export function ActivityTimeline({
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-8 pt-4 border-t border-zinc-800/50">
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-zinc-400">
                 Page {page} of {totalPages}
               </span>
               <div className="flex items-center gap-1">

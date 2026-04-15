@@ -305,10 +305,14 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       .single();
 
     if (existing) {
+      // Defense-in-depth: scope update by crypto_asset_id as well. crypto_positions
+      // has no direct user_id column, so ownership is enforced via RLS + the
+      // input.crypto_asset_id that was already validated above.
       const { error } = await supabase
         .from("crypto_positions")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", existing.id);
+        .eq("id", existing.id)
+        .eq("crypto_asset_id", input.crypto_asset_id);
       if (error) throw new Error(error.message);
 
       const qty = (existing.quantity as number) ?? 0;
@@ -465,10 +469,14 @@ export async function deletePosition(positionId: string, opts?: {
   const { isStablecoin } = await import("@/lib/cashflow");
   const isStable = isStablecoin(parentAsset.subcategory);
 
+  // Defense-in-depth: also scope by crypto_asset_id derived from parent ownership
+  // check above. RLS is the primary guard; this belt-and-suspenders prevents a
+  // mis-wired call site from deleting a position through a stale id.
   const { error } = await supabase
     .from("crypto_positions")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", positionId);
+    .eq("id", positionId)
+    .eq("crypto_asset_id", snapshot.crypto_asset_id);
 
   if (error) throw new Error(error.message);
 

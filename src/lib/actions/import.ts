@@ -258,6 +258,10 @@ export async function importFromJson(
   // goal_prices don't have user_id — they're cascade-deleted when their
   // parent asset tables are deleted (ON DELETE CASCADE FKs).
   if (isReplace) {
+    // Children before parents comment was historical; the delete uses RLS + user_id
+    // filter so FK ordering doesn't matter for soft/hard-delete semantics here.
+    // Run in parallel — each delete is isolated to its own table and is bounded
+    // by the user's RLS scope.
     const tables = [
       "diary_entries",
       "portfolio_snapshots", "trade_entries",
@@ -265,10 +269,14 @@ export async function importFromJson(
       "crypto_assets", "stock_assets",
       "brokers", "wallets", "institutions",
     ];
-    for (const table of tables) {
-      const { error } = await supabase.from(table).delete().eq("user_id", uid);
-      if (error) return fail(`Failed to clear ${table}: ${error.message}`);
-    }
+    const results = await Promise.all(
+      tables.map(async (table) => ({
+        table,
+        ...(await supabase.from(table).delete().eq("user_id", uid)),
+      }))
+    );
+    const firstErr = results.find((r) => r.error);
+    if (firstErr) return fail(`Failed to clear ${firstErr.table}: ${firstErr.error!.message}`);
   }
 
   // ID mapping: old UUID → new UUID

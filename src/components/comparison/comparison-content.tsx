@@ -20,7 +20,7 @@ function AllocationBar({
 }) {
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs text-zinc-500">
+      <div className="flex items-center justify-between text-xs text-zinc-400">
         <span>{label}</span>
         <span>
           {allocation.crypto.toFixed(0)}% / {allocation.stocks.toFixed(0)}% /{" "}
@@ -137,7 +137,7 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <div className="text-xs text-zinc-500 mb-0.5">You</div>
+            <div className="text-xs text-zinc-400 mb-0.5">You</div>
             <div className="text-lg font-semibold text-zinc-100">
               {fmtCurrency(vs.totalValue, cur, 0)}
             </div>
@@ -146,7 +146,7 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-500 mb-0.5">{owner.name}</div>
+            <div className="text-xs text-zinc-400 mb-0.5">{owner.name}</div>
             <div className="text-lg font-semibold text-zinc-400">
               {fmtCurrency(os.totalValue, cur, 0)}
             </div>

@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/modal";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { toast } from "sonner";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
-import type { CryptoAssetWithPositions, Wallet, TransferMode } from "@/lib/types";
+import type { CryptoAssetWithPositions, Wallet, TransferMode, AcquisitionType } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
 
 interface PositionEditorProps {
@@ -225,7 +225,7 @@ export function PositionEditor({
 
     const edit = edits[walletId];
     const qty = parseFloat(edit?.quantity ?? "0");
-    const method = edit?.acquisition ?? "bought";
+    const method = (edit?.acquisition ?? "bought") as AcquisitionType;
     const apy = parseFloat(edit?.apy ?? "0");
     const priceData = prices?.[asset.coingecko_id];
     try {
@@ -440,10 +440,10 @@ export function PositionEditor({
 
         <div className="border-t border-zinc-800/50" />
 
-        <p className="text-xs text-zinc-500">Positions by wallet / exchange</p>
+        <p className="text-xs text-zinc-400">Positions by wallet / exchange</p>
 
         {allWalletIds.length === 0 && (
-          <p className="text-sm text-zinc-500 text-center py-4">
+          <p className="text-sm text-zinc-400 text-center py-4">
             No positions yet — add one below
           </p>
         )}
@@ -498,7 +498,7 @@ export function PositionEditor({
                     </span>
                   )}
                 </div>
-                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
+                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
                   <input
                     type="checkbox"
                     checked={edit?.isAdjustment ?? false}
@@ -594,7 +594,7 @@ export function PositionEditor({
                     placeholder="APY"
                     title="APY %"
                   />
-                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 pointer-events-none">%</span>
+                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 pointer-events-none">%</span>
                 </div>
                 <input
                   id={`${id}-network-${walletId}`}
@@ -659,7 +659,7 @@ export function PositionEditor({
             onChange={(e) => setEffectiveDate(e.target.value)}
             className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
           />
-          <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {error && (

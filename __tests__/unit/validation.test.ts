@@ -413,6 +413,26 @@ describe("validateImageUrl", () => {
   it("returns null for empty string", () => {
     expect(validateImageUrl("")).toBeNull();
   });
+
+  it("rejects subdomain spoofing of coingecko origins", () => {
+    // If origin check used `url.href.startsWith("https://assets.coingecko.com")`
+    // this URL would pass because the string prefix matches. The fix compares
+    // `url.origin` (hostname-aware) instead.
+    expect(validateImageUrl("https://assets.coingecko.com.evil.com/image.png")).toBeNull();
+    expect(validateImageUrl("https://evil.com/assets.coingecko.com/image.png")).toBeNull();
+  });
+
+  it("rejects non-https protocols (javascript:, data:, http:)", () => {
+    expect(validateImageUrl("javascript:alert(1)")).toBeNull();
+    expect(validateImageUrl("data:text/html,<script>alert(1)</script>")).toBeNull();
+    expect(validateImageUrl("http://assets.coingecko.com/image.png")).toBeNull();
+  });
+
+  it("accepts coingecko URLs with query strings and fragments", () => {
+    // Supabase returns CG URLs with ?v=cache-buster query strings
+    const url = "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png?v=1234";
+    expect(validateImageUrl(url)).toBe(url);
+  });
 });
 
 describe("validateDate", () => {

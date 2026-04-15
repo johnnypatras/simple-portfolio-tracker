@@ -341,7 +341,7 @@ export interface CryptoPosition {
   crypto_asset_id: string;
   wallet_id: string;
   quantity: number;
-  acquisition_method: string;
+  acquisition_method: AcquisitionType;
   apy: number;
   network: string | null;
   last_was_adjustment?: boolean;
@@ -368,7 +368,7 @@ export interface CryptoPositionInput {
   crypto_asset_id: string;
   wallet_id: string;
   quantity: number;
-  acquisition_method?: string;
+  acquisition_method?: AcquisitionType;
   apy?: number;
   network?: string | null;
 }

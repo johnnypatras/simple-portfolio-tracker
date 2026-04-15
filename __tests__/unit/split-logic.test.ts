@@ -1,14 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { extractQuantity, isValidPastOrTodayDate } from "@/lib/split-helpers";
+import { round2 } from "@/lib/format";
 
 describe("isValidPastOrTodayDate", () => {
+  // Pin time so "today" is deterministic across runs (previous version used
+  // `new Date()` which fails around UTC midnight when local date differs).
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("accepts a past date", () => {
     expect(isValidPastOrTodayDate("2020-01-01")).toBe(true);
   });
 
   it("accepts today", () => {
-    const today = new Date().toISOString().split("T")[0];
-    expect(isValidPastOrTodayDate(today)).toBe(true);
+    expect(isValidPastOrTodayDate("2026-04-15")).toBe(true);
   });
 
   it("rejects a future date", () => {
@@ -152,8 +162,8 @@ describe("fraction rounding (split delta distribution)", () => {
         childDeltaUsd = parentDeltaUsd - runningDeltaUsd;
         childDeltaEur = parentDeltaEur - runningDeltaEur;
       } else {
-        childDeltaUsd = Math.round((parentDeltaUsd * fraction) * 100) / 100;
-        childDeltaEur = Math.round((parentDeltaEur * fraction) * 100) / 100;
+        childDeltaUsd = round2(parentDeltaUsd * fraction);
+        childDeltaEur = round2(parentDeltaEur * fraction);
         runningDeltaUsd += childDeltaUsd;
         runningDeltaEur += childDeltaEur;
       }
@@ -194,7 +204,7 @@ describe("fraction rounding (split delta distribution)", () => {
       if (isLast) {
         childDeltas.push(parentDeltaUsd - runningDelta);
       } else {
-        const d = Math.round((parentDeltaUsd * fraction) * 100) / 100;
+        const d = round2(parentDeltaUsd * fraction);
         childDeltas.push(d);
         runningDelta += d;
       }

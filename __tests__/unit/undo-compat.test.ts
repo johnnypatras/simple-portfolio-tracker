@@ -51,4 +51,20 @@ describe("remapSnapshotFields", () => {
   it("returns null for null snapshot", () => {
     expect(remapSnapshotFields("exchange_deposits", null)).toBeNull();
   });
+
+  it("collision (amount first, balance second): later key wins — `balance` survives", () => {
+    // Insertion order matters: Object.entries iterates string keys in
+    // declaration order. `amount` remaps to `balance`, then the original
+    // `balance` key overwrites. This test pins the current behavior so
+    // a future refactor of remapSnapshotFields doesn't silently change
+    // undo data integrity for any legacy row that has both fields.
+    const result = remapSnapshotFields("exchange_deposits", { amount: 500, balance: 999 });
+    expect(result).toEqual({ balance: 999 });
+  });
+
+  it("collision (balance first, amount second): `amount` remap wins — `balance` overwritten", () => {
+    // Mirror of the above — demonstrates the order-dependence explicitly.
+    const result = remapSnapshotFields("exchange_deposits", { balance: 999, amount: 500 });
+    expect(result).toEqual({ balance: 500 });
+  });
 });

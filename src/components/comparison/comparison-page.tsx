@@ -29,7 +29,7 @@ function StatCard({
 }) {
   return (
     <div className="bg-zinc-900 border border-zinc-800/50 rounded-lg p-4">
-      <div className="text-xs text-zinc-500 mb-1">{label}</div>
+      <div className="text-xs text-zinc-400 mb-1">{label}</div>
       <div className="text-lg font-semibold text-zinc-100">{value}</div>
       {subtext && (
         <div className={`text-xs mt-0.5 ${subtextColor ?? "text-zinc-500"}`}>
@@ -111,7 +111,7 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
       <div className="pt-8">
         <Link
           href={`/share/${token}`}
-          className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-300 transition-colors mb-6"
+          className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-300 transition-colors mb-6"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to shared portfolio
@@ -149,7 +149,7 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
       <div>
         <Link
           href={`/share/${token}`}
-          className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-300 transition-colors mb-4"
+          className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-300 transition-colors mb-4"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to shared portfolio

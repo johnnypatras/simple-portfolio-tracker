@@ -137,7 +137,7 @@ export function PerformanceRaceChart({
           />
         </div>
         <div className="h-48 flex items-center justify-center">
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-zinc-400">
             Chart will appear after a few days of data
           </p>
         </div>
@@ -269,11 +269,11 @@ export function PerformanceRaceChart({
       <div className="flex items-center justify-center gap-4 mt-2">
         <div className="flex items-center gap-1.5">
           <div className="w-2.5 h-0.5 rounded-full bg-blue-500" />
-          <span className="text-[10px] text-zinc-500">{viewerName}</span>
+          <span className="text-[10px] text-zinc-400">{viewerName}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2.5 h-0.5 rounded-full bg-orange-500" />
-          <span className="text-[10px] text-zinc-500">{ownerName}</span>
+          <span className="text-[10px] text-zinc-400">{ownerName}</span>
         </div>
       </div>
     </div>

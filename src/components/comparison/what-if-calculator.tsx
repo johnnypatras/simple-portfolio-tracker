@@ -148,7 +148,7 @@ function AllocationRow({
                      focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-blue-500/70 [appearance:textfield]
                      [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
-        <span className="text-[10px] text-zinc-500">%</span>
+        <span className="text-[10px] text-zinc-400">%</span>
       </div>
     </div>
   );
@@ -290,7 +290,7 @@ export function WhatIfCalculator({
         </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-400">
               {currency}
             </span>
             <input
@@ -305,7 +305,7 @@ export function WhatIfCalculator({
           <button
             type="button"
             onClick={matchOwnerTotal}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded-md px-2.5 py-2 transition-colors whitespace-nowrap"
+            className="text-[10px] text-zinc-400 hover:text-zinc-300 border border-zinc-800 rounded-md px-2.5 py-2 transition-colors whitespace-nowrap"
           >
             Match {ownerName}
           </button>
@@ -321,7 +321,7 @@ export function WhatIfCalculator({
           <button
             type="button"
             onClick={matchOwnerAlloc}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors"
           >
             Match {ownerName}&apos;s mix
           </button>
@@ -349,9 +349,9 @@ export function WhatIfCalculator({
         {/* Column headers */}
         <div className="grid grid-cols-4 gap-2 mb-1">
           <div />
-          <div className="text-[10px] text-zinc-500 text-right">{viewerName} Now</div>
-          <div className="text-[10px] text-zinc-500 text-right">What If</div>
-          <div className="text-[10px] text-zinc-500 text-right">Change</div>
+          <div className="text-[10px] text-zinc-400 text-right">{viewerName} Now</div>
+          <div className="text-[10px] text-zinc-400 text-right">What If</div>
+          <div className="text-[10px] text-zinc-400 text-right">Change</div>
         </div>
 
         {/* Class rows */}

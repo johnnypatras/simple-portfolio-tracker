@@ -51,6 +51,21 @@ function minimalV1() {
   };
 }
 
+/** Minimal valid v4 backup — identical shape to v3 plus position-level network field */
+function minimalV4() {
+  return {
+    version: 4,
+    institutions: [],
+    wallets: [],
+    brokers: [],
+    cryptoAssets: [],
+    stockAssets: [],
+    tradeEntries: [],
+    snapshots: [],
+    cashAccounts: [],
+  };
+}
+
 // ─── Original validator tests ────────────────────────────
 
 describe("import backup validation", () => {
@@ -121,6 +136,47 @@ describe("validateBackup", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toContain("bankAccounts");
+    }
+  });
+
+  it("accepts valid v4 backup with cashAccounts", async () => {
+    const result = await validateBackup(minimalV4());
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts v4 backup with position-level network field", async () => {
+    const data = {
+      ...minimalV4(),
+      cryptoAssets: [
+        {
+          id: "ca1",
+          ticker: "ETH",
+          name: "Ethereum",
+          coingecko_id: "ethereum",
+          chain: "Linea",
+          positions: [
+            { quantity: 1.5, network: "Linea" },
+          ],
+        },
+      ],
+    };
+    const result = await validateBackup(data);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects v4 backup missing cashAccounts", async () => {
+    const data = minimalV4();
+    delete (data as Record<string, unknown>).cashAccounts;
+    const result = await validateBackup(data);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects v5 (unsupported future version)", async () => {
+    const data = { ...minimalV4(), version: 5 };
+    const result = await validateBackup(data);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("Unsupported backup version");
     }
   });
 

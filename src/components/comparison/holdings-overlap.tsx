@@ -108,7 +108,7 @@ function SharedHoldingRow({
             <span className="text-sm font-medium text-zinc-200 truncate block">
               {item.name}
             </span>
-            <span className="text-[10px] text-zinc-500 uppercase">
+            <span className="text-[10px] text-zinc-400 uppercase">
               {item.ticker}
             </span>
           </div>
@@ -127,7 +127,7 @@ function SharedHoldingRow({
           ownerValue={item.ownerValue}
           maxValue={maxValue}
         />
-        <div className="flex justify-between mt-1 text-[10px] text-zinc-500">
+        <div className="flex justify-between mt-1 text-[10px] text-zinc-400">
           <span>{fmtCurrency(item.viewerValue, currency, 0)}</span>
           <span>{fmtCurrency(item.ownerValue, currency, 0)}</span>
         </div>
@@ -154,7 +154,7 @@ function UniqueHoldingRow({
       <AssetIcon item={item} size={20} />
       <div className="min-w-0 flex-1">
         <div className="text-sm text-zinc-300 truncate">{item.name}</div>
-        <div className="text-[10px] text-zinc-500 uppercase">{item.ticker}</div>
+        <div className="text-[10px] text-zinc-400 uppercase">{item.ticker}</div>
       </div>
       <div className="text-sm font-medium text-zinc-400 shrink-0">
         {fmtCurrency(value, currency, 0)}
@@ -236,7 +236,7 @@ export function HoldingsOverlap({
   if (holdings.length === 0) {
     return (
       <div className="bg-zinc-900 border border-zinc-800/50 rounded-lg p-6 text-center">
-        <span className="text-sm text-zinc-500">
+        <span className="text-sm text-zinc-400">
           No holdings data available
         </span>
       </div>
@@ -264,7 +264,7 @@ export function HoldingsOverlap({
               <>No common holdings with {ownerName}</>
             )}
           </span>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-zinc-400">
             {overlapPct.toFixed(0)}%
           </span>
         </div>
@@ -284,7 +284,7 @@ export function HoldingsOverlap({
             <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium">
               Both Hold
             </span>
-            <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+            <div className="flex items-center gap-3 text-[10px] text-zinc-400">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
                 {viewerName}

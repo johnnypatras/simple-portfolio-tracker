@@ -133,11 +133,11 @@ export function AccountSettings({ profile }: { profile: Profile }) {
       {/* Account info */}
       <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-4 max-w-md space-y-3">
         <div>
-          <p className="text-xs text-zinc-500">Email</p>
+          <p className="text-xs text-zinc-400">Email</p>
           <p className="text-sm text-zinc-200">{profile.email}</p>
         </div>
         <div>
-          <p className="text-xs text-zinc-500">Member since</p>
+          <p className="text-xs text-zinc-400">Member since</p>
           <p className="text-sm text-zinc-200">
             {new Date(profile.created_at).toLocaleDateString("en-US", {
               year: "numeric",
@@ -271,7 +271,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-zinc-300">Clear all data</p>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-zinc-400">
                 Remove all portfolio data, keep your account
               </p>
             </div>
@@ -291,7 +291,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-zinc-300">Delete account</p>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-zinc-400">
                 Permanently remove your account and all data
               </p>
             </div>

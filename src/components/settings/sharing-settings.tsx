@@ -183,7 +183,7 @@ export function SharingSettings() {
                     <p className={`text-sm font-medium ${selected ? "text-zinc-100" : "text-zinc-300"}`}>
                       {opt.label}
                     </p>
-                    <p className="text-xs text-zinc-500">{opt.description}</p>
+                    <p className="text-xs text-zinc-400">{opt.description}</p>
                   </div>
                 </button>
               );
@@ -245,12 +245,12 @@ export function SharingSettings() {
         </h3>
 
         {loading ? (
-          <p className="text-sm text-zinc-500">Loading...</p>
+          <p className="text-sm text-zinc-400">Loading...</p>
         ) : activeShares.length === 0 ? (
           <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
             <Share2 className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-            <p className="text-sm text-zinc-500">No active share links</p>
-            <p className="text-xs text-zinc-500 mt-1">
+            <p className="text-sm text-zinc-400">No active share links</p>
+            <p className="text-xs text-zinc-400 mt-1">
               Create a link above to share your portfolio
             </p>
           </div>
@@ -274,7 +274,7 @@ export function SharingSettings() {
                         {badge.label}
                       </span>
                     </div>
-                    <p className="text-xs text-zinc-500 mt-0.5">
+                    <p className="text-xs text-zinc-400 mt-0.5">
                       Created {formatDateTime(share.created_at)}
                       {share.expires_at && ` · Expires ${formatDateTime(share.expires_at)}`}
                     </p>
@@ -338,7 +338,7 @@ export function SharingSettings() {
                         {expired ? "Expired" : "Revoked"}
                       </span>
                     </div>
-                    <p className="text-xs text-zinc-500 mt-0.5">
+                    <p className="text-xs text-zinc-400 mt-0.5">
                       Created {formatDateTime(share.created_at)}
                     </p>
                   </div>

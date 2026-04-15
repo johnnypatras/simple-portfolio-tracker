@@ -392,7 +392,7 @@ export function TradeTable({
 
         {/* Live total preview + buttons */}
         <div className="flex items-center justify-between pt-1">
-          <div className="text-sm text-zinc-500">
+          <div className="text-sm text-zinc-400">
             {parseFloat(quantity) > 0 && parseFloat(price) > 0 && (
               <>
                 Total:{" "}
@@ -440,7 +440,7 @@ export function TradeTable({
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-12 text-center">
           <BookOpen className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
           <p className="text-sm text-zinc-400 mb-1">No trades logged yet</p>
-          <p className="text-xs text-zinc-500 mb-4">
+          <p className="text-xs text-zinc-400 mb-4">
             Record your significant buys and sells for future reference
           </p>
           {!isReadOnly && (
@@ -545,7 +545,7 @@ export function TradeTable({
                 <td className="px-4 py-3 text-sm font-medium text-zinc-200 text-right tabular-nums">
                   {formatMoney(t.total_value, t.currency)}
                 </td>
-                <td className="px-4 py-3 text-xs text-zinc-500 max-w-[160px] truncate">
+                <td className="px-4 py-3 text-xs text-zinc-400 max-w-[160px] truncate">
                   {t.notes || "—"}
                 </td>
                 <td className="px-4 py-3">
@@ -607,11 +607,11 @@ export function TradeTable({
                 </p>
                 {/* Row 3: Date + notes */}
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-zinc-400">
                     {formatDate(t.trade_date)}
                   </span>
                   {t.notes && (
-                    <span className="text-xs text-zinc-500 truncate max-w-[200px]">
+                    <span className="text-xs text-zinc-400 truncate max-w-[200px]">
                       · {t.notes}
                     </span>
                   )}

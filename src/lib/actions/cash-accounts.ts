@@ -130,9 +130,18 @@ export async function refreshCashEntityNames(
   if (!accounts?.length) return;
 
   for (const ca of accounts) {
-    const instName = (ca.institutions as unknown as { name: string } | null)?.name ?? null;
-    const walletName = (ca.wallets as unknown as { name: string } | null)?.name ?? null;
-    const brokerName = (ca.brokers as unknown as { name: string } | null)?.name ?? null;
+    // Supabase PostgREST returns joined relations (e.g. `institutions(name)`)
+    // as an object for single-FK joins, but its generated types infer the
+    // looser `{ name }[]` shape. Normalize at runtime: object → name, array
+    // → first element's name, null → null. Avoids `as unknown as` double-casts.
+    const pickName = (v: unknown): string | null => {
+      if (!v) return null;
+      if (Array.isArray(v)) return (v[0] as { name?: string } | undefined)?.name ?? null;
+      return (v as { name?: string }).name ?? null;
+    };
+    const instName = pickName(ca.institutions);
+    const walletName = pickName(ca.wallets);
+    const brokerName = pickName(ca.brokers);
     const label = deriveLabel({ name: ca.name, institutionName: instName, walletName, brokerName, currency: ca.currency });
     const { error: updateErr } = await supabase
       .from("activity_log")

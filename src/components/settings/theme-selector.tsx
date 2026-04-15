@@ -75,7 +75,7 @@ export function ThemeSelector() {
 
               {/* Label */}
               <p className="text-xs font-medium text-zinc-200">{t.label}</p>
-              <p className="text-[10px] text-zinc-500 leading-tight">
+              <p className="text-[10px] text-zinc-400 leading-tight">
                 {t.description}
               </p>
 
@@ -88,7 +88,7 @@ export function ThemeSelector() {
         })}
       </div>
 
-      <p className="text-xs text-zinc-500 mt-2">
+      <p className="text-xs text-zinc-400 mt-2">
         Applies instantly across all pages
       </p>
     </div>
