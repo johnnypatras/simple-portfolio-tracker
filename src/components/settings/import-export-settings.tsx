@@ -21,9 +21,8 @@ import {
   exportSnapshotsCsv,
   exportActivityLogCsv,
 } from "@/lib/actions/export";
-import type { PortfolioBackup } from "@/lib/actions/export";
 import { validateBackup, importFromJson } from "@/lib/actions/import";
-import type { ImportResult } from "@/lib/actions/import";
+import type { PortfolioBackup, ImportResult } from "@/lib/types";
 
 // ─── Download helpers ───────────────────────────────────
 
@@ -505,19 +504,19 @@ export function ImportExportSettings() {
               </div>
             </div>
 
-            {/* Skipped counts */}
-            {Object.values(importResult.skipped).some((v) => v > 0) && (
+            {/* Skipped counts — only show numeric fields (profile is a boolean flag) */}
+            {Object.values(importResult.skipped).some((v) => typeof v === "number" && v > 0) && (
               <div>
                 <p className="text-xs font-medium text-zinc-400 mb-2">Skipped (duplicates)</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                   {Object.entries(importResult.skipped)
-                    .filter(([, v]) => v > 0)
+                    .filter((entry): entry is [string, number] => typeof entry[1] === "number" && entry[1] > 0)
                     .map(([k, v]) => (
                       <div
                         key={k}
                         className="flex items-center justify-between px-2.5 py-1 bg-zinc-800/50 rounded-md"
                       >
-                        <span className="text-xs text-zinc-500">
+                        <span className="text-xs text-zinc-400">
                           {k.replace(/([A-Z])/g, " $1").trim()}
                         </span>
                         <span className="text-xs text-zinc-400">{v}</span>

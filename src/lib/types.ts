@@ -643,3 +643,175 @@ export interface HoldingItem {
   /** Native currency of the asset (e.g., "USD", "EUR") */
   currency?: string;
 }
+
+// ─── Server action shapes ────────────────────────────────
+// The types below are consumed by both client components and server actions.
+// They live in this pure types.ts module because Next.js Turbopack strips
+// type re-exports from "use server" modules (see typescript-gotchas.md).
+// See also `ShareScope` in `@/lib/share-utils` (also pure, also consumable by clients).
+
+/** One leg of a split/backdate operation on an activity log entry. */
+export interface SplitLeg {
+  effective_date: string;
+  quantity: number;
+}
+
+/** Persistent share link record. Consumed by sharing-settings UI. */
+export interface ShareLink {
+  id: string;
+  token: string;
+  scope: import("@/lib/share-utils").ShareScope;
+  label: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Input to `createShareLink`. */
+export interface CreateShareLinkOpts {
+  scope?: import("@/lib/share-utils").ShareScope;
+  label?: string;
+  /** Expiry in days from now. null = never expires. */
+  expiresInDays?: number | null;
+}
+
+/** Validated share context passed through layout/page props after token resolution. */
+export interface ValidatedShare {
+  id: string;
+  owner_id: string;
+  scope: import("@/lib/share-utils").ShareScope;
+  label: string | null;
+}
+
+/** Admin invite code row (joined with user email when used). */
+export interface InviteCode {
+  id: string;
+  code: string;
+  created_by: string;
+  used_by: string | null;
+  used_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  /** Joined from auth.users when the code has been consumed. */
+  used_by_email?: string | null;
+}
+
+/** One row in the comparison-page holdings diff. */
+export interface ComparisonHoldingItem {
+  key: string;             // dedup key: coingecko_id | ticker | "cash:{currency}"
+  name: string;            // "Bitcoin", "VWCE", "EUR Cash"
+  ticker: string;          // "BTC", "VWCE", "EUR"
+  class: "crypto" | "stocks" | "cash";
+  imageUrl: string | null; // CoinGecko thumb for crypto, null for others
+  viewerValue: number;     // 0 if viewer doesn't hold it
+  ownerValue: number;      // 0 if owner doesn't hold it
+}
+
+/** Comparison-page payload (server-aggregated, safe to send to client). */
+export interface ComparisonData {
+  viewer: { name: string; summary: import("@/lib/portfolio/aggregate").PortfolioSummary };
+  owner: { name: string; summary: import("@/lib/portfolio/aggregate").PortfolioSummary };
+  normalizedCurrency: string;
+  holdings: ComparisonHoldingItem[];
+  viewerSnapshots: PortfolioSnapshot[];
+  ownerSnapshots: PortfolioSnapshot[];
+}
+
+/** Result of a comparison fetch — ok | error discriminated union. */
+export type ComparisonResult =
+  | { ok: true; data: ComparisonData }
+  | { ok: false; error: string };
+
+/** Shared portfolio data bundle — used by share pages. */
+export interface SharedPortfolioData {
+  share: ValidatedShare;
+  profile: Profile;
+  cryptoAssets: CryptoAssetWithPositions[];
+  stockAssets: StockAssetWithPositions[];
+  cashAccounts: CashAccount[];
+  wallets: Wallet[];
+  brokers: Broker[];
+  institutions: InstitutionWithRoles[];
+  snapshots: PortfolioSnapshot[];
+  snap3d: PortfolioSnapshot | null;
+  snap7d: PortfolioSnapshot | null;
+  snap30d: PortfolioSnapshot | null;
+  snap90d: PortfolioSnapshot | null;
+  snap1y: PortfolioSnapshot | null;
+  snapAll: PortfolioSnapshot | null;
+}
+
+/** Versioned JSON backup envelope produced by export.ts. */
+export interface PortfolioBackup {
+  version: 1 | 2 | 3 | 4;
+  exportedAt: string;
+  primaryCurrency: BaseCurrency;
+  // ── v1 entities ──
+  institutions: InstitutionWithRoles[];
+  wallets: Wallet[];
+  brokers: Broker[];
+  cryptoAssets: CryptoAssetWithPositions[];
+  stockAssets: StockAssetWithPositions[];
+  tradeEntries: TradeEntry[];
+  snapshots: PortfolioSnapshot[];
+  // ── v3+: unified cash accounts ──
+  cashAccounts?: CashAccount[];
+  // ── v1/v2 legacy (kept for backward compat import) ──
+  bankAccounts?: BankAccount[];
+  exchangeDeposits?: ExchangeDeposit[];
+  brokerDeposits?: BrokerDeposit[];
+  // ── v2 additions (optional for backward compat) ──
+  diaryEntries?: DiaryEntry[];
+  goalPrices?: GoalPrice[];
+  activityLog?: ActivityLog[];           // export-only (archival)
+  portfolioShares?: ShareLink[];         // export-only (archival)
+  profile?: { display_name: string | null; theme: string | null };
+}
+
+/** Successful import result — per-table counts and skipped tallies. */
+export interface ImportResult {
+  ok: true;
+  counts: {
+    institutions: number;
+    wallets: number;
+    brokers: number;
+    cashAccounts: number;
+    cryptoAssets: number;
+    cryptoPositions: number;
+    stockAssets: number;
+    stockPositions: number;
+    tradeEntries: number;
+    snapshots: number;
+    diaryEntries: number;
+    goalPrices: number;
+  };
+  skipped: {
+    institutions: number;
+    wallets: number;
+    brokers: number;
+    cashAccounts: number;
+    cryptoAssets: number;
+    stockAssets: number;
+    snapshots: number;
+    diaryEntries: number;
+    goalPrices: number;
+    /** True when profile metadata (display_name/theme) failed to apply. */
+    profile?: boolean;
+  };
+}
+
+/** Failed import result — error surface + optional backup for retry. */
+export interface ImportError {
+  ok: false;
+  error: string;
+  backup?: PortfolioBackup;
+}
+
+/** Options for cash-account mutations that produce activity-log entries. */
+export interface CashAccountOpts {
+  isAdjustment?: boolean;
+  transferGroupId?: string;
+  effectiveDate?: string;
+  fxRate?: number;
+}

@@ -874,7 +874,7 @@ export function TransferDialog({
         <div className="space-y-4">
           {/* ── FROM / BUYING section ── */}
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 space-y-3">
-            <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
+            <span className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
               {mode === "buy" ? "Buying" : "From"}
             </span>
             {(mode === "sell" || mode === "move") && prefilled && (
@@ -1157,7 +1157,7 @@ export function TransferDialog({
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 space-y-3">
             {mode === "move" ? (
               <>
-                <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
+                <span className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
                   To
                 </span>
                 <div className="text-sm text-zinc-300">
@@ -1184,7 +1184,7 @@ export function TransferDialog({
               </>
             ) : mode === "buy" ? (
               <>
-                <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
+                <span className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
                   Paying With
                 </span>
 
@@ -1255,7 +1255,7 @@ export function TransferDialog({
               </>
             ) : (
               <>
-                <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
+                <span className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
                   To
                 </span>
 

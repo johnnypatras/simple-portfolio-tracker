@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import type { ComparisonData } from "@/lib/actions/comparison";
+import type { ComparisonData } from "@/lib/types";
 import { fmtCurrency, fmtPct, changeColorClass } from "@/lib/format";
 import { AllocationRadar } from "./allocation-radar";
 import { HoldingsOverlap } from "./holdings-overlap";

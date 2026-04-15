@@ -3,10 +3,8 @@
 import { useEffect, useId, useRef, useState, useCallback } from "react";
 import { X, Loader2 } from "lucide-react";
 import FocusTrap from "focus-trap-react";
-import {
-  getComparisonData,
-  type ComparisonData,
-} from "@/lib/actions/comparison";
+import { getComparisonData } from "@/lib/actions/comparison";
+import type { ComparisonData } from "@/lib/types";
 import { ComparisonContent } from "./comparison-content";
 
 interface ComparisonWidgetProps {

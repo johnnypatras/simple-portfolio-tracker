@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import type { ShareScope } from "@/lib/actions/shares";
+import type { ShareScope } from "@/lib/share-utils";
 import { SharedNavBar } from "@/components/shared-nav-bar";
 import { ComparisonWidget } from "./comparison-widget";
 

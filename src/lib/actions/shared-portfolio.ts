@@ -2,7 +2,7 @@
 
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { validateShareToken, type ValidatedShare } from "./shares";
+import { validateShareToken } from "./shares";
 import type {
   Profile,
   CryptoAssetWithPositions,
@@ -13,29 +13,14 @@ import type {
   InstitutionWithRoles,
   InstitutionRole,
   PortfolioSnapshot,
+  SharedPortfolioData,
 } from "@/lib/types";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
 
-// ─── Shared portfolio bundle ───────────────────────────
-
-export interface SharedPortfolioData {
-  share: ValidatedShare;
-  profile: Profile;
-  cryptoAssets: CryptoAssetWithPositions[];
-  stockAssets: StockAssetWithPositions[];
-  cashAccounts: CashAccount[];
-  wallets: Wallet[];
-  brokers: Broker[];
-  institutions: InstitutionWithRoles[];
-  snapshots: PortfolioSnapshot[];
-  snap3d: PortfolioSnapshot | null;
-  snap7d: PortfolioSnapshot | null;
-  snap30d: PortfolioSnapshot | null;
-  snap90d: PortfolioSnapshot | null;
-  snap1y: PortfolioSnapshot | null;
-  snapAll: PortfolioSnapshot | null;
-}
+// SharedPortfolioData and ValidatedShare are defined in @/lib/types — Turbopack
+// strips type re-exports from "use server" modules, so consumers (share pages,
+// layouts) import those types directly from @/lib/types.
 
 /**
  * Validate a share token and fetch the owner's full portfolio data.

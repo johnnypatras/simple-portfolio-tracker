@@ -8,7 +8,12 @@ import type { ActivityLog } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────────
 
-interface SplitLeg {
+/**
+ * Form state for one split leg. Distinct from the server-action `SplitLeg`
+ * in `@/lib/types`: here `quantity` is the raw controlled-input string;
+ * the server-side `SplitLeg.quantity` is a validated number.
+ */
+interface SplitLegDraft {
   effective_date: string;
   quantity: string; // string for controlled input
 }
@@ -52,7 +57,7 @@ function formatOriginalDate(entry: ActivityLog): string {
 
 export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
   const id = useId();
-  const [legs, setLegs] = useState<SplitLeg[]>([{ effective_date: "", quantity: "" }]);
+  const [legs, setLegs] = useState<SplitLegDraft[]>([{ effective_date: "", quantity: "" }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,7 +74,7 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
     }
   }, [entry]);
 
-  const updateLeg = useCallback((index: number, field: keyof SplitLeg, value: string) => {
+  const updateLeg = useCallback((index: number, field: keyof SplitLegDraft, value: string) => {
     setLegs((prev) => prev.map((leg, i) => (i === index ? { ...leg, [field]: value } : leg)));
   }, []);
 

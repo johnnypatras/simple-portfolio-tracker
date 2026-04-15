@@ -1,10 +1,11 @@
 "use server";
 
+import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { exportFullJson } from "@/lib/actions/export";
 import { VALID_THEMES } from "@/lib/constants";
-import type { PortfolioBackup } from "@/lib/actions/export";
+import type { PortfolioBackup, ImportResult, ImportError } from "@/lib/types";
 import {
   validateAmount,
   validateDate,
@@ -14,40 +15,8 @@ import {
 } from "@/lib/validation";
 
 // ─── Types ──────────────────────────────────────────────
-
-export interface ImportResult {
-  ok: true;
-  counts: {
-    institutions: number;
-    wallets: number;
-    brokers: number;
-    cashAccounts: number;
-    cryptoAssets: number;
-    cryptoPositions: number;
-    stockAssets: number;
-    stockPositions: number;
-    tradeEntries: number;
-    snapshots: number;
-    diaryEntries: number;
-    goalPrices: number;
-  };
-  skipped: {
-    institutions: number;
-    wallets: number;
-    brokers: number;
-    cashAccounts: number;
-    cryptoAssets: number;
-    stockAssets: number;
-    snapshots: number;
-    goalPrices: number;
-  };
-}
-
-export interface ImportError {
-  ok: false;
-  error: string;
-  backup?: PortfolioBackup;
-}
+// ImportResult, ImportError, PortfolioBackup live in @/lib/types.
+// Consumers (settings/import-export-settings.tsx) import directly from types.
 
 // ─── Validation ─────────────────────────────────────────
 
@@ -269,11 +238,20 @@ export async function importFromJson(
     }
   }
 
-  const fail = (error: string): ImportError => ({
-    ok: false as const,
-    error,
-    ...(safetyBackup ? { backup: safetyBackup } : {}),
-  });
+  const fail = (error: string): ImportError => {
+    // Capture server-side so failed imports surface in Sentry even when the
+    // client only shows a toast. User context is derived from the session,
+    // which Sentry already attaches.
+    Sentry.captureMessage(`import.importFromJson failed: ${error}`, {
+      level: "error",
+      tags: { action: "import.importFromJson", mode: isReplace ? "replace" : "merge" },
+    });
+    return {
+      ok: false as const,
+      error,
+      ...(safetyBackup ? { backup: safetyBackup } : {}),
+    };
+  };
 
   // ── Replace mode: clear all existing data first ──
   // Children before parents. crypto_positions, stock_positions, and
@@ -306,10 +284,10 @@ export async function importFromJson(
     tradeEntries: 0, snapshots: 0,
     diaryEntries: 0, goalPrices: 0,
   };
-  const skipped = {
+  const skipped: ImportResult["skipped"] = {
     institutions: 0, wallets: 0, brokers: 0, cashAccounts: 0,
     cryptoAssets: 0, stockAssets: 0,
-    snapshots: 0, goalPrices: 0,
+    snapshots: 0, diaryEntries: 0, goalPrices: 0,
   };
 
   // ── 1. Institutions ───────────────────────────────────
@@ -569,7 +547,11 @@ export async function importFromJson(
           },
           { onConflict: "crypto_asset_id,label" }
         );
-      if (error) { skipped.goalPrices++; continue; } // best-effort — don't fail import for goal prices
+      if (error) {
+        console.warn(`[import] Goal price upsert failed for asset ${mappedAssetId}:`, error.message);
+        skipped.goalPrices++;
+        continue; // best-effort — don't fail import for goal prices
+      }
       counts.goalPrices++;
     }
   }
@@ -729,6 +711,9 @@ export async function importFromJson(
     const { error } = await supabase.from("diary_entries").upsert(rows, { onConflict: "user_id,entry_date" });
     if (error) {
       console.error("[import] Diary entries failed:", error.message);
+      // Surface in skipped so the UI can show N lost entries instead of
+      // silently reporting success.
+      skipped.diaryEntries = rows.length;
     } else {
       counts.diaryEntries = rows.length;
     }
@@ -748,7 +733,10 @@ export async function importFromJson(
         .from("profiles")
         .update(profileUpdate)
         .eq("id", uid);
-      if (error) console.error("[import] Profile update failed:", error.message);
+      if (error) {
+        console.warn("[import] Profile metadata update failed (non-critical):", error.message);
+        skipped.profile = true;
+      }
     }
   }
 

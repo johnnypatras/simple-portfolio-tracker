@@ -25,9 +25,8 @@ import {
   getInviteCodes,
   createInviteCode,
   deleteInviteCode,
-  type InviteCode,
 } from "@/lib/actions/admin";
-import type { Profile } from "@/lib/types";
+import type { Profile, InviteCode } from "@/lib/types";
 
 // ─── Helpers ──────────────────────────────────────────────
 

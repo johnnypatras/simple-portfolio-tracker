@@ -12,51 +12,20 @@ import { getProfile } from "@/lib/actions/profile";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { toCsv } from "@/lib/csv";
 import { ALL_SNAPSHOTS_DAYS, MAX_QUERY_LIMIT } from "@/lib/constants";
-import { getMyShares, type ShareLink } from "@/lib/actions/shares";
+import { getMyShares } from "@/lib/actions/shares";
 import type {
-  Wallet,
-  Broker,
-  InstitutionWithRoles,
-  CryptoAssetWithPositions,
-  StockAssetWithPositions,
   BankAccount,
   ExchangeDeposit,
   BrokerDeposit,
-  CashAccount,
-  TradeEntry,
-  PortfolioSnapshot,
   DiaryEntry,
   GoalPrice,
   ActivityLog,
+  PortfolioBackup,
 } from "@/lib/types";
 
 // ─── Full JSON backup ───────────────────────────────────
-
-export interface PortfolioBackup {
-  version: 1 | 2 | 3 | 4;
-  exportedAt: string;
-  primaryCurrency: string;
-  // ── v1 entities ──
-  institutions: InstitutionWithRoles[];
-  wallets: Wallet[];
-  brokers: Broker[];
-  cryptoAssets: CryptoAssetWithPositions[];
-  stockAssets: StockAssetWithPositions[];
-  tradeEntries: TradeEntry[];
-  snapshots: PortfolioSnapshot[];
-  // ── v3: unified cash accounts ──
-  cashAccounts?: CashAccount[];
-  // ── v1/v2 legacy (kept for backward compat import) ──
-  bankAccounts?: BankAccount[];
-  exchangeDeposits?: ExchangeDeposit[];
-  brokerDeposits?: BrokerDeposit[];
-  // ── v2 additions (optional for backward compat) ──
-  diaryEntries?: DiaryEntry[];
-  goalPrices?: GoalPrice[];
-  activityLog?: ActivityLog[];           // export-only (archival)
-  portfolioShares?: ShareLink[];         // export-only (archival)
-  profile?: { display_name: string | null; theme: string | null };
-}
+// PortfolioBackup type lives in @/lib/types (Turbopack strips
+// re-exports from "use server" modules — consumers import from types).
 
 export async function exportFullJson(): Promise<PortfolioBackup> {
   const supabase = await createServerSupabaseClient();

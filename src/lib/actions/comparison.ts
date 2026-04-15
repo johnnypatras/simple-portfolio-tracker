@@ -10,34 +10,12 @@ import { getSnapshots } from "@/lib/actions/snapshots";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe, convertToBase } from "@/lib/prices/fx";
-import { aggregatePortfolio, type PortfolioSummary } from "@/lib/portfolio/aggregate";
+import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { isStablecoin } from "@/lib/cashflow";
-import type { PortfolioSnapshot } from "@/lib/types";
-
-// ─── Types ──────────────────────────────────────────────
-
-export interface ComparisonHoldingItem {
-  key: string;             // dedup key: coingecko_id | ticker | "cash:{currency}"
-  name: string;            // "Bitcoin", "VWCE", "EUR Cash"
-  ticker: string;          // "BTC", "VWCE", "EUR"
-  class: "crypto" | "stocks" | "cash";
-  imageUrl: string | null; // CoinGecko thumb for crypto, null for others
-  viewerValue: number;     // 0 if viewer doesn't hold it
-  ownerValue: number;      // 0 if owner doesn't hold it
-}
-
-export interface ComparisonData {
-  viewer: { name: string; summary: PortfolioSummary };
-  owner: { name: string; summary: PortfolioSummary };
-  normalizedCurrency: string;
-  holdings: ComparisonHoldingItem[];
-  viewerSnapshots: PortfolioSnapshot[];
-  ownerSnapshots: PortfolioSnapshot[];
-}
-
-export type ComparisonResult =
-  | { ok: true; data: ComparisonData }
-  | { ok: false; error: string };
+import type {
+  ComparisonHoldingItem,
+  ComparisonResult,
+} from "@/lib/types";
 
 // ─── Server action ──────────────────────────────────────
 

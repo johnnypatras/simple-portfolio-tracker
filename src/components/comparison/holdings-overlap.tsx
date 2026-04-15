@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import type { ComparisonHoldingItem } from "@/lib/actions/comparison";
+import type { ComparisonHoldingItem } from "@/lib/types";
 import { fmtCurrency } from "@/lib/format";
 
 const INITIAL_LIMIT = 5;

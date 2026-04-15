@@ -3,21 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ActionType, CashAccount, CashAccountInput } from "@/lib/types";
+import type { ActionType, CashAccount, CashAccountInput, CashAccountOpts } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import { validateAmount, validateApy, validateCurrency, validateName, validateUUID } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
 import { round2 } from "@/lib/format";
 import { type FxResult, emptyFx } from "@/lib/activity-fx";
 
-// ─── Shared types ────────────────────────────────────────
-
-export interface CashAccountOpts {
-  isAdjustment?: boolean;
-  transferGroupId?: string;
-  effectiveDate?: string;
-  fxRate?: number;
-}
+// CashAccountOpts is defined in @/lib/types — Turbopack strips re-exports
+// from "use server" modules.
 
 // ─── Cache invalidation paths ────────────────────────────
 

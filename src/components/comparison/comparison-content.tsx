@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ComparisonData } from "@/lib/actions/comparison";
+import type { ComparisonData } from "@/lib/types";
 import { fmtCurrency, fmtPct, changeColorClass } from "@/lib/format";
 
 interface ComparisonContentProps {

@@ -197,7 +197,10 @@ export async function backfillCashflowsAndDeltas(): Promise<{
       const daysSinceFirst = attemptedAt
         ? (now.getTime() - new Date(attemptedAt).getTime()) / THROTTLE_MS
         : 0;
-      const isExhausted = daysSinceFirst >= MAX_DAYS_BEFORE_EXHAUSTED - 1;
+      // Off-by-one fix: escalate to the snapshot-estimation fallback once the
+      // row has been pending for at least MAX_DAYS_BEFORE_EXHAUSTED days,
+      // not one day earlier.
+      const isExhausted = daysSinceFirst >= MAX_DAYS_BEFORE_EXHAUSTED;
 
       if (isExhausted) {
         // Try snapshot estimation fallback before giving up

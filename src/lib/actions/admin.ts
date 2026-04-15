@@ -6,7 +6,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateUUID } from "@/lib/validation";
 import { MAX_SHARE_EXPIRY_DAYS } from "@/lib/constants";
-import type { Profile, UserStatus } from "@/lib/types";
+import type { Profile, UserStatus, InviteCode } from "@/lib/types";
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -104,18 +104,6 @@ export async function unsuspendUser(userId: string): Promise<void> {
 }
 
 // ─── Invite Codes ─────────────────────────────────────────
-
-export interface InviteCode {
-  id: string;
-  code: string;
-  created_by: string;
-  used_by: string | null;
-  used_at: string | null;
-  expires_at: string | null;
-  created_at: string;
-  // Joined
-  used_by_email?: string | null;
-}
 
 export async function getInviteCodes(): Promise<InviteCode[]> {
   await requireAdmin();

@@ -1,5 +1,6 @@
 "use server";
 
+import * as Sentry from "@sentry/nextjs";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActivityLog } from "@/lib/types";
@@ -162,8 +163,15 @@ async function undoSingleEntry(
     entityQuery = entityQuery.eq("user_id", userId);
   }
   const { data: existing, error: fetchErr } = await entityQuery.single();
+  // PGRST116 = no rows returned (genuinely missing record). Any other
+  // error is a DB/network failure that should surface as a retry prompt
+  // rather than a misleading "record no longer exists" message.
   if (fetchErr && fetchErr.code !== "PGRST116") {
     console.error("[undo] Entity fetch failed:", fetchErr.message);
+    return {
+      success: false,
+      message: "Failed to load the original record — please try again",
+    };
   }
 
   if (!existing) {
@@ -295,6 +303,13 @@ async function undoSingleEntry(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
+    Sentry.captureException(err, {
+      tags: {
+        action: "undo.undoEntry",
+        entity_type: log.entity_type,
+        log_action: log.action,
+      },
+    });
     return { success: false, message: `Undo failed: ${msg}` };
   }
 

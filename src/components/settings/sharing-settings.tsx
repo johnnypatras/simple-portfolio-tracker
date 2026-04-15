@@ -13,13 +13,9 @@ import {
   Share2,
 } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/confirm-button";
-import {
-  createShareLink,
-  revokeShare,
-  getMyShares,
-  type ShareLink,
-  type ShareScope,
-} from "@/lib/actions/shares";
+import { createShareLink, revokeShare, getMyShares } from "@/lib/actions/shares";
+import type { ShareLink } from "@/lib/types";
+import type { ShareScope } from "@/lib/share-utils";
 
 // ─── Scope config ────────────────────────────────────────
 

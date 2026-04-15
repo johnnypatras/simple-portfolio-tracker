@@ -1,5 +1,6 @@
 "use server";
 
+import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { upsertPosition, createCryptoAsset } from "@/lib/actions/crypto";
@@ -222,6 +223,15 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     if (!isPartial && createdEntities.length > 0) {
       await cleanupTransferEntities(supabase, createdEntities);
     }
+
+    // Server-side capture so operational failures don't rely on the
+    // client-side error boundary (which misses server-action context).
+    Sentry.captureException(err, {
+      tags: {
+        action: "transfers.executeTransfer",
+        partial: isPartial ? "true" : "false",
+      },
+    });
 
     return {
       success: false,

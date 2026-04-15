@@ -4,7 +4,7 @@ import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { validateUUID } from "@/lib/validation";
 import { isValidPastOrTodayDate, extractQuantity } from "@/lib/split-helpers";
-import type { ActivityLog } from "@/lib/types";
+import type { ActivityLog, SplitLeg } from "@/lib/types";
 import { round2 } from "@/lib/format";
 
 // ── Helpers ──────────────────────────────────────────────
@@ -62,11 +62,6 @@ export async function backdateActivityEntry(
 }
 
 // ── Operation 2: Split + Backdate ────────────────────────
-
-export interface SplitLeg {
-  effective_date: string;
-  quantity: number;
-}
 
 export async function splitActivityEntry(
   parentId: string,

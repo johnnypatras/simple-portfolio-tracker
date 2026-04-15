@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { ShareScope } from "@/lib/actions/shares";
+import type { ShareScope } from "@/lib/share-utils";
 
 interface SharedViewState {
   /** True when viewing someone else's portfolio (share link) */

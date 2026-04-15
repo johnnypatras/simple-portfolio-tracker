@@ -8,38 +8,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { validateName, validateUUID } from "@/lib/validation";
 import { MAX_SHARE_EXPIRY_DAYS } from "@/lib/constants";
 import type { ShareScope } from "@/lib/share-utils";
+import type { ShareLink, CreateShareLinkOpts, ValidatedShare } from "@/lib/types";
 
 // ─── Types ──────────────────────────────────────────────
-
-// Canonical definition lives in share-utils.ts (pure, no "use server")
-export type { ShareScope } from "@/lib/share-utils";
-
-export interface ShareLink {
-  id: string;
-  token: string;
-  scope: ShareScope;
-  label: string | null;
-  expires_at: string | null;
-  revoked_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateShareLinkOpts {
-  scope?: ShareScope;
-  label?: string;
-  /** Expiry in days from now. null = never expires. */
-  expiresInDays?: number | null;
-}
-
-// ─── Validated share result (for layout/pages) ──────────
-
-export interface ValidatedShare {
-  id: string;
-  owner_id: string;
-  scope: ShareScope;
-  label: string | null;
-}
+//
+// All public types (ShareLink, CreateShareLinkOpts, ValidatedShare) are
+// defined in `@/lib/types`. Turbopack strips type re-exports from
+// "use server" modules, so consumers must import from "@/lib/types"
+// directly (see `src/components/settings/sharing-settings.tsx`).
+// `ShareScope` still lives in the pure `@/lib/share-utils` module and
+// callers that need its value (not just type) import it from there.
 
 // ─── Actions ────────────────────────────────────────────
 
