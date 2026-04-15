@@ -253,6 +253,7 @@ export function PerformanceRaceChart({
               strokeWidth={2}
               dot={false}
               connectNulls
+              isAnimationActive={false}
             />
             <Line
               type="monotone"
@@ -261,6 +262,7 @@ export function PerformanceRaceChart({
               strokeWidth={2}
               dot={false}
               connectNulls
+              isAnimationActive={false}
             />
           </ComposedChart>
         </ResponsiveContainer>

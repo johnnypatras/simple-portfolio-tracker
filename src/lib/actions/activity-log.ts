@@ -3,6 +3,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getFXRates } from "@/lib/prices/fx";
+import { captureAction } from "@/lib/actions/with-sentry";
 import {
   cashAmountField,
   cashDelta,
@@ -299,6 +300,7 @@ export async function toggleActivityAdjustment(
   logId: string,
   isAdjustment: boolean
 ): Promise<void> {
+  return captureAction("activity-log.toggleActivityAdjustment", async () => {
   validateUUID(logId, "Activity log ID");
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -400,6 +402,7 @@ export async function toggleActivityAdjustment(
     .eq("id", logId)
     .eq("user_id", user.id);
   if (error) throw new Error(error.message);
+  });
 }
 
 // ─── Adjustment deltas for chart ────────────────────────

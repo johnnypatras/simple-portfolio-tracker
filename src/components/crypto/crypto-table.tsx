@@ -1697,7 +1697,7 @@ function MobileCryptoCard({
         <div className="px-4 pb-3 pt-0 border-t border-zinc-800/30">
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-3 text-xs">
             <div>
-              <span className="text-zinc-500">Price (USD)</span>
+              <span className="text-zinc-400">Price (USD)</span>
               <p className="text-zinc-300 tabular-nums">
                 {row.priceUsd > 0 ? formatCurrency(row.priceUsd, "USD") : "No data"}
               </p>
@@ -1708,7 +1708,7 @@ function MobileCryptoCard({
               )}
             </div>
             <div>
-              <span className="text-zinc-500">Holdings</span>
+              <span className="text-zinc-400">Holdings</span>
               <p className="text-zinc-300 tabular-nums">
                 {displayQty > 0 ? formatQuantity(displayQty, 8) : "—"}
               </p>
@@ -1717,19 +1717,19 @@ function MobileCryptoCard({
               <>
                 {row.asset.chain?.trim() && (
                   <div>
-                    <span className="text-zinc-500">Chain</span>
+                    <span className="text-zinc-400">Chain</span>
                     <p className="text-zinc-400">{row.asset.chain}</p>
                   </div>
                 )}
                 {row.asset.subcategory?.trim() && (
                   <div>
-                    <span className="text-zinc-500">Type</span>
+                    <span className="text-zinc-400">Type</span>
                     <p className="text-zinc-400">{row.asset.subcategory}</p>
                   </div>
                 )}
                 {row.weightedApy > 0 && (
                   <div>
-                    <span className="text-zinc-500">APY</span>
+                    <span className="text-zinc-400">APY</span>
                     <p className="text-emerald-400 font-medium">
                       {row.weightedApy.toFixed(row.weightedApy % 1 === 0 ? 0 : 2)}%
                     </p>

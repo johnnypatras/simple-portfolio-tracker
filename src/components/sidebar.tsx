@@ -79,11 +79,13 @@ export function Sidebar({ email }: { email: string }) {
 
   const nav = (
     <>
-      {/* Logo */}
+      {/* Logo — use a non-heading element so the sidebar doesn't inject a
+          duplicate h1 on every dashboard page (each page already renders its
+          own h1 for the main content, per WCAG 1.3.1 document outline). */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-800/50">
-        <h1 className="text-sm font-semibold text-zinc-200 tracking-wide">
+        <p className="text-sm font-semibold text-zinc-200 tracking-wide">
           Portfolio Tracker
-        </h1>
+        </p>
         <button
           onClick={() => setMobileOpen(false)}
           aria-label="Close menu"

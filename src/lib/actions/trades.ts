@@ -27,16 +27,19 @@ export async function getAssetOptions(): Promise<{
     supabase
       .from("crypto_assets")
       .select("ticker, name")
+      .eq("user_id", user.id)
       .is("deleted_at", null)
       .order("ticker"),
     supabase
       .from("stock_assets")
       .select("ticker, name, currency")
+      .eq("user_id", user.id)
       .is("deleted_at", null)
       .order("ticker"),
     supabase
       .from("cash_accounts")
       .select("currency")
+      .eq("user_id", user.id)
       .is("deleted_at", null),
   ]);
 

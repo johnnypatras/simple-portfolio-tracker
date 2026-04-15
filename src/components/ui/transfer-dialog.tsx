@@ -868,7 +868,7 @@ export function TransferDialog({
       {dataLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
-          <span className="ml-2 text-sm text-zinc-500">Loading...</span>
+          <span className="ml-2 text-sm text-zinc-400">Loading...</span>
         </div>
       ) : (
         <div className="space-y-4">
@@ -897,7 +897,7 @@ export function TransferDialog({
                     }}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   />
-                  <div className="text-xs text-zinc-500 mt-1">
+                  <div className="text-xs text-zinc-400 mt-1">
                     Available: {prefilled.currentQty} {prefilled.assetTicker}
                     {prefilled.currentPrice
                       ? ` (~${prefilled.currency} ${(prefilled.currentQty * prefilled.currentPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })})`
@@ -934,7 +934,7 @@ export function TransferDialog({
                     ))}
                   </select>
                   {srcGroupedOptions.size === 0 && (
-                    <p className="text-xs text-zinc-500 mt-1">No positions with balance found</p>
+                    <p className="text-xs text-zinc-400 mt-1">No positions with balance found</p>
                   )}
                 </div>
 
@@ -957,7 +957,7 @@ export function TransferDialog({
                       }}
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                     />
-                    <div className="text-xs text-zinc-500 mt-1">
+                    <div className="text-xs text-zinc-400 mt-1">
                       Available: {srcSelected.available.toLocaleString(undefined, { maximumFractionDigits: 18 })} {srcSelected.unit}
                     </div>
                   </div>
@@ -998,11 +998,11 @@ export function TransferDialog({
                       <span className="text-sm text-zinc-100 font-medium">
                         {buySelectedAsset.symbol.toUpperCase()}
                       </span>
-                      <span className="text-xs text-zinc-500 ml-2">
+                      <span className="text-xs text-zinc-400 ml-2">
                         {"shortname" in buySelectedAsset ? buySelectedAsset.shortname : buySelectedAsset.name}
                       </span>
                       {buyAssetCurrency && (
-                        <span className="text-xs text-zinc-500 ml-2">{buyAssetCurrency}</span>
+                        <span className="text-xs text-zinc-400 ml-2">{buyAssetCurrency}</span>
                       )}
                     </div>
                     <button
@@ -1044,11 +1044,11 @@ export function TransferDialog({
                             <span className="text-sm text-zinc-100">
                               {r.symbol.toUpperCase()}
                             </span>
-                            <span className="text-xs text-zinc-500 ml-2">
+                            <span className="text-xs text-zinc-400 ml-2">
                               {"shortname" in r ? r.shortname : r.name}
                             </span>
                             {"exchDisp" in r && (
-                              <span className="text-xs text-zinc-500 ml-1">({(r as YahooSearchResult).exchDisp})</span>
+                              <span className="text-xs text-zinc-400 ml-1">({(r as YahooSearchResult).exchDisp})</span>
                             )}
                           </button>
                         ))}
@@ -1058,7 +1058,7 @@ export function TransferDialog({
                 )}
 
                 {buyDetectingChain && (
-                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                  <div className="flex items-center gap-2 text-xs text-zinc-400">
                     <Loader2 className="w-3 h-3 animate-spin" />
                     Detecting chain...
                   </div>
@@ -1129,7 +1129,7 @@ export function TransferDialog({
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                       />
                       {buyValue !== null && (
-                        <div className="text-xs text-zinc-500 mt-1">
+                        <div className="text-xs text-zinc-400 mt-1">
                           ~{buyAssetCurrency} {buyValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </div>
                       )}
@@ -1190,7 +1190,7 @@ export function TransferDialog({
 
                 {cashState === "skipped" ? (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-500">Cash not tracked</span>
+                    <span className="text-sm text-zinc-400">Cash not tracked</span>
                     <button
                       type="button"
                       onClick={() => setCashState("prompt")}
@@ -1204,7 +1204,7 @@ export function TransferDialog({
                     <div className="text-sm text-zinc-300">
                       {buyAssetCurrency} at {buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "\u2014"}
                     </div>
-                    <div className="text-xs text-zinc-500">
+                    <div className="text-xs text-zinc-400">
                       Balance: {buyAssetCurrency} {existingCashAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       {buyValue !== null && (
                         <span> → {buyAssetCurrency} {(existingCashAmount - buyValue).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
@@ -1347,7 +1347,7 @@ export function TransferDialog({
           {/* ── Buy Summary ── */}
           {mode === "buy" && buySelectedAsset && parseFloat(buyQuantity) > 0 && (buyLocationId || buyCreatingNew) && (
             <div className="bg-zinc-900/80 border border-zinc-700 rounded-lg p-3 space-y-1 text-xs">
-              <div className="text-zinc-500 uppercase tracking-wider font-medium text-[10px] mb-1">Summary</div>
+              <div className="text-zinc-400 uppercase tracking-wider font-medium text-[10px] mb-1">Summary</div>
               <div className="text-zinc-200">
                 Buy {buyQuantity} × {buySelectedAsset.symbol.toUpperCase()}
                 {" at "}{buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name}
@@ -1365,7 +1365,7 @@ export function TransferDialog({
                 </div>
               )}
               {cashState === "skipped" && (
-                <div className="text-zinc-500">Cash: not tracked</div>
+                <div className="text-zinc-400">Cash: not tracked</div>
               )}
               {(() => {
                 const creating: string[] = [];

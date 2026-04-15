@@ -313,7 +313,7 @@ export function SharingSettings() {
       {/* ── Inactive shares (revoked / expired) ─────────── */}
       {inactiveShares.length > 0 && (
         <div className="border-t border-zinc-800 pt-6">
-          <h3 className="text-sm font-medium text-zinc-500 mb-3">
+          <h3 className="text-sm font-medium text-zinc-400 mb-3">
             Inactive Links
           </h3>
           <div className="space-y-1.5">

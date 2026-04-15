@@ -267,7 +267,7 @@ export function CommandPalette({
 
           {/* Results list */}
           <Command.List className="max-h-[min(340px,60vh)] overflow-y-auto p-2">
-            <Command.Empty className="py-6 text-center text-sm text-zinc-500">
+            <Command.Empty className="py-6 text-center text-sm text-zinc-400">
               No results found.
             </Command.Empty>
 
@@ -303,7 +303,7 @@ export function CommandPalette({
                         <div className="flex-1 min-w-0 truncate">
                           <span>{h.name}</span>
                           {h.ticker && (
-                            <span className="ml-1.5 text-xs text-zinc-500">
+                            <span className="ml-1.5 text-xs text-zinc-400">
                               {h.ticker}
                             </span>
                           )}
@@ -347,7 +347,7 @@ export function CommandPalette({
                       </div>
                       {isExpanded && hasDetail && (
                         <div
-                          className="mt-1.5 ml-8 text-[11px] text-zinc-500 space-y-0.5"
+                          className="mt-1.5 ml-8 text-[11px] text-zinc-400 space-y-0.5"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex justify-between">
@@ -414,7 +414,7 @@ export function CommandPalette({
             {!isReadOnly && search.length >= 3 && (
               <>
                 {externalLoading && (
-                  <div className="flex items-center justify-center gap-2 py-3 text-xs text-zinc-500">
+                  <div className="flex items-center justify-center gap-2 py-3 text-xs text-zinc-400">
                     <Loader2 className="w-3 h-3 animate-spin" />
                     Searching...
                   </div>
@@ -446,7 +446,7 @@ export function CommandPalette({
                           )}
                           <div className="flex-1 min-w-0 truncate">
                             <span>{r.name}</span>
-                            <span className="ml-1.5 text-xs text-zinc-500">
+                            <span className="ml-1.5 text-xs text-zinc-400">
                               {r.ticker}
                             </span>
                             {isOwned && (

@@ -585,6 +585,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
               <div className="border border-zinc-800/50 rounded-lg overflow-hidden">
                 <button
                   type="button"
+                  aria-expanded={positionOpen}
                   onClick={() => setPositionOpen(!positionOpen)}
                   className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/30 transition-colors"
                 >

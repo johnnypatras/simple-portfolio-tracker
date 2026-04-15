@@ -181,10 +181,14 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     let prices: TransferPrices = { source: {}, destination: {} };
 
     if (currentSource) {
+      // currentSource truthy ⇒ transferGroupId was set on line 161. Narrow
+      // explicitly instead of using `!` so a future refactor that moves the
+      // assignment fails loudly rather than silently passing `undefined`.
+      if (!transferGroupId) throw new Error("Transfer logic error: transferGroupId not set for two-legged transfer");
       originalState = await fetchSourceState(supabase, currentSource);
       prices = await fetchPrices(supabase, currentSource, destination);
       validateSufficientBalance(currentSource, originalState);
-      await executeSourceLeg(currentSource, originalState, transferGroupId!, prices.source, input.effectiveDate);
+      await executeSourceLeg(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
     }
 
     // ── Step 6: Execute destination leg (increase) with rollback on failure
@@ -193,8 +197,9 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     } catch (destErr) {
       if (currentSource && originalState) {
         // Rollback source: restore to original state
+        if (!transferGroupId) throw new Error("Transfer logic error: transferGroupId missing during rollback");
         try {
-          await rollbackSource(currentSource, originalState, transferGroupId!, prices.source, input.effectiveDate);
+          await rollbackSource(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
         } catch (rollbackErr) {
           // Source modified + rollback failed → partial failure.
           // Skip cleanup — entities may be referenced by the modified source.
@@ -224,8 +229,13 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       await cleanupTransferEntities(supabase, createdEntities);
     }
 
-    // Server-side capture so operational failures don't rely on the
-    // client-side error boundary (which misses server-action context).
+    // Server-side capture at the transfer level — adds the `partial` tag
+    // that sub-action `captureAction` wraps can't know about. Sub-actions
+    // (crypto.upsertPosition, cash-accounts.updateCashAccount, etc.) also
+    // capture the same error with their own action tags; Sentry groups
+    // them by stack-trace fingerprint into a single issue, with each event
+    // exposing a different layer of context. This is intentional structured
+    // observability, not double-capture noise.
     Sentry.captureException(err, {
       tags: {
         action: "transfers.executeTransfer",

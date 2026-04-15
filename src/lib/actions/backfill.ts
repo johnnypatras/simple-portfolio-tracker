@@ -396,7 +396,12 @@ export async function backfillSingleRow(rowId: string): Promise<{
         cashflow_status: "complete",
         cashflow_attempted_at: now,
       }).eq("id", rowId).eq("user_id", user.id);
-      if (cfErr) console.error(`[backfill] Single row cashflow write failed for ${rowId}:`, cfErr.message);
+      if (cfErr) {
+        console.error(`[backfill] Single row cashflow write failed for ${rowId}:`, cfErr.message);
+        // Propagate — otherwise the UI retry button shows "success" despite
+        // the value never being persisted (R2 CRITICAL finding).
+        return { success: false, error: `Cashflow write failed: ${cfErr.message}` };
+      }
     }
 
     if (needsDelta) {
@@ -406,7 +411,10 @@ export async function backfillSingleRow(rowId: string): Promise<{
         delta_status: "complete",
         delta_attempted_at: now,
       }).eq("id", rowId).eq("user_id", user.id);
-      if (deltaErr) console.error(`[backfill] Single row delta write failed for ${rowId}:`, deltaErr.message);
+      if (deltaErr) {
+        console.error(`[backfill] Single row delta write failed for ${rowId}:`, deltaErr.message);
+        return { success: false, error: `Delta write failed: ${deltaErr.message}` };
+      }
     }
 
     return { success: true };

@@ -1,7 +1,8 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Lock, Mail, KeyRound, Ticket, Eye, EyeOff, Clock, User } from "lucide-react";
 
 function InviteForm() {
@@ -17,8 +18,6 @@ function InviteForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<"approved" | "pending" | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const router = useRouter();
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -83,12 +82,12 @@ function InviteForm() {
         <p className="text-sm text-zinc-400 mb-6">
           Your account is ready. You can now sign in.
         </p>
-        <button
-          onClick={() => router.push("/login")}
-          className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors"
+        <Link
+          href="/login"
+          className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors block text-center"
         >
           Go to Login
-        </button>
+        </Link>
       </div>
     );
   }
@@ -106,12 +105,12 @@ function InviteForm() {
           Your account has been created and is awaiting administrator approval.
           You&apos;ll be able to sign in once your account is activated.
         </p>
-        <button
-          onClick={() => router.push("/login")}
-          className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium rounded-lg transition-colors"
+        <Link
+          href="/login"
+          className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium rounded-lg transition-colors block text-center"
         >
           Back to Login
-        </button>
+        </Link>
       </div>
     );
   }

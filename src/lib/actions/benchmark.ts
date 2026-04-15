@@ -65,6 +65,19 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
   }
   const [pendingResult, failedResult] = await Promise.all([pendingQuery, failedQuery]);
 
+  // Log (but don't throw) when the pending/failed counts can't be fetched —
+  // silently returning 0 hides operational problems from the stale banner.
+  if (pendingResult.error) {
+    console.error("[deriveCashFlows] pendingCount query failed:", pendingResult.error.message);
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.captureException(new Error(`deriveCashFlows pendingCount failed: ${pendingResult.error.message}`));
+  }
+  if (failedResult.error) {
+    console.error("[deriveCashFlows] failedCount query failed:", failedResult.error.message);
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.captureException(new Error(`deriveCashFlows failedCount failed: ${failedResult.error.message}`));
+  }
+
   // Post-sort by effective_date (falls back to created_at date portion)
   // so cashflow events appear in correct chronological order
   const sorted = [...(data ?? [])].sort((a, b) => {

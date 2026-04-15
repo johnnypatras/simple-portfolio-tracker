@@ -469,8 +469,12 @@ export function ImportExportSettings() {
 
         {/* ── Importing: spinner ── */}
         {importStage === "importing" && (
-          <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-6 flex flex-col items-center gap-3">
-            <Loader2 className="w-6 h-6 text-zinc-400 animate-spin" />
+          <div
+            role="status"
+            aria-live="polite"
+            className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-6 flex flex-col items-center gap-3"
+          >
+            <Loader2 className="w-6 h-6 text-zinc-400 animate-spin" aria-hidden="true" />
             <p className="text-sm text-zinc-400">Importing data…</p>
             <p className="text-xs text-zinc-400">This may take a moment</p>
           </div>
@@ -478,9 +482,13 @@ export function ImportExportSettings() {
 
         {/* ── Done: results ── */}
         {importStage === "done" && importResult && (
-          <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-4 space-y-4">
+          <div
+            role="status"
+            aria-live="polite"
+            className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-4 space-y-4"
+          >
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" aria-hidden="true" />
               <p className="text-sm font-medium text-emerald-300">Import Complete</p>
             </div>
 

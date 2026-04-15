@@ -484,25 +484,25 @@ export function TradeTable({
           <caption className="sr-only">Trade diary entries</caption>
           <thead>
             <tr className="border-b border-zinc-800/50">
-              <th scope="col" className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-left text-xs font-medium text-zinc-400 px-4 py-3">
                 Date
               </th>
-              <th scope="col" className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-left text-xs font-medium text-zinc-400 px-4 py-3">
                 Asset
               </th>
-              <th scope="col" className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-left text-xs font-medium text-zinc-400 px-4 py-3">
                 Action
               </th>
-              <th scope="col" className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-right text-xs font-medium text-zinc-400 px-4 py-3">
                 Quantity
               </th>
-              <th scope="col" className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-right text-xs font-medium text-zinc-400 px-4 py-3">
                 Price
               </th>
-              <th scope="col" className="text-right text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-right text-xs font-medium text-zinc-400 px-4 py-3">
                 Total
               </th>
-              <th scope="col" className="text-left text-xs font-medium text-zinc-500 px-4 py-3">
+              <th scope="col" className="text-left text-xs font-medium text-zinc-400 px-4 py-3">
                 Notes
               </th>
               <th scope="col" className="w-20" />

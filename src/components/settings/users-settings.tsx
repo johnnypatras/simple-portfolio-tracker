@@ -53,7 +53,7 @@ function statusBadge(status: string) {
 
 function codeStatus(code: InviteCode): { label: string; color: string } {
   if (code.used_by) {
-    return { label: `Used by ${code.used_by_email ?? "unknown"}`, color: "text-zinc-500" };
+    return { label: `Used by ${code.used_by_email ?? "unknown"}`, color: "text-zinc-400" };
   }
   if (code.expires_at && new Date(code.expires_at) < new Date()) {
     return { label: "Expired", color: "text-red-400" };
@@ -185,7 +185,7 @@ export function UsersSettings() {
 
   if (loading) {
     return (
-      <div className="text-zinc-500 text-sm py-8 text-center">
+      <div className="text-zinc-400 text-sm py-8 text-center">
         Loading user data...
       </div>
     );
@@ -206,7 +206,7 @@ export function UsersSettings() {
         </h3>
 
         {pendingUsers.length === 0 ? (
-          <p className="text-sm text-zinc-500 bg-zinc-900/50 border border-zinc-800/50 rounded-lg px-4 py-3">
+          <p className="text-sm text-zinc-400 bg-zinc-900/50 border border-zinc-800/50 rounded-lg px-4 py-3">
             No pending registrations
           </p>
         ) : (
@@ -218,7 +218,7 @@ export function UsersSettings() {
               >
                 <div>
                   <p className="text-sm text-zinc-200">{user.email}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-zinc-400">
                     Registered {formatDate(user.created_at)}
                   </p>
                 </div>
@@ -276,7 +276,7 @@ export function UsersSettings() {
         </div>
 
         {codes.length === 0 ? (
-          <p className="text-sm text-zinc-500 bg-zinc-900/50 border border-zinc-800/50 rounded-lg px-4 py-3">
+          <p className="text-sm text-zinc-400 bg-zinc-900/50 border border-zinc-800/50 rounded-lg px-4 py-3">
             No invite codes generated yet
           </p>
         ) : (
@@ -360,7 +360,7 @@ export function UsersSettings() {
                         {user.display_name || user.email}
                       </p>
                       {user.display_name && (
-                        <p className="text-xs text-zinc-500 truncate">
+                        <p className="text-xs text-zinc-400 truncate">
                           {user.email}
                         </p>
                       )}
@@ -377,7 +377,7 @@ export function UsersSettings() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-zinc-500 hidden sm:block">
+                    <span className="text-xs text-zinc-400 hidden sm:block">
                       {formatDate(user.created_at)}
                     </span>
                     {user.role !== "admin" && (

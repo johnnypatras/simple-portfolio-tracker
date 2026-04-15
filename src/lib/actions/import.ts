@@ -539,9 +539,14 @@ export async function importFromJson(
   }
 
   // ── 5b. Goal Prices ───────────────────────────────────
-  // Collect into a single batch upsert instead of N round-trips per goal.
+  // Strategy: DELETE then INSERT. Avoids the PostgREST / partial-unique-index
+  // mismatch: `uq_goal_prices_active` is `(crypto_asset_id, label) WHERE
+  // deleted_at IS NULL`, which Supabase JS's `.upsert({ onConflict })` cannot
+  // target (PostgreSQL requires the `WHERE` clause in `ON CONFLICT`). "Restore
+  // from backup" semantics say the backup is the source of truth — wipe the
+  // user's existing goal_prices for the imported assets and insert fresh.
   // Goals whose crypto_asset_id doesn't map to a newly-created asset
-  // (e.g. cross-portfolio restore) are silently dropped — same as before.
+  // (e.g. cross-portfolio restore) are silently dropped.
   if (data.goalPrices?.length) {
     const goalRows: Record<string, unknown>[] = [];
     for (const gp of data.goalPrices) {
@@ -555,14 +560,25 @@ export async function importFromJson(
       });
     }
     if (goalRows.length > 0) {
-      const { error } = await supabase
+      // 1. Delete existing goal_prices for the assets being restored.
+      //    RLS + FK scope the delete to the current user via crypto_assets.
+      const restoredAssetIds = [...new Set(goalRows.map((r) => r.crypto_asset_id as string))];
+      const { error: delErr } = await supabase
         .from("goal_prices")
-        .upsert(goalRows, { onConflict: "crypto_asset_id,label" });
-      if (error) {
-        console.warn(`[import] Goal prices batch upsert failed (${goalRows.length} rows):`, error.message);
+        .delete()
+        .in("crypto_asset_id", restoredAssetIds);
+      if (delErr) {
+        console.warn(`[import] Goal prices pre-delete failed:`, delErr.message);
         skipped.goalPrices += goalRows.length;
       } else {
-        counts.goalPrices += goalRows.length;
+        // 2. Insert the fresh rows from the backup.
+        const { error: insErr } = await supabase.from("goal_prices").insert(goalRows);
+        if (insErr) {
+          console.warn(`[import] Goal prices insert failed (${goalRows.length} rows):`, insErr.message);
+          skipped.goalPrices += goalRows.length;
+        } else {
+          counts.goalPrices += goalRows.length;
+        }
       }
     }
   }

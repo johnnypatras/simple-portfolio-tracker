@@ -3,6 +3,8 @@
  * All validators throw descriptive errors that surface in UI toasts.
  */
 
+import { MAX_NAME_LENGTH } from "@/lib/constants";
+
 const MAX_AMOUNT = 1_000_000_000; // 1 billion — sanity cap
 
 export function validateAmount(n: number, label = "Amount"): void {
@@ -25,7 +27,7 @@ export function validateCurrency(s: string): void {
   }
 }
 
-export function validateName(s: string, maxLen = 100, label = "Name"): void {
+export function validateName(s: string, maxLen = MAX_NAME_LENGTH, label = "Name"): void {
   const trimmed = s.trim();
   if (trimmed.length === 0) throw new Error(`${label} cannot be empty`);
   if (trimmed.length > maxLen) {

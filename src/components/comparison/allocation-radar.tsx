@@ -55,6 +55,7 @@ export function AllocationRadar({
           fill="#06b6d4"
           fillOpacity={0.25}
           dot={{ r: 3, fill: "#06b6d4" }}
+          isAnimationActive={false}
         />
         <Radar
           name={ownerName}
@@ -63,6 +64,7 @@ export function AllocationRadar({
           fill="#f97316"
           fillOpacity={0.25}
           dot={{ r: 3, fill: "#f97316" }}
+          isAnimationActive={false}
         />
         <Legend
           wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }}

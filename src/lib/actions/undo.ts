@@ -247,12 +247,20 @@ async function undoSingleEntry(
           .eq("id", log.entity_id);
         if (error) throw error;
 
-        // Read entity after compensation for the after_snapshot
-        const { data: afterEntity } = await supabase
+        // Read entity after compensation for the after_snapshot. If this
+        // read fails, we'd silently write null into after_snapshot and
+        // mark the entry undone — log the error so it surfaces instead.
+        const { data: afterEntity, error: afterErr } = await supabase
           .from(effectiveTable)
           .select("*")
           .eq("id", log.entity_id)
           .single();
+        if (afterErr) {
+          console.error(`[undo] Failed to read after-snapshot for ${effectiveTable}/${log.entity_id}:`, afterErr.message);
+          Sentry.captureException(afterErr, {
+            tags: { action: "undo.afterEntitySnapshot", entity_table: effectiveTable },
+          });
+        }
 
         // Log compensation entry — insert directly to get the ID back
         const {
