@@ -80,7 +80,7 @@ export async function findExistingCash(
     .is("deleted_at", null);
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as CashAccount[];
+  return data ?? [];
 }
 
 // ─── Label helper ────────────────────────────────────────
@@ -617,7 +617,7 @@ export async function mergeCashAccounts(
   await updateCashAccount(survivorId, {
     currency: survivor.currency,
     balance: newBalance,
-    institution_id: survivor.institution_id,
+    institution_id: survivor.institution_id ?? undefined,
     name: survivor.name,
     apy: survivor.apy ?? 0,
     region: survivor.region,

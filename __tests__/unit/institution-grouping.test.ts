@@ -71,7 +71,8 @@ function makeCryptoAsset(overrides: Partial<CryptoAssetWithPositions> = {}): Cry
       wallet_type: "custodial" as const,
       quantity: 1,
       apy: 0,
-      acquisition_method: "buy",
+      acquisition_method: "bought",
+      network: null,
       last_was_adjustment: false,
       last_was_transfer: false,
       updated_at: "2026-01-01T00:00:00Z",
@@ -249,7 +250,8 @@ describe("buildInstitutionGroups", () => {
         wallet_type: "non_custodial" as const,
         quantity: 0.5,
         apy: 0,
-        acquisition_method: "buy",
+        acquisition_method: "bought",
+        network: null,
         last_was_adjustment: false,
         last_was_transfer: false,
         updated_at: "2026-01-01T00:00:00Z",
@@ -280,11 +282,11 @@ describe("buildInstitutionGroups", () => {
       cryptoAssets: [
         makeCryptoAsset({
           id: "c1",
-          positions: [{ id: "p1", crypto_asset_id: "c1", wallet_id: "wa", wallet_name: "A", wallet_type: "custodial" as const, quantity: 0.1, apy: 0, acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false, updated_at: "2026-01-01T00:00:00Z", deleted_at: null }],
+          positions: [{ id: "p1", crypto_asset_id: "c1", wallet_id: "wa", wallet_name: "A", wallet_type: "custodial" as const, quantity: 0.1, apy: 0, acquisition_method: "bought", network: null, last_was_adjustment: false, last_was_transfer: false, updated_at: "2026-01-01T00:00:00Z", deleted_at: null }],
         }),
         makeCryptoAsset({
           id: "c2",
-          positions: [{ id: "p2", crypto_asset_id: "c2", wallet_id: "wb", wallet_name: "B", wallet_type: "custodial" as const, quantity: 1, apy: 0, acquisition_method: "buy", last_was_adjustment: false, last_was_transfer: false, updated_at: "2026-01-01T00:00:00Z", deleted_at: null }],
+          positions: [{ id: "p2", crypto_asset_id: "c2", wallet_id: "wb", wallet_name: "B", wallet_type: "custodial" as const, quantity: 1, apy: 0, acquisition_method: "bought", network: null, last_was_adjustment: false, last_was_transfer: false, updated_at: "2026-01-01T00:00:00Z", deleted_at: null }],
         }),
       ],
     }));

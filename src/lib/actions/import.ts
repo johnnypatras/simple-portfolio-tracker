@@ -6,6 +6,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { exportFullJson } from "@/lib/actions/export";
 import { VALID_THEMES } from "@/lib/constants";
 import type { PortfolioBackup, ImportResult, ImportError } from "@/lib/types";
+import type { Database } from "@/types/database";
 import {
   validateAmount,
   validateDate,
@@ -268,7 +269,7 @@ export async function importFromJson(
       "cash_accounts",
       "crypto_assets", "stock_assets",
       "brokers", "wallets", "institutions",
-    ];
+    ] as const;
     const results = await Promise.all(
       tables.map(async (table) => ({
         table,
@@ -420,7 +421,7 @@ export async function importFromJson(
       }
     }
 
-    const newRows: Record<string, unknown>[] = [];
+    const newRows: Database["public"]["Tables"]["cash_accounts"]["Insert"][] = [];
 
     for (const ca of data.cashAccounts ?? []) {
       const mappedInstId = ca.institution_id ? instMap.get(ca.institution_id) ?? null : null;
@@ -512,7 +513,7 @@ export async function importFromJson(
     }
 
     // Batch positions per asset
-    const posRows: Record<string, unknown>[] = [];
+    const posRows: Database["public"]["Tables"]["crypto_positions"]["Insert"][] = [];
     for (const pos of asset.positions) {
       const mappedWalletId = walletMap.get(pos.wallet_id);
       if (!mappedWalletId) continue;
@@ -548,7 +549,7 @@ export async function importFromJson(
   // Goals whose crypto_asset_id doesn't map to a newly-created asset
   // (e.g. cross-portfolio restore) are silently dropped.
   if (data.goalPrices?.length) {
-    const goalRows: Record<string, unknown>[] = [];
+    const goalRows: Database["public"]["Tables"]["goal_prices"]["Insert"][] = [];
     for (const gp of data.goalPrices) {
       const mappedAssetId = cryptoAssetMap.get(gp.crypto_asset_id);
       if (!mappedAssetId) continue;
@@ -648,7 +649,7 @@ export async function importFromJson(
     }
 
     // Batch positions per asset
-    const posRows: Record<string, unknown>[] = [];
+    const posRows: Database["public"]["Tables"]["stock_positions"]["Insert"][] = [];
     for (const pos of asset.positions) {
       const mappedBrokerId = brokerMap.get(pos.broker_id);
       if (!mappedBrokerId) continue;
@@ -748,7 +749,7 @@ export async function importFromJson(
 
   // ── 10. Profile (v2+) ─────────────────────────────────
   if (data.profile) {
-    const profileUpdate: Record<string, string> = {};
+    const profileUpdate: Database["public"]["Tables"]["profiles"]["Update"] = {};
     if (data.profile.display_name && typeof data.profile.display_name === "string" && data.profile.display_name.length <= 100) {
       profileUpdate.display_name = data.profile.display_name;
     }

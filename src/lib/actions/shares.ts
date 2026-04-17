@@ -96,7 +96,11 @@ export async function getMyShares(): Promise<ShareLink[]> {
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as ShareLink[];
+  // DB column is nullable because user-type shares don't have tokens;
+  // CHECK constraint `share_link_has_token` + `.eq("share_type", "link")`
+  // filter above guarantees link-type rows always have a token. Filter
+  // null defensively so the domain contract holds at the boundary.
+  return (data ?? []).filter((r): r is typeof r & { token: string } => r.token !== null);
 }
 
 /**

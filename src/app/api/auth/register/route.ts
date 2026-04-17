@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
+import type { Database } from "@/types/database";
 
 const limiter = rateLimit({ windowMs: 60_000, max: 5 });
 
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     if (userData.user) {
       // Save optional name fields
-      const nameFields: Record<string, string> = {};
+      const nameFields: Database["public"]["Tables"]["profiles"]["Update"] = {};
       if (typeof display_name === "string" && display_name.trim())
         nameFields.display_name = display_name.trim();
       if (typeof first_name === "string" && first_name.trim())

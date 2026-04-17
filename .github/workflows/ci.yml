@@ -79,6 +79,21 @@ jobs:
             docker save "$img" -o "/tmp/supabase-docker-cache/${name}.tar" 2>/dev/null || true
           done
 
+      - name: Verify Database types are in sync with migrations
+        # Regenerate types from the local migration-derived schema and diff
+        # against the committed src/types/database.ts. Fails the build if a
+        # migration changed the schema but types weren't regenerated.
+        run: |
+          supabase gen types typescript --local 2>/dev/null | sed '/^Connecting to db/d' > /tmp/db-types.ts
+          if ! diff -q src/types/database.ts /tmp/db-types.ts > /dev/null; then
+            echo "::error::Database types are out of sync with migrations."
+            echo "Run: supabase gen types typescript --local 2>/dev/null | sed '/^Connecting to db/d' > src/types/database.ts"
+            echo "Diff:"
+            diff src/types/database.ts /tmp/db-types.ts || true
+            exit 1
+          fi
+          echo "Database types match local migration schema."
+
       - name: Integration tests
         run: npx vitest run --project integration
 

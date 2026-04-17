@@ -20,7 +20,12 @@ export default async function SharedDiaryPage({
     .is("deleted_at", null)
     .order("trade_date", { ascending: false });
 
-  const trades = (data ?? []) as TradeEntry[];
+  // DB stores action/asset_type as free text constrained by validation; narrow to domain enums
+  const trades: TradeEntry[] = (data ?? []).map((row) => ({
+    ...row,
+    action: row.action as TradeEntry["action"],
+    asset_type: row.asset_type as TradeEntry["asset_type"],
+  }));
 
   // Asset options are only used by the add-entry form, which is hidden in read-only mode
   const assetOptions = { crypto: [], stock: [], cash: [] };

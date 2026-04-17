@@ -7,6 +7,7 @@ import type { ActivityLog } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
 import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { resolveTable, remapSnapshotFields } from "@/lib/undo-remap";
+import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 import { validateUUID } from "@/lib/validation";
 
 // ─── Field classification ─────────────────────────────────
@@ -489,7 +490,7 @@ export async function undoActivity(
     return { success: false, message: "Activity log entry not found" };
   }
 
-  const log = entry as ActivityLog;
+  const log = normalizeActivityLogRow(entry);
 
   // ── Split checks (before undone_at guard — split parents have undone_at set) ─
 
@@ -549,7 +550,7 @@ export async function undoActivity(
     }
 
     const result = await undoTransferGroup(
-      groupEntries as ActivityLog[],
+      groupEntries.map(normalizeActivityLogRow),
       supabase,
       user.id,
     );

@@ -493,7 +493,8 @@ export async function deleteStockPosition(positionId: string, opts?: {
     .is("deleted_at", null)
     .single();
 
-  const parentAsset = snapshot?.stock_assets as { user_id: string; ticker: string } | null;
+  if (!snapshot) throw new Error("Position not found");
+  const parentAsset = snapshot.stock_assets as { user_id: string; ticker: string } | null;
   if (!parentAsset || parentAsset.user_id !== user.id) throw new Error("Position not found");
 
   const ticker = parentAsset.ticker ?? "Unknown";

@@ -71,7 +71,12 @@ export async function getTradeEntries(): Promise<TradeEntry[]> {
     .order("trade_date", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return data ?? [];
+  // DB stores action/asset_type as text (constrained by application logic); narrow at boundary
+  return (data ?? []).map<TradeEntry>((row) => ({
+    ...row,
+    action: row.action as TradeEntry["action"],
+    asset_type: row.asset_type as TradeEntry["asset_type"],
+  }));
 }
 
 export async function createTradeEntry(input: TradeEntryInput) {

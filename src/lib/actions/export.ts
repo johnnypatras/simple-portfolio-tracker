@@ -17,7 +17,6 @@ import type {
   BankAccount,
   ExchangeDeposit,
   BrokerDeposit,
-  DiaryEntry,
   GoalPrice,
   ActivityLog,
   PortfolioBackup,
@@ -80,7 +79,13 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
       .select("id, crypto_asset_id, target_price, weight, label")
       .in("crypto_asset_id", cryptoIds)
       .is("deleted_at", null);
-    goalPrices = (gp ?? []) as GoalPrice[];
+    goalPrices = (gp ?? []).map<GoalPrice>((row) => ({
+      id: row.id,
+      crypto_asset_id: row.crypto_asset_id,
+      target_price: row.target_price,
+      weight: row.weight ?? 0.25,
+      label: row.label,
+    }));
   }
 
   return {
@@ -149,9 +154,19 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
       })),
     tradeEntries,
     snapshots,
-    diaryEntries: (diaryRows ?? []) as DiaryEntry[],
+    // DiaryEntry includes user_id which the projection above omits — re-attach
+    // from the filter context.
+    diaryEntries: (diaryRows ?? []).map((row) => ({ ...row, user_id: uid })),
     goalPrices,
-    activityLog: (activityRows ?? []) as ActivityLog[],
+    activityLog: (activityRows ?? []).map<ActivityLog>((row) => ({
+      ...row,
+      details: row.details as Record<string, unknown> | null,
+      before_snapshot: row.before_snapshot as Record<string, unknown> | null,
+      after_snapshot: row.after_snapshot as Record<string, unknown> | null,
+      cashflow_asset_class: row.cashflow_asset_class as ActivityLog["cashflow_asset_class"],
+      cashflow_status: row.cashflow_status as ActivityLog["cashflow_status"],
+      delta_status: row.delta_status as ActivityLog["delta_status"],
+    })),
     portfolioShares: shares,
     profile: {
       display_name: profile.display_name,

@@ -3,6 +3,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { revalidateDashboard } from "@/lib/actions/revalidate";
 import type {
+  AcquisitionType,
   CryptoAssetInput,
   CryptoAssetWithPositions,
   CryptoPositionInput,
@@ -61,7 +62,7 @@ export async function getCryptoAssetsWithPositions(): Promise<
   if (posErr) throw new Error(posErr.message);
 
   // Merge
-  return assets.map((asset) => ({
+  return assets.map<CryptoAssetWithPositions>((asset) => ({
     ...asset,
     positions: (positions ?? [])
       .filter((p) => p.crypto_asset_id === asset.id)
@@ -71,6 +72,9 @@ export async function getCryptoAssetsWithPositions(): Promise<
           ...p,
           quantity: Number(p.quantity),
           apy: Number(p.apy ?? 0),
+          // DB stores acquisition_method as free-text constrained by validation;
+          // narrow to the domain enum at the boundary.
+          acquisition_method: (p.acquisition_method ?? "bought") as AcquisitionType,
           wallet_name: walletInfo?.name ?? "Unknown",
           wallet_type: walletInfo?.wallet_type ?? "custodial" as const,
         };
@@ -479,7 +483,8 @@ export async function deletePosition(positionId: string, opts?: {
     .is("deleted_at", null)
     .single();
 
-  const parentAsset = snapshot?.crypto_assets as { user_id: string; ticker: string; subcategory?: string } | null;
+  if (!snapshot) throw new Error("Position not found");
+  const parentAsset = snapshot.crypto_assets as { user_id: string; ticker: string; subcategory?: string } | null;
   if (!parentAsset || parentAsset.user_id !== user.id) throw new Error("Position not found");
 
   const ticker = parentAsset.ticker ?? "Unknown";

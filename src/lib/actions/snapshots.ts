@@ -3,6 +3,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { PortfolioSnapshot } from "@/lib/types";
+import type { Database } from "@/types/database";
 
 /** Round to 2 decimal places (matching Edge Function's round2) */
 import { round2 } from "@/lib/format";
@@ -137,7 +138,22 @@ export async function getSnapshots(
     throw new Error(`Failed to load portfolio history: ${error.message}`);
   }
 
-  return data ?? [];
+  // Legacy snapshots may have null USD value columns; coerce to 0 so UI can
+  // treat them as numeric. EUR-side columns are genuinely nullable (pre-multi-currency).
+  return (data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
+}
+
+type PortfolioSnapshotRow = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
+
+function normalizeSnapshot(row: PortfolioSnapshotRow): PortfolioSnapshot {
+  return {
+    ...row,
+    total_value_usd: row.total_value_usd ?? 0,
+    total_value_eur: row.total_value_eur ?? 0,
+    crypto_value_usd: row.crypto_value_usd ?? 0,
+    stocks_value_usd: row.stocks_value_usd ?? 0,
+    cash_value_usd: row.cash_value_usd ?? 0,
+  };
 }
 
 /**
@@ -170,5 +186,5 @@ export async function getSnapshotAt(
     throw new Error(`Failed to load snapshot: ${error.message}`);
   }
 
-  return data;
+  return data ? normalizeSnapshot(data) : null;
 }

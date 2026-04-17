@@ -4,6 +4,7 @@ import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateShareToken } from "./shares";
 import type {
+  AcquisitionType,
   Profile,
   CryptoAssetWithPositions,
   StockAssetWithPositions,
@@ -80,12 +81,29 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     }
   }
 
-  const profile = profileRes.data as Profile;
+  if (!profileRes.data) {
+    console.error("[shared-portfolio] profile row missing");
+    return null;
+  }
+  const profile: Profile = {
+    ...profileRes.data,
+    role: profileRes.data.role as Profile["role"],
+    status: profileRes.data.status as Profile["status"],
+  };
   const cryptoAssetsRaw = cryptoAssetsRes.data ?? [];
   const stockAssetsRaw = stockAssetsRes.data ?? [];
-  const wallets = (walletsRes.data ?? []) as Wallet[];
-  const brokers = (brokersRes.data ?? []) as Broker[];
-  const snapshots = (snapshotsRes.data ?? []) as PortfolioSnapshot[];
+  const wallets: Wallet[] = walletsRes.data ?? [];
+  const brokers: Broker[] = brokersRes.data ?? [];
+  // Legacy snapshots may have null USD value columns; normalize to 0 to match
+  // PortfolioSnapshot domain contract.
+  const snapshots: PortfolioSnapshot[] = (snapshotsRes.data ?? []).map((row) => ({
+    ...row,
+    total_value_usd: row.total_value_usd ?? 0,
+    total_value_eur: row.total_value_eur ?? 0,
+    crypto_value_usd: row.crypto_value_usd ?? 0,
+    stocks_value_usd: row.stocks_value_usd ?? 0,
+    cash_value_usd: row.cash_value_usd ?? 0,
+  }));
 
   // ── Build crypto and stock assets with positions (parallel) ──
   const cryptoAssetIds = cryptoAssetsRaw.map((a) => a.id);
@@ -131,6 +149,9 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
           ...p,
           quantity: Number(p.quantity),
           apy: Number(p.apy ?? 0),
+          // DB stores acquisition_method as free-text constrained by validation;
+          // narrow to the domain enum at the boundary.
+          acquisition_method: (p.acquisition_method ?? "bought") as AcquisitionType,
           wallet_name: walletInfo?.name ?? "Unknown",
           wallet_type: walletInfo?.wallet_type ?? ("custodial" as const),
         };

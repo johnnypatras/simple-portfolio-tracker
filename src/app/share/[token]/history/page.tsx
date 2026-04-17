@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ActivityTimeline } from "@/components/history/activity-timeline";
 import { VALID_ENTITY_TYPES, VALID_ACTIONS } from "@/lib/constants";
 import type { ActionType, ActivityLog, EntityType } from "@/lib/types";
+import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 
 export default async function SharedHistoryPage({
   params,
@@ -45,7 +46,7 @@ export default async function SharedHistoryPage({
 
   const { data, count } = await query;
 
-  const logs = (data ?? []) as ActivityLog[];
+  const logs = (data ?? []).map(normalizeActivityLogRow);
 
   // Fetch split children for any split parents visible on this page
   const potentialParentIds = logs
@@ -59,7 +60,7 @@ export default async function SharedHistoryPage({
       .in("split_from_id", potentialParentIds)
       .is("undone_at", null)
       .order("effective_date", { ascending: true });
-    splitChildren = (childData ?? []) as ActivityLog[];
+    splitChildren = (childData ?? []).map(normalizeActivityLogRow);
   }
 
   return (

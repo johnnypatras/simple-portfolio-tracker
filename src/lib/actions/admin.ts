@@ -6,7 +6,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateUUID } from "@/lib/validation";
 import { MAX_SHARE_EXPIRY_DAYS } from "@/lib/constants";
-import type { Profile, UserStatus, InviteCode } from "@/lib/types";
+import type { Profile, UserRole, UserStatus, InviteCode } from "@/lib/types";
 import { captureAction } from "@/lib/actions/with-sentry";
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -40,7 +40,12 @@ export async function getUsers(): Promise<Profile[]> {
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return data ?? [];
+  // DB stores role/status as text (constrained by application logic); narrow at boundary
+  return (data ?? []).map<Profile>((row) => ({
+    ...row,
+    role: row.role as UserRole,
+    status: row.status as UserStatus,
+  }));
 }
 
 export async function approveUser(userId: string): Promise<void> {
@@ -126,7 +131,13 @@ export async function getInviteCodes(): Promise<InviteCode[]> {
   if (error) throw new Error(error.message);
 
   // Enrich with used_by email
-  const codes = (data ?? []) as InviteCode[];
+  // DB allows created_by = NULL for legacy seed rows; in practice all admin-
+  // created invites have it set. Narrow to empty string if missing so the
+  // UI has a consistent shape.
+  const codes: InviteCode[] = (data ?? []).map((row) => ({
+    ...row,
+    created_by: row.created_by ?? "",
+  }));
   const usedByIds = codes
     .map((c) => c.used_by)
     .filter((id): id is string => id !== null);

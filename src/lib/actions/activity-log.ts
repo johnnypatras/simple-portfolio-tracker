@@ -18,6 +18,10 @@ import { validateUUID } from "@/lib/validation";
 import { MAX_QUERY_LIMIT } from "@/lib/constants";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, FlowStatus } from "@/lib/types";
+import type { Database } from "@/types/database";
+import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
+
+type ActivityLogInsert = Database["public"]["Tables"]["activity_log"]["Insert"];
 
 // ─── FX conversion helper ───────────────────────────────
 // Converts an amount in any currency to both USD and EUR.
@@ -81,29 +85,30 @@ export async function logActivity(params: {
     } = await supabase.auth.getUser();
     if (!user) return; // silently bail if unauthenticated
 
-    await supabase.from("activity_log").insert({
+    const row: ActivityLogInsert = {
       user_id: user.id,
       action: params.action,
       entity_type: params.entity_type,
       entity_name: params.entity_name,
       description: params.description,
-      details: params.details ?? null,
+      details: (params.details ?? null) as ActivityLogInsert["details"],
       entity_id: params.entity_id ?? null,
       entity_table: params.entity_table ?? null,
-      before_snapshot: params.before_snapshot ?? null,
-      after_snapshot: params.after_snapshot ?? null,
+      before_snapshot: (params.before_snapshot ?? null) as ActivityLogInsert["before_snapshot"],
+      after_snapshot: (params.after_snapshot ?? null) as ActivityLogInsert["after_snapshot"],
       is_adjustment: params.is_adjustment ?? false,
       delta_usd: params.delta_usd ?? null,
       delta_eur: params.delta_eur ?? null,
       transfer_group_id: params.transfer_group_id ?? null,
-      ...(params.created_at ? { created_at: params.created_at } : {}),
-      ...(params.effective_date ? { effective_date: params.effective_date } : {}),
+      effective_date: params.effective_date ?? null,
       cashflow_amount_usd: params.cashflow_amount_usd ?? null,
       cashflow_amount_eur: params.cashflow_amount_eur ?? null,
       cashflow_asset_class: params.cashflow_asset_class ?? null,
       cashflow_status: params.cashflow_status ?? null,
       delta_status: params.delta_status ?? null,
-    });
+    };
+    if (params.created_at) row.created_at = params.created_at;
+    await supabase.from("activity_log").insert(row);
   } catch (err) {
     console.error("[activity-log] Failed to log activity:", err);
   }
@@ -143,7 +148,7 @@ export async function getActivityLogs(filters?: {
   if (error) throw new Error(error.message);
 
   return {
-    logs: (data ?? []) as ActivityLog[],
+    logs: (data ?? []).map(normalizeActivityLogRow),
     total: count ?? 0,
   };
 }
@@ -165,7 +170,7 @@ export async function getSplitChildren(parentIds: string[]): Promise<ActivityLog
     .is("undone_at", null)
     .order("effective_date", { ascending: true });
   if (error) throw new Error(`Failed to fetch split children: ${error.message}`);
-  return (data ?? []) as ActivityLog[];
+  return (data ?? []).map(normalizeActivityLogRow);
 }
 
 // ─── Delta computation from snapshots ───────────────────
@@ -535,7 +540,7 @@ export async function exportActivityLogsCsv(): Promise<string> {
 
   if (error) throw new Error(error.message);
 
-  const rows = (data ?? []) as ActivityLog[];
+  const rows = (data ?? []).map(normalizeActivityLogRow);
 
   const headers = [
     "Date", "Effective Date", "Action", "Type", "Name", "Description",

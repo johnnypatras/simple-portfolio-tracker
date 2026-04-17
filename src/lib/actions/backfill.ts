@@ -5,6 +5,7 @@ import { classifyAssetClass, isStablecoin } from "@/lib/cashflow";
 import { cashAmountField, cashDelta, CASH_ENTITY_TYPES } from "@/lib/deltas";
 import type { CashEntityType } from "@/lib/deltas";
 import type { ActionType, EntityType } from "@/lib/types";
+import type { Database } from "@/types/database";
 import { toUsdAndEur, computeDeltaFromSnapshots } from "./activity-log";
 import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
@@ -292,7 +293,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         failed++;
       } else {
         // Update attempted_at, keep pending
-        const pendingUpdate: Record<string, string> = {};
+        const pendingUpdate: Database["public"]["Tables"]["activity_log"]["Update"] = {};
         if (isCashflow) pendingUpdate["cashflow_attempted_at"] = now.toISOString();
         if (isDelta) pendingUpdate["delta_attempted_at"] = now.toISOString();
         const { error: pendingWriteErr } = await supabase
