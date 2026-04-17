@@ -10,6 +10,7 @@ import { partialUpdate } from "@/lib/partial-update";
 import { round2 } from "@/lib/format";
 import { type FxResult, emptyFx } from "@/lib/activity-fx";
 import { captureAction } from "@/lib/actions/with-sentry";
+import { pickJoinedName } from "@/lib/supabase/join-utils";
 
 // CashAccountOpts is defined in @/lib/types — Turbopack strips re-exports
 // from "use server" modules.
@@ -54,10 +55,9 @@ export async function getCashAccounts(): Promise<CashAccount[]> {
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
     // Flattened display names from JOINs
-    institution_name:
-      (row.institutions as { name: string } | null)?.name ?? null,
-    wallet_name: (row.wallets as { name: string } | null)?.name ?? null,
-    broker_name: (row.brokers as { name: string } | null)?.name ?? null,
+    institution_name: pickJoinedName(row.institutions),
+    wallet_name: pickJoinedName(row.wallets),
+    broker_name: pickJoinedName(row.brokers),
   }));
 }
 
@@ -490,12 +490,9 @@ export async function deleteCashAccount(
 
   if (error) throw new Error(error.message);
 
-  const institutionName =
-    (snapshot?.institutions as { name: string } | null)?.name ?? null;
-  const walletName =
-    (snapshot?.wallets as { name: string } | null)?.name ?? null;
-  const brokerName =
-    (snapshot?.brokers as { name: string } | null)?.name ?? null;
+  const institutionName = pickJoinedName(snapshot?.institutions);
+  const walletName = pickJoinedName(snapshot?.wallets);
+  const brokerName = pickJoinedName(snapshot?.brokers);
 
   const label = snapshot
     ? deriveLabel({
@@ -695,7 +692,7 @@ async function resolveDisplayNames(
         .select("name")
         .eq("id", ids.institutionId)
         .single()
-        .then(({ data }) => ({ name: (data as { name: string } | null)?.name ?? null })),
+        .then(({ data }) => ({ name: pickJoinedName(data) })),
     );
   } else {
     queries.push(Promise.resolve({ name: null }));
@@ -709,7 +706,7 @@ async function resolveDisplayNames(
         .select("name")
         .eq("id", ids.walletId)
         .single()
-        .then(({ data }) => ({ name: (data as { name: string } | null)?.name ?? null })),
+        .then(({ data }) => ({ name: pickJoinedName(data) })),
     );
   } else {
     queries.push(Promise.resolve({ name: null }));
@@ -723,7 +720,7 @@ async function resolveDisplayNames(
         .select("name")
         .eq("id", ids.brokerId)
         .single()
-        .then(({ data }) => ({ name: (data as { name: string } | null)?.name ?? null })),
+        .then(({ data }) => ({ name: pickJoinedName(data) })),
     );
   } else {
     queries.push(Promise.resolve({ name: null }));

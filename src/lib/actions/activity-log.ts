@@ -15,7 +15,7 @@ import { classifyAssetClass } from "@/lib/cashflow";
 import { toCsv } from "@/lib/csv";
 import { round2 } from "@/lib/format";
 import { validateUUID } from "@/lib/validation";
-import { MAX_QUERY_LIMIT } from "@/lib/constants";
+import { MAX_QUERY_LIMIT, ACTIVITY_LOG_DEFAULT_LIMIT, ACTIVITY_LOG_MAX_LIMIT } from "@/lib/constants";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, FlowStatus } from "@/lib/types";
 import type { Database } from "@/types/database";
@@ -125,7 +125,7 @@ export async function getActivityLogs(filters?: {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
-  const limit = Math.max(1, Math.min(filters?.limit ?? 50, 500));
+  const limit = Math.max(1, Math.min(filters?.limit ?? ACTIVITY_LOG_DEFAULT_LIMIT, ACTIVITY_LOG_MAX_LIMIT));
   const offset = Math.max(0, filters?.offset ?? 0);
 
   // Build filtered query — exclude split children from main pagination

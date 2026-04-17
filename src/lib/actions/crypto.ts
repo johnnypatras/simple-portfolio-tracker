@@ -15,6 +15,7 @@ import { partialUpdate } from "@/lib/partial-update";
 import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy } from "@/lib/validation";
 import { computeActivityFx, emptyFx } from "@/lib/activity-fx";
 import { captureAction } from "@/lib/actions/with-sentry";
+import { PG_UNIQUE_VIOLATION } from "@/lib/supabase/error-codes";
 
 /** Get all crypto assets with their positions and wallet names */
 export async function getCryptoAssetsWithPositions(): Promise<
@@ -112,7 +113,7 @@ export async function createCryptoAsset(input: CryptoAssetInput, opts?: { isAdju
     .single();
 
   if (error) {
-    if (error.code === "23505") {
+    if (error.code === PG_UNIQUE_VIOLATION) {
       // Asset already exists — return the existing id so a position can still be added
       // Must match chain too: constraint is (user_id, coingecko_id, COALESCE(chain, ''))
       // Supabase query builder methods return new builders — must reassign, not chain in-place
@@ -194,7 +195,7 @@ export async function updateCryptoAsset(
     .eq("user_id", user.id);
 
   if (error) {
-    if (error.code === "23505") {
+    if (error.code === PG_UNIQUE_VIOLATION) {
       const ticker = before?.ticker?.toUpperCase() ?? "this asset";
       throw new Error(
         `You already have ${ticker} on the "${normalizedChain ?? "no chain"}" chain. Use the existing entry instead.`
@@ -393,7 +394,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         last_was_transfer: opts?.transferGroupId != null,
       });
       if (error) {
-        if (error.code === "23505") {
+        if (error.code === PG_UNIQUE_VIOLATION) {
           const { data: existing } = await supabase
             .from("crypto_positions")
             .select("*")

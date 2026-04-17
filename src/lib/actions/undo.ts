@@ -9,32 +9,13 @@ import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { resolveTable, remapSnapshotFields } from "@/lib/undo-remap";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 import { validateUUID } from "@/lib/validation";
+import { PGRST_NO_ROWS } from "@/lib/supabase/error-codes";
+import { computeCompensatingUpdate, IMMUTABLE_COLUMNS } from "@/lib/compensating-update";
 
 // ─── Field classification ─────────────────────────────────
-// Controls how each snapshot field is handled during compensation.
-
-/** Columns that must never be overwritten. */
-const IMMUTABLE_COLUMNS = new Set([
-  "id", "user_id", "created_at", "updated_at", "deleted_at",
-]);
-
-/** Ephemeral UI-state columns — skip during compensation. */
-const BADGE_COLUMNS = new Set([
-  "last_was_adjustment", "last_was_transfer",
-]);
-
-/**
- * Value fields per table — accumulated quantities that need delta reversal.
- * All other mutable fields are treated as identity (restore-if-unchanged).
- */
-const VALUE_FIELDS: Record<string, string[]> = {
-  cash_accounts: ["balance"],
-  bank_accounts: ["balance"],
-  exchange_deposits: ["amount"],
-  broker_deposits: ["amount"],
-  crypto_positions: ["quantity"],
-  stock_positions: ["quantity"],
-};
+// Pure compensation logic (IMMUTABLE_COLUMNS, BADGE_COLUMNS, VALUE_FIELDS,
+// computeCompensatingUpdate) lives in @/lib/compensating-update so it can be
+// unit-tested without the "use server" DB-touching wrapper.
 
 /** Tables that support undo operations. */
 const ALLOWED_UNDO_TABLES = new Set([
@@ -53,53 +34,6 @@ const TABLES_WITH_USER_ID = new Set([
   "wallets", "brokers", "institutions",
   "trade_entries", "diary_entries",
 ]);
-
-// ─── Compensating update computation ─────────────────────
-
-/**
- * Compute the fields to update for a compensating transaction.
- *
- * - Value fields (balance, amount, quantity): delta reversal.
- *   new = current + (before - after)
- *
- * - Identity fields (name, currency, etc.): restore before_snapshot
- *   value ONLY if the current value still matches after_snapshot.
- *   If someone changed it since, skip to avoid clobbering.
- */
-function computeCompensatingUpdate(
-  entityTable: string,
-  currentEntity: Record<string, unknown>,
-  beforeSnapshot: Record<string, unknown>,
-  afterSnapshot: Record<string, unknown>,
-): Record<string, unknown> {
-  const update: Record<string, unknown> = {};
-  const valueFieldSet = new Set(VALUE_FIELDS[entityTable] ?? []);
-
-  for (const key of Object.keys(afterSnapshot)) {
-    if (IMMUTABLE_COLUMNS.has(key) || BADGE_COLUMNS.has(key)) continue;
-
-    const beforeVal = beforeSnapshot[key];
-    const afterVal = afterSnapshot[key];
-
-    // Skip unchanged fields
-    if (JSON.stringify(beforeVal) === JSON.stringify(afterVal)) continue;
-
-    if (valueFieldSet.has(key)) {
-      // Delta reversal: apply inverse of (after - before) to current
-      const delta = (Number(beforeVal) || 0) - (Number(afterVal) || 0);
-      const currentVal = Number(currentEntity[key]) || 0;
-      update[key] = currentVal + delta;
-    } else {
-      // Identity field: restore only if current still matches after_snapshot
-      if (JSON.stringify(currentEntity[key]) === JSON.stringify(afterVal)) {
-        update[key] = beforeVal;
-      }
-      // else: skip — changed since, don't clobber
-    }
-  }
-
-  return update;
-}
 
 // ─── Description builder ────────────────────────────────
 
@@ -167,7 +101,7 @@ async function undoSingleEntry(
   // PGRST116 = no rows returned (genuinely missing record). Any other
   // error is a DB/network failure that should surface as a retry prompt
   // rather than a misleading "record no longer exists" message.
-  if (fetchErr && fetchErr.code !== "PGRST116") {
+  if (fetchErr && fetchErr.code !== PGRST_NO_ROWS) {
     console.error("[undo] Entity fetch failed:", fetchErr.message);
     return {
       success: false,

@@ -3,6 +3,13 @@ import { fetchWithTimeout } from "./fetch-with-timeout";
 
 const BASE_URL = "https://api.coingecko.com/api/v3";
 
+/**
+ * Delay before retrying a 429 rate-limit response. The free Demo plan allows
+ * 30 calls/min — a single rate-limit hit means the window is full; a brief
+ * pause is enough to clear it without a second miss.
+ */
+const COINGECKO_429_RETRY_MS = 500;
+
 function apiKey(): string {
   return process.env.COINGECKO_API_KEY ?? "";
 }
@@ -57,8 +64,8 @@ export async function getPrices(
     let res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
 
     if (res.status === 429) {
-      console.warn("[coingecko] Rate limited (429), retrying in 500ms…");
-      await new Promise((r) => setTimeout(r, 500));
+      console.warn(`[coingecko] Rate limited (429), retrying in ${COINGECKO_429_RETRY_MS}ms…`);
+      await new Promise((r) => setTimeout(r, COINGECKO_429_RETRY_MS));
       res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
     }
 

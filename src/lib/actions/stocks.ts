@@ -15,6 +15,7 @@ import { partialUpdate } from "@/lib/partial-update";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
 import { captureAction } from "@/lib/actions/with-sentry";
+import { PG_UNIQUE_VIOLATION } from "@/lib/supabase/error-codes";
 
 /** Get all stock assets with their positions and broker names */
 export async function getStockAssetsWithPositions(): Promise<
@@ -106,7 +107,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
     .single();
 
   if (error) {
-    if (error.code === "23505") {
+    if (error.code === PG_UNIQUE_VIOLATION) {
       // Asset already exists — return existing ID so position creation can proceed
       if (
         error.message?.includes("uq_stock_assets_yahoo_active") &&
@@ -223,7 +224,7 @@ export async function updateStockAsset(
     .eq("user_id", user.id);
 
   if (error) {
-    if (error.code === "23505" && error.message?.includes("uq_stock_assets_yahoo_active")) {
+    if (error.code === PG_UNIQUE_VIOLATION && error.message?.includes("uq_stock_assets_yahoo_active")) {
       throw new Error("Another asset already uses this Yahoo ticker");
     }
     throw new Error(error.message);
@@ -407,7 +408,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         last_was_transfer: opts?.transferGroupId != null,
       });
       if (error) {
-        if (error.code === "23505") {
+        if (error.code === PG_UNIQUE_VIOLATION) {
           const { data: existing } = await supabase
             .from("stock_positions")
             .select("*")

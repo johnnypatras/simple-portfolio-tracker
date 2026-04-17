@@ -88,6 +88,13 @@ export async function getStockQuote(
 
 // ─── Crumb auth (required for v7 batch endpoint) ──────────
 
+/**
+ * Yahoo crumbs expire ~1 hour after issue. Refresh at 30min to avoid edge
+ * cases where a long-running cron invocation starts with a near-expired
+ * crumb and races the expiry.
+ */
+const YAHOO_CRUMB_TTL_MS = 30 * 60 * 1000;
+
 let cachedCrumb: { crumb: string; cookie: string; expiry: number } | null = null;
 
 /** @internal — test-only: reset cached crumb so each test starts with clean auth state */
@@ -133,7 +140,7 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null
     const crumb = await crumbRes.text();
     if (!crumb || crumb.includes("Unauthorized")) return null;
 
-    cachedCrumb = { crumb, cookie, expiry: Date.now() + 30 * 60 * 1000 };
+    cachedCrumb = { crumb, cookie, expiry: Date.now() + YAHOO_CRUMB_TTL_MS };
     return { crumb, cookie };
   } catch (err) {
     console.error("[yahoo] Crumb auth error:", err);

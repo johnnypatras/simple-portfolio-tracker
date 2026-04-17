@@ -68,3 +68,17 @@ export const CURRENT_BACKUP_VERSION = 4 as const;
 
 /** Minimum backup schema version that uses unified cash_accounts (v1/v2 use legacy arrays) */
 export const UNIFIED_CASH_MIN_VERSION = 3 as const;
+
+/** Default page size for the activity log listing. */
+export const ACTIVITY_LOG_DEFAULT_LIMIT = 50;
+
+/** Hard cap on activity log page size — prevents runaway `?limit=1000000` queries. */
+export const ACTIVITY_LOG_MAX_LIMIT = 500;
+
+/**
+ * Minimum absolute value (in base currency) to surface in crypto/stocks/cash
+ * breakdown tooltips. Entries below this are noise — filtered to keep the
+ * tooltip readable. Applies to dashboard-changes, dashboard-insights, and
+ * the comparison delta helper.
+ */
+export const MIN_BREAKDOWN_DISPLAY_VALUE = 0.5;

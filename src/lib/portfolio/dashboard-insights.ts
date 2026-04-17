@@ -8,6 +8,7 @@
 
 import { convertToBase, fxChangeForCurrency as fxChangeFor } from "@/lib/prices/fx";
 import { isStablecoin } from "@/lib/cashflow";
+import { MIN_BREAKDOWN_DISPLAY_VALUE } from "@/lib/constants";
 import type { FXRates } from "@/lib/prices/fx";
 import type { PortfolioSummary } from "./aggregate";
 import type {
@@ -616,7 +617,7 @@ export function computeDashboardInsights(params: InsightsParams): DashboardInsig
         cashValueBase: base.cash,
       };
     })
-    .filter((e) => e.value > 0.5)
+    .filter((e) => e.value > MIN_BREAKDOWN_DISPLAY_VALUE)
     .sort((a, b) => b.value - a.value);
 
   // ── Gold price (USD only) ────────────────────────────

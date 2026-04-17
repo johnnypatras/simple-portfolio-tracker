@@ -6,6 +6,7 @@
  */
 
 import type { PortfolioSnapshot, AssetClass, CashFlowEvent, BaseCurrency, AdjustmentDelta } from "@/lib/types";
+import { MIN_BREAKDOWN_DISPLAY_VALUE } from "@/lib/constants";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -348,7 +349,7 @@ export function computeDeposits(
   }
   const breakdown = [...byName.entries()]
     .map(([name, value]) => ({ name, value }))
-    .filter(e => Math.abs(e.value) >= 0.5)
+    .filter(e => Math.abs(e.value) >= MIN_BREAKDOWN_DISPLAY_VALUE)
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
   return { total, breakdown };
 }

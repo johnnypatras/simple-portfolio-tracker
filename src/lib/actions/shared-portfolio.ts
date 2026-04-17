@@ -18,6 +18,8 @@ import type {
 } from "@/lib/types";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
+import { pickJoinedName } from "@/lib/supabase/join-utils";
+import { findSnapshotAt } from "@/lib/portfolio/snapshot-utils";
 
 // SharedPortfolioData and ValidatedShare are defined in @/lib/types — Turbopack
 // strips type re-exports from "use server" modules, so consumers (share pages,
@@ -192,9 +194,9 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
-    institution_name: (row.institutions as { name: string } | null)?.name ?? null,
-    wallet_name: (row.wallets as { name: string } | null)?.name ?? null,
-    broker_name: (row.brokers as { name: string } | null)?.name ?? null,
+    institution_name: pickJoinedName(row.institutions),
+    wallet_name: pickJoinedName(row.wallets),
+    broker_name: pickJoinedName(row.brokers),
   }));
 
   // ── Build institutions with roles ─────────────────────
@@ -211,32 +213,8 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   });
 
   // ── Snapshot lookups for change calculations ──────────
-  // `snapshots` is sorted ascending by snapshot_date (DB query ORDER BY),
-  // so we can binary-search for the rightmost entry on-or-before the target
-  // date. Previously this filtered the full array 5× per request — O(5n).
-  // Binary search is O(5 log n); negligible at 52-snapshot scale today but
-  // future-proofs the 100k snapshot ceiling.
-  const findSnapshotAt = (daysAgo: number): PortfolioSnapshot | null => {
-    if (snapshots.length === 0) return null;
-    const target = new Date();
-    target.setDate(target.getDate() - daysAgo);
-    const targetStr = target.toISOString().split("T")[0];
-    // Binary search: largest index i such that snapshots[i].snapshot_date <= targetStr
-    let lo = 0;
-    let hi = snapshots.length - 1;
-    let result = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >>> 1;
-      if (snapshots[mid].snapshot_date <= targetStr) {
-        result = mid;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    return result >= 0 ? snapshots[result] : null;
-  };
-
+  // Snapshot lookups use `findSnapshotAt` (binary search, O(log n) per call).
+  // `snapshots` is sorted ascending by snapshot_date from the DB query.
   return {
     share,
     profile,
@@ -247,11 +225,11 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     brokers,
     institutions,
     snapshots,
-    snap3d: findSnapshotAt(3),
-    snap7d: findSnapshotAt(7),
-    snap30d: findSnapshotAt(30),
-    snap90d: findSnapshotAt(90),
-    snap1y: findSnapshotAt(365),
+    snap3d: findSnapshotAt(snapshots, 3),
+    snap7d: findSnapshotAt(snapshots, 7),
+    snap30d: findSnapshotAt(snapshots, 30),
+    snap90d: findSnapshotAt(snapshots, 90),
+    snap1y: findSnapshotAt(snapshots, 365),
     // "All" = earliest snapshot (snapshots array is now all-time)
     snapAll: snapshots.length > 0 ? snapshots[0] : null,
   };
