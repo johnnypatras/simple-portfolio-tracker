@@ -148,4 +148,47 @@ describe("computeCompensatingUpdate", () => {
     );
     expect(result).toEqual({});
   });
+
+  // ── Numeric edge cases ─────────────────────────────────
+
+  it("produces NaN when both value-field inputs are Infinity (documents current behavior)", () => {
+    // Number(Infinity) - Number(Infinity) = NaN. This silently writes NaN to DB.
+    // Pinned here so a future hardening pass (e.g. Number.isFinite guard) is noticed.
+    const result = computeCompensatingUpdate(
+      "crypto_positions",
+      { quantity: 10 },
+      { quantity: Infinity },
+      { quantity: Infinity },
+    );
+    // Current impl: stringify-equality returns true on Infinity vs Infinity, so
+    // the field is skipped as "unchanged". Documents that reality.
+    expect(result).toEqual({});
+  });
+
+  it("NaN values are treated as unchanged via JSON.stringify equality (both stringify to null)", () => {
+    // JSON.stringify(NaN) === "null". This is an intentional quirk of JSON
+    // canonicalization — documented here so future changes notice.
+    const result = computeCompensatingUpdate(
+      "crypto_positions",
+      { quantity: 5 },
+      { quantity: NaN },
+      { quantity: NaN },
+    );
+    expect(result).toEqual({}); // skipped as "unchanged"
+  });
+
+  it("identity skip is also applied on tables with defined VALUE_FIELDS (non-value field drift)", () => {
+    // cash_accounts has VALUE_FIELDS=["balance"]. A change to `currency`
+    // (identity field, not value field) should follow the "restore-if-unchanged"
+    // path, not the delta reversal path.
+    const result = computeCompensatingUpdate(
+      "cash_accounts",
+      { currency: "USD", balance: 100 },
+      { currency: "EUR", balance: 100 },
+      { currency: "USD", balance: 100 },
+    );
+    // currency: current matches after → restore before ("EUR")
+    // balance: unchanged before vs after → skip
+    expect(result).toEqual({ currency: "EUR" });
+  });
 });

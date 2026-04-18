@@ -18,9 +18,9 @@ import type {
   ExchangeDeposit,
   BrokerDeposit,
   GoalPrice,
-  ActivityLog,
   PortfolioBackup,
 } from "@/lib/types";
+import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 
 // ─── Full JSON backup ───────────────────────────────────
 // PortfolioBackup type lives in @/lib/types (Turbopack strips
@@ -158,15 +158,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     // from the filter context.
     diaryEntries: (diaryRows ?? []).map((row) => ({ ...row, user_id: uid })),
     goalPrices,
-    activityLog: (activityRows ?? []).map<ActivityLog>((row) => ({
-      ...row,
-      details: row.details as Record<string, unknown> | null,
-      before_snapshot: row.before_snapshot as Record<string, unknown> | null,
-      after_snapshot: row.after_snapshot as Record<string, unknown> | null,
-      cashflow_asset_class: row.cashflow_asset_class as ActivityLog["cashflow_asset_class"],
-      cashflow_status: row.cashflow_status as ActivityLog["cashflow_status"],
-      delta_status: row.delta_status as ActivityLog["delta_status"],
-    })),
+    activityLog: (activityRows ?? []).map(normalizeActivityLogRow),
     portfolioShares: shares,
     profile: {
       display_name: profile.display_name,

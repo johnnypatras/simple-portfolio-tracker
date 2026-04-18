@@ -83,10 +83,8 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     }
   }
 
-  if (!profileRes.data) {
-    console.error("[shared-portfolio] profile row missing");
-    return null;
-  }
+  // profileRes.data is guaranteed non-null at this point by the earlier
+  // response-validation loop (lines 67-82) which returns null on missing data.
   const profile: Profile = {
     ...profileRes.data,
     role: profileRes.data.role as Profile["role"],

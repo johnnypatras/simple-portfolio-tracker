@@ -65,4 +65,24 @@ describe("findSnapshotAt", () => {
     const snaps = [mkSnap("2020-01-01")];
     expect(findSnapshotAt(snaps, 0)?.snapshot_date).toBe("2020-01-01");
   });
+
+  it("returns latest snapshot when target is strictly after every snapshot", () => {
+    // Genuine "after latest" case: target > max(snapshot_date)
+    // daysAgo=-3 with now=2026-04-17 → target=2026-04-20, all snaps are 2026-04-10..17
+    const snaps = [mkSnap("2026-04-10"), mkSnap("2026-04-14"), mkSnap("2026-04-17")];
+    expect(findSnapshotAt(snaps, -3, now)?.snapshot_date).toBe("2026-04-17");
+  });
+
+  it("returns last snapshot for duplicate dates (pins rightmost-equal behavior)", () => {
+    // Binary search lo=mid+1 on equal → returns rightmost match index.
+    // If DB secondary-orders by created_at, the newest duplicate wins. Pin it.
+    const snaps = [
+      mkSnap("2026-04-10"),
+      { ...mkSnap("2026-04-10"), id: "s-dup", total_value_usd: 2000 },
+      mkSnap("2026-04-17"),
+    ];
+    const match = findSnapshotAt(snaps, 7, now);
+    expect(match?.snapshot_date).toBe("2026-04-10");
+    expect(match?.id).toBe("s-dup"); // rightmost duplicate
+  });
 });

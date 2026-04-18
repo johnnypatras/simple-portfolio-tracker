@@ -523,7 +523,7 @@ export function TradeTable({
                       {t.asset_name}
                     </span>
                     <span
-                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase ${ASSET_TYPE_STYLES[t.asset_type]}`}
+                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase ${(ASSET_TYPE_STYLES[t.asset_type] ?? "bg-zinc-500/10 text-zinc-400")}`}
                     >
                       {t.asset_type}
                     </span>
@@ -531,7 +531,7 @@ export function TradeTable({
                 </td>
                 <td className="px-4 py-3">
                   <span
-                    className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${ACTION_STYLES[t.action]}`}
+                    className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${(ACTION_STYLES[t.action] ?? "bg-zinc-500/10 text-zinc-400")}`}
                   >
                     {t.action}
                   </span>
@@ -587,12 +587,12 @@ export function TradeTable({
                     {t.asset_name}
                   </span>
                   <span
-                    className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase ${ASSET_TYPE_STYLES[t.asset_type]}`}
+                    className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase ${(ASSET_TYPE_STYLES[t.asset_type] ?? "bg-zinc-500/10 text-zinc-400")}`}
                   >
                     {t.asset_type}
                   </span>
                   <span
-                    className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${ACTION_STYLES[t.action]}`}
+                    className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${(ACTION_STYLES[t.action] ?? "bg-zinc-500/10 text-zinc-400")}`}
                   >
                     {t.action}
                   </span>

@@ -480,7 +480,7 @@ export function ActivityTimeline({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
-  const { isReadOnly } = useSharedView();
+  const { isReadOnly, shareToken } = useSharedView();
   const [expandedTransfers, setExpandedTransfers] = useState<Set<string>>(new Set());
   const [expandedSplits, setExpandedSplits] = useState<Set<string>>(new Set());
   const [backdatingId, setBackdatingId] = useState<string | null>(null);
@@ -501,11 +501,16 @@ export function ActivityTimeline({
       if (key !== "page") {
         params.delete("page");
       }
+      // Anon share viewers stay on /share/[token]/history — the authed
+      // /dashboard/history path would be rejected by the auth proxy.
+      const basePath = isReadOnly && shareToken
+        ? `/share/${shareToken}/history`
+        : "/dashboard/history";
       startTransition(() => {
-        router.push(`/dashboard/history?${params.toString()}`);
+        router.push(`${basePath}?${params.toString()}`);
       });
     },
-    [router, searchParams]
+    [router, searchParams, isReadOnly, shareToken]
   );
 
   async function handleUndo(logId: string) {
@@ -852,7 +857,7 @@ export function ActivityTimeline({
                               {children.map((child) => {
                                 const ChildActionIcon = getActionIcon(child.action);
                                 const childColor = getActionColor(child.action);
-                                const splitQty = (child.details as Record<string, unknown> | null)?.split_quantity;
+                                const splitQty = child.details?.split_quantity;
                                 return (
                                   <div key={child.id} className="flex items-center gap-2 px-2 py-1 rounded text-xs">
                                     <div className={`shrink-0 p-1 rounded ${childColor}`}>

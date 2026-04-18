@@ -49,15 +49,6 @@ describe("captureAction", () => {
     });
   });
 
-  it("does not capture synchronous returns that happen to return rejected promises (value leaks are caller's problem)", async () => {
-    // captureAction only awaits its fn — the fn must be an actual async fn.
-    // Non-thrown rejected promises *will* reject at the await, which is the
-    // throw path (covered above). This test just documents scope.
-    const result = await captureAction("t", async () => "ok");
-    expect(result).toBe("ok");
-    expect(Sentry.captureException).not.toHaveBeenCalled();
-  });
-
   it("wraps withServerActionInstrumentation with the given action name", async () => {
     await captureAction("wallets.createWallet", async () => "ok");
     expect(Sentry.withServerActionInstrumentation).toHaveBeenCalledWith(

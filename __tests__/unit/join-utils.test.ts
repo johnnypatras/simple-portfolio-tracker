@@ -38,4 +38,18 @@ describe("pickJoinedName", () => {
     expect(pickJoinedName("string")).toBe(null);
     expect(pickJoinedName(42)).toBe(null);
   });
+
+  it("returns null for boolean primitives", () => {
+    expect(pickJoinedName(true)).toBe(null);
+    expect(pickJoinedName(false)).toBe(null);
+  });
+
+  it("returns null for Date objects (typeof object, but no `name` property)", () => {
+    // Dates are objects — the `v as { name?: string }` path yields `undefined`
+    expect(pickJoinedName(new Date())).toBe(null);
+  });
+
+  it("returns null for nested arrays (`.name` absent on inner array)", () => {
+    expect(pickJoinedName([[{ name: "nested" }]])).toBe(null);
+  });
 });
