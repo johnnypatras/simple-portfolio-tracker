@@ -151,6 +151,12 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
     .is("deleted_at", null)
     .single();
 
+  // Preserve undefined for fields the caller didn't pass; partialUpdate()
+  // will strip them. Explicit null/empty-string is preserved for "clear".
+  const normalizedNotes = input.notes !== undefined
+    ? (input.notes.trim().slice(0, MAX_NOTES_LENGTH) || null)
+    : undefined;
+
   const { error } = await supabase
     .from("trade_entries")
     .update(partialUpdate({
@@ -162,7 +168,7 @@ export async function updateTradeEntry(id: string, input: TradeEntryInput) {
       price: input.price,
       currency: input.currency,
       total_value: round2(totalValue),
-      notes: input.notes?.trim()?.slice(0, MAX_NOTES_LENGTH) || null,
+      notes: normalizedNotes,
     }))
     .eq("id", id)
     .eq("user_id", user.id);

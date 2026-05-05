@@ -96,7 +96,7 @@ vi.mock("@/lib/validation", () => ({
 }));
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
-import { mergeCashAccounts, findExistingCash } from "@/lib/actions/cash-accounts";
+import { mergeCashAccounts, findExistingCash, updateCashAccount } from "@/lib/actions/cash-accounts";
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 describe("mergeCashAccounts", () => {
@@ -429,5 +429,175 @@ describe("findExistingCash", () => {
     // Verify .is() was called with "deleted_at" and null (soft-delete filter)
     const fromResult = mockClient.from.mock.results[0]?.value;
     expect(fromResult.is).toHaveBeenCalledWith("deleted_at", null);
+  });
+});
+
+// ─── updateCashAccount partial-update semantics ──────────────────────────────
+//
+// Regression tests for the "transfer destination clobbers APY/name" bug.
+//
+// When the transfers.ts destination handler calls updateCashAccount with only
+// { currency, balance }, the update payload sent to Supabase MUST NOT include
+// the unsupplied fields (apy, name, institution_id, region, wallet_id,
+// broker_id) — otherwise existing values get clobbered by default coercions.
+//
+// The fix: input fields the caller didn't pass are forwarded as `undefined`
+// and stripped by partialUpdate(). These tests assert that contract.
+describe("updateCashAccount — partial-update semantics", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function captureUpdatePayload(): { client: ReturnType<typeof createMockClient>; getPayload: () => Record<string, unknown> } {
+    // Mock chain for updateCashAccount with no display-name resolution
+    // (input has no institution_id/wallet_id/broker_id):
+    //   1. before snapshot fetch
+    //   2. .update() — payload captured here
+    //   3. after snapshot fetch
+    const client = createMockClient([
+      // before snapshot
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "USD",
+          balance: 3546,
+          name: "USD Savings",
+          apy: 3.3,
+          region: "US",
+          wallet_id: null,
+          broker_id: "broker-A",
+        },
+        error: null,
+      },
+      // update result
+      { error: null },
+      // after snapshot
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "USD",
+          balance: 4317.47,
+          name: "USD Savings",
+          apy: 3.3,
+          region: "US",
+          wallet_id: null,
+          broker_id: "broker-A",
+        },
+        error: null,
+      },
+    ]);
+    return {
+      client,
+      getPayload: () => {
+        // Second from() call is the update — its builder captured the payload
+        const updateBuilder = client.from.mock.results[1]?.value as {
+          update: ReturnType<typeof vi.fn>;
+        };
+        return updateBuilder.update.mock.calls[0]?.[0] as Record<string, unknown>;
+      },
+    };
+  }
+
+  it("transfer-style call (currency + balance only) does NOT include apy in update payload", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { currency: "USD", balance: 4317.47 },
+      { isAdjustment: true, transferGroupId: "transfer-group-id" },
+    );
+
+    const payload = getPayload();
+    expect(payload).not.toHaveProperty("apy");
+    expect(payload).not.toHaveProperty("name");
+    expect(payload).not.toHaveProperty("institution_id");
+    expect(payload).not.toHaveProperty("region");
+    expect(payload).not.toHaveProperty("wallet_id");
+    expect(payload).not.toHaveProperty("broker_id");
+
+    // Sanity: the fields the caller DID pass are written
+    expect(payload.currency).toBe("USD");
+    expect(payload.balance).toBe(4317.47);
+
+    // Badge flags are always written (badge precedence rule)
+    expect(payload.last_was_adjustment).toBe(true);
+    expect(payload.last_was_transfer).toBe(true);
+  });
+
+  it("modal-style call (full payload with apy=3.3) writes apy in update payload", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { currency: "USD", balance: 1000, apy: 3.3, name: "Savings" },
+    );
+
+    const payload = getPayload();
+    expect(payload.apy).toBe(3.3);
+    expect(payload.name).toBe("Savings");
+    expect(payload.currency).toBe("USD");
+    expect(payload.balance).toBe(1000);
+  });
+
+  it("explicit apy=0 from caller is preserved in update payload (not stripped)", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { currency: "USD", balance: 1000, apy: 0 },
+    );
+
+    const payload = getPayload();
+    expect(payload).toHaveProperty("apy");
+    expect(payload.apy).toBe(0);
+  });
+
+  it("explicit name=null from caller writes null (clear name)", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { currency: "USD", balance: 1000, name: null },
+    );
+
+    const payload = getPayload();
+    expect(payload).toHaveProperty("name");
+    expect(payload.name).toBeNull();
+  });
+
+  it("empty-string name from caller normalizes to null (clear name)", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { currency: "USD", balance: 1000, name: "   " },
+    );
+
+    const payload = getPayload();
+    expect(payload).toHaveProperty("name");
+    expect(payload.name).toBeNull();
+  });
+
+  it("non-transfer non-adjustment update sets badge flags to false", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { currency: "USD", balance: 1000 },
+    );
+
+    const payload = getPayload();
+    expect(payload.last_was_adjustment).toBe(false);
+    expect(payload.last_was_transfer).toBe(false);
   });
 });

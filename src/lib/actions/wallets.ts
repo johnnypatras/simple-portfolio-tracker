@@ -204,7 +204,9 @@ export async function updateWallet(
   if (!user) throw new Error("Not authenticated");
 
   const trimmedName = input.name.trim();
-  const normalizedChain = normalizeChain(input.chain);
+  // Preserve undefined for fields the caller didn't pass; partialUpdate()
+  // will strip them. Explicit null is preserved for "clear the value".
+  const normalizedChain = input.chain !== undefined ? normalizeChain(input.chain) : undefined;
 
   // Capture before snapshot
   const { data: before } = await supabase

@@ -358,9 +358,15 @@ export async function updateCashAccount(
   if (input.wallet_id) validateUUID(input.wallet_id, "Wallet ID");
   if (input.broker_id) validateUUID(input.broker_id, "Broker ID");
 
-  // Normalize empty name to null
-  const normalizedName = input.name?.trim() || null;
-  if (normalizedName) validateName(normalizedName, 100, "Account name");
+  // Normalize inputs once; partialUpdate() strips `undefined` keys so that
+  // "not provided" is distinguished from "explicitly null". A caller that
+  // omits a field (e.g. a transfer destination passing only currency+balance)
+  // must NOT clobber other columns.
+  let normalizedName: string | null | undefined;
+  if (input.name !== undefined) {
+    normalizedName = input.name?.trim() || null;
+    if (normalizedName) validateName(normalizedName, 100, "Account name");
+  }
 
   // Capture before snapshot
   const { data: before } = await supabase
@@ -377,7 +383,7 @@ export async function updateCashAccount(
       name: normalizedName,
       currency: input.currency,
       balance: input.balance,
-      apy: input.apy ?? 0,
+      apy: input.apy,
       institution_id: input.institution_id,
       region: input.region,
       wallet_id: input.wallet_id,
@@ -399,15 +405,20 @@ export async function updateCashAccount(
     .is("deleted_at", null)
     .single();
 
-  // Resolve display names for logging
+  // Resolve display names for logging. When the caller didn't pass an FK
+  // (institution/wallet/broker), fall back to the post-update row so the
+  // label reflects actual stored state rather than the (possibly partial)
+  // input shape.
   const names = await resolveDisplayNames(supabase, {
-    institutionId: input.institution_id ?? null,
-    walletId: input.wallet_id ?? null,
-    brokerId: input.broker_id ?? null,
+    institutionId: (input.institution_id ?? (after?.institution_id as string | null) ?? null),
+    walletId: (input.wallet_id ?? (after?.wallet_id as string | null) ?? null),
+    brokerId: (input.broker_id ?? (after?.broker_id as string | null) ?? null),
   });
 
+  // Use the post-update name; when caller didn't pass `name`, this preserves
+  // the existing value rather than rendering the row as nameless.
   const label = deriveLabel({
-    name: normalizedName,
+    name: (after?.name as string | null | undefined) ?? null,
     institutionName: names.institutionName,
     walletName: names.walletName,
     brokerName: names.brokerName,
