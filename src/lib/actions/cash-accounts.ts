@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ActionType, CashAccount, CashAccountInput, CashAccountOpts } from "@/lib/types";
+import type { ActionType, CashAccount, CashAccountCreateInput, CashAccountUpdateInput, CashAccountOpts } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import { validateAmount, validateApy, validateCurrency, validateName, validateUUID } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
@@ -244,7 +244,7 @@ async function computeCashflow(
 // ─── Mutations ───────────────────────────────────────────
 
 export async function createCashAccount(
-  input: CashAccountInput,
+  input: CashAccountCreateInput,
   opts?: CashAccountOpts,
 ): Promise<string> {
   return captureAction("cash-accounts.createCashAccount", async () => {
@@ -339,7 +339,7 @@ export async function createCashAccount(
 
 export async function updateCashAccount(
   id: string,
-  input: CashAccountInput,
+  input: CashAccountUpdateInput,
   opts?: CashAccountOpts,
 ): Promise<void> {
   return captureAction("cash-accounts.updateCashAccount", async () => {
@@ -349,10 +349,12 @@ export async function updateCashAccount(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // Validate
+  // Validate. Every field is optional in CashAccountUpdateInput; gate each
+  // validator so callers can do a partial update (e.g. just `{ apy: 5 }`)
+  // without supplying currency/balance.
   validateUUID(id, "Cash account ID");
-  validateCurrency(input.currency);
-  validateAmount(input.balance, "Balance");
+  if (input.currency !== undefined) validateCurrency(input.currency);
+  if (input.balance !== undefined) validateAmount(input.balance, "Balance");
   if (input.apy != null) validateApy(input.apy, "APY");
   if (input.institution_id) validateUUID(input.institution_id, "Institution ID");
   if (input.wallet_id) validateUUID(input.wallet_id, "Wallet ID");
@@ -422,7 +424,9 @@ export async function updateCashAccount(
     institutionName: names.institutionName,
     walletName: names.walletName,
     brokerName: names.brokerName,
-    currency: input.currency,
+    // Read currency from the post-update row — `input.currency` may be
+    // `undefined` under the partial-update contract.
+    currency: String(after?.currency ?? before?.currency ?? "EUR"),
   });
 
   // Compute FX on balance delta
@@ -454,8 +458,12 @@ export async function updateCashAccount(
     effective_date: opts?.effectiveDate,
   });
 
-  // If name changed, refresh entity_name on ALL activity_log entries for this account
-  if (before?.name !== normalizedName) {
+  // If name actually changed in the DB row, refresh entity_name on ALL
+  // activity_log entries for this account. Comparing `before.name` to
+  // `after.name` (post-update DB state) is correct under the partial-update
+  // contract — using `normalizedName` (which is `undefined` when the caller
+  // didn't pass `name`) would falsely report a change for any named account.
+  if (before?.name !== after?.name) {
     await refreshCashEntityNames(supabase, user.id, { cash_id: id });
   }
 

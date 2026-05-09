@@ -278,7 +278,13 @@ export interface CashAccount {
   broker_name?: string | null;
 }
 
-export interface CashAccountInput {
+/**
+ * Required shape for creating a new cash account. `currency` and `balance`
+ * are mandatory; institution and FK linkage are optional. The DB enforces
+ * `chk_cash_origin` (one of institution_id / wallet_id / broker_id must be
+ * present in practice) — that's a runtime check, not a type-level one.
+ */
+export interface CashAccountCreateInput {
   institution_id?: string;
   name?: string | null;
   currency: string;
@@ -288,6 +294,15 @@ export interface CashAccountInput {
   wallet_id?: string | null;
   broker_id?: string | null;
 }
+
+/**
+ * Partial-update shape: every field is optional. Omitted fields are NOT
+ * touched on the DB row (enforced via `partialUpdate()` in the action).
+ * Common partial-update callers: transfer destinations passing only
+ * `{ currency, balance }`; the bug fixed in commit 1682724 was the result
+ * of the action coercing absent fields to defaults before partialUpdate.
+ */
+export type CashAccountUpdateInput = Partial<CashAccountCreateInput>;
 
 // ─── Portfolio Snapshots ────────────────────────────────
 

@@ -7,7 +7,7 @@ import {
   createCashAccount,
   updateCashAccount,
 } from "@/lib/actions/cash-accounts";
-import type { CashAccount, CashAccountInput } from "@/lib/types";
+import type { CashAccount, CashAccountCreateInput, CashAccountUpdateInput } from "@/lib/types";
 
 interface CashAccountModalProps {
   isOpen: boolean;
@@ -89,7 +89,7 @@ export function CashAccountModal({
 
     try {
       if (isEditing) {
-        const input: CashAccountInput = {
+        const input: CashAccountUpdateInput = {
           currency,
           balance: parseFloat(balance) || 0,
           apy: parseFloat(apy) || 0,
@@ -100,7 +100,7 @@ export function CashAccountModal({
           ...(effectiveDate ? { effectiveDate } : {}),
         });
       } else {
-        const input: CashAccountInput = {
+        const input: CashAccountCreateInput = {
           institution_id: institutionId,
           currency,
           balance: parseFloat(balance) || 0,
