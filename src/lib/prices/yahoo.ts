@@ -402,20 +402,53 @@ async function fetchSinglePrice(ticker: string): Promise<QuoteResult | null> {
 
 // ─── Index History (for benchmark lines) ─────────────────
 
+const SECONDS_PER_DAY = 86400;
+const SECONDS_PER_HOUR = 3600;
+/** Buffer for trading days the user might own beyond `days` (weekends/holidays). */
+const FETCH_LOOKBACK_BUFFER_DAYS = 5;
+
 /**
  * Fetch daily closing prices for an index over N days.
  * Used to plot benchmark lines (e.g. ^SP500TR) on the portfolio chart.
  * Cached for 1 hour since historical data rarely changes.
+ *
+ * Why explicit `period1`/`period2` instead of Yahoo's `range=Xy` predefined
+ * buckets:
+ *
+ *   Yahoo's chart endpoint silently downsamples to coarser granularity when
+ *   the predefined range would otherwise return "too many" daily points,
+ *   IGNORING the `interval=1d` URL parameter. Verified 2026-05-09 against
+ *   ^SP500TR:
+ *
+ *     range=max:    155 points, meta.dataGranularity "3mo"   ❌
+ *     range=10y:   2515 points, meta.dataGranularity "1d"    ✅
+ *     range=5y:    1256 points, meta.dataGranularity "1d"    ✅
+ *     period1/period2 over 30 years: 7766 points, "1d"       ✅
+ *
+ *   This caused a phantom +13% jump in the chart's S&P benchmark line at
+ *   the Q1→Q2 boundary (forward-fill propagated Q1 close through March,
+ *   then stepped to Q2 close on Apr 1). The hybrid alternative — predefined
+ *   ranges up to 10y, period1/period2 beyond — would still trust Yahoo to
+ *   honor `interval=1d` at every predefined range. The exact failure mode
+ *   that motivated this rewrite was Yahoo regressing on that trust at
+ *   `range=max`. One assumption is safer than seven, so we always use
+ *   explicit timestamps.
+ *
+ *   `period2` is rounded to the hour so the URL stays stable within the
+ *   1-hour fetch cache window (without rounding, a fresh `Date.now()` per
+ *   call would bypass the cache).
  */
 export async function fetchIndexHistory(
   ticker: string,
   days: number
 ): Promise<{ date: string; close: number }[]> {
-  const range =
-    days <= 7 ? "7d" : days <= 30 ? "1mo" : days <= 90 ? "3mo" : days <= 365 ? "1y" : "max";
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const period2 = Math.floor(nowSeconds / SECONDS_PER_HOUR) * SECONDS_PER_HOUR;
+  const lookbackDays = Math.max(1, days) + FETCH_LOOKBACK_BUFFER_DAYS;
+  const period1 = period2 - lookbackDays * SECONDS_PER_DAY;
 
   try {
-    const url = `${CHART_URL}/${encodeURIComponent(ticker)}?interval=1d&range=${range}`;
+    const url = `${CHART_URL}/${encodeURIComponent(ticker)}?interval=1d&period1=${period1}&period2=${period2}`;
     const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 3600 }, // 1 hour
@@ -429,6 +462,22 @@ export async function fetchIndexHistory(
     const json = await res.json();
     const result = json?.chart?.result?.[0];
     if (!result) return [];
+
+    // Defensive: if Yahoo ever silently downgrades granularity again (the
+    // exact failure mode that motivated this rewrite), surface it loudly
+    // rather than producing a chart with a phantom step at every coarser
+    // bucket boundary.
+    const granularity = result.meta?.dataGranularity;
+    if (granularity && granularity !== "1d") {
+      const msg = `[yahoo] Unexpected dataGranularity "${granularity}" for ${ticker} (expected "1d") — benchmark chart may show false jumps`;
+      console.error(msg);
+      try {
+        const Sentry = await import("@sentry/nextjs");
+        Sentry.captureMessage(msg, "warning");
+      } catch {
+        // Sentry unavailable in tests / non-prod — log already happened
+      }
+    }
 
     const timestamps: number[] = result.timestamp ?? [];
     const closes: (number | null)[] =
