@@ -618,15 +618,17 @@ export async function mergeCashAccounts(
     throw new Error("Cash accounts must have the same currency");
   }
 
-  // Merge: add duplicate balance to survivor
-  const newBalance = (survivor.balance ?? 0) + (duplicate.balance ?? 0);
+  // Merge: add duplicate balance to survivor.
+  // `balance` and `apy` are NOT NULL in the schema (migration 014), so the
+  // CashAccount type's `number` reflects truth — no `?? 0` defaults needed.
+  const newBalance = survivor.balance + duplicate.balance;
 
   await updateCashAccount(survivorId, {
     currency: survivor.currency,
     balance: newBalance,
     institution_id: survivor.institution_id ?? undefined,
     name: survivor.name,
-    apy: survivor.apy ?? 0,
+    apy: survivor.apy,
     region: survivor.region,
     wallet_id: survivor.wallet_id,
     broker_id: survivor.broker_id,
