@@ -88,11 +88,24 @@ export function CashAccountModal({
     setLoading(true);
 
     try {
+      // Parse numeric inputs explicitly. Empty / non-numeric values were
+      // previously coerced to 0 by `parseFloat(x) || 0`, silently resetting
+      // the user's balance/APY on save when the field was accidentally
+      // cleared. Block the save instead and surface a clear error.
+      const parsedBalance = parseFloat(balance);
+      if (!Number.isFinite(parsedBalance)) {
+        throw new Error("Balance must be a valid number");
+      }
+      const parsedApy = parseFloat(apy);
+      if (!Number.isFinite(parsedApy)) {
+        throw new Error("APY must be a valid number");
+      }
+
       if (isEditing) {
         const input: CashAccountUpdateInput = {
           currency,
-          balance: parseFloat(balance) || 0,
-          apy: parseFloat(apy) || 0,
+          balance: parsedBalance,
+          apy: parsedApy,
           name: isBankOrigin ? name : undefined,
         };
         await updateCashAccount(cashAccount.id, input, {
@@ -103,8 +116,8 @@ export function CashAccountModal({
         const input: CashAccountCreateInput = {
           institution_id: institutionId,
           currency,
-          balance: parseFloat(balance) || 0,
-          apy: parseFloat(apy) || 0,
+          balance: parsedBalance,
+          apy: parsedApy,
           name: isBankOrigin ? name : undefined,
           wallet_id: walletId ?? null,
           broker_id: brokerId ?? null,

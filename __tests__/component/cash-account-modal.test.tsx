@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CashAccountModal } from "@/components/cash/cash-account-modal";
+import * as cashActions from "@/lib/actions/cash-accounts";
 import type { CashAccount } from "@/lib/types";
 
 // ── Mocks ────────────────────────────────────────────────
@@ -13,6 +14,10 @@ vi.mock("@/lib/actions/cash-accounts", () => ({
 vi.mock("focus-trap-react", () => ({
   __esModule: true,
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 // ── Helpers ──────────────────────────────────────────────
@@ -212,5 +217,112 @@ describe("CashAccountModal", () => {
 
     fireEvent.change(currencySelect, { target: { value: "USD" } });
     expect(currencySelect.value).toBe("USD");
+  });
+});
+
+// ─── Form validation: balance + APY ────────────────────────────────────────
+//
+// Previously the modal coerced empty/non-numeric inputs to 0 via
+// `parseFloat(x) || 0`, silently destroying the user's value on save.
+// New behavior: block submit and surface a clear error message.
+
+describe("CashAccountModal — input validation", () => {
+  beforeEach(() => {
+    vi.mocked(cashActions.createCashAccount).mockReset();
+    vi.mocked(cashActions.updateCashAccount).mockReset();
+  });
+
+  it("blocks save on edit when balance is cleared (empty string → NaN)", async () => {
+    const account = makeCashAccount({ balance: 1500, apy: 1.5 });
+
+    const { container } = render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    const balanceInput = screen.getByLabelText("Balance") as HTMLInputElement;
+    fireEvent.change(balanceInput, { target: { value: "" } });
+
+    // fireEvent.submit on the form bypasses HTML5 button-triggered validation
+    // and exercises the form's onSubmit handler directly — same path the real
+    // submission takes, just without the browser's pre-submit field check.
+    const form = container.querySelector("form")!;
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/Balance must be a valid number/);
+    });
+    expect(vi.mocked(cashActions.updateCashAccount)).not.toHaveBeenCalled();
+  });
+
+  it("blocks save on edit when APY is cleared (empty string → NaN)", async () => {
+    const account = makeCashAccount({ balance: 1500, apy: 1.5 });
+
+    const { container } = render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    const apyInput = screen.getByLabelText(/APY/) as HTMLInputElement;
+    fireEvent.change(apyInput, { target: { value: "" } });
+
+    const form = container.querySelector("form")!;
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/APY must be a valid number/);
+    });
+    expect(vi.mocked(cashActions.updateCashAccount)).not.toHaveBeenCalled();
+  });
+
+  it("allows save on edit with explicit balance=0 (zero is a valid number)", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5 });
+
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    const balanceInput = screen.getByLabelText("Balance") as HTMLInputElement;
+    fireEvent.change(balanceInput, { target: { value: "0" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled();
+    });
+    const [, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
+    expect(input).toMatchObject({ balance: 0 });
+  });
+
+  it("allows save on edit with explicit apy=0 (zero is a valid number)", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5 });
+
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    const apyInput = screen.getByLabelText(/APY/) as HTMLInputElement;
+    fireEvent.change(apyInput, { target: { value: "0" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled();
+    });
+    const [, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
+    expect(input).toMatchObject({ apy: 0 });
+  });
+
+  it("blocks save on create when balance is empty (no value typed)", async () => {
+    const { container } = render(
+      <CashAccountModal
+        isOpen
+        onClose={vi.fn()}
+        institutionId="inst-1"
+        institutionName="Revolut"
+      />,
+    );
+
+    // Default state: balance string is "" (no pre-fill in create mode).
+    // No need to fireEvent.change — just submit and verify the JS guard fires.
+    const form = container.querySelector("form")!;
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/Balance must be a valid number/);
+    });
+    expect(vi.mocked(cashActions.createCashAccount)).not.toHaveBeenCalled();
   });
 });
