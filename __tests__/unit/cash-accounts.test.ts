@@ -600,4 +600,69 @@ describe("updateCashAccount — partial-update semantics", () => {
     expect(payload.last_was_adjustment).toBe(false);
     expect(payload.last_was_transfer).toBe(false);
   });
+
+  // ─── New partial-update API enabled by the type split ──────────────────────
+  // After CashAccountUpdateInput = Partial<CashAccountCreateInput>, callers can
+  // omit any field — including currency and balance — and the function must
+  // not crash. Runtime validation is gated on `if (input.X !== undefined)`.
+
+  it("apy-only update (no currency, no balance) writes only apy + flags", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { apy: 5.5 },
+    );
+
+    const payload = getPayload();
+    expect(payload).toHaveProperty("apy");
+    expect(payload.apy).toBe(5.5);
+    expect(payload).not.toHaveProperty("currency");
+    expect(payload).not.toHaveProperty("balance");
+    expect(payload).not.toHaveProperty("name");
+    expect(payload.last_was_adjustment).toBe(false);
+    expect(payload.last_was_transfer).toBe(false);
+  });
+
+  it("name-only update writes only name + flags", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { name: "Renamed account" },
+    );
+
+    const payload = getPayload();
+    expect(payload).toHaveProperty("name");
+    expect(payload.name).toBe("Renamed account");
+    expect(payload).not.toHaveProperty("currency");
+    expect(payload).not.toHaveProperty("balance");
+    expect(payload).not.toHaveProperty("apy");
+  });
+
+  it("empty-object update is a no-op for value fields (only badge flags written)", async () => {
+    const { client, getPayload } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      {},
+    );
+
+    const payload = getPayload();
+    // No value fields — caller passed nothing
+    expect(payload).not.toHaveProperty("currency");
+    expect(payload).not.toHaveProperty("balance");
+    expect(payload).not.toHaveProperty("apy");
+    expect(payload).not.toHaveProperty("name");
+    expect(payload).not.toHaveProperty("institution_id");
+    expect(payload).not.toHaveProperty("region");
+    expect(payload).not.toHaveProperty("wallet_id");
+    expect(payload).not.toHaveProperty("broker_id");
+    // Badge flags ARE always written — they reflect last operation
+    expect(payload.last_was_adjustment).toBe(false);
+    expect(payload.last_was_transfer).toBe(false);
+  });
 });
