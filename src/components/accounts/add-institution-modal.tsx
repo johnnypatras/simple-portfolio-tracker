@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { createWallet } from "@/lib/actions/wallets";
 import { createBroker } from "@/lib/actions/brokers";
 import { createCashAccount } from "@/lib/actions/cash-accounts";
+import { findOrCreateInstitution } from "@/lib/actions/institutions";
 import type { PrivacyLabel } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains } from "@/lib/types";
 
@@ -79,7 +80,13 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
           { also_bank: wantBank }
         );
       } else if (wantBank) {
+        // Bank-only path: create the institution explicitly and link the
+        // cash account to it. Without this, the cash account would be
+        // free-floating (no institution_id) and wouldn't appear under any
+        // institution group in the accounts view.
+        const institutionId = await findOrCreateInstitution(name);
         await createCashAccount({
+          institution_id: institutionId,
           name: bankAccountName || "Main Account",
           currency: bankCurrency,
           balance: 0,
