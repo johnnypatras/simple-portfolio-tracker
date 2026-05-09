@@ -74,6 +74,34 @@ vi.mock("@/lib/actions/activity-log", () => ({
 vi.mock("@/lib/cashflow", () => ({
   computeCashflowFromPrices: vi.fn().mockReturnValue({ usd: 100, eur: 92 }),
   classifyAssetClass: vi.fn().mockReturnValue("cash"),
+  isStablecoin: vi.fn().mockReturnValue(false),
+}));
+
+// crypto.upsertPosition imports from these — mock them so we can run it in isolation.
+vi.mock("@/lib/actions/revalidate", () => ({
+  revalidateDashboard: vi.fn(),
+  revalidateCashPaths: vi.fn(),
+}));
+
+vi.mock("@/lib/activity-fx", () => ({
+  computeActivityFx: vi.fn().mockResolvedValue({
+    deltaUsd: 0,
+    deltaEur: 0,
+    deltaStatus: "complete",
+    cashflowUsd: null,
+    cashflowEur: null,
+    cashflowAssetClass: null,
+    cashflowStatus: null,
+  }),
+  emptyFx: vi.fn().mockReturnValue({
+    deltaUsd: 0,
+    deltaEur: 0,
+    deltaStatus: null,
+    cashflowUsd: null,
+    cashflowEur: null,
+    cashflowAssetClass: null,
+    cashflowStatus: null,
+  }),
 }));
 
 vi.mock("@/lib/validation", () => ({
@@ -94,6 +122,7 @@ vi.mock("@/lib/rate-limit", () => ({
 // Import after mocks
 import { updateWallet } from "@/lib/actions/wallets";
 import { updateTradeEntry } from "@/lib/actions/trades";
+import { upsertPosition } from "@/lib/actions/crypto";
 
 // ─── Helper to extract the .update() payload from the mock chain ─────────────
 function getUpdatePayload(client: ReturnType<typeof createMockClient>, callIndex: number): Record<string, unknown> {
@@ -396,5 +425,157 @@ describe("updateTradeEntry — partial-update semantics", () => {
 
     const payload = getUpdatePayload(hoisted.mockClient!, 1);
     expect(payload.notes).toBe("Earnings call");
+  });
+});
+
+// ─── upsertPosition (crypto) — network preservation ──────────────────────────
+//
+// `upsertPosition` is INSERT-OR-UPDATE. The update branch hands a payload to
+// partialUpdate() that must preserve `network` when the caller (e.g. a transfer
+// destination) doesn't pass it. Same bug class as cash-accounts apy / wallets
+// chain — flagged here for crypto positions specifically.
+describe("upsertPosition — partial-update semantics (network preservation)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("transfer-style call (no network field) does NOT include network in update payload", async () => {
+    // Mock chain for upsertPosition (existing-position update branch):
+    //   1. crypto_assets.select.eq.is.single → asset (for ticker + subcategory)
+    //   2. crypto_positions.select.eq.eq.is.single → before snapshot
+    //   3. crypto_positions.update(partialUpdate(...)).eq → captured here
+    //   4. crypto_positions.select.eq.eq.is.single → after snapshot
+    hoisted.mockClient = createMockClient([
+      // 1) asset lookup
+      { data: { ticker: "ETH", subcategory: null }, error: null },
+      // 2) before snapshot — position with network already set
+      {
+        data: {
+          id: "pos-id",
+          crypto_asset_id: "asset-id",
+          wallet_id: "wallet-id",
+          quantity: 10,
+          acquisition_method: "bought",
+          apy: 4.5,
+          network: "Linea",
+          last_was_adjustment: false,
+          last_was_transfer: false,
+        },
+        error: null,
+      },
+      // 3) update result
+      { error: null },
+      // 4) after snapshot
+      {
+        data: {
+          id: "pos-id",
+          crypto_asset_id: "asset-id",
+          wallet_id: "wallet-id",
+          quantity: 12,
+          acquisition_method: "bought",
+          apy: 4.5,
+          network: "Linea",
+          last_was_adjustment: true,
+          last_was_transfer: true,
+        },
+        error: null,
+      },
+    ]);
+
+    await upsertPosition(
+      {
+        crypto_asset_id: "aaaaaaaa-0000-0000-0000-000000000001",
+        wallet_id: "aaaaaaaa-0000-0000-0000-000000000002",
+        quantity: 12,
+        // no network, no apy, no acquisition_method
+      },
+      { isAdjustment: true, transferGroupId: "transfer-group-id" },
+    );
+
+    // Update is the THIRD from() call (asset, before, update, after)
+    const payload = getUpdatePayload(hoisted.mockClient!, 2);
+    expect(payload).not.toHaveProperty("network");
+    expect(payload).not.toHaveProperty("apy");
+    expect(payload).not.toHaveProperty("acquisition_method");
+
+    // Sanity: fields that ARE passed get written
+    expect(payload.quantity).toBe(12);
+    expect(payload.last_was_adjustment).toBe(true);
+    expect(payload.last_was_transfer).toBe(true);
+  });
+
+  it("explicit network=null clears the network in update payload", async () => {
+    hoisted.mockClient = createMockClient([
+      { data: { ticker: "ETH", subcategory: null }, error: null },
+      {
+        data: {
+          id: "pos-id",
+          crypto_asset_id: "asset-id",
+          wallet_id: "wallet-id",
+          quantity: 10,
+          network: "Ethereum",
+        },
+        error: null,
+      },
+      { error: null },
+      {
+        data: {
+          id: "pos-id",
+          crypto_asset_id: "asset-id",
+          wallet_id: "wallet-id",
+          quantity: 10,
+          network: null,
+        },
+        error: null,
+      },
+    ]);
+
+    await upsertPosition({
+      crypto_asset_id: "aaaaaaaa-0000-0000-0000-000000000001",
+      wallet_id: "aaaaaaaa-0000-0000-0000-000000000002",
+      quantity: 10,
+      network: null,
+    });
+
+    const payload = getUpdatePayload(hoisted.mockClient!, 2);
+    expect(payload).toHaveProperty("network");
+    expect(payload.network).toBeNull();
+  });
+
+  it("non-empty network is trimmed and written", async () => {
+    hoisted.mockClient = createMockClient([
+      { data: { ticker: "ETH", subcategory: null }, error: null },
+      {
+        data: {
+          id: "pos-id",
+          crypto_asset_id: "asset-id",
+          wallet_id: "wallet-id",
+          quantity: 10,
+          network: null,
+        },
+        error: null,
+      },
+      { error: null },
+      {
+        data: {
+          id: "pos-id",
+          crypto_asset_id: "asset-id",
+          wallet_id: "wallet-id",
+          quantity: 10,
+          network: "Base",
+        },
+        error: null,
+      },
+    ]);
+
+    await upsertPosition({
+      crypto_asset_id: "aaaaaaaa-0000-0000-0000-000000000001",
+      wallet_id: "aaaaaaaa-0000-0000-0000-000000000002",
+      quantity: 10,
+      network: "  Base  ",
+    });
+
+    const payload = getUpdatePayload(hoisted.mockClient!, 2);
+    expect(payload.network).toBe("Base");
   });
 });

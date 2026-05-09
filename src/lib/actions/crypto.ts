@@ -296,8 +296,13 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   validateUUID(input.wallet_id, "Wallet ID");
   validateQuantity(input.quantity, "Crypto quantity");
   if (input.apy != null) validateApy(input.apy, "APY");
-  const normalizedNetwork = input.network?.trim() || null;
-  if (normalizedNetwork) validateName(normalizedNetwork, 50, "Network");
+  // Preserve undefined for the update path so partialUpdate() can strip it;
+  // the insert path explicitly falls back to null at its call site below.
+  let normalizedNetwork: string | null | undefined;
+  if (input.network !== undefined) {
+    normalizedNetwork = input.network?.trim() || null;
+    if (normalizedNetwork) validateName(normalizedNetwork, 50, "Network");
+  }
 
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -389,7 +394,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         quantity: input.quantity,
         acquisition_method: input.acquisition_method ?? "bought",
         apy: input.apy ?? 0,
-        network: normalizedNetwork,
+        network: normalizedNetwork ?? null,
         last_was_adjustment: opts?.isAdjustment ?? false,
         last_was_transfer: opts?.transferGroupId != null,
       });
