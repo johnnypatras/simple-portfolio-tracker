@@ -642,8 +642,8 @@ describe("updateCashAccount — partial-update semantics", () => {
     expect(payload).not.toHaveProperty("apy");
   });
 
-  it("empty-object update is a no-op for value fields (only badge flags written)", async () => {
-    const { client, getPayload } = captureUpdatePayload();
+  it("empty-object update is a complete no-op (no SQL UPDATE, no log, no badge change)", async () => {
+    const { client } = captureUpdatePayload();
     hoisted.mockClient = client;
 
     await updateCashAccount(
@@ -651,18 +651,45 @@ describe("updateCashAccount — partial-update semantics", () => {
       {},
     );
 
-    const payload = getPayload();
-    // No value fields — caller passed nothing
-    expect(payload).not.toHaveProperty("currency");
-    expect(payload).not.toHaveProperty("balance");
-    expect(payload).not.toHaveProperty("apy");
-    expect(payload).not.toHaveProperty("name");
-    expect(payload).not.toHaveProperty("institution_id");
-    expect(payload).not.toHaveProperty("region");
-    expect(payload).not.toHaveProperty("wallet_id");
-    expect(payload).not.toHaveProperty("broker_id");
-    // Badge flags ARE always written — they reflect last operation
-    expect(payload.last_was_adjustment).toBe(false);
-    expect(payload.last_was_transfer).toBe(false);
+    // The function should return BEFORE any from() call — no before fetch,
+    // no .update(), no after fetch, no display name resolution, nothing.
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it("update with only `apy: undefined` (explicitly undefined) is also a no-op", async () => {
+    // Sanity: passing an explicit `undefined` is equivalent to omitting the
+    // key — partialUpdate strips it and the early-return fires.
+    const { client } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { apy: undefined },
+    );
+
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it("empty-object update preserves pre-existing badge state (does not flip Xfer→none)", async () => {
+    // The whole point of the early-return: a row with last_was_transfer=true
+    // (showing the teal Xfer badge) must NOT have its badge silently cleared
+    // by an empty/no-op update call. Since the function early-returns before
+    // any DB write, the existing row state is untouched by definition — this
+    // test asserts the absence of the SQL UPDATE that would otherwise flip
+    // the flag.
+    const { client } = captureUpdatePayload();
+    hoisted.mockClient = client;
+
+    // The mock's "before" snapshot says last_was_transfer:false, but that
+    // doesn't matter — what matters is the function never even fetches it.
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      {},
+      { isAdjustment: true, transferGroupId: undefined },
+    );
+
+    // No update call → no badge flip. Even with opts that would normally
+    // write last_was_adjustment:true, the early-return takes precedence.
+    expect(client.from).not.toHaveBeenCalled();
   });
 });

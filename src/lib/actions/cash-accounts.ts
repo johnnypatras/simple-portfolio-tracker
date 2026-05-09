@@ -370,6 +370,28 @@ export async function updateCashAccount(
     if (normalizedName) validateName(normalizedName, 100, "Account name");
   }
 
+  // Build the value-field payload separately from the badge flags. If the
+  // caller passed no real fields, this update is a no-op — return early to
+  // avoid:
+  //   - issuing a SQL UPDATE that only writes badge flags (which would
+  //     silently clear `last_was_transfer` for a row that genuinely is the
+  //     last-was-transfer state)
+  //   - writing a meaningless activity_log entry for a no-op
+  //   - paying for round-trips and FX computation with nothing to record
+  // Badge flags are layered on AFTER this check so they only fire on real
+  // updates — they're metadata about the operation, not about the row.
+  const valuePayload = partialUpdate({
+    name: normalizedName,
+    currency: input.currency,
+    balance: input.balance,
+    apy: input.apy,
+    institution_id: input.institution_id,
+    region: input.region,
+    wallet_id: input.wallet_id,
+    broker_id: input.broker_id,
+  });
+  if (Object.keys(valuePayload).length === 0) return;
+
   // Capture before snapshot
   const { data: before } = await supabase
     .from("cash_accounts")
@@ -381,18 +403,11 @@ export async function updateCashAccount(
 
   const { error } = await supabase
     .from("cash_accounts")
-    .update(partialUpdate({
-      name: normalizedName,
-      currency: input.currency,
-      balance: input.balance,
-      apy: input.apy,
-      institution_id: input.institution_id,
-      region: input.region,
-      wallet_id: input.wallet_id,
-      broker_id: input.broker_id,
+    .update({
+      ...valuePayload,
       last_was_adjustment: opts?.isAdjustment ?? false,
       last_was_transfer: opts?.transferGroupId != null,
-    }))
+    })
     .eq("id", id)
     .eq("user_id", user.id);
 
