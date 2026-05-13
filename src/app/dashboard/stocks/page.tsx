@@ -8,6 +8,8 @@ import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { StockTable } from "@/components/stocks/stock-table";
 import { MobileMenuButton } from "@/components/sidebar";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getLatestManualNavsAt, partitionStockAssetsForPricing, injectManualNavPrices } from "@/lib/manual-nav";
 
 export default async function StocksPage() {
   const [assets, brokers, profile, cashFlowResult] = await Promise.all([
@@ -19,18 +21,21 @@ export default async function StocksPage() {
 
   const cashFlows = cashFlowResult.events;
 
-  // Build Yahoo ticker list: use yahoo_ticker if set, otherwise fall back to ticker
-  const yahooTickers = assets
-    .map((a) => a.yahoo_ticker || a.ticker)
-    .filter(Boolean);
+  // Partition by kind: Yahoo batch covers kind='yahoo'; kind='manual' are priced
+  // via manual_nav_updates and injected below.
+  const { manualStockAssets, yahooTickers } = partitionStockAssetsForPricing(assets);
 
-  // Fetch prices + FX rates in parallel (EURUSD=X folded into stock batch)
+  // Fetch prices + FX rates + latest manual NAVs in parallel
   const cur = profile.primary_currency;
   const uniqueCurrencies = [...new Set(["USD", "EUR", ...assets.map((a) => a.currency)])];
-  const [{ stockPrices: prices, indexPrices, dividends }, fxRates] = await Promise.all([
+  const supabase = await createServerSupabaseClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, manualNavs] = await Promise.all([
     getStockAndIndexPrices(yahooTickers),
     getFXRatesSafe(cur, uniqueCurrencies),
+    manualStockAssets.length > 0 ? getLatestManualNavsAt(supabase, today) : Promise.resolve([]),
   ]);
+  injectManualNavPrices(manualStockAssets, manualNavs, prices);
   const eurUsdData = indexPrices["EURUSD=X"] ?? null;
 
   // Compute stocks-only aggregate for summary header enrichment

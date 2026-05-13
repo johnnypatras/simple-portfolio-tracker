@@ -10,6 +10,8 @@ import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { AccountsView } from "@/components/accounts/accounts-view";
 import { MobileMenuButton } from "@/components/sidebar";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getLatestManualNavsAt, partitionStockAssetsForPricing, injectManualNavPrices } from "@/lib/manual-nav";
 
 export default async function AccountsPage() {
   // ── Round 1: DB records + independent fetches in parallel ──
@@ -28,11 +30,10 @@ export default async function AccountsPage() {
 
   const primaryCurrency = profile.primary_currency;
 
-  // Build ticker/coin ID lists for price fetching
+  // Build ticker/coin ID lists for price fetching. Partition stock assets so
+  // kind='manual' get NAV-priced from manual_nav_updates (not Yahoo).
   const coinIds = cryptoAssets.map((a) => a.coingecko_id);
-  const yahooTickers = stockAssets
-    .map((a) => a.yahoo_ticker || a.ticker)
-    .filter(Boolean);
+  const { manualStockAssets, yahooTickers } = partitionStockAssetsForPricing(stockAssets);
 
   // Collect all currencies that need FX conversion
   const allCurrencies = [
@@ -44,11 +45,15 @@ export default async function AccountsPage() {
   ];
 
   // ── Round 2: Price fetches that depend on Round 1 data ──
-  const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
+  const supabase = await createServerSupabaseClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const [cryptoPrices, stockPrices, fxRates, manualNavs] = await Promise.all([
     getPrices(coinIds),
     getStockPrices(yahooTickers),
     getFXRatesSafe(primaryCurrency, allCurrencies),
+    manualStockAssets.length > 0 ? getLatestManualNavsAt(supabase, today) : Promise.resolve([]),
   ]);
+  injectManualNavPrices(manualStockAssets, manualNavs, stockPrices);
 
   return (
     <div>

@@ -2,6 +2,8 @@ import { getPrices } from "@/lib/prices/coingecko";
 import { getStockAndIndexPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
+import { getLatestManualNavsAt, partitionStockAssetsForPricing, injectManualNavPrices } from "@/lib/manual-nav";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { aggregatePortfolio } from "./aggregate";
 import type { PortfolioSummary } from "./aggregate";
 import { computeDashboardInsights } from "./dashboard-insights";
@@ -48,9 +50,10 @@ export async function assemblePortfolioView(
   const coinIds = [
     ...new Set(["bitcoin", "ethereum", "solana", ...cryptoAssets.map((a) => a.coingecko_id)]),
   ];
-  const yahooTickers = stockAssets
-    .map((a) => a.yahoo_ticker || a.ticker)
-    .filter(Boolean);
+  // Yahoo batch covers kind='yahoo' only. kind='manual' assets are priced via
+  // manual_nav_updates and injected into stockPrices below. See
+  // partitionStockAssetsForPricing + injectManualNavPrices in @/lib/manual-nav.
+  const { manualStockAssets, yahooTickers } = partitionStockAssetsForPricing(stockAssets);
 
   const allCurrencies = [
     ...new Set([
@@ -60,14 +63,23 @@ export async function assemblePortfolioView(
     ]),
   ];
 
-  const [cryptoPrices, { stockPrices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur] =
+  const supabase = await createServerSupabaseClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [cryptoPrices, { stockPrices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, manualNavs] =
     await Promise.all([
       getPrices(coinIds),
       getStockAndIndexPrices(yahooTickers),
       getFXRatesSafe(primaryCurrency, allCurrencies),
       getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
       getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
+      manualStockAssets.length > 0 ? getLatestManualNavsAt(supabase, today) : Promise.resolve([]),
     ]);
+
+  // Inject manual NAVs into stockPrices keyed by `asset.ticker` (yahoo_ticker is
+  // null for manual assets). Downstream readers use `stockPrices[yahoo_ticker || ticker]`
+  // — manual assets resolve via the ticker fallback. Single injection point.
+  injectManualNavPrices(manualStockAssets, manualNavs, stockPrices);
 
   const eurUsdData = indexPrices["EURUSD=X"] ?? null;
 
