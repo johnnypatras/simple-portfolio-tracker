@@ -99,7 +99,7 @@ describe("aggregatePortfolio", () => {
     const result = aggregatePortfolio({
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [{
-        id: "sa1", name: "AAPL", ticker: "AAPL", yahoo_ticker: "AAPL",
+        id: "sa1", name: "AAPL", ticker: "AAPL", yahoo_ticker: "AAPL", kind: "yahoo" as const,
         currency: "GBP", isin: null, category: "individual_stock" as const,
         subcategory: null, tags: [],
         user_id: "u1", created_at: "",
@@ -116,7 +116,7 @@ describe("aggregatePortfolio", () => {
     const result = aggregatePortfolio({
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [{
-        id: "sa1", name: "AAPL", ticker: "AAPL", yahoo_ticker: "AAPL",
+        id: "sa1", name: "AAPL", ticker: "AAPL", yahoo_ticker: "AAPL", kind: "yahoo" as const,
         currency: "USD", isin: null, category: "individual_stock" as const,
         subcategory: null, tags: [],
         user_id: "u1", created_at: "",
@@ -219,7 +219,7 @@ describe("aggregatePortfolio", () => {
       }],
       cryptoPrices: { bitcoin: { usd: 60000, eur: 54000, usd_24h_change: 0, eur_24h_change: 0 } },
       stockAssets: [{
-        id: "sa1", name: "VWCE", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+        id: "sa1", name: "VWCE", ticker: "VWCE", yahoo_ticker: "VWCE.DE", kind: "yahoo" as const,
         currency: "EUR", isin: null, category: "etf" as const,
         subcategory: null, tags: [],
         user_id: "u1", created_at: "",
@@ -248,14 +248,14 @@ describe("aggregatePortfolio", () => {
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", name: "VWCE", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          id: "sa1", name: "VWCE", ticker: "VWCE", yahoo_ticker: "VWCE.DE", kind: "yahoo" as const,
           currency: "EUR", isin: null, category: "etf" as const,
           subcategory: null, tags: [],
           user_id: "u1", created_at: "",
           positions: [stockPos(10, "sa1")],
         },
         {
-          id: "sa2", name: "AAPL", ticker: "AAPL", yahoo_ticker: "AAPL",
+          id: "sa2", name: "AAPL", ticker: "AAPL", yahoo_ticker: "AAPL", kind: "yahoo" as const,
           currency: "USD", isin: null, category: "individual_stock" as const,
           subcategory: null, tags: [],
           user_id: "u1", created_at: "",

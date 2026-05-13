@@ -208,7 +208,7 @@ describe("computeDashboardInsights", () => {
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE", kind: "yahoo" as const,
           name: "Vanguard", currency: "USD", category: "etf" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
@@ -216,7 +216,7 @@ describe("computeDashboardInsights", () => {
             last_was_transfer: false, updated_at: "", deleted_at: null }],
         },
         {
-          id: "sa2", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
+          id: "sa2", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL", kind: "yahoo" as const,
           name: "Apple", currency: "USD", category: "individual_stock" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p2", stock_asset_id: "sa2", broker_id: "b1",
@@ -246,7 +246,7 @@ describe("computeDashboardInsights", () => {
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE", kind: "yahoo" as const,
           name: "Vanguard FTSE", currency: "USD", category: "etf" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
@@ -254,7 +254,7 @@ describe("computeDashboardInsights", () => {
             last_was_transfer: false, updated_at: "", deleted_at: null }],
         },
         {
-          id: "sa2", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
+          id: "sa2", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL", kind: "yahoo" as const,
           name: "Apple", currency: "USD", category: "individual_stock" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p2", stock_asset_id: "sa2", broker_id: "b1",
@@ -343,7 +343,7 @@ describe("computeDashboardInsights", () => {
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE", kind: "yahoo" as const,
           name: "Vanguard", currency: "USD", category: "etf" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
@@ -373,7 +373,7 @@ describe("computeDashboardInsights", () => {
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
+          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL", kind: "yahoo" as const,
           name: "Apple", currency: "USD", category: "individual_stock" as const,
           isin: null, subcategory: null, tags: ["stocks"], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
@@ -401,7 +401,7 @@ describe("computeDashboardInsights", () => {
       cryptoAssets: [], cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL",
+          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: "AAPL", kind: "yahoo" as const,
           name: "Apple", currency: "USD", category: "individual_stock" as const,
           isin: null, subcategory: null, tags: ["Tech"], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",

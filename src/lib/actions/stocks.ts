@@ -58,10 +58,13 @@ export async function getStockAssetsWithPositions(): Promise<
 
   if (posErr) throw new Error(posErr.message);
 
-  // Merge (normalize old category values so all consumers see current enum)
-  return assets.map((asset) => ({
+  // Merge (normalize old category values so all consumers see current enum).
+  // `kind` is narrowed from generated `string` to the domain union; the CHECK
+  // constraint guarantees only 'yahoo'/'manual' reach this point.
+  return assets.map<StockAssetWithPositions>((asset) => ({
     ...asset,
     category: normalizeCategory(asset.category),
+    kind: asset.kind as "yahoo" | "manual",
     positions: (positions ?? [])
       .filter((p) => p.stock_asset_id === asset.id)
       .map((p) => ({
@@ -98,6 +101,7 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
       name: input.name,
       isin,
       yahoo_ticker: input.yahoo_ticker ?? null,
+      kind: input.kind ?? "yahoo",
       category,
       tags,
       currency: input.currency ?? "USD",

@@ -237,7 +237,7 @@ describe("buildPaletteHoldings", () => {
       cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE",
+          id: "sa1", user_id: "u", ticker: "VWCE", yahoo_ticker: "VWCE.DE", kind: "yahoo" as const,
           name: "Vanguard FTSE", currency: "EUR", category: "etf" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
@@ -270,7 +270,7 @@ describe("buildPaletteHoldings", () => {
       cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: null,
+          id: "sa1", user_id: "u", ticker: "AAPL", yahoo_ticker: null, kind: "yahoo" as const,
           name: "Apple Inc.", currency: "USD", category: "individual_stock" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",
@@ -384,7 +384,7 @@ describe("buildPaletteHoldings", () => {
       cryptoPrices: {},
       stockAssets: [
         {
-          id: "sa1", user_id: "u", ticker: "OBSCURE", yahoo_ticker: "OBSCURE.L",
+          id: "sa1", user_id: "u", ticker: "OBSCURE", yahoo_ticker: "OBSCURE.L", kind: "yahoo" as const,
           name: "Obscure Stock", currency: "GBP", category: "individual_stock" as const,
           isin: null, subcategory: null, tags: [], created_at: "",
           positions: [{ id: "p1", stock_asset_id: "sa1", broker_id: "b1",

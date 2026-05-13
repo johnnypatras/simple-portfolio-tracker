@@ -43,6 +43,7 @@ export const VALID_ENTITY_TYPES = [
   "bank_account", "exchange_deposit", "crypto_position",
   "stock_position", "broker_deposit", "diary_entry", "goal_price",
   "trade_entry", "institution", "cash_account",
+  "manual_nav_update",
 ] as const;
 
 /** Valid action strings for activity log filtering */

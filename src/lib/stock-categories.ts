@@ -12,6 +12,7 @@ const VALID_CATEGORIES = new Set<AssetCategory>([
   "individual_stock",
   "etf",
   "bond_fixed_income",
+  "private_equity",
   "other",
 ]);
 

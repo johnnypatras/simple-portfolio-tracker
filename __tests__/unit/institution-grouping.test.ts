@@ -87,7 +87,7 @@ function makeStockAsset(overrides: Partial<StockAssetWithPositions> = {}): Stock
     id: "sa1",
     user_id: "u1",
     ticker: "VWCE",
-    yahoo_ticker: "VWCE.DE",
+    yahoo_ticker: "VWCE.DE", kind: "yahoo" as const,
     name: "Vanguard FTSE All-World",
     currency: "EUR",
     category: "etf",
@@ -362,7 +362,7 @@ describe("buildInstitutionGroups", () => {
   it("converts USD stock to EUR for EUR user", () => {
     const usdStock = makeStockAsset({
       ticker: "AAPL",
-      yahoo_ticker: "AAPL",
+      yahoo_ticker: "AAPL", kind: "yahoo" as const,
       name: "Apple",
       currency: "USD",
       positions: [{

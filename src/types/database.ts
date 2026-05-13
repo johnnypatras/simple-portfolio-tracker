@@ -853,6 +853,15 @@ export type Database = {
     }
     Functions: {
       call_daily_snapshot: { Args: never; Returns: undefined }
+      get_latest_manual_navs_at: {
+        Args: { p_as_of: string; p_user_id?: string }
+        Returns: {
+          asset_id: string
+          effective_date: string
+          nav: number
+          note: string
+        }[]
+      }
       is_active_user: { Args: never; Returns: boolean }
     }
     Enums: {
@@ -883,6 +892,7 @@ export type Database = {
         | "broker_deposit"
         | "institution"
         | "cash_account"
+        | "manual_nav_update"
       privacy_label: "anon" | "doxxed"
       share_scope: "overview" | "full" | "full_with_history"
       share_type: "link" | "user"
@@ -1045,6 +1055,7 @@ export const Constants = {
         "broker_deposit",
         "institution",
         "cash_account",
+        "manual_nav_update",
       ],
       privacy_label: ["anon", "doxxed"],
       share_scope: ["overview", "full", "full_with_history"],
