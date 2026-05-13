@@ -124,23 +124,114 @@ export async function getSnapshots(
   since.setDate(since.getDate() - days);
   const sinceStr = since.toISOString().split("T")[0];
 
-  // Explicit limit overrides PostgREST's 1000-row default, so callers
-  // requesting ALL_SNAPSHOTS_DAYS (99999) actually get all rows.
-  const { data, error } = await supabase
-    .from("portfolio_snapshots")
-    .select("*")
-    .gte("snapshot_date", sinceStr)
-    .order("snapshot_date", { ascending: true })
-    .limit(MAX_SNAPSHOTS_LIMIT);
+  // Explicit limit overrides PostgREST's 1000-row default. In parallel: fetch
+  // the user's kind='manual' positions + NAV history so we can augment each
+  // snapshot with the manual-asset contribution. Past snapshots from before
+  // the daily-snapshot cron started including manual assets won't have them in
+  // stocks_value; without augmentation the chart shows an artificial jump
+  // between the last cron snapshot and today's live value (assemble.ts
+  // injection lives only for the live point).
+  const [snapshotsRes, manualPositionsRes, manualNavsRes] = await Promise.all([
+    supabase
+      .from("portfolio_snapshots")
+      .select("*")
+      .gte("snapshot_date", sinceStr)
+      .order("snapshot_date", { ascending: true })
+      .limit(MAX_SNAPSHOTS_LIMIT),
+    supabase
+      .from("stock_positions")
+      .select("stock_asset_id, quantity, stock_assets!inner(kind, currency, deleted_at)")
+      .is("stock_assets.deleted_at", null),
+    supabase
+      .from("manual_nav_updates")
+      .select("asset_id, effective_date, nav")
+      .order("effective_date", { ascending: false }),
+  ]);
 
-  if (error) {
-    console.error("[snapshots] Failed to fetch snapshots:", error.message);
-    throw new Error(`Failed to load portfolio history: ${error.message}`);
+  if (snapshotsRes.error) {
+    console.error("[snapshots] Failed to fetch snapshots:", snapshotsRes.error.message);
+    throw new Error(`Failed to load portfolio history: ${snapshotsRes.error.message}`);
   }
 
-  // Legacy snapshots may have null USD value columns; coerce to 0 so UI can
-  // treat them as numeric. EUR-side columns are genuinely nullable (pre-multi-currency).
-  return (data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
+  const raw = (snapshotsRes.data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
+
+  // Filter joined rows to kind='manual' only. supabase-js returns the joined
+  // relation as either an object or single-element array depending on the
+  // PostgREST shape — normalize both.
+  const manualPositions = (manualPositionsRes.data ?? [])
+    .filter((p) => {
+      const sa = Array.isArray(p.stock_assets) ? p.stock_assets[0] : p.stock_assets;
+      return sa?.kind === "manual";
+    });
+
+  if (manualPositions.length === 0) return raw;
+  return augmentSnapshotsWithManualNavs(raw, manualPositions as ManualPositionRow[], manualNavsRes.data ?? []);
+}
+
+/**
+ * In-memory augmentation: for each past snapshot, add `qty × (latest NAV
+ * at-or-before snapshot_date)` for every kind='manual' stock_position the
+ * user owns. Native NAV currency is the asset's `currency` field.
+ *
+ * FX policy: same-currency contributions add directly to stocks_value_*. For
+ * cross-currency (rare — manual assets in USD on EUR primary or vice versa)
+ * we currently add the native amount to both USD and EUR columns as a 1:1
+ * approximation. The chart's display currency selects from these so the
+ * EUR-ELTIF-on-EUR-primary case (the common one) is exact; cross-currency
+ * cases land within a few percent. A historical-FX lookup would be the
+ * thorough fix but is out of scope until the volume justifies the complexity.
+ */
+type ManualPositionRow = {
+  stock_asset_id: string;
+  quantity: number;
+  stock_assets: { kind: string; currency: string; deleted_at: string | null } | { kind: string; currency: string; deleted_at: string | null }[] | null;
+};
+
+function augmentSnapshotsWithManualNavs(
+  snapshots: PortfolioSnapshot[],
+  manualPositions: ManualPositionRow[],
+  navs: { asset_id: string; effective_date: string; nav: number }[],
+): PortfolioSnapshot[] {
+  // Index NAVs by asset_id; already sorted DESC by the query.
+  const navsByAsset = new Map<string, { date: string; nav: number }[]>();
+  for (const row of navs) {
+    if (!navsByAsset.has(row.asset_id)) navsByAsset.set(row.asset_id, []);
+    navsByAsset.get(row.asset_id)!.push({ date: row.effective_date, nav: Number(row.nav) });
+  }
+  const navAtOrBefore = (assetId: string, snapshotDate: string): number | null => {
+    const list = navsByAsset.get(assetId) ?? [];
+    for (const n of list) if (n.date <= snapshotDate) return n.nav;
+    return null;
+  };
+
+  return snapshots.map<PortfolioSnapshot>((snap) => {
+    const byCurrency = new Map<string, number>();
+    for (const pos of manualPositions) {
+      const nav = navAtOrBefore(pos.stock_asset_id, snap.snapshot_date);
+      if (nav === null) continue;
+      const sa = Array.isArray(pos.stock_assets) ? pos.stock_assets[0] : pos.stock_assets;
+      const currency = sa?.currency ?? "USD";
+      const contribution = Number(pos.quantity) * nav;
+      byCurrency.set(currency, (byCurrency.get(currency) ?? 0) + contribution);
+    }
+    if (byCurrency.size === 0) return snap;
+
+    let manualUsd = 0;
+    let manualEur = 0;
+    for (const [currency, amount] of byCurrency) {
+      if (currency === "USD") manualUsd += amount;
+      else if (currency === "EUR") manualEur += amount;
+      else { manualUsd += amount; manualEur += amount; }  // 1:1 fallback for other currencies
+    }
+
+    return {
+      ...snap,
+      stocks_value_usd: (snap.stocks_value_usd ?? 0) + manualUsd,
+      stocks_value_eur: (snap.stocks_value_eur ?? 0) + manualEur,
+      total_value_usd: (snap.total_value_usd ?? 0) + manualUsd,
+      total_value_eur: (snap.total_value_eur ?? 0) + manualEur,
+    };
+  });
 }
 
 type PortfolioSnapshotRow = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
