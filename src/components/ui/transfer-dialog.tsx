@@ -130,6 +130,11 @@ export function TransferDialog({
   const [buyNewLocationName, setBuyNewLocationName] = useState("");
   const [buyCreatingNew, setBuyCreatingNew] = useState(false);
   const [buyQuantity, setBuyQuantity] = useState("");
+  // Editable cost: defaults to qty × market price, user can override to record
+  // actual fills incl. slippage/fees. effectiveBuyAmount (computed below)
+  // drives the cash deduction and S&P benchmark cashflow.
+  const [buyAmountEdit, setBuyAmountEdit] = useState("");
+  const [buyAmountManual, setBuyAmountManual] = useState(false);
   const [buyDetectingChain, setBuyDetectingChain] = useState(false);
   const [buyDetectedChain, setBuyDetectedChain] = useState<string | null>(null);
   const [buyDetectedSubcategory, setBuyDetectedSubcategory] = useState<string | null>(null);
@@ -242,6 +247,8 @@ export function TransferDialog({
     setBuyNewLocationName("");
     setBuyCreatingNew(false);
     setBuyQuantity("");
+    setBuyAmountEdit("");
+    setBuyAmountManual(false);
     setBuyDetectingChain(false);
     setBuyDetectedChain(null);
     setBuyDetectedSubcategory(null);
@@ -392,6 +399,33 @@ export function TransferDialog({
     }
     return null;
   }, [mode, buySelectedAsset, buyQuantity, buyAssetType, prefilledMatchedExistingAsset, prefilled?.currentPrice, prefilled?.currentPriceUsd]);
+
+  // ── Editable buy amount: defaults to qty × market, overrideable for actual fills ──
+  // Sync the editable field from buyValue while user hasn't manually edited.
+  useEffect(() => {
+    if (buyAmountManual) return;
+    if (buyValue !== null) setBuyAmountEdit(buyValue.toFixed(2));
+    else setBuyAmountEdit("");
+  }, [buyValue, buyAmountManual]);
+
+  // Effective amount that drives the cash deduction (override wins; falls back to estimate).
+  const effectiveBuyAmount = useMemo<number | null>(() => {
+    if (buyAmountEdit) {
+      const parsed = parseFloat(buyAmountEdit);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return buyValue;
+  }, [buyAmountEdit, buyValue]);
+
+  // Surfaces the difference between user-entered cost and market estimate
+  // (slippage, fees, off-market price). Null when no override or no estimate.
+  const buyFeeDiff = useMemo<number | null>(() => {
+    if (!buyAmountManual || buyValue === null) return null;
+    const manual = parseFloat(buyAmountEdit);
+    if (isNaN(manual)) return null;
+    const diff = manual - buyValue;
+    return Math.abs(diff) < 0.01 ? null : diff;
+  }, [buyAmountManual, buyValue, buyAmountEdit]);
 
   // ── Buy mode: location options ──
   // Both custodial (exchanges) AND non-custodial (self-custody) wallets are valid
@@ -803,18 +837,19 @@ export function TransferDialog({
 
       // Build source (cash side) — undefined if skipped
       let source: TransferSide | undefined;
+      // cashAmount uses effectiveBuyAmount (user override if any, else market estimate),
+      // so the cash deduction reflects what the user actually paid — not just the auto-estimate.
       const cashAmount = cashState === "auto" && existingCashAmount !== null
-        ? buyValue ?? 0
+        ? effectiveBuyAmount ?? 0
         : cashState === "prompt" && cashBalance
-          ? buyValue ?? 0
+          ? effectiveBuyAmount ?? 0
           : 0;
 
-      // Defensive: if prompt mode with cashBalance but no buyValue (no price data), the
-      // cash account would land disconnected from any source leg. Surface this rather than
-      // silently creating an orphaned seed deposit. canSubmit also blocks; this catches
-      // any edge case where state slipped past the gate.
-      if (cashState === "prompt" && cashBalance && buyValue === null) {
-        setError("Cannot determine purchase cost — price data unavailable. Wait for prices to load, or click “Skip cash tracking” to record the position without cash impact.");
+      // Defensive: if prompt mode with cashBalance but no effective amount (no price data
+      // AND no manual override), the cash account would land disconnected from any source
+      // leg. Surface this rather than silently creating an orphaned seed deposit.
+      if (cashState === "prompt" && cashBalance && effectiveBuyAmount === null) {
+        setError("Cannot determine purchase cost — enter the Amount paid manually, or click “Skip cash tracking” to record the position without cash impact.");
         return;
       }
 
@@ -935,22 +970,21 @@ export function TransferDialog({
       if (!buyLocationId && !buyCreatingNew) return false;
       if (buyCreatingNew && !buyNewLocationName.trim()) return false;
       if (cashState === "prompt" && !cashBalance && existingCashAmount === null) return false;
-      // Seed-cash flow: balance must cover the buy. Without this, the server would
-      // create the cash account then immediately fail the source-leg balance check
-      // and rollback — wasted work + confusing error. Block at the UI layer instead.
-      if (cashState === "prompt" && cashBalance && buyValue !== null) {
+      // Seed-cash flow: balance must cover the effective amount (user override or estimate).
+      // Without this, the server would create the cash account then immediately fail the
+      // source-leg balance check and rollback — wasted work + confusing error.
+      if (cashState === "prompt" && cashBalance && effectiveBuyAmount !== null) {
         const seedBalance = parseFloat(cashBalance);
-        if (isNaN(seedBalance) || seedBalance < buyValue) return false;
+        if (isNaN(seedBalance) || seedBalance < effectiveBuyAmount) return false;
       }
-      // Seed-cash flow with no price data: we can't compute the source amount, so the
-      // seed cash would land disconnected from the position (silent failure mode adjacent
-      // to bug #7). Block submit until price data resolves or user picks Skip cash tracking.
-      if (cashState === "prompt" && cashBalance && buyValue === null) return false;
+      // Seed-cash flow with no effective amount (no price data AND no manual override):
+      // can't compute the source amount, would land disconnected from position. Block.
+      if (cashState === "prompt" && cashBalance && effectiveBuyAmount === null) return false;
       return true;
     }
     return buildSource() !== null && buildDest() !== null;
   }, [executing, mode, buySelectedAsset, prefilledMatchedExistingAsset, buyQuantity, buyLocationId,
-      buyCreatingNew, buyNewLocationName, cashState, cashBalance, existingCashAmount, buyValue,
+      buyCreatingNew, buyNewLocationName, cashState, cashBalance, existingCashAmount, effectiveBuyAmount,
       buildSource, buildDest]);
 
   // ── Render ──
@@ -1235,9 +1269,45 @@ export function TransferDialog({
                         onChange={(e) => setBuyQuantity(e.target.value)}
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                       />
+                    </div>
+
+                    {/* Editable amount paid — defaults to qty × market, override for actual fill */}
+                    <div>
+                      <label htmlFor={`${id}-buy-amount`} className="block text-xs text-zinc-400 mb-1">
+                        Amount paid ({buyAssetCurrency})
+                      </label>
+                      <input
+                        id={`${id}-buy-amount`}
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={buyAmountEdit}
+                        placeholder={buyValue !== null ? buyValue.toFixed(2) : "0.00"}
+                        onChange={(e) => {
+                          setBuyAmountEdit(e.target.value);
+                          setBuyAmountManual(true);
+                        }}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                      />
                       {buyValue !== null && (
-                        <div className="text-xs text-zinc-400 mt-1">
-                          ~{buyAssetCurrency} {buyValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-2">
+                          <span>
+                            Market: {buyAssetCurrency} {buyValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>
+                          {buyFeeDiff !== null && (
+                            <span className={buyFeeDiff > 0 ? "text-amber-400" : "text-emerald-400"}>
+                              {buyFeeDiff > 0 ? "+" : ""}{buyFeeDiff.toFixed(2)} {buyFeeDiff > 0 ? "(fee / slippage)" : "(discount)"}
+                            </span>
+                          )}
+                          {buyAmountManual && (
+                            <button
+                              type="button"
+                              onClick={() => { setBuyAmountManual(false); }}
+                              className="text-zinc-500 hover:text-zinc-300 underline"
+                            >
+                              reset
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1334,8 +1404,8 @@ export function TransferDialog({
                     )}
                     <div className="text-xs text-zinc-400">
                       Balance: {buyAssetCurrency} {existingCashAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      {buyValue !== null && (
-                        <span> → {buyAssetCurrency} {(existingCashAmount - buyValue).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                      {effectiveBuyAmount !== null && (
+                        <span> → {buyAssetCurrency} {(existingCashAmount - effectiveBuyAmount).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                       )}
                     </div>
                   </div>
@@ -1496,16 +1566,26 @@ export function TransferDialog({
               <div className="text-zinc-200">
                 Buy {buyQuantity} × {buySelectedAsset.symbol.toUpperCase()}
                 {" at "}{buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name}
-                {buyValue !== null && <span className="text-zinc-400"> ({buyAssetCurrency} {buyValue.toLocaleString(undefined, { maximumFractionDigits: 2 })})</span>}
+                {effectiveBuyAmount !== null && (
+                  <span className="text-zinc-400">
+                    {" ("}{buyAssetCurrency} {effectiveBuyAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    {buyFeeDiff !== null && (
+                      <span className={buyFeeDiff > 0 ? "text-amber-400" : "text-emerald-400"}>
+                        {" "}{buyFeeDiff > 0 ? "+" : ""}{buyFeeDiff.toFixed(2)} vs market
+                      </span>
+                    )}
+                    {")"}
+                  </span>
+                )}
               </div>
-              {cashState === "auto" && existingCashAmount !== null && buyValue !== null && (
+              {cashState === "auto" && existingCashAmount !== null && effectiveBuyAmount !== null && (
                 <div className="text-zinc-400">
-                  Cash: {buyAssetCurrency} {existingCashAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} → {buyAssetCurrency} {(existingCashAmount - buyValue).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  Cash: {buyAssetCurrency} {existingCashAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} → {buyAssetCurrency} {(existingCashAmount - effectiveBuyAmount).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </div>
               )}
               {cashState === "prompt" && cashBalance && (
                 <div className="text-zinc-400">
-                  Cash: {buyAssetCurrency} {parseFloat(cashBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })} → {buyAssetCurrency} {(parseFloat(cashBalance) - (buyValue ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  Cash: {buyAssetCurrency} {parseFloat(cashBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })} → {buyAssetCurrency} {(parseFloat(cashBalance) - (effectiveBuyAmount ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   {cashIsAdjustment && <span className="text-amber-400 ml-1">(Adj.)</span>}
                 </div>
               )}
