@@ -140,6 +140,8 @@ export function TransferDialog({
   const [cashBalance, setCashBalance] = useState("");
   const [cashIsAdjustment, setCashIsAdjustment] = useState(true);
   const [existingCashAmount, setExistingCashAmount] = useState<number | null>(null);
+  // C7: when multiple cash accounts match (location, currency), user picks one
+  const [selectedMatchingCashId, setSelectedMatchingCashId] = useState<string>("");
 
   // For move mode: pick destination location (same asset)
   const [moveLocationId, setMoveLocationId] = useState("");
@@ -153,6 +155,23 @@ export function TransferDialog({
     ? `${prefilled.assetTicker} on ${prefilled.locationName}`
     : "";
   const needsPicker = mode === "sell" && !prefilled;
+
+  // ── Buy-mode prefilled-asset lock ──
+  // When launched from a position editor's Buy button, `prefilled.assetId` points
+  // at an existing asset. If we find a match in the loaded data, the modal renders
+  // a locked asset card (no search, no "Change" button) and routes handleExecute
+  // through the existing-asset path. Falls back to the search UI if no match (e.g.,
+  // stale data or asset was deleted between modal open and data load).
+  const prefilledMatchedExistingAsset = useMemo(() => {
+    if (mode !== "buy" || !prefilled) return false;
+    if (prefilled.type === "stock_position") {
+      return stockAssets.some((a) => a.id === prefilled.assetId);
+    }
+    if (prefilled.type === "crypto_position") {
+      return cryptoAssets.some((a) => a.id === prefilled.assetId);
+    }
+    return false;
+  }, [mode, prefilled, stockAssets, cryptoAssets]);
 
   // ── Institution filter (for accounts page transfer button) ──
   const instWalletIds = useMemo(() => {
@@ -209,13 +228,17 @@ export function TransferDialog({
     setMoveLocationId("");
     setEffectiveDate(new Date().toISOString().split("T")[0]);
     setError(null);
-    // Buy mode reset
-    setBuyAssetType("stock");
+    // Buy mode reset — seed asset type / broker / currency from prefilled when launched
+    // from a position editor (e.g., "Buy more of IDTL" from the IDTL positions modal).
+    // The data arrays may not be loaded yet here; prefilledMatchedExistingAsset resolves
+    // post-load and gates the locked-asset render, but seeding broker/currency now lets
+    // the cash auto-detection useEffect find existing matching cash immediately on render.
+    setBuyAssetType(prefilled?.type === "crypto_position" ? "crypto" : "stock");
     setBuySearchQuery("");
     setBuySearchResults([]);
     setBuySelectedAsset(null);
-    setBuyAssetCurrency("USD");
-    setBuyLocationId("");
+    setBuyAssetCurrency(prefilled?.currency ?? "USD");
+    setBuyLocationId(prefilled?.locationId ?? "");
     setBuyNewLocationName("");
     setBuyCreatingNew(false);
     setBuyQuantity("");
@@ -229,7 +252,7 @@ export function TransferDialog({
     // Source picker reset
     setSrcLocationId("");
     setSrcAmount("");
-  }, [open, prefilled?.assetId, prefilled?.locationId]);
+  }, [open, prefilled?.assetId, prefilled?.locationId, prefilled?.type, prefilled?.currency]);
 
   // ── Pre-select institution cash as destination (sell mode from accounts page) ──
   useEffect(() => {
@@ -313,48 +336,75 @@ export function TransferDialog({
     }
   }, [buyAssetType]);
 
-  // ── Buy mode: cash auto-detection ──
-  useEffect(() => {
-    if (mode !== "buy" || !buyLocationId || buyCreatingNew) {
-      setExistingCashAmount(null);
-      if (mode === "buy") setCashState("prompt");
-      return;
-    }
-    // Find matching cash account by broker/wallet + currency
-    const matchingCash = cashAccounts.find((ca) => {
+  // ── Buy mode: matching cash accounts at this location/currency ──
+  // Multiple matches are possible (e.g., taxable + IRA at same broker, or two
+  // sub-accounts at one exchange). When >1 match exists, the user picks which
+  // to deduct from via a dropdown in the "Paying With" section. When 1 match,
+  // it's auto-selected. When 0, falls into prompt mode for seed-cash entry.
+  const matchingCashAccounts = useMemo(() => {
+    if (mode !== "buy" || !buyLocationId || buyCreatingNew) return [];
+    return cashAccounts.filter((ca) => {
       if (buyAssetType === "stock") return ca.broker_id === buyLocationId && ca.currency === buyAssetCurrency;
       return ca.wallet_id === buyLocationId && ca.currency === buyAssetCurrency;
     });
-    if (matchingCash) {
-      setExistingCashAmount(matchingCash.balance);
+  }, [mode, buyLocationId, buyAssetCurrency, buyAssetType, cashAccounts, buyCreatingNew]);
+
+  // ── Buy mode: cash auto-detection (drives cashState + default selection) ──
+  useEffect(() => {
+    if (mode !== "buy" || !buyLocationId || buyCreatingNew) {
+      setExistingCashAmount(null);
+      setSelectedMatchingCashId("");
+      if (mode === "buy") setCashState("prompt");
+      return;
+    }
+    if (matchingCashAccounts.length > 0) {
+      // Preserve the user's selection if it's still valid; else default to first match.
+      setSelectedMatchingCashId((prev) =>
+        prev && matchingCashAccounts.some((m) => m.id === prev) ? prev : matchingCashAccounts[0].id
+      );
+      const selected = matchingCashAccounts.find((m) => m.id === selectedMatchingCashId) ?? matchingCashAccounts[0];
+      setExistingCashAmount(selected.balance);
       setCashState("auto");
     } else {
       setExistingCashAmount(null);
+      setSelectedMatchingCashId("");
       setCashState("prompt");
     }
-  }, [buyLocationId, buyAssetCurrency, buyAssetType, cashAccounts, mode, buyCreatingNew]);
+  }, [matchingCashAccounts, buyLocationId, buyCreatingNew, mode, selectedMatchingCashId]);
 
   // ── Buy mode: auto-calculated value ──
   const buyValue = useMemo(() => {
-    if (mode !== "buy" || !buySelectedAsset) return null;
+    if (mode !== "buy") return null;
     const qty = parseFloat(buyQuantity);
     if (isNaN(qty) || qty <= 0) return null;
+    // Prefilled-locked path: use the live price the position editor passed in.
+    // Stock editor passes `currentPrice` (native trading currency, matches buyAssetCurrency).
+    // Crypto editor passes `currentPriceUsd`/`currentPriceEur` for sell-mode dual-currency display;
+    // for buy, currentPriceUsd matches buyAssetCurrency (crypto buy is always USD-priced).
+    if (prefilledMatchedExistingAsset) {
+      const price = prefilled?.currentPrice ?? prefilled?.currentPriceUsd;
+      if (price) return qty * price;
+    }
+    if (!buySelectedAsset) return null;
     if (buyAssetType === "stock") {
       const r = buySelectedAsset as YahooSearchResult;
       if (r.price) return qty * r.price;
     }
     return null;
-  }, [mode, buySelectedAsset, buyQuantity, buyAssetType]);
+  }, [mode, buySelectedAsset, buyQuantity, buyAssetType, prefilledMatchedExistingAsset, prefilled?.currentPrice, prefilled?.currentPriceUsd]);
 
   // ── Buy mode: location options ──
+  // Both custodial (exchanges) AND non-custodial (self-custody) wallets are valid
+  // crypto buy destinations. Non-custodial wallets support DEX swaps, on-chain
+  // stablecoin→crypto purchases, on-ramps that deliver direct to self-custody,
+  // and staking/mining rewards. Filtering to custodial-only would silently block
+  // any DeFi-native flow.
   const buyLocationOptions = useMemo(() => {
     if (mode !== "buy") return [];
     if (buyAssetType === "stock") {
       return brokers.map((b) => ({ id: b.id, name: b.name }));
     }
-    return wallets
-      .filter((w) => w.wallet_type === "custodial")
-      .map((w) => ({ id: w.id, name: w.name }));
+    return wallets.map((w) => ({ id: w.id, name: w.name }));
   }, [mode, buyAssetType, brokers, wallets]);
 
   // ── Source location options (generic picker — flat grouped list) ──
@@ -683,7 +733,7 @@ export function TransferDialog({
     setError(null);
 
     if (mode === "buy") {
-      if (!buySelectedAsset) {
+      if (!buySelectedAsset && !prefilledMatchedExistingAsset) {
         setError("Select an asset to buy");
         return;
       }
@@ -706,7 +756,11 @@ export function TransferDialog({
       let newStockAsset: StockAssetInput | undefined;
       let newCryptoAsset: CryptoAssetInput | undefined;
 
-      if (buyAssetType === "stock") {
+      if (prefilledMatchedExistingAsset && prefilled) {
+        // Asset is locked to the one the user clicked Buy on (e.g., IDTL from its
+        // positions modal). Bypass the search-based new-vs-existing branching.
+        existingAssetId = prefilled.assetId;
+      } else if (buyAssetType === "stock") {
         const r = buySelectedAsset as YahooSearchResult;
         const existing = stockAssets.find((a) => a.yahoo_ticker === r.symbol);
         if (existing) {
@@ -755,16 +809,40 @@ export function TransferDialog({
           ? buyValue ?? 0
           : 0;
 
+      // Defensive: if prompt mode with cashBalance but no buyValue (no price data), the
+      // cash account would land disconnected from any source leg. Surface this rather than
+      // silently creating an orphaned seed deposit. canSubmit also blocks; this catches
+      // any edge case where state slipped past the gate.
+      if (cashState === "prompt" && cashBalance && buyValue === null) {
+        setError("Cannot determine purchase cost — price data unavailable. Wait for prices to load, or click “Skip cash tracking” to record the position without cash impact.");
+        return;
+      }
+
       if (cashState !== "skipped" && cashAmount > 0) {
-        // Find existing cash account at this location/currency, or pass a placeholder
-        const matchingCash = cashAccounts.find((ca) => {
-          if (buyAssetType === "stock") return ca.broker_id === destLocId && ca.currency === buyAssetCurrency;
-          return ca.wallet_id === destLocId && ca.currency === buyAssetCurrency;
-        });
+        // Use the user-selected matching cash account (C7: respects the picked one
+        // when multiple matches exist; falls back to first match for backwards compat).
+        const matchingCash =
+          matchingCashAccounts.find((ca) => ca.id === selectedMatchingCashId) ??
+          matchingCashAccounts[0];
         if (matchingCash) {
           source = { type: "cash_account", accountId: matchingCash.id, amount: cashAmount };
+        } else if (cashState === "prompt" && cashBalance) {
+          // No matching cash → newCashDeposit will create one. Source points to it
+          // via the PENDING placeholder; the server patches accountId after creation.
+          // Without this source, the seed cash account would be created but the buy
+          // would land as a single-legged adjustment, silently dropping the cashflow.
+          const seedBalance = parseFloat(cashBalance);
+          if (!isNaN(seedBalance) && seedBalance >= cashAmount) {
+            source = { type: "cash_account", accountId: "PENDING", amount: cashAmount };
+          } else {
+            setError(
+              `Seed balance ${buyAssetCurrency} ${isNaN(seedBalance) ? "0" : seedBalance.toFixed(2)} ` +
+              `is less than the purchase cost ${buyAssetCurrency} ${cashAmount.toFixed(2)}. ` +
+              `Increase the balance or reduce the quantity.`
+            );
+            return;
+          }
         }
-        // If no existing cash account, the transfer will create one via newCashDeposit
       }
 
       const transferInput: TransferInput = {
@@ -785,7 +863,9 @@ export function TransferDialog({
       try {
         const result = await executeTransfer(transferInput);
         if (result.success) {
-          const sym = buySelectedAsset.symbol.toUpperCase();
+          const sym = prefilledMatchedExistingAsset && prefilled
+            ? prefilled.assetTicker
+            : (buySelectedAsset as YahooSearchResult | CoinGeckoSearchResult).symbol.toUpperCase();
           toast.success(`Recorded purchase of ${buyQuantity} ${sym}`);
           onSuccess?.();
           onClose();
@@ -849,17 +929,28 @@ export function TransferDialog({
   const canSubmit = useMemo(() => {
     if (executing) return false;
     if (mode === "buy") {
-      if (!buySelectedAsset) return false;
+      if (!buySelectedAsset && !prefilledMatchedExistingAsset) return false;
       const qty = parseFloat(buyQuantity);
       if (isNaN(qty) || qty <= 0) return false;
       if (!buyLocationId && !buyCreatingNew) return false;
       if (buyCreatingNew && !buyNewLocationName.trim()) return false;
       if (cashState === "prompt" && !cashBalance && existingCashAmount === null) return false;
+      // Seed-cash flow: balance must cover the buy. Without this, the server would
+      // create the cash account then immediately fail the source-leg balance check
+      // and rollback — wasted work + confusing error. Block at the UI layer instead.
+      if (cashState === "prompt" && cashBalance && buyValue !== null) {
+        const seedBalance = parseFloat(cashBalance);
+        if (isNaN(seedBalance) || seedBalance < buyValue) return false;
+      }
+      // Seed-cash flow with no price data: we can't compute the source amount, so the
+      // seed cash would land disconnected from the position (silent failure mode adjacent
+      // to bug #7). Block submit until price data resolves or user picks Skip cash tracking.
+      if (cashState === "prompt" && cashBalance && buyValue === null) return false;
       return true;
     }
     return buildSource() !== null && buildDest() !== null;
-  }, [executing, mode, buySelectedAsset, buyQuantity, buyLocationId,
-      buyCreatingNew, buyNewLocationName, cashState, cashBalance, existingCashAmount,
+  }, [executing, mode, buySelectedAsset, prefilledMatchedExistingAsset, buyQuantity, buyLocationId,
+      buyCreatingNew, buyNewLocationName, cashState, cashBalance, existingCashAmount, buyValue,
       buildSource, buildDest]);
 
   // ── Render ──
@@ -966,33 +1057,49 @@ export function TransferDialog({
             )}
             {mode === "buy" && (
               <>
-                {/* Asset type tabs */}
-                <div className="flex gap-1 mb-2">
-                  {(["stock", "crypto"] as const).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => {
-                        setBuyAssetType(t);
-                        setBuySelectedAsset(null);
-                        setBuySearchQuery("");
-                        setBuySearchResults([]);
-                        setBuyLocationId("");
-                        setBuyCreatingNew(false);
-                      }}
-                      className={`px-3 py-1 rounded-md text-xs transition-colors ${
-                        buyAssetType === t
-                          ? "bg-blue-600 text-white"
-                          : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-                      }`}
-                    >
-                      {t === "stock" ? "Stock / ETF" : "Crypto"}
-                    </button>
-                  ))}
-                </div>
+                {/* Asset type tabs — hidden when the asset is locked from prefilled */}
+                {!prefilledMatchedExistingAsset && (
+                  <div className="flex gap-1 mb-2">
+                    {(["stock", "crypto"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => {
+                          setBuyAssetType(t);
+                          setBuySelectedAsset(null);
+                          setBuySearchQuery("");
+                          setBuySearchResults([]);
+                          setBuyLocationId("");
+                          setBuyCreatingNew(false);
+                        }}
+                        className={`px-3 py-1 rounded-md text-xs transition-colors ${
+                          buyAssetType === t
+                            ? "bg-blue-600 text-white"
+                            : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                        }`}
+                      >
+                        {t === "stock" ? "Stock / ETF" : "Crypto"}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-                {/* Asset search / selection */}
-                {buySelectedAsset ? (
+                {/* Asset display: locked card (prefilled) / selected card (search) / search input */}
+                {prefilledMatchedExistingAsset && prefilled ? (
+                  <div className="flex items-center bg-zinc-800/50 rounded-lg px-3 py-2">
+                    <div>
+                      <span className="text-sm text-zinc-100 font-medium">
+                        {prefilled.assetTicker}
+                      </span>
+                      <span className="text-xs text-zinc-400 ml-2">
+                        {prefilled.assetName}
+                      </span>
+                      {prefilled.currency && (
+                        <span className="text-xs text-zinc-400 ml-2">{prefilled.currency}</span>
+                      )}
+                    </div>
+                  </div>
+                ) : buySelectedAsset ? (
                   <div className="flex items-center justify-between bg-zinc-800/50 rounded-lg px-3 py-2">
                     <div>
                       <span className="text-sm text-zinc-100 font-medium">
@@ -1064,8 +1171,8 @@ export function TransferDialog({
                   </div>
                 )}
 
-                {/* Location picker */}
-                {buySelectedAsset && (
+                {/* Location picker (broker/wallet) + Quantity — shown once we have an asset */}
+                {(buySelectedAsset || prefilledMatchedExistingAsset) && (
                   <>
                     <div>
                       <label htmlFor={`${id}-buy-location`} className="block text-xs text-zinc-400 mb-1">
@@ -1190,20 +1297,41 @@ export function TransferDialog({
 
                 {cashState === "skipped" ? (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-400">Cash not tracked</span>
+                    <span className="text-sm text-zinc-400">Cash not tracked for this trade</span>
                     <button
                       type="button"
                       onClick={() => setCashState("prompt")}
-                      className="text-xs text-blue-400 hover:text-blue-300"
+                      className="px-2.5 py-1 rounded-md text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
                     >
                       Track cash
                     </button>
                   </div>
                 ) : cashState === "auto" && existingCashAmount !== null ? (
-                  <div className="space-y-1">
-                    <div className="text-sm text-zinc-300">
-                      {buyAssetCurrency} at {buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "\u2014"}
-                    </div>
+                  <div className="space-y-2">
+                    {matchingCashAccounts.length > 1 ? (
+                      // C7: multiple cash accounts at same broker/currency \u2014 let user pick which
+                      <div>
+                        <label htmlFor={`${id}-cash-pick`} className="block text-xs text-zinc-400 mb-1">
+                          Deduct from ({matchingCashAccounts.length} {buyAssetCurrency} accounts at {buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "this institution"})
+                        </label>
+                        <select
+                          id={`${id}-cash-pick`}
+                          value={selectedMatchingCashId}
+                          onChange={(e) => setSelectedMatchingCashId(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                        >
+                          {matchingCashAccounts.map((ca) => (
+                            <option key={ca.id} value={ca.id}>
+                              {ca.name ?? "Account"} \u2014 {buyAssetCurrency} {ca.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-zinc-300">
+                        {buyAssetCurrency} at {buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "\u2014"}
+                      </div>
+                    )}
                     <div className="text-xs text-zinc-400">
                       Balance: {buyAssetCurrency} {existingCashAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       {buyValue !== null && (
@@ -1212,13 +1340,13 @@ export function TransferDialog({
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <p className="text-xs text-amber-400">
-                      No {buyAssetCurrency} cash tracked at {buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "this institution"}.
+                      No {buyAssetCurrency} cash tracked at {buyCreatingNew ? buyNewLocationName : buyLocationOptions.find((l) => l.id === buyLocationId)?.name ?? "this institution"} yet — enter a starting balance below, or skip to record the trade without cash.
                     </p>
                     <div>
                       <label htmlFor={`${id}-cash-balance`} className="block text-xs text-zinc-400 mb-1">
-                        Current {buyAssetCurrency} balance
+                        Starting {buyAssetCurrency} balance
                       </label>
                       <input
                         id={`${id}-cash-balance`}
@@ -1231,22 +1359,39 @@ export function TransferDialog({
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                       />
                     </div>
-                    <div className="flex items-center gap-1">
-                      <input
-                        id={`${id}-cash-adj`}
-                        type="checkbox"
-                        checked={cashIsAdjustment}
-                        onChange={(e) => setCashIsAdjustment(e.target.checked)}
-                        className="accent-amber-500"
-                      />
-                      <label htmlFor={`${id}-cash-adj`} className="text-[10px] text-zinc-400" title="Not a real transaction — portfolio balance correction">
-                        Portfolio adjustment (existing money, not a new deposit)
+                    <fieldset className="space-y-1.5">
+                      <legend className="text-xs text-zinc-400 mb-1">This balance is</legend>
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`${id}-cash-kind`}
+                          checked={cashIsAdjustment}
+                          onChange={() => setCashIsAdjustment(true)}
+                          className="accent-amber-500 mt-0.5"
+                        />
+                        <span className="text-xs text-zinc-300 leading-tight">
+                          Existing money already in the account
+                          <span className="block text-[10px] text-zinc-500">Won&apos;t count as a new deposit (S&amp;P benchmark ignores it)</span>
+                        </span>
                       </label>
-                    </div>
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`${id}-cash-kind`}
+                          checked={!cashIsAdjustment}
+                          onChange={() => setCashIsAdjustment(false)}
+                          className="accent-blue-500 mt-0.5"
+                        />
+                        <span className="text-xs text-zinc-300 leading-tight">
+                          A new deposit I&apos;m making now
+                          <span className="block text-[10px] text-zinc-500">Counts toward portfolio cashflow (S&amp;P benchmark adds it)</span>
+                        </span>
+                      </label>
+                    </fieldset>
                     <button
                       type="button"
                       onClick={() => setCashState("skipped")}
-                      className="text-xs text-zinc-500 hover:text-zinc-300"
+                      className="px-2.5 py-1 rounded-md text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
                     >
                       Skip cash tracking
                     </button>
@@ -1398,6 +1543,11 @@ export function TransferDialog({
               onChange={(e) => setEffectiveDate(e.target.value)}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             />
+            {mode === "buy" && cashState === "prompt" && cashBalance && (
+              <p className="text-[10px] text-zinc-500 mt-1">
+                Both the cash seed and the trade are recorded on this date. To use different dates, record the cash account first via the Banks &amp; Deposits page, then come back to record the trade.
+              </p>
+            )}
           </div>
 
           {/* ── Fee indicator ── */}
