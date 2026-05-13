@@ -399,6 +399,8 @@ export interface StockAsset {
   name: string;
   isin: string | null;
   yahoo_ticker: string | null;
+  /** Price source. 'yahoo' = Yahoo Finance batch (yahoo_ticker required). 'manual' = NAV from manual_nav_updates (yahoo_ticker null). */
+  kind: "yahoo" | "manual";
   category: AssetCategory;
   tags: string[];  // theme/strategy tags (e.g. ["S&P 500", "World"])
   currency: string;  // free-form ISO currency code (USD, EUR, GBP, CHF, etc.)
@@ -423,11 +425,32 @@ export interface StockAssetWithPositions extends StockAsset {
   positions: (StockPosition & { broker_name: string })[];
 }
 
+/** A single NAV history entry for a kind='manual' stock_asset. */
+export interface ManualNavUpdate {
+  id: string;
+  asset_id: string;
+  user_id: string;
+  effective_date: string;  // ISO date 'YYYY-MM-DD'
+  nav: number;
+  note: string | null;
+  created_at: string;
+}
+
+/** Input for upserting a manual NAV (uniqueness on (asset_id, effective_date)). */
+export interface ManualNavInput {
+  asset_id: string;
+  effective_date: string;
+  nav: number;
+  note?: string | null;
+}
+
 export interface StockAssetInput {
   ticker: string;
   name: string;
   isin?: string | null;
   yahoo_ticker?: string | null;
+  /** Price source. 'yahoo' (default) = Yahoo Finance batch fetch. 'manual' = NAV from manual_nav_updates (ELTIFs/SICAVs/illiquid funds). */
+  kind?: "yahoo" | "manual";
   category?: AssetCategory;
   tags?: string[];
   currency?: string;  // ISO currency code, defaults to "USD"
@@ -567,7 +590,8 @@ export type EntityType =
   | "diary_entry"
   | "goal_price"
   | "trade_entry"
-  | "institution";
+  | "institution"
+  | "manual_nav_update";
 
 export interface ActivityLog {
   id: string;
