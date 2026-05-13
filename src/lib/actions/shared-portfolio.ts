@@ -166,6 +166,7 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   const stockAssets: StockAssetWithPositions[] = stockAssetsRaw.map((asset) => ({
     ...asset,
     category: normalizeCategory(asset.category),
+    kind: asset.kind as "yahoo" | "manual",
     positions: (stockPositionsData.data ?? [])
       .filter((p) => p.stock_asset_id === asset.id)
       .map((p) => ({

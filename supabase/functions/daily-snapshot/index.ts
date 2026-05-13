@@ -31,7 +31,7 @@ async function fetchT(url: string | URL | Request, init?: RequestInit, timeoutMs
 interface UserHoldings {
   userId: string;
   cryptoAssets: { coingecko_id: string; subcategory: string | null; quantity: number }[];
-  stockAssets: { yahoo_ticker: string; ticker: string; currency: string; quantity: number }[];
+  stockAssets: { asset_id: string; yahoo_ticker: string; ticker: string; currency: string; quantity: number; kind: "yahoo" | "manual" }[];
   cashItems: { currency: string; amount: number }[];
 }
 
@@ -96,7 +96,7 @@ Deno.serve(async (req: Request) => {
     ] = await Promise.all([
       supabase.from("crypto_assets").select("id, user_id, coingecko_id, subcategory").is("deleted_at", null).in("user_id", userIds),
       supabase.from("crypto_positions").select("id, crypto_asset_id, quantity").is("deleted_at", null),
-      supabase.from("stock_assets").select("id, user_id, ticker, yahoo_ticker, currency").is("deleted_at", null).in("user_id", userIds),
+      supabase.from("stock_assets").select("id, user_id, ticker, yahoo_ticker, currency, kind").is("deleted_at", null).in("user_id", userIds),
       supabase.from("stock_positions").select("id, stock_asset_id, quantity").is("deleted_at", null),
       supabase.from("cash_accounts").select("user_id, currency, balance").is("deleted_at", null).in("user_id", userIds),
     ]);
@@ -146,20 +146,26 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Stock assets
+    // Stock assets — kind='yahoo' get added to yahooTickerSet for the Yahoo batch;
+    // kind='manual' are looked up from manual_nav_updates below (no Yahoo fetch).
     for (const asset of stockAssets ?? []) {
       const qty = stockPosByAsset.get(asset.id) ?? 0;
       if (qty === 0) continue;
+      const kind = (asset.kind as "yahoo" | "manual") ?? "yahoo";
       const yahooTicker = asset.yahoo_ticker || asset.ticker;
-      yahooTickerSet.add(yahooTicker);
+      if (kind === "yahoo") {
+        yahooTickerSet.add(yahooTicker);
+      }
       currencySet.add(asset.currency);
       const holdings = userHoldings.get(asset.user_id);
       if (holdings) {
         holdings.stockAssets.push({
+          asset_id: asset.id,
           yahoo_ticker: yahooTicker,
           ticker: asset.ticker,
           currency: asset.currency,
           quantity: qty,
+          kind,
         });
       }
     }
@@ -248,6 +254,27 @@ Deno.serve(async (req: Request) => {
 
     // 5. Compute snapshots for each user
     const today = new Date().toISOString().split("T")[0];
+
+    // Fetch latest manual NAV per (user_id, asset_id) as of `today`. Service-
+    // role bypasses RLS so a single batched query covers all users. JS-side
+    // groupBy keeps "max effective_date per (user, asset)" since the SQL
+    // function get_latest_manual_navs_at takes a single user_id per call.
+    const { data: manualNavsRaw } = await supabase
+      .from("manual_nav_updates")
+      .select("user_id, asset_id, effective_date, nav")
+      .lte("effective_date", today)
+      .in("user_id", userIds);
+
+    const manualNavByUserAsset = new Map<string, number>(); // `${user_id}:${asset_id}` → latest nav
+    const manualNavMaxDate = new Map<string, string>();
+    for (const row of (manualNavsRaw ?? [])) {
+      const key = `${row.user_id}:${row.asset_id}`;
+      const prevDate = manualNavMaxDate.get(key);
+      if (!prevDate || row.effective_date > prevDate) {
+        manualNavMaxDate.set(key, row.effective_date);
+        manualNavByUserAsset.set(key, Number(row.nav));
+      }
+    }
     const snapshots: {
       user_id: string;
       snapshot_date: string;
@@ -283,14 +310,22 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Stock values (convert native currency → USD and EUR via FX)
+      // Stock values (convert native currency → USD and EUR via FX).
+      // kind='yahoo' → look up yahooQuotes (batch-fetched);
+      // kind='manual' → look up latest NAV from manual_nav_updates.
+      // Assets with no NAV history yet (manual+empty) silently contribute 0.
       let stocksValueUsd = 0;
       let stocksValueEur = 0;
       let stocksHomeCurrencyEur = 0;
       for (const asset of holdings.stockAssets) {
-        const quote = yahooQuotes.get(asset.yahoo_ticker);
-        if (!quote) continue;
-        const valueNative = asset.quantity * quote.price;
+        let priceNative: number | undefined;
+        if (asset.kind === "manual") {
+          priceNative = manualNavByUserAsset.get(`${holdings.userId}:${asset.asset_id}`);
+        } else {
+          priceNative = yahooQuotes.get(asset.yahoo_ticker)?.price;
+        }
+        if (priceNative === undefined) continue;
+        const valueNative = asset.quantity * priceNative;
         stocksValueUsd += convertToBase(valueNative, asset.currency, "USD", fxUsd);
         stocksValueEur += convertToBase(valueNative, asset.currency, "EUR", fxEur);
         if (asset.currency === "EUR") {
