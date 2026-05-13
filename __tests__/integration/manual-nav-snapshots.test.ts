@@ -104,6 +104,24 @@ describe("manual NAV snapshot augmentation (integration)", () => {
     expect(nav.effective_date).toBe("2026-04-01");
   });
 
+  it("manual stock_position IDs can be queried for the getAdjustmentDeltas exclusion filter", async () => {
+    // getAdjustmentDeltas pre-fetches the IDs of stock_positions whose
+    // stock_asset has kind='manual' so it can skip their is_adjustment
+    // activity_log entries from the chart back-fill formula. This test
+    // verifies the exact query shape used there works under user-context RLS.
+    const { data, error } = await client
+      .from("stock_positions")
+      .select("id, stock_assets!inner(kind, user_id)")
+      .eq("stock_assets.user_id", userId)
+      .eq("stock_assets.kind", "manual");
+
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+    // Returned position belongs to the manual ENXF asset set up in beforeAll
+    const row = data![0] as { id: string };
+    expect(row.id).toBeDefined();
+  });
+
   it("NAV at-or-before returns the correct entry for each chart date", async () => {
     // Before any NAV (chart back-fill territory): null
     const { data: pre } = await client.rpc("get_latest_manual_navs_at", { p_as_of: "2025-12-15" });

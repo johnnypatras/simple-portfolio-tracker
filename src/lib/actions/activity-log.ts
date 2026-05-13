@@ -431,16 +431,35 @@ export async function getAdjustmentDeltas(
   }
 
   // Fetch stablecoin position IDs so we can classify them as cash (matching snapshot logic)
-  // Snapshots count stablecoins in cash_value_usd, not crypto_value_usd
-  const stablecoinQuery = supabase
-    .from("crypto_positions")
-    .select("id, crypto_assets!inner(subcategory)")
-    .ilike("crypto_assets.subcategory", "stablecoin")
-    .eq("crypto_assets.user_id", resolvedUserId);
-  const { data: stablecoinPositions, error: stablecoinErr } = await stablecoinQuery;
-  if (stablecoinErr) throw new Error(`Failed to load stablecoin positions: ${stablecoinErr.message}`);
+  // Snapshots count stablecoins in cash_value_usd, not crypto_value_usd.
+  //
+  // Also fetch the IDs of stock_positions whose stock_asset has kind='manual'.
+  // Those positions are priced via NAV history (manual_nav_updates) and their
+  // historical contribution is added directly to snapshot stocks_value_* by
+  // augmentSnapshotsWithManualNavs() in getSnapshots(). Including their
+  // is_adjustment activity_log entries in the back-fill formula
+  // `value + (finalCumDelta - cumDelta)` would (a) double-count value for
+  // dates ≥ effective_date and (b) project today's value onto pre-purchase
+  // dates — the user explicitly wants pre-purchase dates to show no asset.
+  const [stablecoinRes, manualStockPosRes] = await Promise.all([
+    supabase
+      .from("crypto_positions")
+      .select("id, crypto_assets!inner(subcategory)")
+      .ilike("crypto_assets.subcategory", "stablecoin")
+      .eq("crypto_assets.user_id", resolvedUserId),
+    supabase
+      .from("stock_positions")
+      .select("id, stock_assets!inner(kind, user_id)")
+      .eq("stock_assets.user_id", resolvedUserId)
+      .eq("stock_assets.kind", "manual"),
+  ]);
+  if (stablecoinRes.error) throw new Error(`Failed to load stablecoin positions: ${stablecoinRes.error.message}`);
+  if (manualStockPosRes.error) throw new Error(`Failed to load manual stock positions: ${manualStockPosRes.error.message}`);
   const stablecoinPosIds = new Set(
-    (stablecoinPositions ?? []).map((p) => p.id as string)
+    (stablecoinRes.data ?? []).map((p) => p.id as string)
+  );
+  const manualStockPosIds = new Set(
+    (manualStockPosRes.data ?? []).map((p) => p.id as string)
   );
 
   const query = supabase
@@ -493,6 +512,19 @@ export async function getAdjustmentDeltas(
   let cashUsd = 0, cashEur = 0;
 
   for (const row of sorted) {
+    // Skip kind='manual' stock_position entries — they're priced via NAV
+    // history and contribute to past snapshots directly through
+    // augmentSnapshotsWithManualNavs(). Including them here would double-count
+    // post-purchase value and incorrectly project today's value onto
+    // pre-purchase dates. The back-fill should stop at effective_date.
+    if (
+      row.entity_type === "stock_position" &&
+      typeof row.entity_id === "string" &&
+      manualStockPosIds.has(row.entity_id)
+    ) {
+      continue;
+    }
+
     const dUsd = (row.delta_usd as number) ?? 0;
     const dEur = (row.delta_eur as number) ?? 0;
     cumUsd += dUsd;
