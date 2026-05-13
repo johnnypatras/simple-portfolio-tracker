@@ -20,12 +20,14 @@ import type {
 } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  validateUUID,
-  validateQuantity,
   validateAmount,
   validateCurrency,
   validateDate,
 } from "@/lib/validation";
+import {
+  validateSideShape,
+  validateTransferSide,
+} from "@/lib/actions/transfer-validation";
 
 // ─── Types for cleanup tracking ─────────────────────────────
 
@@ -53,30 +55,6 @@ interface TransferPrices {
   destination: SidePrices;
 }
 
-// ─── Transfer Side Validation ────────────────────────────────
-
-function validateTransferSide(side: TransferSide, label: string): void {
-  switch (side.type) {
-    case "crypto_position":
-      validateUUID(side.assetId, `${label} asset ID`);
-      validateUUID(side.walletId, `${label} wallet ID`);
-      validateQuantity(side.quantity, `${label} quantity`);
-      if (side.quantity <= 0) throw new Error(`${label} quantity must be positive`);
-      break;
-    case "stock_position":
-      validateUUID(side.assetId, `${label} asset ID`);
-      validateUUID(side.brokerId, `${label} broker ID`);
-      validateQuantity(side.quantity, `${label} quantity`);
-      if (side.quantity <= 0) throw new Error(`${label} quantity must be positive`);
-      break;
-    case "cash_account":
-      validateUUID(side.accountId, `${label} account ID`);
-      validateAmount(side.amount, `${label} amount`);
-      if (side.amount <= 0) throw new Error(`${label} amount must be positive`);
-      break;
-  }
-}
-
 // ─── Main Transfer Action ────────────────────────────────────
 
 export async function executeTransfer(input: TransferInput): Promise<TransferResult> {
@@ -85,9 +63,12 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
-  // ── Validate transfer sides (reject negative/zero quantities/amounts) ──
-  validateTransferSide(input.destination, "Destination");
-  if (input.source) validateTransferSide(input.source, "Source");
+  // ── Early shape validation (quantities/amounts) ────────────
+  // UUID validation runs LATE — after Step 0/1 patches "PENDING" placeholders
+  // (newBroker→brokerId, newWallet→walletId, new{Stock,Crypto}Asset→assetId,
+  // newCashDeposit→source.accountId) into real UUIDs.
+  validateSideShape(input.destination, "Destination");
+  if (input.source) validateSideShape(input.source, "Source");
   if (input.newCashDeposit) {
     validateAmount(input.newCashDeposit.amount, "Cash deposit amount");
     if (input.newCashDeposit.amount <= 0) throw new Error("Cash deposit amount must be positive");
@@ -105,8 +86,9 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
   let transferGroupId: string | undefined;
 
   try {
-    // Use a mutable copy of input so we can patch source IDs
-    const currentSource = input.source;
+    // Use a mutable copy of input so we can patch source IDs (e.g., when
+    // newCashDeposit creates a cash account that the source should point to).
+    let currentSource = input.source;
 
     // ── Early validation: check source balance BEFORE creating any entities.
     // When newCashDeposit is involved, the source IS the deposit being created
@@ -138,7 +120,11 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       }
     }
 
-    if (input.newCashDeposit && currentSource && currentSource.type === "cash_account") {
+    if (input.newCashDeposit) {
+      // Seed-cash-then-buy flow: modal sends source with "PENDING" accountId +
+      // newCashDeposit. Create the cash account, then patch the source to point
+      // at the new account so the existing source-leg logic can deduct the buy
+      // amount from it (proper two-legged accounting, S&P-benchmark-correct).
       // Derive wallet/broker linkage from the destination asset
       const walletId = destination.type === "crypto_position" ? destination.walletId : undefined;
       const brokerId = destination.type === "stock_position" ? destination.brokerId : undefined;
@@ -155,6 +141,10 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
         }
       );
       createdEntities.push({ table: "cash_accounts", id: accountId });
+      // Patch source.accountId if modal sent the PENDING placeholder
+      if (currentSource?.type === "cash_account" && currentSource.accountId === "PENDING") {
+        currentSource = { ...currentSource, accountId };
+      }
     }
 
     // Generate a transfer group ID only for two-legged transfers
@@ -175,6 +165,12 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       const newAssetId = await createStockAsset(input.newStockAsset);
       destination = { ...destination, assetId: newAssetId };
     }
+
+    // ── Step 1.5: LATE UUID validation ──────────────────────
+    // All "PENDING" placeholders are now real UUIDs. Validate sides fully before
+    // the source/destination legs run. (Shape was validated up top, pre-creation.)
+    validateTransferSide(destination, "Destination");
+    if (currentSource) validateTransferSide(currentSource, "Source");
 
     // ── Steps 2–5: Source leg (skip for single-legged buy) ──
     let originalState: SourceOriginalState | null = null;
