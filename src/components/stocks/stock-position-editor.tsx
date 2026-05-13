@@ -13,6 +13,7 @@ const TYPES: { value: AssetCategory; label: string }[] = [
   { value: "individual_stock", label: "Individual Stock" },
   { value: "etf", label: "ETF" },
   { value: "bond_fixed_income", label: "Bond / Fixed Income" },
+  { value: "private_equity", label: "Private Equity" },
   { value: "other", label: "Other" },
 ];
 
@@ -21,6 +22,7 @@ const SEEDED_SUBTYPES: Record<AssetCategory, string[]> = {
   etf: ["UCITS", "Non-UCITS"],
   bond_fixed_income: ["Government", "Corporate"],
   individual_stock: [],
+  private_equity: ["ELTIF", "SICAV", "Closed-end Fund"],
   other: [],
 };
 

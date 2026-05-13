@@ -483,6 +483,44 @@ export type Database = {
         }
         Relationships: []
       }
+      manual_nav_updates: {
+        Row: {
+          asset_id: string
+          created_at: string
+          effective_date: string
+          id: string
+          nav: number
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          asset_id: string
+          created_at?: string
+          effective_date: string
+          id?: string
+          nav: number
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          asset_id?: string
+          created_at?: string
+          effective_date?: string
+          id?: string
+          nav?: number
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_nav_updates_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "stock_assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       portfolio_shares: {
         Row: {
           created_at: string
@@ -626,6 +664,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           isin: string | null
+          kind: string
           name: string
           subcategory: string | null
           tags: string[]
@@ -640,6 +679,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           isin?: string | null
+          kind?: string
           name: string
           subcategory?: string | null
           tags?: string[]
@@ -654,6 +694,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           isin?: string | null
+          kind?: string
           name?: string
           subcategory?: string | null
           tags?: string[]
@@ -825,6 +866,7 @@ export type Database = {
         | "individual_stock"
         | "etf"
         | "bond_fixed_income"
+        | "private_equity"
       currency_type: "USD" | "EUR"
       entity_type:
         | "crypto_asset"
@@ -985,6 +1027,7 @@ export const Constants = {
         "individual_stock",
         "etf",
         "bond_fixed_income",
+        "private_equity",
       ],
       currency_type: ["USD", "EUR"],
       entity_type: [

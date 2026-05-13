@@ -34,6 +34,7 @@ export const TYPE_LABELS: Record<AssetCategory, string> = {
   individual_stock: "Stock",
   etf: "ETF",
   bond_fixed_income: "Bond",
+  private_equity: "Private Equity",
   other: "Other",
 };
 
@@ -41,6 +42,7 @@ export const TYPE_COLORS: Record<AssetCategory, string> = {
   individual_stock: "text-blue-400",
   etf: "text-purple-400",
   bond_fixed_income: "text-amber-400",
+  private_equity: "text-violet-400",
   other: "text-zinc-400",
 };
 

@@ -390,7 +390,7 @@ export interface CryptoPositionInput {
 
 // ─── Stock/ETF entities ─────────────────────────────────
 
-export type AssetCategory = "individual_stock" | "etf" | "bond_fixed_income" | "other";
+export type AssetCategory = "individual_stock" | "etf" | "bond_fixed_income" | "private_equity" | "other";
 
 export interface StockAsset {
   id: string;
