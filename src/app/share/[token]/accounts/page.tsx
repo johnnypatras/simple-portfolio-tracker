@@ -5,6 +5,12 @@ import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { AccountsView } from "@/components/accounts/accounts-view";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getLatestManualNavsAt,
+  partitionStockAssetsForPricing,
+  injectManualNavPrices,
+} from "@/lib/manual-nav";
 
 export default async function SharedAccountsPage({
   params,
@@ -18,13 +24,13 @@ export default async function SharedAccountsPage({
   if (!data) notFound();
 
   const {
-    institutions, cryptoAssets, stockAssets, wallets, brokers,
+    share, institutions, cryptoAssets, stockAssets, wallets, brokers,
     cashAccounts, profile,
   } = data;
   const primaryCurrency = profile.primary_currency;
 
   const coinIds = cryptoAssets.map((a) => a.coingecko_id);
-  const yahooTickers = stockAssets.map((a) => a.yahoo_ticker || a.ticker).filter(Boolean);
+  const { manualStockAssets, yahooTickers } = partitionStockAssetsForPricing(stockAssets);
   const allCurrencies = [
     ...new Set([
       "EUR", "USD",
@@ -33,11 +39,18 @@ export default async function SharedAccountsPage({
     ]),
   ];
 
-  const [cryptoPrices, stockPrices, fxRates] = await Promise.all([
+  // Cross-user manual NAV lookup uses the admin client with explicit owner_id.
+  const admin = createAdminClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const [cryptoPrices, stockPrices, fxRates, manualNavs] = await Promise.all([
     getPrices(coinIds),
     getStockPrices(yahooTickers),
     getFXRatesSafe(primaryCurrency, allCurrencies),
+    manualStockAssets.length > 0
+      ? getLatestManualNavsAt(admin, today, share.owner_id)
+      : Promise.resolve([]),
   ]);
+  injectManualNavPrices(manualStockAssets, manualNavs, stockPrices);
 
   return (
     <div>

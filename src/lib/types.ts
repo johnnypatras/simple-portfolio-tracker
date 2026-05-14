@@ -783,7 +783,7 @@ export interface SharedPortfolioData {
 
 /** Versioned JSON backup envelope produced by export.ts. */
 export interface PortfolioBackup {
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   exportedAt: string;
   primaryCurrency: BaseCurrency;
   // ── v1 entities ──
@@ -806,6 +806,10 @@ export interface PortfolioBackup {
   activityLog?: ActivityLog[];           // export-only (archival)
   portfolioShares?: ShareLink[];         // export-only (archival)
   profile?: { display_name: string | null; theme: string | null };
+  // ── v5 additions ──
+  // Manual NAV history for kind='manual' stock_assets. Optional for backward
+  // compat with v1-v4 importers, which simply skip this field.
+  manualNavUpdates?: ManualNavUpdate[];
 }
 
 /** Successful import result — per-table counts and skipped tallies. */
@@ -824,6 +828,8 @@ export interface ImportResult {
     snapshots: number;
     diaryEntries: number;
     goalPrices: number;
+    /** v5+: number of manual_nav_updates rows inserted */
+    manualNavUpdates: number;
   };
   skipped: {
     institutions: number;
@@ -835,6 +841,8 @@ export interface ImportResult {
     snapshots: number;
     diaryEntries: number;
     goalPrices: number;
+    /** v5+: number of manual_nav_updates rows skipped (already exist) */
+    manualNavUpdates: number;
     /** True when profile metadata (display_name/theme) failed to apply. */
     profile?: boolean;
   };

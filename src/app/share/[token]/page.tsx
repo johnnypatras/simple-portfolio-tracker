@@ -34,6 +34,7 @@ export default async function SharedOverviewPage({
     assemblePortfolioView(
       { cryptoAssets, stockAssets, cashAccounts, primaryCurrency },
       `/share/${token}`,
+      { ownerUserId: data.share.owner_id },
     ),
     // Fetch S&P 500 TR with max history — matches the chart's "All" extent
     fetchIndexHistory("^SP500TR", ALL_SNAPSHOTS_DAYS),

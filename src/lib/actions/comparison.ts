@@ -12,6 +12,12 @@ import { getStockPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe, convertToBase } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { isStablecoin } from "@/lib/cashflow";
+import {
+  getLatestManualNavsAt,
+  partitionStockAssetsForPricing,
+  injectManualNavPrices,
+} from "@/lib/manual-nav";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   ComparisonHoldingItem,
   ComparisonResult,
@@ -74,12 +80,16 @@ export async function getComparisonData(
     ]),
   ];
 
+  // Partition both portfolios by kind so we only batch-Yahoo the 'yahoo' rows.
+  // Manual NAVs are looked up separately per owner (RLS-bound for viewer,
+  // service-role for owner via shared-portfolio's owner_id).
+  const viewerPartition = partitionStockAssetsForPricing(viewerStocks);
+  const ownerPartition = partitionStockAssetsForPricing(ownerData.stockAssets);
+
   const allYahooTickers = [
     ...new Set([
-      ...viewerStocks.map((a) => a.yahoo_ticker || a.ticker).filter(Boolean),
-      ...ownerData.stockAssets
-        .map((a) => a.yahoo_ticker || a.ticker)
-        .filter(Boolean),
+      ...viewerPartition.yahooTickers,
+      ...ownerPartition.yahooTickers,
     ]),
   ];
 
@@ -97,19 +107,39 @@ export async function getComparisonData(
   // 5. Single set of price fetches (shared between both aggregations)
   //    Fold EURUSD=X into the stock batch for a single Yahoo request
   const allTickersWithEurUsd = [...new Set([...allYahooTickers, "EURUSD=X"])];
-  const [cryptoPrices, allStockPrices, fxRates, fxRatesUsd, fxRatesEur] = await Promise.all([
-    getPrices(allCoinIds),
-    getStockPrices(allTickersWithEurUsd),
-    getFXRatesSafe(viewerCurrency, allCurrencies),
-    getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
-    getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
-  ]);
+  const admin = createAdminClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const [cryptoPrices, allStockPrices, fxRates, fxRatesUsd, fxRatesEur, viewerNavs, ownerNavs] =
+    await Promise.all([
+      getPrices(allCoinIds),
+      getStockPrices(allTickersWithEurUsd),
+      getFXRatesSafe(viewerCurrency, allCurrencies),
+      getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
+      getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
+      // Viewer's manual NAVs: authenticated client → RLS scopes to viewer
+      viewerPartition.manualStockAssets.length > 0
+        ? getLatestManualNavsAt(supabase, today)
+        : Promise.resolve([]),
+      // Owner's manual NAVs: admin client + explicit owner user_id (viewer is
+      // not the owner; RLS via auth.uid() would return zero rows)
+      ownerPartition.manualStockAssets.length > 0
+        ? getLatestManualNavsAt(admin, today, ownerData.share.owner_id)
+        : Promise.resolve([]),
+    ]);
 
   const eurUsdChange24h = allStockPrices["EURUSD=X"]?.change24h ?? 0;
   // Separate EURUSD=X from stock prices passed to aggregation
   const stockPrices = Object.fromEntries(
     Object.entries(allStockPrices).filter(([k]) => k !== "EURUSD=X")
   );
+  // Inject manual NAV prices into the shared stockPrices map. Both injections
+  // key by `asset.ticker`. If viewer and owner happen to share a ticker for
+  // different manual assets (rare — same ELTIF held by both), the owner's
+  // injection wins for the cross-currency display; per-position quantity is
+  // still correct per-aggregation because each aggregation uses its own
+  // stockAssets list with its own quantities.
+  injectManualNavPrices(viewerPartition.manualStockAssets, viewerNavs, stockPrices);
+  injectManualNavPrices(ownerPartition.manualStockAssets, ownerNavs, stockPrices);
 
   // 6. Aggregate both portfolios with the VIEWER's currency
   const viewerSummary = aggregatePortfolio({

@@ -4,6 +4,7 @@ import { getFXRatesSafe } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import { getLatestManualNavsAt, partitionStockAssetsForPricing, injectManualNavPrices } from "@/lib/manual-nav";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { aggregatePortfolio } from "./aggregate";
 import type { PortfolioSummary } from "./aggregate";
 import { computeDashboardInsights } from "./dashboard-insights";
@@ -44,6 +45,15 @@ export interface AssembledPortfolio {
 export async function assemblePortfolioView(
   assets: PortfolioAssets,
   pathPrefix: string,
+  options?: {
+    /**
+     * When set, the manual-NAV lookup uses the service-role admin client with
+     * this user_id explicitly. Used by /share/[token]/* pages where the
+     * viewer is not the owner and RLS would scope the lookup to zero rows.
+     * When undefined, falls back to the authenticated server client + RLS.
+     */
+    ownerUserId?: string;
+  },
 ): Promise<AssembledPortfolio> {
   const { cryptoAssets, stockAssets, cashAccounts, primaryCurrency } = assets;
 
@@ -66,6 +76,12 @@ export async function assemblePortfolioView(
   const supabase = await createServerSupabaseClient();
   const today = new Date().toISOString().slice(0, 10);
 
+  // For share-page reads (ownerUserId provided), use the admin client + explicit
+  // user_id arg so the SQL function still scopes correctly. RLS bypass is safe:
+  // shared-portfolio.ts already gates which fields the viewer sees; manual NAV
+  // values just complete that picture.
+  const navClient = options?.ownerUserId ? createAdminClient() : supabase;
+
   const [cryptoPrices, { stockPrices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, manualNavs] =
     await Promise.all([
       getPrices(coinIds),
@@ -73,7 +89,9 @@ export async function assemblePortfolioView(
       getFXRatesSafe(primaryCurrency, allCurrencies),
       getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
       getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
-      manualStockAssets.length > 0 ? getLatestManualNavsAt(supabase, today) : Promise.resolve([]),
+      manualStockAssets.length > 0
+        ? getLatestManualNavsAt(navClient, today, options?.ownerUserId)
+        : Promise.resolve([]),
     ]);
 
   // Inject manual NAVs into stockPrices keyed by `asset.ticker` (yahoo_ticker is
