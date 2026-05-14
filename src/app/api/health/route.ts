@@ -3,36 +3,65 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Public health check — no auth required.
- * Verifies Supabase connectivity and checks latest snapshot age.
- */
-/**
- * Timeout for the health-check DB probe. Kept well below the Vercel 10s
- * function limit so a slow/degraded DB surfaces as "db_timeout" rather
- * than a generic 504 from the platform.
+ *
+ * Probes (parallelized via Promise.allSettled so one slow/degraded path
+ * doesn't mask the others):
+ *   1. portfolio_snapshots latest age — detects silent cron failures
+ *   2. manual_nav_updates table reachability — detects RLS/grants regression
+ *      on the kind='manual' pipeline (PR #75 added composite-FK RLS here)
+ *   3. get_latest_manual_navs_at RPC callability — detects function-drop or
+ *      argument-signature regression on the hot-path read used by assemble.ts,
+ *      comparison.ts, and shared-portfolio.ts
+ *
+ * Returns 503 only when the primary snapshot probe fails (whole-DB outage).
+ * NAV pipeline issues surface as `status: "warning"` + `navPipeline: "degraded"`
+ * so they're visible without paging on every transient hiccup.
  */
 const HEALTH_DB_TIMEOUT_MS = 3_000;
 
+// Returns zero rows but proves the RPC exists and accepts the right param
+// shape. Using the all-zeros UUID instead of a random one keeps the response
+// deterministic across calls (helpful for cached health-check responses).
+const HEALTH_PROBE_USER_ID = "00000000-0000-0000-0000-000000000000";
+
 export async function GET() {
   const start = Date.now();
+  const supabase = createAdminClient();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HEALTH_DB_TIMEOUT_MS);
 
   try {
-    const supabase = createAdminClient();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), HEALTH_DB_TIMEOUT_MS);
+    const today = new Date().toISOString().split("T")[0];
 
-    // Check latest snapshot to detect silent cron failures
-    const { data, error } = await supabase
-      .from("portfolio_snapshots")
-      .select("snapshot_date")
-      .order("snapshot_date", { ascending: false })
-      .limit(1)
-      .abortSignal(controller.signal)
-      .single();
+    const [snapshotRes, navTableRes, navRpcRes] = await Promise.allSettled([
+      supabase
+        .from("portfolio_snapshots")
+        .select("snapshot_date")
+        .order("snapshot_date", { ascending: false })
+        .limit(1)
+        .abortSignal(controller.signal)
+        .single(),
+      supabase
+        .from("manual_nav_updates")
+        .select("id")
+        .limit(1)
+        .abortSignal(controller.signal),
+      supabase
+        .rpc("get_latest_manual_navs_at", {
+          p_as_of: today,
+          p_user_id: HEALTH_PROBE_USER_ID,
+        })
+        .abortSignal(controller.signal),
+    ]);
 
     clearTimeout(timeout);
+    const abortedByTimeout = controller.signal.aborted;
 
-    if (error) {
-      const abortedByTimeout = controller.signal.aborted;
+    // Primary signal: snapshot probe. If this fails the DB is in trouble
+    // and the rest of the response is moot.
+    const snapshotOk =
+      snapshotRes.status === "fulfilled" && !snapshotRes.value.error;
+    if (!snapshotOk) {
       return NextResponse.json(
         {
           status: "degraded",
@@ -43,19 +72,37 @@ export async function GET() {
       );
     }
 
-    const lastSnapshot = data?.snapshot_date as string | undefined;
+    const lastSnapshot =
+      snapshotRes.status === "fulfilled"
+        ? (snapshotRes.value.data?.snapshot_date as string | undefined)
+        : undefined;
     const ageHours = lastSnapshot
       ? (Date.now() - new Date(lastSnapshot).getTime()) / 3_600_000
       : null;
     const snapshotStale = ageHours != null && ageHours > 26;
 
+    // Secondary signals: manual-NAV pipeline. Both must be healthy.
+    // PGRST116 ("no rows returned") is NOT a probe failure — the RPC
+    // accepting a zero-UUID and returning no rows is the expected case.
+    const navTableOk =
+      navTableRes.status === "fulfilled" && !navTableRes.value.error;
+    const navRpcOk =
+      navRpcRes.status === "fulfilled" && !navRpcRes.value.error;
+    const navPipelineOk = navTableOk && navRpcOk;
+
+    const overallStatus = snapshotStale || !navPipelineOk ? "warning" : "ok";
+
     return NextResponse.json({
-      status: snapshotStale ? "warning" : "ok",
+      status: overallStatus,
       snapshotAgeHours: ageHours ? Math.round(ageHours) : null,
       snapshotStale,
+      navPipeline: navPipelineOk ? "ok" : "degraded",
+      navTable: navTableOk ? "ok" : "degraded",
+      navRpc: navRpcOk ? "ok" : "degraded",
       ms: Date.now() - start,
     });
   } catch {
+    clearTimeout(timeout);
     return NextResponse.json(
       { status: "error", error: "unreachable", ms: Date.now() - start },
       { status: 503 }

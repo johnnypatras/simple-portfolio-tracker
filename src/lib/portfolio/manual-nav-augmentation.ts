@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import * as Sentry from "@sentry/nextjs";
 import type { Database } from "@/types/database";
 import type { PortfolioSnapshot } from "@/lib/types";
 import { pickJoinedRecord } from "@/lib/supabase/join-utils";
@@ -230,6 +231,21 @@ export async function fetchManualNavInputsFor(
     effective_date: n.effective_date as string,
     nav: Number(n.nav),
   }));
+
+  // Breadcrumb on every NAV fetch so any later Sentry event in the same
+  // request surfaces NAV scope context. `level: "debug"` when there's no
+  // manual data keeps the dashboard hot path quiet for the 99% case where
+  // users don't hold ELTIFs/SICAVs; "info" only when augmentation will
+  // actually run downstream. User IDs are internal UUIDs (no PII).
+  Sentry.addBreadcrumb({
+    category: "manual-nav",
+    message: "Manual NAV inputs fetched",
+    data: {
+      positions: positions.length,
+      navHistoryRows: navs.length,
+    },
+    level: positions.length > 0 ? "info" : "debug",
+  });
 
   return { positions, navs };
 }
