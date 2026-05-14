@@ -122,9 +122,21 @@ function getEntityIcon(type: EntityType) {
       return BookOpen;
     case "institution":
       return Landmark;
-    default:
-      return Clock;
+    case "manual_nav_update":
+      // Same icon used elsewhere for adjustments — the slider conveys
+      // "manual value entry" which matches the NAV CRUD semantic.
+      return SlidersHorizontal;
+    case "diary_entry":
+      return BookOpen;
+    case "goal_price":
+      return TrendingUp;
   }
+  // Exhaustive switch — `type` is `never` here. If a future EntityType is
+  // added without updating this switch, TypeScript will error on the next
+  // line. The fallback return keeps the call site safe at runtime.
+  const _exhaustive: never = type;
+  void _exhaustive;
+  return Clock;
 }
 
 function getActionIcon(action: ActionType) {
@@ -175,9 +187,18 @@ function getEntityBadgeColor(type: EntityType) {
       return "bg-pink-500/15 text-pink-400";
     case "institution":
       return "bg-green-500/15 text-green-400";
-    default:
-      return "bg-zinc-500/15 text-zinc-400";
+    case "manual_nav_update":
+      // Matches the project's private_equity asset_category color (violet).
+      return "bg-violet-500/15 text-violet-400";
+    case "diary_entry":
+      return "bg-zinc-700/40 text-zinc-300";
+    case "goal_price":
+      return "bg-fuchsia-500/15 text-fuchsia-400";
   }
+  // Exhaustive switch — TS-error if a future EntityType isn't handled.
+  const _exhaustive: never = type;
+  void _exhaustive;
+  return "bg-zinc-500/15 text-zinc-400";
 }
 
 // ─── Date grouping helpers ──────────────────────────────

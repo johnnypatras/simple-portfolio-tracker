@@ -1,4 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 import type { PortfolioSnapshot } from "@/lib/types";
+import { pickJoinedRecord } from "@/lib/supabase/join-utils";
 
 /**
  * Inputs for snapshot augmentation. Kept in this pure module (no "use server")
@@ -144,4 +147,62 @@ export function augmentSnapshotsWithManualNavs(
       total_value_eur: (snap.total_value_eur ?? 0) + manualEur,
     };
   });
+}
+
+/**
+ * Fetch a user's manual NAV positions + NAV history in parallel.
+ *
+ * Single source of truth for the augmentation inputs. Used by getSnapshots
+ * (chart), getSnapshotAt (period-change cards), and getSharedPortfolio
+ * (cross-user share-page chart). Pass the appropriate client + userId:
+ *
+ *   - Authenticated server client + omitted userId → RLS scopes to auth.uid()
+ *   - Admin client + explicit userId → service-role for cross-user reads
+ *     (share/comparison paths where viewer ≠ owner)
+ *
+ * Defense-in-depth: both joined queries carry an explicit user_id filter on
+ * top of RLS. Errors throw with descriptive messages (no silent failure).
+ */
+export async function fetchManualNavInputsFor(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<{ positions: ManualPositionRow[]; navs: ManualNavRow[] }> {
+  const [manualPositionsRes, manualNavsRes] = await Promise.all([
+    supabase
+      .from("stock_positions")
+      .select("stock_asset_id, quantity, stock_assets!inner(kind, currency, user_id, deleted_at)")
+      .eq("stock_assets.user_id", userId)
+      .eq("stock_assets.kind", "manual")
+      .is("stock_assets.deleted_at", null)
+      .is("deleted_at", null),
+    supabase
+      .from("manual_nav_updates")
+      .select("asset_id, effective_date, nav")
+      .eq("user_id", userId)
+      .order("effective_date", { ascending: true }),
+  ]);
+
+  if (manualPositionsRes.error) {
+    throw new Error(`Failed to load manual positions: ${manualPositionsRes.error.message}`);
+  }
+  if (manualNavsRes.error) {
+    throw new Error(`Failed to load manual NAV history: ${manualNavsRes.error.message}`);
+  }
+
+  const positions: ManualPositionRow[] = (manualPositionsRes.data ?? []).map((p) => {
+    const sa = pickJoinedRecord<{ currency: string }>(p.stock_assets);
+    return {
+      stock_asset_id: p.stock_asset_id as string,
+      quantity: Number(p.quantity),
+      currency: sa?.currency ?? "USD",
+    };
+  });
+
+  const navs: ManualNavRow[] = (manualNavsRes.data ?? []).map((n) => ({
+    asset_id: n.asset_id as string,
+    effective_date: n.effective_date as string,
+    nav: Number(n.nav),
+  }));
+
+  return { positions, navs };
 }

@@ -10,10 +10,8 @@ import { round2 } from "@/lib/format";
 import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
 import {
   augmentSnapshotsWithManualNavs,
-  type ManualPositionRow,
-  type ManualNavRow,
+  fetchManualNavInputsFor,
 } from "@/lib/portfolio/manual-nav-augmentation";
-import { pickJoinedRecord } from "@/lib/supabase/join-utils";
 
 /**
  * Save (upsert) today's portfolio snapshot.
@@ -130,34 +128,20 @@ export async function getSnapshots(
   since.setDate(since.getDate() - days);
   const sinceStr = since.toISOString().split("T")[0];
 
-  // Explicit limit overrides PostgREST's 1000-row default. In parallel: fetch
-  // the user's kind='manual' positions + NAV history so we can augment each
-  // snapshot with the manual-asset contribution. Past snapshots from before
-  // the daily-snapshot cron started including manual assets won't have them in
-  // stocks_value; without augmentation the chart shows an artificial jump
-  // between the last cron snapshot and today's live value (assemble.ts
-  // injection lives only for the live point).
-  //
-  // Defense-in-depth: both joined queries carry an explicit user_id filter on
-  // top of RLS, so a misconfigured policy can't widen the result set.
-  const [snapshotsRes, manualPositionsRes, manualNavsRes] = await Promise.all([
+  // Fetch snapshots + manual NAV inputs in parallel. Past snapshots from
+  // before the daily-snapshot cron started including manual assets won't
+  // have them in stocks_value; without augmentation the chart shows an
+  // artificial jump between the last cron snapshot and today's live value
+  // (assemble.ts injection lives only for the live point).
+  const [snapshotsRes, manualInputs] = await Promise.all([
     supabase
       .from("portfolio_snapshots")
       .select("*")
+      .eq("user_id", user.id)
       .gte("snapshot_date", sinceStr)
       .order("snapshot_date", { ascending: true })
       .limit(MAX_SNAPSHOTS_LIMIT),
-    supabase
-      .from("stock_positions")
-      .select("stock_asset_id, quantity, stock_assets!inner(kind, currency, user_id, deleted_at)")
-      .eq("stock_assets.user_id", user.id)
-      .eq("stock_assets.kind", "manual")
-      .is("stock_assets.deleted_at", null),
-    supabase
-      .from("manual_nav_updates")
-      .select("asset_id, effective_date, nav")
-      .eq("user_id", user.id)
-      .order("effective_date", { ascending: true }),
+    fetchManualNavInputsFor(supabase, user.id),
   ]);
 
   if (snapshotsRes.error) {
@@ -166,28 +150,7 @@ export async function getSnapshots(
   }
 
   const raw = (snapshotsRes.data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
-
-  // Project joined-relation rows into the pure-module shape. supabase-js
-  // returns the joined relation as either an object or a single-element array
-  // depending on the PostgREST relationship metadata — `pickJoinedRecord`
-  // normalizes both. Done at this boundary so the augmentation module never
-  // has to know about the PostgREST quirk.
-  const manualPositions: ManualPositionRow[] = (manualPositionsRes.data ?? []).map((p) => {
-    const sa = pickJoinedRecord<{ currency: string }>(p.stock_assets);
-    return {
-      stock_asset_id: p.stock_asset_id as string,
-      quantity: Number(p.quantity),
-      currency: sa?.currency ?? "USD",
-    };
-  });
-
-  const manualNavs: ManualNavRow[] = (manualNavsRes.data ?? []).map((n) => ({
-    asset_id: n.asset_id as string,
-    effective_date: n.effective_date as string,
-    nav: Number(n.nav),
-  }));
-
-  return augmentSnapshotsWithManualNavs(raw, manualPositions, manualNavs);
+  return augmentSnapshotsWithManualNavs(raw, manualInputs.positions, manualInputs.navs);
 }
 
 type PortfolioSnapshotRow = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
@@ -208,6 +171,12 @@ function normalizeSnapshot(row: PortfolioSnapshotRow): PortfolioSnapshot {
  * Used for computing "change vs X days ago".
  *
  * Looks for the most recent snapshot on or before the target date.
+ *
+ * Applies manual NAV augmentation to the returned snapshot — without it,
+ * a user holding a kind='manual' position would see phantom multi-hundred
+ * percent gains on the period-change cards because the raw snapshot lacks
+ * the manual NAV contribution but today's live value (via assemble.ts)
+ * includes it.
  */
 export async function getSnapshotAt(
   daysAgo: number
@@ -220,18 +189,26 @@ export async function getSnapshotAt(
   target.setDate(target.getDate() - daysAgo);
   const targetStr = target.toISOString().split("T")[0];
 
-  const { data, error } = await supabase
-    .from("portfolio_snapshots")
-    .select("*")
-    .lte("snapshot_date", targetStr)
-    .order("snapshot_date", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const [snapshotRes, manualInputs] = await Promise.all([
+    supabase
+      .from("portfolio_snapshots")
+      .select("*")
+      .eq("user_id", user.id)
+      .lte("snapshot_date", targetStr)
+      .order("snapshot_date", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    fetchManualNavInputsFor(supabase, user.id),
+  ]);
 
-  if (error) {
-    console.error("[snapshots] Failed to fetch snapshot:", error.message);
-    throw new Error(`Failed to load snapshot: ${error.message}`);
+  if (snapshotRes.error) {
+    console.error("[snapshots] Failed to fetch snapshot:", snapshotRes.error.message);
+    throw new Error(`Failed to load snapshot: ${snapshotRes.error.message}`);
   }
 
-  return data ? normalizeSnapshot(data) : null;
+  if (!snapshotRes.data) return null;
+  const normalized = normalizeSnapshot(snapshotRes.data);
+  if (manualInputs.positions.length === 0) return normalized;
+  const augmented = augmentSnapshotsWithManualNavs([normalized], manualInputs.positions, manualInputs.navs);
+  return augmented[0] ?? normalized;
 }

@@ -20,6 +20,10 @@ import { normalizeCategory } from "@/lib/stock-categories";
 import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
 import { pickJoinedName } from "@/lib/supabase/join-utils";
 import { findSnapshotAt } from "@/lib/portfolio/snapshot-utils";
+import {
+  augmentSnapshotsWithManualNavs,
+  fetchManualNavInputsFor,
+} from "@/lib/portfolio/manual-nav-augmentation";
 
 // SharedPortfolioData and ValidatedShare are defined in @/lib/types — Turbopack
 // strips type re-exports from "use server" modules, so consumers (share pages,
@@ -211,9 +215,19 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     return { ...inst, roles };
   });
 
+  // ── Augment snapshots with manual NAV contributions ────
+  // Without this, share-page viewers see an artificial drop in pre-cron
+  // chart history for owners holding kind='manual' assets (ELTIFs, SICAVs).
+  // The viewer is not the owner — admin client + explicit owner_id bypasses
+  // RLS which would otherwise scope to auth.uid() and return zero rows.
+  const manualInputs = await fetchManualNavInputsFor(admin, userId);
+  const augmentedSnapshots = manualInputs.positions.length > 0
+    ? augmentSnapshotsWithManualNavs(snapshots, manualInputs.positions, manualInputs.navs)
+    : snapshots;
+
   // ── Snapshot lookups for change calculations ──────────
   // Snapshot lookups use `findSnapshotAt` (binary search, O(log n) per call).
-  // `snapshots` is sorted ascending by snapshot_date from the DB query.
+  // `augmentedSnapshots` is sorted ascending by snapshot_date from the DB query.
   return {
     share,
     profile,
@@ -223,13 +237,13 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     wallets,
     brokers,
     institutions,
-    snapshots,
-    snap3d: findSnapshotAt(snapshots, 3),
-    snap7d: findSnapshotAt(snapshots, 7),
-    snap30d: findSnapshotAt(snapshots, 30),
-    snap90d: findSnapshotAt(snapshots, 90),
-    snap1y: findSnapshotAt(snapshots, 365),
+    snapshots: augmentedSnapshots,
+    snap3d: findSnapshotAt(augmentedSnapshots, 3),
+    snap7d: findSnapshotAt(augmentedSnapshots, 7),
+    snap30d: findSnapshotAt(augmentedSnapshots, 30),
+    snap90d: findSnapshotAt(augmentedSnapshots, 90),
+    snap1y: findSnapshotAt(augmentedSnapshots, 365),
     // "All" = earliest snapshot (snapshots array is now all-time)
-    snapAll: snapshots.length > 0 ? snapshots[0] : null,
+    snapAll: augmentedSnapshots.length > 0 ? augmentedSnapshots[0] : null,
   };
 });

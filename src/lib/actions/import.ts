@@ -4,7 +4,7 @@ import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { exportFullJson } from "@/lib/actions/export";
-import { VALID_THEMES } from "@/lib/constants";
+import { VALID_THEMES, SUPPORTED_BACKUP_VERSIONS, type SupportedBackupVersion } from "@/lib/constants";
 import type { PortfolioBackup, ImportResult, ImportError } from "@/lib/types";
 import type { Database } from "@/types/database";
 import {
@@ -35,12 +35,13 @@ export async function validateBackup(
 
   const d = data as Record<string, unknown>;
 
-  // Accept v1, v2, v3, and v4 (v4 added network field on crypto_positions)
-  if (d.version !== 1 && d.version !== 2 && d.version !== 3 && d.version !== 4) {
+  // Accept any version listed in SUPPORTED_BACKUP_VERSIONS. Bumping the constant
+  // automatically widens the validator (and the type at compile time).
+  if (!SUPPORTED_BACKUP_VERSIONS.includes(d.version as SupportedBackupVersion)) {
     return { ok: false, error: `Unsupported backup version: ${d.version}` };
   }
 
-  const isUnifiedCash = d.version === 3 || d.version === 4;
+  const isUnifiedCash = d.version === 3 || d.version === 4 || d.version === 5;
 
   // Required arrays differ by version
   const requiredArrays = [
@@ -100,15 +101,49 @@ export async function validateBackup(
   const optionalShapeRules: Record<string, string[]> = {
     diaryEntries: ["entry_date", "content"],
     goalPrices: ["crypto_asset_id", "target_price"],
+    // v5+: manual_nav_updates array. Required fields per ManualNavInput.
+    manualNavUpdates: ["asset_id", "effective_date", "nav"],
   };
 
   for (const [key, fields] of Object.entries(optionalShapeRules)) {
+    if (d[key] !== undefined && !Array.isArray(d[key])) {
+      // Reject non-array, non-undefined values (e.g. malformed JSON
+      // payloads like `manualNavUpdates: "string"` would iterate
+      // characters in for-of loops downstream).
+      return { ok: false, error: `Invalid field: ${key} must be an array if present` };
+    }
     if (Array.isArray(d[key])) {
       const arr = d[key] as unknown[];
       for (let i = 0; i < arr.length; i++) {
         if (!hasRequiredFields(arr[i], fields)) {
           return { ok: false, error: `${key}[${i}] is missing required fields: ${fields.join(", ")}` };
         }
+      }
+    }
+  }
+
+  // Deep validation for manualNavUpdates rows (v5+). Run the same per-field
+  // validators server-side so corrupt or hand-edited backups can't insert
+  // invalid data via the import path's batch upsert.
+  if (Array.isArray(d.manualNavUpdates)) {
+    for (const [i, raw] of (d.manualNavUpdates as Record<string, unknown>[]).entries()) {
+      const navNum = Number(raw.nav);
+      if (!Number.isFinite(navNum) || navNum <= 0) {
+        return { ok: false, error: `manualNavUpdates[${i}].nav must be a positive finite number` };
+      }
+      // validateDate is regex-only; tighten by parsing the actual date.
+      const dateStr = String(raw.effective_date);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || Number.isNaN(new Date(dateStr + "T00:00:00Z").getTime())) {
+        return { ok: false, error: `manualNavUpdates[${i}].effective_date must be a valid YYYY-MM-DD date` };
+      }
+      if (typeof raw.asset_id !== "string" || raw.asset_id.length === 0) {
+        return { ok: false, error: `manualNavUpdates[${i}].asset_id must be a non-empty string` };
+      }
+      if (raw.note != null && typeof raw.note !== "string") {
+        return { ok: false, error: `manualNavUpdates[${i}].note must be a string or null` };
+      }
+      if (typeof raw.note === "string" && raw.note.length > 500) {
+        return { ok: false, error: `manualNavUpdates[${i}].note exceeds 500 characters` };
       }
     }
   }
@@ -641,6 +676,12 @@ export async function importFromJson(
           tags: asset.tags ?? [],
           currency: asset.currency ?? "USD",
           subcategory: asset.subcategory ?? null,
+          // v5+: preserve the price-source discriminator. Without this, a
+          // backup with kind='manual' assets restores them as 'yahoo' (the
+          // DB default) and the chart augmentation pipeline silently never
+          // applies — NAV history rows would orphan against an asset whose
+          // partition no longer matches.
+          kind: asset.kind ?? "yahoo",
         })
         .select("id")
         .single();
@@ -689,9 +730,16 @@ export async function importFromJson(
     }> = [];
 
     for (const nav of data.manualNavUpdates) {
-      // Remap to the newly-inserted asset_id (or use as-is if the backup
-      // happens to match an existing asset — also handled by upsert below).
-      const newAssetId = stockAssetMap.get(nav.asset_id) ?? nav.asset_id;
+      // Remap to the newly-inserted asset_id. If the backup references an
+      // asset_id NOT in stockAssetMap (e.g. partially-edited backup, or a
+      // foreign asset_id from another user's portfolio), DROP the row
+      // instead of trusting the original UUID — the previous passthrough
+      // could plant orphan NAV rows pointing to another user's stock_asset.
+      const newAssetId = stockAssetMap.get(nav.asset_id);
+      if (!newAssetId) {
+        skipped.manualNavUpdates++;
+        continue;
+      }
       navRows.push({
         user_id: uid,
         asset_id: newAssetId,

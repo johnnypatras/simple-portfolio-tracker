@@ -64,8 +64,16 @@ export const MAX_NOTES_LENGTH = 2000;
 /** Maximum length for diary entry content */
 export const MAX_DIARY_CONTENT_LENGTH = 50_000;
 
-/** Current backup schema version emitted by export */
-export const CURRENT_BACKUP_VERSION = 4 as const;
+/**
+ * Current backup schema version emitted by export.
+ * v5 (2026-05) — adds `manualNavUpdates` array + `kind` field on stockAssets.
+ * v4 — adds `network` field on crypto_positions.
+ * v3 — unified `cashAccounts` (replaces legacy bankAccounts/exchangeDeposits/brokerDeposits).
+ * v1/v2 — legacy split-cash schema.
+ */
+export const CURRENT_BACKUP_VERSION = 5 as const;
+export const SUPPORTED_BACKUP_VERSIONS = [1, 2, 3, 4, 5] as const;
+export type SupportedBackupVersion = (typeof SUPPORTED_BACKUP_VERSIONS)[number];
 
 /** Minimum backup schema version that uses unified cash_accounts (v1/v2 use legacy arrays) */
 export const UNIFIED_CASH_MIN_VERSION = 3 as const;
