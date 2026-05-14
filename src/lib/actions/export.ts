@@ -18,6 +18,7 @@ import type {
   ExchangeDeposit,
   BrokerDeposit,
   GoalPrice,
+  ManualNavUpdate,
   PortfolioBackup,
 } from "@/lib/types";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
@@ -70,6 +71,23 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
       .limit(MAX_QUERY_LIMIT),
   ]);
 
+  // v5: manual_nav_updates for kind='manual' stock_assets. Owned by the user
+  // (FK + RLS); explicit user_id filter for defense-in-depth.
+  const { data: manualNavRows } = await supabase
+    .from("manual_nav_updates")
+    .select("id, user_id, asset_id, effective_date, nav, note, created_at")
+    .eq("user_id", uid)
+    .order("effective_date", { ascending: true });
+  const manualNavUpdates: ManualNavUpdate[] = (manualNavRows ?? []).map((r) => ({
+    id: r.id as string,
+    user_id: r.user_id as string,
+    asset_id: r.asset_id as string,
+    effective_date: r.effective_date as string,
+    nav: Number(r.nav),
+    note: (r.note as string | null) ?? null,
+    created_at: r.created_at as string,
+  }));
+
   // goal_prices linked through crypto_assets (no direct user_id) — query via asset IDs
   let goalPrices: GoalPrice[] = [];
   const cryptoIds = cryptoAssets.map((a) => a.id);
@@ -89,7 +107,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
   }
 
   return {
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     primaryCurrency: profile.primary_currency,
     institutions,
@@ -164,6 +182,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
       display_name: profile.display_name,
       theme: profile.theme,
     },
+    manualNavUpdates,
   };
 }
 
@@ -212,7 +231,7 @@ export async function exportStocksCsv(): Promise<string> {
   const assets = await getStockAssetsWithPositions();
 
   const headers = [
-    "Ticker", "Name", "ISIN", "Yahoo Ticker", "Category",
+    "Ticker", "Name", "ISIN", "Yahoo Ticker", "Kind", "Category",
     "Currency", "Subcategory", "Tags",
     "Broker", "Quantity", "Adjustment", "Transfer",
     "Asset Created", "Position Updated",
@@ -226,6 +245,7 @@ export async function exportStocksCsv(): Promise<string> {
         asset.name,
         asset.isin,
         asset.yahoo_ticker,
+        asset.kind, // v5: 'yahoo' | 'manual'
         asset.category,
         asset.currency,
         asset.subcategory,

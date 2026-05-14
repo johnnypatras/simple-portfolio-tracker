@@ -292,11 +292,13 @@ export async function importFromJson(
     cryptoAssets: 0, cryptoPositions: 0, stockAssets: 0, stockPositions: 0,
     tradeEntries: 0, snapshots: 0,
     diaryEntries: 0, goalPrices: 0,
+    manualNavUpdates: 0,
   };
   const skipped: ImportResult["skipped"] = {
     institutions: 0, wallets: 0, brokers: 0, cashAccounts: 0,
     cryptoAssets: 0, stockAssets: 0,
     snapshots: 0, diaryEntries: 0, goalPrices: 0,
+    manualNavUpdates: 0,
   };
 
   // ── 1. Institutions ───────────────────────────────────
@@ -669,6 +671,51 @@ export async function importFromJson(
       const { error } = await supabase.from("stock_positions").insert(posRows);
       if (error) return fail(`Stock positions for ${asset.ticker}: ${error.message}`);
       counts.stockPositions += posRows.length;
+    }
+  }
+
+  // ── 6b. Manual NAV updates (v5+ backup field) ──────────
+  // Restore the per-asset NAV history for kind='manual' stock_assets. Old
+  // asset IDs from the backup are remapped through stockAssetMap to the
+  // newly-inserted asset IDs. On conflict (same asset_id + effective_date),
+  // we skip — re-importing the same backup is idempotent.
+  if (data.manualNavUpdates && data.manualNavUpdates.length > 0) {
+    const navRows: Array<{
+      user_id: string;
+      asset_id: string;
+      effective_date: string;
+      nav: number;
+      note: string | null;
+    }> = [];
+
+    for (const nav of data.manualNavUpdates) {
+      // Remap to the newly-inserted asset_id (or use as-is if the backup
+      // happens to match an existing asset — also handled by upsert below).
+      const newAssetId = stockAssetMap.get(nav.asset_id) ?? nav.asset_id;
+      navRows.push({
+        user_id: uid,
+        asset_id: newAssetId,
+        effective_date: nav.effective_date,
+        nav: Number(nav.nav),
+        note: nav.note ?? null,
+      });
+    }
+
+    if (navRows.length > 0) {
+      // upsert with onConflict on (asset_id, effective_date) so re-imports
+      // refresh notes/nav without erroring on the unique index.
+      const { error, count } = await supabase
+        .from("manual_nav_updates")
+        .upsert(navRows, {
+          onConflict: "asset_id,effective_date",
+          count: "exact",
+        });
+      if (error) return fail(`Manual NAV updates batch: ${error.message}`);
+      counts.manualNavUpdates += count ?? navRows.length;
+      // Anything not in the count diff means it was an existing row that got
+      // updated rather than inserted — surface that in skipped for clarity.
+      const inserted = count ?? navRows.length;
+      skipped.manualNavUpdates += navRows.length - inserted;
     }
   }
 
