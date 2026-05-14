@@ -29,14 +29,20 @@ export function pickJoinedName(v: unknown): string | null {
  * Returns the joined row (or first element of the array) as `T`, or `null`
  * if the relation is null/empty.
  *
+ * The `T extends Record<string, unknown>` constraint guards against
+ * accidentally narrowing to a primitive — a caller writing
+ * `pickJoinedRecord<string>(...)` would be a foot-gun since PostgREST
+ * relation shapes are always objects.
+ *
  * @example
  *   const sa = pickJoinedRecord<{ kind: string; currency: string }>(row.stock_assets);
  *   if (sa?.kind === "manual") { ... }
  */
-export function pickJoinedRecord<T>(v: unknown): T | null {
+export function pickJoinedRecord<T extends Record<string, unknown>>(v: unknown): T | null {
   if (v == null) return null;
   if (Array.isArray(v)) {
     return ((v[0] as T | undefined) ?? null);
   }
+  if (typeof v !== "object") return null;
   return v as T;
 }

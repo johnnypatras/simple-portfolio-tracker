@@ -4,7 +4,7 @@ import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { exportFullJson } from "@/lib/actions/export";
-import { VALID_THEMES, SUPPORTED_BACKUP_VERSIONS, type SupportedBackupVersion } from "@/lib/constants";
+import { VALID_THEMES, SUPPORTED_BACKUP_VERSIONS, MAX_NAV_NOTE_LENGTH, type SupportedBackupVersion } from "@/lib/constants";
 import type { PortfolioBackup, ImportResult, ImportError } from "@/lib/types";
 import type { Database } from "@/types/database";
 import {
@@ -142,8 +142,8 @@ export async function validateBackup(
       if (raw.note != null && typeof raw.note !== "string") {
         return { ok: false, error: `manualNavUpdates[${i}].note must be a string or null` };
       }
-      if (typeof raw.note === "string" && raw.note.length > 500) {
-        return { ok: false, error: `manualNavUpdates[${i}].note exceeds 500 characters` };
+      if (typeof raw.note === "string" && raw.note.length > MAX_NAV_NOTE_LENGTH) {
+        return { ok: false, error: `manualNavUpdates[${i}].note exceeds ${MAX_NAV_NOTE_LENGTH} characters` };
       }
     }
   }

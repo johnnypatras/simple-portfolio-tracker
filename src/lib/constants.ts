@@ -65,6 +65,24 @@ export const MAX_NOTES_LENGTH = 2000;
 export const MAX_DIARY_CONTENT_LENGTH = 50_000;
 
 /**
+ * Maximum length for `manual_nav_updates.note` (provenance text like
+ * "Q1 2026 fund letter"). Shorter than MAX_NOTES_LENGTH (2000) because NAV
+ * notes are intentionally brief metadata, not free-form trade-style notes.
+ * Enforced by validateName at server-action boundary AND by DB CHECK in
+ * migration 018.
+ */
+export const MAX_NAV_NOTE_LENGTH = 500;
+
+/**
+ * Days threshold for surfacing a manual NAV as "stale" — used by the
+ * StaleNavBanner, the per-row staleness label in stock-columns, and the
+ * UpdateNavModal header. Quarterly NAV publishing cadence implies
+ * ~90 days between updates; 45 fires the warning when a NAV is meaningfully
+ * overdue without being a hair-trigger.
+ */
+export const STALE_NAV_DAYS_THRESHOLD = 45;
+
+/**
  * Current backup schema version emitted by export.
  * v5 (2026-05) — adds `manualNavUpdates` array + `kind` field on stockAssets.
  * v4 — adds `network` field on crypto_positions.

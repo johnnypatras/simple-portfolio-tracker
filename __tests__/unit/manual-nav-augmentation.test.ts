@@ -108,14 +108,54 @@ describe("snapshotEurPerUsd", () => {
     expect(snapshotEurPerUsd(snap)).toBe(0.85);
   });
 
-  it("falls back to 1.0 when either total is zero", () => {
-    expect(snapshotEurPerUsd(makeSnapshot({ total_value_eur: 0, total_value_usd: 1000 }))).toBe(1);
-    expect(snapshotEurPerUsd(makeSnapshot({ total_value_eur: 850, total_value_usd: 0 }))).toBe(1);
+  it("falls through to crypto totals when stocks/total ratio is single-zero", () => {
+    // total_value_eur=0 but total_value_usd=1000 means the snapshot has USD
+    // but no EUR aggregation — falls through to crypto totals which the
+    // makeSnapshot helper does NOT populate, so cash ratio kicks in.
+    // Verify by zeroing both crypto AND cash to force final 1.0 fallback.
+    expect(
+      snapshotEurPerUsd(
+        makeSnapshot({
+          total_value_eur: 0,
+          total_value_usd: 1000,
+          crypto_value_eur: 0,
+          crypto_value_usd: 0,
+          cash_value_eur: 0,
+          cash_value_usd: 0,
+        }),
+      ),
+    ).toBe(1);
   });
 
-  it("falls back to 1.0 when totals are undefined", () => {
-    const snap = makeSnapshot({ total_value_eur: undefined, total_value_usd: undefined });
-    expect(snapshotEurPerUsd(snap)).toBe(1);
+  it("prefers crypto totals ratio when total ratio is unusable", () => {
+    // Real-world case: USD-only snapshot has total_value_eur=0 but crypto
+    // values from CoinGecko provide both currencies. Use the crypto ratio.
+    const r = snapshotEurPerUsd(
+      makeSnapshot({
+        total_value_eur: 0,
+        total_value_usd: 1000,
+        crypto_value_eur: 850,
+        crypto_value_usd: 1000,
+        cash_value_eur: 0,
+        cash_value_usd: 0,
+      }),
+    );
+    expect(r).toBeCloseTo(0.85, 5);
+  });
+
+  it("falls back to 1.0 when ALL ratios are unavailable (totals/crypto/cash all single-zero or null)", () => {
+    expect(
+      snapshotEurPerUsd(
+        makeSnapshot({
+          total_value_eur: undefined,
+          total_value_usd: undefined,
+          crypto_value_eur: 0,
+          crypto_value_usd: 0,
+          cash_value_eur: 0,
+          cash_value_usd: 0,
+        }),
+      ),
+    ).toBe(1);
   });
 });
 

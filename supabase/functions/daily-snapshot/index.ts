@@ -326,10 +326,21 @@ Deno.serve(async (req: Request) => {
       let stocksHomeCurrencyEur = 0;
       for (const asset of holdings.stockAssets) {
         let priceNative: number | undefined;
-        if (asset.kind === "manual") {
-          priceNative = manualNavByUserAsset.get(`${holdings.userId}:${asset.asset_id}`);
-        } else {
-          priceNative = yahooQuotes.get(asset.yahoo_ticker)?.price;
+        // Exhaustive dispatch on kind. The default branch should never fire
+        // (DB CHECK in migration 018 enforces kind in {'yahoo','manual'}),
+        // but defense-in-depth: an unknown kind silently skips the asset and
+        // emits a log line for operational visibility instead of misrouting
+        // to Yahoo / manual paths.
+        switch (asset.kind) {
+          case "manual":
+            priceNative = manualNavByUserAsset.get(`${holdings.userId}:${asset.asset_id}`);
+            break;
+          case "yahoo":
+            priceNative = yahooQuotes.get(asset.yahoo_ticker)?.price;
+            break;
+          default:
+            console.warn(`[daily-snapshot] Unknown stock asset kind="${asset.kind}" for user ${holdings.userId}, asset ${asset.asset_id}; skipping`);
+            continue;
         }
         if (priceNative === undefined) continue;
         const valueNative = asset.quantity * priceNative;

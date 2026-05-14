@@ -73,14 +73,33 @@ export function buildNavIndex(navs: ManualNavRow[]): Map<string, ManualNavRow[]>
  *
  * The daily-snapshot cron writes `total_value_eur` and `total_value_usd` at
  * the same instant, so their ratio captures the exact FX rate at that date —
- * no external historical FX lookup required. Falls back to 1.0 only when the
- * snapshot has zero or null totals (early-import edge case), in which case
- * the surrounding cross-currency arithmetic is moot anyway.
+ * no external historical FX lookup required.
+ *
+ * Resilient to single-zero snapshots (an early signup with only USD assets
+ * has `total_value_eur: 0, total_value_usd: 1100` — without this fallback
+ * the cross-currency math would treat 1000 USD as 1000 EUR, off by 18%).
+ * Falls through three layers:
+ *   1. `total_value_eur / total_value_usd` — primary, exact date FX
+ *   2. `crypto_value_eur / crypto_value_usd` — CoinGecko returns both
+ *      currencies directly, so this ratio is reliable when crypto is held
+ *   3. `cash_value_eur / cash_value_usd` — same idea for cash positions
+ *   4. 1.0 — last-resort fallback (zero-total snapshot, no augmentation
+ *      arithmetic is meaningful anyway)
  */
 export function snapshotEurPerUsd(snap: PortfolioSnapshot): number {
-  const usd = snap.total_value_usd ?? 0;
-  const eur = snap.total_value_eur ?? 0;
-  return usd > 0 && eur > 0 ? eur / usd : 1;
+  const totalUsd = snap.total_value_usd ?? 0;
+  const totalEur = snap.total_value_eur ?? 0;
+  if (totalUsd > 0 && totalEur > 0) return totalEur / totalUsd;
+
+  const cryptoUsd = snap.crypto_value_usd ?? 0;
+  const cryptoEur = snap.crypto_value_eur ?? 0;
+  if (cryptoUsd > 0 && cryptoEur > 0) return cryptoEur / cryptoUsd;
+
+  const cashUsd = snap.cash_value_usd ?? 0;
+  const cashEur = snap.cash_value_eur ?? 0;
+  if (cashUsd > 0 && cashEur > 0) return cashEur / cashUsd;
+
+  return 1;
 }
 
 /**
@@ -117,7 +136,15 @@ export function augmentSnapshotsWithManualNavs(
       if (!navList) continue;
       const nav = findNavAtOrBefore(navList, snap.snapshot_date);
       if (nav === null) continue;
-      const contribution = Number(pos.quantity) * nav;
+      // Defense-in-depth: guard against NaN/Infinity propagation. The DB
+      // schema constrains nav > 0 (migration 015) and quantity columns are
+      // NUMERIC, but supabase-js can deliver string-formatted numerics for
+      // high-precision values. Number("abc") → NaN, which would silently
+      // poison every snapshot total.
+      const qty = Number(pos.quantity);
+      if (!Number.isFinite(qty) || !Number.isFinite(nav)) continue;
+      const contribution = qty * nav;
+      if (!Number.isFinite(contribution)) continue;
       const prev = byCurrency.get(pos.currency) ?? 0;
       byCurrency.set(pos.currency, prev + contribution);
     }

@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { addManualNavAsset } from "@/lib/actions/manual-nav";
 import { upsertStockPosition } from "@/lib/actions/stocks";
+import { MAX_NAV_NOTE_LENGTH } from "@/lib/constants";
 import type { AssetCategory, Broker } from "@/lib/types";
 
 interface AddManualNavModalProps {
@@ -439,7 +440,7 @@ export function AddManualNavModal({
                 value={navNote}
                 onChange={(e) => setNavNote(e.target.value)}
                 placeholder="Source / provenance"
-                maxLength={500}
+                maxLength={MAX_NAV_NOTE_LENGTH}
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
               />
             </div>

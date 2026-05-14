@@ -444,6 +444,19 @@ export interface ManualNavInput {
   note?: string | null;
 }
 
+/**
+ * Latest NAV per asset at a given as-of-date — return shape of the SQL
+ * function `get_latest_manual_navs_at`. Lives in types.ts so consumers
+ * (assemble.ts, comparison.ts, share pages, tests) can import without
+ * pulling the RPC wrapper module.
+ */
+export interface LatestManualNav {
+  asset_id: string;
+  nav: number;
+  effective_date: string;
+  note: string | null;
+}
+
 export interface StockAssetInput {
   ticker: string;
   name: string;
