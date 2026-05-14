@@ -8,6 +8,11 @@ import type { Database } from "@/types/database";
 /** Round to 2 decimal places (matching Edge Function's round2) */
 import { round2 } from "@/lib/format";
 import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
+import {
+  augmentSnapshotsWithManualNavs,
+  type ManualPositionRow,
+  type ManualNavRow,
+} from "@/lib/portfolio/manual-nav-augmentation";
 
 /**
  * Save (upsert) today's portfolio snapshot.
@@ -124,23 +129,63 @@ export async function getSnapshots(
   since.setDate(since.getDate() - days);
   const sinceStr = since.toISOString().split("T")[0];
 
-  // Explicit limit overrides PostgREST's 1000-row default, so callers
-  // requesting ALL_SNAPSHOTS_DAYS (99999) actually get all rows.
-  const { data, error } = await supabase
-    .from("portfolio_snapshots")
-    .select("*")
-    .gte("snapshot_date", sinceStr)
-    .order("snapshot_date", { ascending: true })
-    .limit(MAX_SNAPSHOTS_LIMIT);
+  // Explicit limit overrides PostgREST's 1000-row default. In parallel: fetch
+  // the user's kind='manual' positions + NAV history so we can augment each
+  // snapshot with the manual-asset contribution. Past snapshots from before
+  // the daily-snapshot cron started including manual assets won't have them in
+  // stocks_value; without augmentation the chart shows an artificial jump
+  // between the last cron snapshot and today's live value (assemble.ts
+  // injection lives only for the live point).
+  //
+  // Defense-in-depth: both joined queries carry an explicit user_id filter on
+  // top of RLS, so a misconfigured policy can't widen the result set.
+  const [snapshotsRes, manualPositionsRes, manualNavsRes] = await Promise.all([
+    supabase
+      .from("portfolio_snapshots")
+      .select("*")
+      .gte("snapshot_date", sinceStr)
+      .order("snapshot_date", { ascending: true })
+      .limit(MAX_SNAPSHOTS_LIMIT),
+    supabase
+      .from("stock_positions")
+      .select("stock_asset_id, quantity, stock_assets!inner(kind, currency, user_id, deleted_at)")
+      .eq("stock_assets.user_id", user.id)
+      .eq("stock_assets.kind", "manual")
+      .is("stock_assets.deleted_at", null),
+    supabase
+      .from("manual_nav_updates")
+      .select("asset_id, effective_date, nav")
+      .eq("user_id", user.id)
+      .order("effective_date", { ascending: true }),
+  ]);
 
-  if (error) {
-    console.error("[snapshots] Failed to fetch snapshots:", error.message);
-    throw new Error(`Failed to load portfolio history: ${error.message}`);
+  if (snapshotsRes.error) {
+    console.error("[snapshots] Failed to fetch snapshots:", snapshotsRes.error.message);
+    throw new Error(`Failed to load portfolio history: ${snapshotsRes.error.message}`);
   }
 
-  // Legacy snapshots may have null USD value columns; coerce to 0 so UI can
-  // treat them as numeric. EUR-side columns are genuinely nullable (pre-multi-currency).
-  return (data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
+  const raw = (snapshotsRes.data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
+
+  // Project joined-relation rows into the pure-module shape. supabase-js
+  // returns the joined relation as either an object or a single-element array
+  // depending on the PostgREST relationship metadata — normalize at this
+  // boundary so the augmentation module never has to know.
+  const manualPositions: ManualPositionRow[] = (manualPositionsRes.data ?? []).map((p) => {
+    const sa = Array.isArray(p.stock_assets) ? p.stock_assets[0] : p.stock_assets;
+    return {
+      stock_asset_id: p.stock_asset_id as string,
+      quantity: Number(p.quantity),
+      currency: sa?.currency ?? "USD",
+    };
+  });
+
+  const manualNavs: ManualNavRow[] = (manualNavsRes.data ?? []).map((n) => ({
+    asset_id: n.asset_id as string,
+    effective_date: n.effective_date as string,
+    nav: Number(n.nav),
+  }));
+
+  return augmentSnapshotsWithManualNavs(raw, manualPositions, manualNavs);
 }
 
 type PortfolioSnapshotRow = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
