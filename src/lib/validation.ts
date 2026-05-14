@@ -79,6 +79,21 @@ export function validateYahooTicker(s: string): void {
 
 export function validateDate(s: string, label = "Date"): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error(`${label} must be YYYY-MM-DD format`);
+  // Regex matches "2026-13-99" or "2026-02-30" — both are invalid calendar
+  // dates. Parse and verify components round-trip to catch these.
+  const [yStr, mStr, dStr] = s.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getUTCFullYear() !== y ||
+    parsed.getUTCMonth() !== m - 1 ||
+    parsed.getUTCDate() !== d
+  ) {
+    throw new Error(`${label} is not a valid calendar date: "${s}"`);
+  }
 }
 
 const UUID_RE =

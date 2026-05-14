@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/actions/activity-log";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { formatCurrency } from "@/lib/format";
 import { PGRST_NO_ROWS } from "@/lib/supabase/error-codes";
+import { MAX_NAV_NOTE_LENGTH } from "@/lib/constants";
 import {
   validateUUID,
   validateAmount,
@@ -73,7 +74,7 @@ export async function addManualNavAsset(
       validateAmount(nav, "Initial NAV");
       if (nav <= 0) throw new Error("Initial NAV must be positive");
       validateDate(effectiveDate, "Initial NAV effective date");
-      if (note) validateName(note, 500, "Note");
+      if (note) validateName(note, MAX_NAV_NOTE_LENGTH, "Note");
 
       const { error } = await supabase
         .from("manual_nav_updates")
@@ -121,7 +122,7 @@ export async function upsertManualNav(input: ManualNavInput): Promise<void> {
     validateDate(input.effective_date, "Effective date");
     validateAmount(input.nav, "NAV");
     if (input.nav <= 0) throw new Error("NAV must be positive");
-    if (input.note) validateName(input.note, 500, "Note");
+    if (input.note) validateName(input.note, MAX_NAV_NOTE_LENGTH, "Note");
 
     // Look up the asset for naming the activity-log entry (also serves as an
     // ownership probe — RLS returns no row for foreign-owned asset_id).

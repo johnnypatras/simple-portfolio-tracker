@@ -3,8 +3,8 @@
 import { useSyncExternalStore, useCallback } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { navStaleness } from "@/lib/manual-nav";
+import { STALE_NAV_DAYS_THRESHOLD } from "@/lib/constants";
 
-const STALE_DAYS_THRESHOLD = 45;
 const DISMISS_STORAGE_KEY = "stale-nav-banner-dismissed-until";
 
 interface StaleAsset {
@@ -47,7 +47,7 @@ function getServerDismissed(): boolean {
 
 /**
  * Banner shown at the top of the stocks page when any kind='manual' asset
- * has a NAV older than STALE_DAYS_THRESHOLD days OR has no NAV at all.
+ * has a NAV older than STALE_NAV_DAYS_THRESHOLD days OR has no NAV at all.
  *
  * Dismissible per day: clicking the × writes today's date to localStorage
  * and the banner stays hidden until tomorrow. Balances "loud reminder"
@@ -80,7 +80,7 @@ export function StaleNavBanner({ assets }: StaleNavBannerProps) {
   const staleOrMissing = assets.filter((a) => {
     if (!a.latestNavDate) return true; // no NAV at all
     const { daysAgo } = navStaleness(a.latestNavDate);
-    return daysAgo > STALE_DAYS_THRESHOLD;
+    return daysAgo > STALE_NAV_DAYS_THRESHOLD;
   });
 
   if (dismissed) return null;

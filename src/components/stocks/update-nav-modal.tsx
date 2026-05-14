@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { upsertManualNav, deleteManualNav } from "@/lib/actions/manual-nav";
 import { navStaleness } from "@/lib/manual-nav";
 import { formatCurrency } from "@/lib/format";
+import { STALE_NAV_DAYS_THRESHOLD, MAX_NAV_NOTE_LENGTH } from "@/lib/constants";
 import type { StockAssetWithPositions } from "@/lib/types";
 
 interface UpdateNavModalProps {
@@ -146,7 +147,7 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
   const isEditing = editingDate !== null;
   const latest = navs[0]; // sorted DESC
   const stale = latest ? navStaleness(latest.effective_date) : null;
-  const isStale = stale && stale.daysAgo > 45;
+  const isStale = stale && stale.daysAgo > STALE_NAV_DAYS_THRESHOLD;
 
   return (
     <Modal open={open} onClose={onClose} title={`${asset.ticker} — NAV History`}>
@@ -251,7 +252,7 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
               value={formNote}
               onChange={(e) => setFormNote(e.target.value)}
               placeholder="Source / provenance"
-              maxLength={500}
+              maxLength={MAX_NAV_NOTE_LENGTH}
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             />
           </div>

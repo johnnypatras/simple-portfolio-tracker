@@ -8,14 +8,11 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
-import type { StockAssetWithPositions, YahooStockPriceData } from "@/lib/types";
+import type { StockAssetWithPositions, YahooStockPriceData, LatestManualNav } from "@/lib/types";
 
-export interface LatestManualNav {
-  asset_id: string;
-  nav: number;
-  effective_date: string;
-  note: string | null;
-}
+// LatestManualNav is re-exported for backward compatibility with previous
+// import paths. Canonical home is now @/lib/types.
+export type { LatestManualNav } from "@/lib/types";
 
 /**
  * Returns the latest NAV at-or-before `asOfDate` for each kind='manual'
@@ -123,14 +120,30 @@ export function injectManualNavPrices(
 
 /**
  * Formats a date string as "X days ago" / "today" / "yesterday" for the
- * NAV staleness indicator. Returns a tuple [label, daysAgo] so callers can
- * apply a stale-banner threshold (e.g. >45 days for the audit-driven UX).
+ * NAV staleness indicator. Returns `{label, daysAgo}` so callers can apply
+ * a stale-banner threshold (e.g. > STALE_NAV_DAYS_THRESHOLD days).
+ *
+ * Edge cases:
+ * - Invalid date string ("not-a-date", malformed) → `{label: "unknown",
+ *   daysAgo: Number.POSITIVE_INFINITY}`. The infinite daysAgo triggers any
+ *   stale-threshold check downstream so the UI surfaces the anomaly.
+ * - Future effective_date → `{label: "future date", daysAgo: -daysFromNow}`
+ *   distinguishable from "today" so the UI can render an error state.
+ *   Server-side validateDate now rejects future dates at write time, but
+ *   defense-in-depth: a pre-existing future-dated row shouldn't render as
+ *   "Updated today".
  */
 export function navStaleness(effectiveDate: string, now = new Date()): { label: string; daysAgo: number } {
   const d = new Date(effectiveDate + "T00:00:00Z");
+  if (Number.isNaN(d.getTime())) {
+    return { label: "unknown", daysAgo: Number.POSITIVE_INFINITY };
+  }
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const daysAgo = Math.max(0, Math.round((today.getTime() - d.getTime()) / 86_400_000));
-  if (daysAgo === 0) return { label: "today", daysAgo };
-  if (daysAgo === 1) return { label: "yesterday", daysAgo };
-  return { label: `${daysAgo} days ago`, daysAgo };
+  const rawDays = Math.round((today.getTime() - d.getTime()) / 86_400_000);
+  if (rawDays < 0) {
+    return { label: "future date", daysAgo: rawDays };
+  }
+  if (rawDays === 0) return { label: "today", daysAgo: 0 };
+  if (rawDays === 1) return { label: "yesterday", daysAgo: 1 };
+  return { label: `${rawDays} days ago`, daysAgo: rawDays };
 }

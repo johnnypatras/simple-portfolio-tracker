@@ -5,6 +5,7 @@ import type { ColumnDef, SortDirection } from "@/lib/column-config";
 export type { SortDirection } from "@/lib/column-config";
 import { formatCurrency, formatQuantity } from "@/lib/format";
 import { navStaleness } from "@/lib/manual-nav";
+import { STALE_NAV_DAYS_THRESHOLD } from "@/lib/constants";
 import type {
   StockAssetWithPositions,
   AssetCategory,
@@ -603,7 +604,7 @@ export function getStockColumns(handlers: {
         if (row.asset.kind === "manual") {
           const lastDate = handlers.latestNavDates?.get(row.asset.id) ?? null;
           const stale = lastDate ? navStaleness(lastDate) : null;
-          const isStale = stale && stale.daysAgo > 45;
+          const isStale = stale && stale.daysAgo > STALE_NAV_DAYS_THRESHOLD;
           return row.pricePerShare > 0 ? (
             <div>
               <div className="flex items-center justify-end gap-1.5">
@@ -630,7 +631,7 @@ export function getStockColumns(handlers: {
                   className={`block text-[10px] tabular-nums inline-flex items-center gap-1 ${
                     isStale ? "text-amber-400" : "text-zinc-400"
                   }`}
-                  title={isStale ? "NAV is older than 45 days — consider updating" : undefined}
+                  title={isStale ? `NAV is older than ${STALE_NAV_DAYS_THRESHOLD} days — consider updating` : undefined}
                 >
                   {/* Icon prefix on stale state — multi-channel signal (not color alone) per WCAG 1.4.1. */}
                   {isStale && <AlertTriangle className="w-2.5 h-2.5" aria-hidden="true" />}
