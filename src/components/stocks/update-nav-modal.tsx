@@ -231,6 +231,7 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
               <input
                 id={`${id}-nav`}
                 type="number"
+                inputMode="decimal"
                 value={formNav}
                 onChange={(e) => setFormNav(e.target.value)}
                 placeholder="105.50"
@@ -266,9 +267,10 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
           <button
             type="submit"
             disabled={submitting || !formDate || !formNav.trim()}
+            aria-busy={submitting}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+            {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {isEditing ? "Save changes" : "Record NAV"}
           </button>
         </form>

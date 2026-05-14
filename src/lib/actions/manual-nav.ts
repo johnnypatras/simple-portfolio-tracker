@@ -137,7 +137,11 @@ export async function upsertManualNav(input: ManualNavInput): Promise<void> {
       .single();
     if (assetRes.error) {
       if (assetRes.error.code === PGRST_NO_ROWS) {
-        throw new Error("Asset not found or not yours");
+        // Drop "or not yours" disambiguation — would let an attacker enumerate
+        // other users' asset UUIDs by probing for known-vs-unknown error text.
+        // Combined with RLS scoping the SELECT to auth.uid(), the user can
+        // already only see their own assets — the message just needs to match.
+        throw new Error("Asset not found");
       }
       throw new Error(`Failed to load asset: ${assetRes.error.message}`);
     }
