@@ -4,12 +4,16 @@ import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef, SortDirection } from "@/lib/column-config";
 export type { SortDirection } from "@/lib/column-config";
 import { formatCurrency, formatQuantity } from "@/lib/format";
+import { navStaleness } from "@/lib/manual-nav";
 import type {
   StockAssetWithPositions,
   AssetCategory,
   YahooStockPriceData,
   YahooDividendMap,
 } from "@/lib/types";
+
+/** Map of manual asset id → latest NAV effective_date, for staleness display. */
+export type LatestNavDateByAssetId = Map<string, string>;
 
 // ── Computed row type (asset + price data) ───────────────────
 
@@ -461,8 +465,10 @@ export function buildStockSubcategoryGroups(rows: StockRow[]): StockSubcategoryG
 export function getStockColumns(handlers: {
   onEdit: (asset: StockAssetWithPositions) => void;
   onDelete: (id: string, name: string) => void;
+  onEditNav?: (asset: StockAssetWithPositions) => void;
   isExpanded: (id: string) => boolean;
   toggleExpand: (id: string) => void;
+  latestNavDates?: LatestNavDateByAssetId;
 }): ColumnDef<StockRow>[] {
   return [
     {
@@ -591,9 +597,73 @@ export function getStockColumns(handlers: {
       label: "Price",
       header: "Price",
       align: "right",
-      width: "w-32",
-      renderCell: (row) =>
-        row.pricePerShare > 0 ? (
+      width: "w-36",
+      renderCell: (row) => {
+        // Manual NAV asset: show pen icon + staleness, no 24h change
+        if (row.asset.kind === "manual") {
+          const lastDate = handlers.latestNavDates?.get(row.asset.id) ?? null;
+          const stale = lastDate ? navStaleness(lastDate) : null;
+          const isStale = stale && stale.daysAgo > 45;
+          return row.pricePerShare > 0 ? (
+            <div>
+              <div className="flex items-center justify-end gap-1.5">
+                <span className="text-sm tabular-nums text-zinc-300">
+                  {formatCurrency(row.pricePerShare, row.asset.currency)}
+                </span>
+                {handlers.onEditNav && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlers.onEditNav!(row.asset);
+                    }}
+                    className="p-0.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/50 rounded transition-colors"
+                    aria-label={`Update NAV for ${row.asset.ticker}`}
+                    title="Update NAV"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              {stale && (
+                <span
+                  className={`block text-[10px] tabular-nums ${
+                    isStale ? "text-amber-400" : "text-zinc-500"
+                  }`}
+                  title={isStale ? "NAV is older than 45 days — consider updating" : undefined}
+                >
+                  Updated {stale.label}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-end gap-1.5">
+              <span
+                className="inline-flex items-center gap-1 text-xs text-amber-500/80"
+                title="No NAV recorded yet — click the pencil to add one"
+              >
+                <AlertTriangle className="w-3 h-3" />
+                No NAV
+              </span>
+              {handlers.onEditNav && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlers.onEditNav!(row.asset);
+                  }}
+                  className="p-0.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/50 rounded transition-colors"
+                  aria-label={`Add NAV for ${row.asset.ticker}`}
+                  title="Add first NAV"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          );
+        }
+        // Yahoo asset: existing behavior
+        return row.pricePerShare > 0 ? (
           <div>
             <span className="text-sm tabular-nums text-zinc-300">
               {formatCurrency(row.pricePerShare, row.asset.currency)}
@@ -615,7 +685,8 @@ export function getStockColumns(handlers: {
             <AlertTriangle className="w-3 h-3" />
             Unavailable
           </span>
-        ),
+        );
+      },
     },
     {
       key: "shares",

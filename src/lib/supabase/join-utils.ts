@@ -20,3 +20,23 @@ export function pickJoinedName(v: unknown): string | null {
   }
   return (v as { name?: string }).name ?? null;
 }
+
+/**
+ * Generic counterpart to `pickJoinedName` for joined records where the
+ * caller needs more than just the `name` field. Same PostgREST quirk —
+ * the generated types widen single-row foreign-key joins to arrays.
+ *
+ * Returns the joined row (or first element of the array) as `T`, or `null`
+ * if the relation is null/empty.
+ *
+ * @example
+ *   const sa = pickJoinedRecord<{ kind: string; currency: string }>(row.stock_assets);
+ *   if (sa?.kind === "manual") { ... }
+ */
+export function pickJoinedRecord<T>(v: unknown): T | null {
+  if (v == null) return null;
+  if (Array.isArray(v)) {
+    return ((v[0] as T | undefined) ?? null);
+  }
+  return v as T;
+}

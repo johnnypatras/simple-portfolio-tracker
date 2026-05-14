@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
 const AddStockModal = dynamic(() => import("./add-stock-modal").then(m => m.AddStockModal), { ssr: false });
+const AddManualNavModal = dynamic(() => import("./add-manual-nav-modal").then(m => m.AddManualNavModal), { ssr: false });
+const UpdateNavModal = dynamic(() => import("./update-nav-modal").then(m => m.UpdateNavModal), { ssr: false });
 import { StockPositionEditor } from "./stock-position-editor";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import type { TransferMode } from "@/lib/types";
@@ -77,12 +79,21 @@ interface StockTableProps {
   depositBreakdown?: { name: string; value: number }[];
   /** Trailing 12-month dividend data per Yahoo ticker */
   dividends?: YahooDividendMap;
+  /** Latest manual NAV effective_date per asset id, for staleness display */
+  latestManualNavDates?: Record<string, string>;
 }
 
-export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown, dividends }: StockTableProps) {
+export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown, dividends, latestManualNavDates }: StockTableProps) {
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
+  const [addManualOpen, setAddManualOpen] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [editingNavAsset, setEditingNavAsset] = useState<StockAssetWithPositions | null>(null);
+  const latestNavDatesMap = useMemo(
+    () => new Map(Object.entries(latestManualNavDates ?? {})),
+    [latestManualNavDates],
+  );
   const [buyOpen, setBuyOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<StockAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -343,8 +354,16 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
 
   // Column definitions (stable via useMemo)
   const columns = useMemo(
-    () => getStockColumns({ onEdit: handleEdit, onDelete: handleDelete, isExpanded, toggleExpand }),
-    [handleEdit, handleDelete, isExpanded, toggleExpand]
+    () =>
+      getStockColumns({
+        onEdit: handleEdit,
+        onDelete: handleDelete,
+        onEditNav: (asset) => setEditingNavAsset(asset),
+        isExpanded,
+        toggleExpand,
+        latestNavDates: latestNavDatesMap,
+      }),
+    [handleEdit, handleDelete, isExpanded, toggleExpand, latestNavDatesMap]
   );
 
   const {
@@ -531,13 +550,54 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               <TrendingUp className="w-3 h-3" />
               Buy
             </button>
-            <button
-              onClick={() => setAddOpen(true)}
-              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Add
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setAddMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={addMenuOpen}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Add
+                <ChevronDown className="w-3 h-3 opacity-80" />
+              </button>
+              {addMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-20"
+                    onClick={() => setAddMenuOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div
+                    role="menu"
+                    className="absolute right-0 z-30 mt-1 w-60 rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl overflow-hidden"
+                  >
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        setAddOpen(true);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-zinc-800/60 transition-colors"
+                    >
+                      <div className="text-xs font-medium text-zinc-100">Stock / ETF</div>
+                      <div className="text-[10px] text-zinc-500">Search Yahoo Finance</div>
+                    </button>
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        setAddManualOpen(true);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-zinc-800/60 transition-colors border-t border-zinc-800"
+                    >
+                      <div className="text-xs font-medium text-zinc-100">Manual NAV asset</div>
+                      <div className="text-[10px] text-zinc-500">ELTIF, SICAV, closed-end fund</div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1258,6 +1318,17 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
       {!isReadOnly && (
         <>
           <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
+          <AddManualNavModal open={addManualOpen} onClose={() => setAddManualOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
+          {editingNavAsset && (
+            <UpdateNavModal
+              open={!!editingNavAsset}
+              onClose={() => {
+                setEditingNavAsset(null);
+                router.refresh();
+              }}
+              asset={editingNavAsset}
+            />
+          )}
           <TransferDialog
             open={buyOpen}
             onClose={() => setBuyOpen(false)}

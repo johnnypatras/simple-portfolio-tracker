@@ -7,6 +7,7 @@ import { getFXRatesSafe } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { StockTable } from "@/components/stocks/stock-table";
+import { StaleNavBanner } from "@/components/stocks/stale-nav-banner";
 import { MobileMenuButton } from "@/components/sidebar";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getLatestManualNavsAt, partitionStockAssetsForPricing, injectManualNavPrices } from "@/lib/manual-nav";
@@ -61,6 +62,18 @@ export default async function StocksPage() {
           <h1 className="text-2xl font-semibold text-zinc-100">Equities</h1>
         </div>
       </div>
+      {manualStockAssets.length > 0 && (
+        <StaleNavBanner
+          assets={manualStockAssets.map((a) => {
+            const nav = manualNavs.find((n) => n.asset_id === a.id);
+            return {
+              ticker: a.ticker,
+              name: a.name,
+              latestNavDate: nav?.effective_date ?? null,
+            };
+          })}
+        />
+      )}
       <StockTable
         assets={assets}
         brokers={brokers}
@@ -71,6 +84,9 @@ export default async function StocksPage() {
         fxValueChange24h={summary.stocksFxValueChange24h}
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
+        latestManualNavDates={Object.fromEntries(
+          manualNavs.map((n) => [n.asset_id, n.effective_date])
+        )}
       />
     </div>
   );

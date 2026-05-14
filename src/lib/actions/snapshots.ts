@@ -13,6 +13,7 @@ import {
   type ManualPositionRow,
   type ManualNavRow,
 } from "@/lib/portfolio/manual-nav-augmentation";
+import { pickJoinedRecord } from "@/lib/supabase/join-utils";
 
 /**
  * Save (upsert) today's portfolio snapshot.
@@ -168,10 +169,11 @@ export async function getSnapshots(
 
   // Project joined-relation rows into the pure-module shape. supabase-js
   // returns the joined relation as either an object or a single-element array
-  // depending on the PostgREST relationship metadata — normalize at this
-  // boundary so the augmentation module never has to know.
+  // depending on the PostgREST relationship metadata — `pickJoinedRecord`
+  // normalizes both. Done at this boundary so the augmentation module never
+  // has to know about the PostgREST quirk.
   const manualPositions: ManualPositionRow[] = (manualPositionsRes.data ?? []).map((p) => {
-    const sa = Array.isArray(p.stock_assets) ? p.stock_assets[0] : p.stock_assets;
+    const sa = pickJoinedRecord<{ currency: string }>(p.stock_assets);
     return {
       stock_asset_id: p.stock_asset_id as string,
       quantity: Number(p.quantity),
