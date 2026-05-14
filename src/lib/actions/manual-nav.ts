@@ -1,10 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createStockAsset } from "@/lib/actions/stocks";
+import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { logActivity } from "@/lib/actions/activity-log";
 import { captureAction } from "@/lib/actions/with-sentry";
+import { formatCurrency } from "@/lib/format";
+import { PGRST_NO_ROWS } from "@/lib/supabase/error-codes";
 import {
   validateUUID,
   validateAmount,
@@ -42,13 +44,31 @@ export async function addManualNavAsset(
     if (!user) throw new Error("Not authenticated");
 
     // Force kind='manual' regardless of caller input. yahoo_ticker should be null;
-    // the modal in PR 4 won't expose a Yahoo ticker field for the manual flow.
+    // the manual-NAV modal doesn't expose a Yahoo ticker field for this flow.
     const assetId = await createStockAsset(
       { ...input, kind: "manual", yahoo_ticker: null },
       { isAdjustment: opts?.isAdjustment, effectiveDate: opts?.effectiveDate },
     );
 
+    // Defense-in-depth: createStockAsset may return an EXISTING asset_id on
+    // unique-violation reuse. If that existing asset is kind='yahoo' (user
+    // previously created the same ticker as a Yahoo asset), inserting a NAV
+    // row against it would be silently wrong — the kind='manual' filter
+    // downstream wouldn't see it. Verify the returned asset's kind before
+    // touching manual_nav_updates.
     if (opts?.initialNav) {
+      const { data: assetRow, error: assetErr } = await supabase
+        .from("stock_assets")
+        .select("kind")
+        .eq("id", assetId)
+        .single();
+      if (assetErr) throw new Error(`Failed to verify asset kind: ${assetErr.message}`);
+      if (assetRow.kind !== "manual") {
+        throw new Error(
+          `Cannot record manual NAV: asset "${input.ticker}" already exists as a Yahoo-priced asset. Delete or rename the existing asset first.`,
+        );
+      }
+
       const { nav, effectiveDate, note } = opts.initialNav;
       validateAmount(nav, "Initial NAV");
       if (nav <= 0) throw new Error("Initial NAV must be positive");
@@ -72,12 +92,13 @@ export async function addManualNavAsset(
         entity_id: assetId,
         entity_table: "manual_nav_updates",
         entity_name: `${input.ticker} NAV ${effectiveDate}`,
-        description: `Initial NAV: ${input.currency ?? "USD"} ${nav.toFixed(2)} as of ${effectiveDate}`,
+        description: `Initial NAV: ${formatCurrency(nav, input.currency ?? "USD")} as of ${effectiveDate}`,
+        is_adjustment: opts?.isAdjustment,
+        effective_date: opts?.effectiveDate,
       });
     }
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/stocks");
+    revalidateDashboard();
     return assetId;
   });
 }
@@ -104,24 +125,35 @@ export async function upsertManualNav(input: ManualNavInput): Promise<void> {
 
     // Look up the asset for naming the activity-log entry (also serves as an
     // ownership probe — RLS returns no row for foreign-owned asset_id).
-    const { data: asset } = await supabase
+    // Use .single() and inspect the error code to distinguish "not found /
+    // not yours" (PGRST116) from a real DB error — the previous behavior
+    // conflated five failure modes into one user message.
+    const assetRes = await supabase
       .from("stock_assets")
       .select("ticker, currency, kind")
       .eq("id", input.asset_id)
       .is("deleted_at", null)
       .single();
-    if (!asset) throw new Error("Asset not found or not yours");
+    if (assetRes.error) {
+      if (assetRes.error.code === PGRST_NO_ROWS) {
+        throw new Error("Asset not found or not yours");
+      }
+      throw new Error(`Failed to load asset: ${assetRes.error.message}`);
+    }
+    const asset = assetRes.data;
     if (asset.kind !== "manual") throw new Error("Cannot record NAV for a Yahoo-priced asset");
 
     // Detect whether the row exists (drives action: 'created' vs 'updated')
-    const { data: existing } = await supabase
+    const existingRes = await supabase
       .from("manual_nav_updates")
       .select("id, nav")
       .eq("asset_id", input.asset_id)
       .eq("effective_date", input.effective_date)
       .maybeSingle();
+    if (existingRes.error) throw new Error(`Failed to check existing NAV: ${existingRes.error.message}`);
+    const existing = existingRes.data;
 
-    const { error } = await supabase
+    const { data: upserted, error } = await supabase
       .from("manual_nav_updates")
       .upsert(
         {
@@ -132,22 +164,35 @@ export async function upsertManualNav(input: ManualNavInput): Promise<void> {
           note: input.note?.trim() || null,
         },
         { onConflict: "asset_id,effective_date" },
-      );
+      )
+      .select("id")
+      .single();
     if (error) throw new Error(`Failed to record NAV: ${error.message}`);
 
     await logActivity({
       action: existing ? "updated" : "created",
       entity_type: "manual_nav_update",
-      entity_id: input.asset_id,
+      // entity_id now references the NAV row PK (manual_nav_updates.id) so
+      // entity_table + entity_id form a real FK to the audit row, matching
+      // the project's general convention (e.g. stocks.ts: entity_id = data.id
+      // for entity_table 'stock_assets').
+      entity_id: upserted?.id ?? input.asset_id,
       entity_table: "manual_nav_updates",
       entity_name: `${asset.ticker} NAV ${input.effective_date}`,
       description: existing
-        ? `NAV revised: ${asset.currency} ${existing.nav} → ${input.nav.toFixed(2)} (${input.effective_date})`
-        : `NAV recorded: ${asset.currency} ${input.nav.toFixed(2)} as of ${input.effective_date}`,
+        ? `NAV revised: ${formatCurrency(Number(existing.nav), asset.currency)} → ${formatCurrency(input.nav, asset.currency)} (${input.effective_date})`
+        : `NAV recorded: ${formatCurrency(input.nav, asset.currency)} as of ${input.effective_date}`,
+      before_snapshot: existing ?? undefined,
+      after_snapshot: {
+        id: upserted?.id,
+        asset_id: input.asset_id,
+        effective_date: input.effective_date,
+        nav: input.nav,
+        note: input.note?.trim() || null,
+      },
     });
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/stocks");
+    revalidateDashboard();
   });
 }
 
@@ -167,37 +212,45 @@ export async function deleteManualNav(input: {
     validateUUID(input.asset_id, "Asset ID");
     validateDate(input.effective_date, "Effective date");
 
-    const { data: row } = await supabase
+    // Probe for the row to delete. Disambiguate not-found (PGRST116) from
+    // real DB error so the user sees a clear message instead of "NAV entry
+    // not found" on a connection failure.
+    const rowRes = await supabase
       .from("manual_nav_updates")
-      .select("nav")
+      .select("id, nav, note")
       .eq("asset_id", input.asset_id)
       .eq("effective_date", input.effective_date)
       .maybeSingle();
+    if (rowRes.error) throw new Error(`Failed to load NAV entry: ${rowRes.error.message}`);
+    const row = rowRes.data;
     if (!row) throw new Error("NAV entry not found");
 
-    const { data: asset } = await supabase
+    const assetRes = await supabase
       .from("stock_assets")
       .select("ticker, currency")
       .eq("id", input.asset_id)
-      .single();
+      .maybeSingle();
+    if (assetRes.error) throw new Error(`Failed to load asset: ${assetRes.error.message}`);
+    const asset = assetRes.data;
 
     const { error } = await supabase
       .from("manual_nav_updates")
       .delete()
       .eq("asset_id", input.asset_id)
-      .eq("effective_date", input.effective_date);
+      .eq("effective_date", input.effective_date)
+      .eq("user_id", user.id); // Defense-in-depth: explicit user_id filter on top of RLS
     if (error) throw new Error(`Failed to delete NAV: ${error.message}`);
 
     await logActivity({
       action: "removed",
       entity_type: "manual_nav_update",
-      entity_id: input.asset_id,
+      entity_id: row.id,
       entity_table: "manual_nav_updates",
       entity_name: `${asset?.ticker ?? "?"} NAV ${input.effective_date}`,
-      description: `NAV removed: ${asset?.currency ?? ""} ${row.nav} (${input.effective_date})`,
+      description: `NAV removed: ${asset?.currency ?? ""} ${formatCurrency(Number(row.nav), asset?.currency ?? "USD")} (${input.effective_date})`,
+      before_snapshot: row,
     });
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/stocks");
+    revalidateDashboard();
   });
 }

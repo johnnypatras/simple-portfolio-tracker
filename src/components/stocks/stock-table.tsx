@@ -390,12 +390,17 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
       getStockColumns({
         onEdit: handleEdit,
         onDelete: handleDelete,
-        onEditNav: (asset) => setEditingNavAsset(asset),
+        // Gate the pen-icon CTA by isReadOnly. The UpdateNavModal itself is
+        // already gated, but if onEditNav fires on a shared view the state
+        // mutates without a modal opening — silent failure. Withholding the
+        // handler also hides the pen icon entirely (stock-columns renders
+        // conditionally on `handlers.onEditNav`).
+        onEditNav: isReadOnly ? undefined : (asset) => setEditingNavAsset(asset),
         isExpanded,
         toggleExpand,
         latestNavDates: latestNavDatesMap,
       }),
-    [handleEdit, handleDelete, isExpanded, toggleExpand, latestNavDatesMap]
+    [handleEdit, handleDelete, isExpanded, toggleExpand, latestNavDatesMap, isReadOnly]
   );
 
   const {

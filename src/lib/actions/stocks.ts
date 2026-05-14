@@ -10,7 +10,7 @@ import type {
   Broker,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
-import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin, validateTags } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin, validateTags, validateCurrency } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
@@ -89,6 +89,9 @@ export async function createStockAsset(input: StockAssetInput, opts?: { isAdjust
   if (input.yahoo_ticker) validateYahooTicker(input.yahoo_ticker);
   const isin = validateIsin(input.isin);
   if (input.subcategory?.trim()) validateName(input.subcategory.trim(), 100, "Subcategory");
+  // Defense-in-depth: enforce ISO 4217 currency format server-side. UI
+  // restricts to 3 uppercase chars but server actions can be called directly.
+  if (input.currency) validateCurrency(input.currency);
 
   const category = input.category ?? "individual_stock";
   const tags = validateTags(input.tags);

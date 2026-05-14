@@ -109,23 +109,38 @@ export async function getComparisonData(
   const allTickersWithEurUsd = [...new Set([...allYahooTickers, "EURUSD=X"])];
   const admin = createAdminClient();
   const today = new Date().toISOString().slice(0, 10);
-  const [cryptoPrices, allStockPrices, fxRates, fxRatesUsd, fxRatesEur, viewerNavs, ownerNavs] =
-    await Promise.all([
-      getPrices(allCoinIds),
-      getStockPrices(allTickersWithEurUsd),
-      getFXRatesSafe(viewerCurrency, allCurrencies),
-      getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
-      getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
-      // Viewer's manual NAVs: authenticated client → RLS scopes to viewer
-      viewerPartition.manualStockAssets.length > 0
-        ? getLatestManualNavsAt(supabase, today)
-        : Promise.resolve([]),
-      // Owner's manual NAVs: admin client + explicit owner user_id (viewer is
-      // not the owner; RLS via auth.uid() would return zero rows)
-      ownerPartition.manualStockAssets.length > 0
-        ? getLatestManualNavsAt(admin, today, ownerData.share.owner_id)
-        : Promise.resolve([]),
-    ]);
+
+  // Wrap the parallel block in try/catch so a NAV-fetch failure surfaces a
+  // specific, actionable error to the user instead of a generic 500. Each
+  // upstream that can throw (getLatestManualNavsAt is the only one — the
+  // FXSafe / getPrices / getStockPrices variants fall back internally)
+  // propagates its message through.
+  let cryptoPrices, allStockPrices, fxRates, fxRatesUsd, fxRatesEur, viewerNavs, ownerNavs;
+  try {
+    [cryptoPrices, allStockPrices, fxRates, fxRatesUsd, fxRatesEur, viewerNavs, ownerNavs] =
+      await Promise.all([
+        getPrices(allCoinIds),
+        getStockPrices(allTickersWithEurUsd),
+        getFXRatesSafe(viewerCurrency, allCurrencies),
+        getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
+        getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
+        // Viewer's manual NAVs: authenticated client → RLS scopes to viewer
+        viewerPartition.manualStockAssets.length > 0
+          ? getLatestManualNavsAt(supabase, today)
+          : Promise.resolve([]),
+        // Owner's manual NAVs: admin client + explicit owner user_id (viewer is
+        // not the owner; RLS via auth.uid() would return zero rows)
+        ownerPartition.manualStockAssets.length > 0
+          ? getLatestManualNavsAt(admin, today, ownerData.share.owner_id)
+          : Promise.resolve([]),
+      ]);
+  } catch (err) {
+    console.error("[comparison] Failed to load prices/NAVs:", err);
+    return {
+      ok: false,
+      error: `Comparison data unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
 
   const eurUsdChange24h = allStockPrices["EURUSD=X"]?.change24h ?? 0;
   // Separate EURUSD=X from stock prices passed to aggregation

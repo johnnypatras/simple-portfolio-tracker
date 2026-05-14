@@ -617,7 +617,7 @@ export function getStockColumns(handlers: {
                       e.stopPropagation();
                       handlers.onEditNav!(row.asset);
                     }}
-                    className="p-0.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/50 rounded transition-colors"
+                    className="p-1.5 -m-1 inline-flex items-center justify-center min-w-6 min-h-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 rounded transition-colors"
                     aria-label={`Update NAV for ${row.asset.ticker}`}
                     title="Update NAV"
                   >
@@ -627,19 +627,21 @@ export function getStockColumns(handlers: {
               </div>
               {stale && (
                 <span
-                  className={`block text-[10px] tabular-nums ${
-                    isStale ? "text-amber-400" : "text-zinc-500"
+                  className={`block text-[10px] tabular-nums inline-flex items-center gap-1 ${
+                    isStale ? "text-amber-400" : "text-zinc-400"
                   }`}
                   title={isStale ? "NAV is older than 45 days — consider updating" : undefined}
                 >
-                  Updated {stale.label}
+                  {/* Icon prefix on stale state — multi-channel signal (not color alone) per WCAG 1.4.1. */}
+                  {isStale && <AlertTriangle className="w-2.5 h-2.5" aria-hidden="true" />}
+                  {isStale ? "Stale — " : "Updated "}{stale.label}
                 </span>
               )}
             </div>
           ) : (
             <div className="flex items-center justify-end gap-1.5">
               <span
-                className="inline-flex items-center gap-1 text-xs text-amber-500/80"
+                className="inline-flex items-center gap-1 text-xs text-amber-400"
                 title="No NAV recorded yet — click the pencil to add one"
               >
                 <AlertTriangle className="w-3 h-3" />
@@ -652,7 +654,7 @@ export function getStockColumns(handlers: {
                     e.stopPropagation();
                     handlers.onEditNav!(row.asset);
                   }}
-                  className="p-0.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/50 rounded transition-colors"
+                  className="p-1.5 -m-1 inline-flex items-center justify-center min-w-6 min-h-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 rounded transition-colors"
                   aria-label={`Add NAV for ${row.asset.ticker}`}
                   title="Add first NAV"
                 >
@@ -679,7 +681,7 @@ export function getStockColumns(handlers: {
           </div>
         ) : (
           <span
-            className="inline-flex items-center gap-1 text-xs text-amber-500/80"
+            className="inline-flex items-center gap-1 text-xs text-amber-400"
             title="Price unavailable — ticker may be delisted or not supported by Yahoo Finance"
           >
             <AlertTriangle className="w-3 h-3" />
