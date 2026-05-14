@@ -11,7 +11,7 @@ import { getSnapshots } from "@/lib/actions/snapshots";
 import { getProfile } from "@/lib/actions/profile";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { toCsv } from "@/lib/csv";
-import { ALL_SNAPSHOTS_DAYS, MAX_QUERY_LIMIT } from "@/lib/constants";
+import { ALL_SNAPSHOTS_DAYS, MAX_QUERY_LIMIT, CURRENT_BACKUP_VERSION } from "@/lib/constants";
 import { getMyShares } from "@/lib/actions/shares";
 import type {
   BankAccount,
@@ -73,11 +73,17 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
 
   // v5: manual_nav_updates for kind='manual' stock_assets. Owned by the user
   // (FK + RLS); explicit user_id filter for defense-in-depth.
-  const { data: manualNavRows } = await supabase
+  // Defense: destructure error and throw so silent backup-data-loss is
+  // impossible — a successful export with a swallowed query error would
+  // produce an apparently-valid backup that's missing NAV history.
+  const { data: manualNavRows, error: manualNavErr } = await supabase
     .from("manual_nav_updates")
     .select("id, user_id, asset_id, effective_date, nav, note, created_at")
     .eq("user_id", uid)
     .order("effective_date", { ascending: true });
+  if (manualNavErr) {
+    throw new Error(`Failed to export manual NAV updates: ${manualNavErr.message}`);
+  }
   const manualNavUpdates: ManualNavUpdate[] = (manualNavRows ?? []).map((r) => ({
     id: r.id as string,
     user_id: r.user_id as string,
@@ -107,7 +113,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
   }
 
   return {
-    version: 5,
+    version: CURRENT_BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     primaryCurrency: profile.primary_currency,
     institutions,

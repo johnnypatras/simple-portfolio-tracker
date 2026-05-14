@@ -259,11 +259,18 @@ Deno.serve(async (req: Request) => {
     // role bypasses RLS so a single batched query covers all users. JS-side
     // groupBy keeps "max effective_date per (user, asset)" since the SQL
     // function get_latest_manual_navs_at takes a single user_id per call.
-    const { data: manualNavsRaw } = await supabase
+    // Defense: destructure and throw on error so a silent fetch failure
+    // doesn't silently write wrong snapshots (manual contributions = 0) to
+    // the entire fleet on the day the query breaks.
+    const { data: manualNavsRaw, error: manualNavsErr } = await supabase
       .from("manual_nav_updates")
       .select("user_id, asset_id, effective_date, nav")
       .lte("effective_date", today)
       .in("user_id", userIds);
+
+    if (manualNavsErr) {
+      throw new Error(`Failed to load manual NAV history for cron: ${manualNavsErr.message}`);
+    }
 
     const manualNavByUserAsset = new Map<string, number>(); // `${user_id}:${asset_id}` → latest nav
     const manualNavMaxDate = new Map<string, string>();

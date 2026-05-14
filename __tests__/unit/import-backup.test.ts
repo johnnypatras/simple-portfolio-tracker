@@ -171,8 +171,68 @@ describe("validateBackup", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("rejects v5 (unsupported future version)", async () => {
+  it("accepts v5 with manualNavUpdates present (round-trip)", async () => {
+    const data = {
+      ...minimalV4(),
+      version: 5,
+      manualNavUpdates: [
+        {
+          asset_id: "11111111-1111-1111-1111-111111111111",
+          effective_date: "2026-04-01",
+          nav: 105.5,
+          note: "Q1 2026 fund letter",
+        },
+      ],
+    };
+    const result = await validateBackup(data);
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts v5 without manualNavUpdates (backward-compat for empty case)", async () => {
     const data = { ...minimalV4(), version: 5 };
+    const result = await validateBackup(data);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects v5 with malformed manualNavUpdates (string instead of array)", async () => {
+    const data = { ...minimalV4(), version: 5, manualNavUpdates: "not-an-array" };
+    const result = await validateBackup(data);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/manualNavUpdates.*array/);
+    }
+  });
+
+  it("rejects v5 with negative or non-finite nav", async () => {
+    const negResult = await validateBackup({
+      ...minimalV4(),
+      version: 5,
+      manualNavUpdates: [{ asset_id: "x", effective_date: "2026-01-01", nav: -1 }],
+    });
+    expect(negResult.ok).toBe(false);
+
+    const nanResult = await validateBackup({
+      ...minimalV4(),
+      version: 5,
+      manualNavUpdates: [{ asset_id: "x", effective_date: "2026-01-01", nav: NaN }],
+    });
+    expect(nanResult.ok).toBe(false);
+  });
+
+  it("rejects v5 with malformed date", async () => {
+    const result = await validateBackup({
+      ...minimalV4(),
+      version: 5,
+      manualNavUpdates: [{ asset_id: "x", effective_date: "2026-13-99", nav: 100 }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/effective_date/);
+    }
+  });
+
+  it("rejects v6 (unsupported future version)", async () => {
+    const data = { ...minimalV4(), version: 6 };
     const result = await validateBackup(data);
     expect(result.ok).toBe(false);
     if (!result.ok) {
