@@ -8,6 +8,11 @@ import type { Database } from "@/types/database";
 /** Round to 2 decimal places (matching Edge Function's round2) */
 import { round2 } from "@/lib/format";
 import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
+import {
+  augmentSnapshotsWithManualNavs,
+  type ManualPositionRow,
+  type ManualNavRow,
+} from "@/lib/portfolio/manual-nav-augmentation";
 
 /**
  * Save (upsert) today's portfolio snapshot.
@@ -131,6 +136,9 @@ export async function getSnapshots(
   // stocks_value; without augmentation the chart shows an artificial jump
   // between the last cron snapshot and today's live value (assemble.ts
   // injection lives only for the live point).
+  //
+  // Defense-in-depth: both joined queries carry an explicit user_id filter on
+  // top of RLS, so a misconfigured policy can't widen the result set.
   const [snapshotsRes, manualPositionsRes, manualNavsRes] = await Promise.all([
     supabase
       .from("portfolio_snapshots")
@@ -140,12 +148,15 @@ export async function getSnapshots(
       .limit(MAX_SNAPSHOTS_LIMIT),
     supabase
       .from("stock_positions")
-      .select("stock_asset_id, quantity, stock_assets!inner(kind, currency, deleted_at)")
+      .select("stock_asset_id, quantity, stock_assets!inner(kind, currency, user_id, deleted_at)")
+      .eq("stock_assets.user_id", user.id)
+      .eq("stock_assets.kind", "manual")
       .is("stock_assets.deleted_at", null),
     supabase
       .from("manual_nav_updates")
       .select("asset_id, effective_date, nav")
-      .order("effective_date", { ascending: false }),
+      .eq("user_id", user.id)
+      .order("effective_date", { ascending: true }),
   ]);
 
   if (snapshotsRes.error) {
@@ -155,83 +166,26 @@ export async function getSnapshots(
 
   const raw = (snapshotsRes.data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
 
-  // Filter joined rows to kind='manual' only. supabase-js returns the joined
-  // relation as either an object or single-element array depending on the
-  // PostgREST shape — normalize both.
-  const manualPositions = (manualPositionsRes.data ?? [])
-    .filter((p) => {
-      const sa = Array.isArray(p.stock_assets) ? p.stock_assets[0] : p.stock_assets;
-      return sa?.kind === "manual";
-    });
-
-  if (manualPositions.length === 0) return raw;
-  return augmentSnapshotsWithManualNavs(raw, manualPositions as ManualPositionRow[], manualNavsRes.data ?? []);
-}
-
-/**
- * In-memory augmentation: for each past snapshot, add `qty × (latest NAV
- * at-or-before snapshot_date)` for every kind='manual' stock_position the
- * user owns. Native NAV currency is the asset's `currency` field.
- *
- * FX policy: same-currency contributions add directly to stocks_value_*. For
- * cross-currency (rare — manual assets in USD on EUR primary or vice versa)
- * we currently add the native amount to both USD and EUR columns as a 1:1
- * approximation. The chart's display currency selects from these so the
- * EUR-ELTIF-on-EUR-primary case (the common one) is exact; cross-currency
- * cases land within a few percent. A historical-FX lookup would be the
- * thorough fix but is out of scope until the volume justifies the complexity.
- */
-type ManualPositionRow = {
-  stock_asset_id: string;
-  quantity: number;
-  stock_assets: { kind: string; currency: string; deleted_at: string | null } | { kind: string; currency: string; deleted_at: string | null }[] | null;
-};
-
-function augmentSnapshotsWithManualNavs(
-  snapshots: PortfolioSnapshot[],
-  manualPositions: ManualPositionRow[],
-  navs: { asset_id: string; effective_date: string; nav: number }[],
-): PortfolioSnapshot[] {
-  // Index NAVs by asset_id; already sorted DESC by the query.
-  const navsByAsset = new Map<string, { date: string; nav: number }[]>();
-  for (const row of navs) {
-    if (!navsByAsset.has(row.asset_id)) navsByAsset.set(row.asset_id, []);
-    navsByAsset.get(row.asset_id)!.push({ date: row.effective_date, nav: Number(row.nav) });
-  }
-  const navAtOrBefore = (assetId: string, snapshotDate: string): number | null => {
-    const list = navsByAsset.get(assetId) ?? [];
-    for (const n of list) if (n.date <= snapshotDate) return n.nav;
-    return null;
-  };
-
-  return snapshots.map<PortfolioSnapshot>((snap) => {
-    const byCurrency = new Map<string, number>();
-    for (const pos of manualPositions) {
-      const nav = navAtOrBefore(pos.stock_asset_id, snap.snapshot_date);
-      if (nav === null) continue;
-      const sa = Array.isArray(pos.stock_assets) ? pos.stock_assets[0] : pos.stock_assets;
-      const currency = sa?.currency ?? "USD";
-      const contribution = Number(pos.quantity) * nav;
-      byCurrency.set(currency, (byCurrency.get(currency) ?? 0) + contribution);
-    }
-    if (byCurrency.size === 0) return snap;
-
-    let manualUsd = 0;
-    let manualEur = 0;
-    for (const [currency, amount] of byCurrency) {
-      if (currency === "USD") manualUsd += amount;
-      else if (currency === "EUR") manualEur += amount;
-      else { manualUsd += amount; manualEur += amount; }  // 1:1 fallback for other currencies
-    }
-
+  // Project joined-relation rows into the pure-module shape. supabase-js
+  // returns the joined relation as either an object or a single-element array
+  // depending on the PostgREST relationship metadata — normalize at this
+  // boundary so the augmentation module never has to know.
+  const manualPositions: ManualPositionRow[] = (manualPositionsRes.data ?? []).map((p) => {
+    const sa = Array.isArray(p.stock_assets) ? p.stock_assets[0] : p.stock_assets;
     return {
-      ...snap,
-      stocks_value_usd: (snap.stocks_value_usd ?? 0) + manualUsd,
-      stocks_value_eur: (snap.stocks_value_eur ?? 0) + manualEur,
-      total_value_usd: (snap.total_value_usd ?? 0) + manualUsd,
-      total_value_eur: (snap.total_value_eur ?? 0) + manualEur,
+      stock_asset_id: p.stock_asset_id as string,
+      quantity: Number(p.quantity),
+      currency: sa?.currency ?? "USD",
     };
   });
+
+  const manualNavs: ManualNavRow[] = (manualNavsRes.data ?? []).map((n) => ({
+    asset_id: n.asset_id as string,
+    effective_date: n.effective_date as string,
+    nav: Number(n.nav),
+  }));
+
+  return augmentSnapshotsWithManualNavs(raw, manualPositions, manualNavs);
 }
 
 type PortfolioSnapshotRow = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
