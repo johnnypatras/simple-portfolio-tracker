@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useId, useCallback } from "react";
-import { Loader2, Plus, Pencil, Trash2, X } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { upsertManualNav, deleteManualNav } from "@/lib/actions/manual-nav";
 import { navStaleness } from "@/lib/manual-nav";
+import { formatCurrency } from "@/lib/format";
 import type { StockAssetWithPositions } from "@/lib/types";
 
 interface UpdateNavModalProps {
@@ -122,18 +123,23 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
     }
   }
 
+  // In-modal delete confirmation. Replaces native confirm() which broke the
+  // FocusTrap and shipped unstyled OS chrome inside the dark-themed modal.
+  const [confirmDeleteDate, setConfirmDeleteDate] = useState<string | null>(null);
+
   async function handleDelete(row: NavRow) {
-    if (!confirm(`Delete NAV entry for ${row.effective_date} (${asset.currency} ${row.nav})?`)) return;
     setError(null);
     try {
       await deleteManualNav({
         asset_id: asset.id,
         effective_date: row.effective_date,
       });
-      toast.success("NAV entry removed");
+      toast.success(`${asset.ticker} NAV entry removed`);
+      setConfirmDeleteDate(null);
       await fetchNavs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete NAV");
+      setConfirmDeleteDate(null);
     }
   }
 
@@ -149,17 +155,18 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
         <div className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800/50 rounded-lg px-3 py-2">
           <div>
             <div className="text-sm font-medium text-zinc-100">{asset.name}</div>
-            <div className="text-[10px] text-zinc-500">
+            <div className="text-[10px] text-zinc-400">
               {asset.ticker} · {asset.currency}
             </div>
           </div>
           {latest && (
             <div className="text-right">
               <div className="text-sm tabular-nums text-zinc-200">
-                {asset.currency} {latest.nav.toFixed(2)}
+                {formatCurrency(latest.nav, asset.currency)}
               </div>
-              <div className={`text-[10px] ${isStale ? "text-amber-400" : "text-zinc-500"}`}>
-                Updated {stale?.label}
+              <div className={`text-[10px] inline-flex items-center gap-1 ${isStale ? "text-amber-400" : "text-zinc-400"}`}>
+                {isStale && <AlertTriangle className="w-2.5 h-2.5" aria-hidden="true" />}
+                {isStale ? "Stale — " : "Updated "}{stale?.label}
               </div>
             </div>
           )}
@@ -188,7 +195,7 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
               <button
                 type="button"
                 onClick={cancelEdit}
-                className="text-[10px] text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1"
+                className="text-[10px] text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1"
               >
                 <X className="w-3 h-3" />
                 Cancel edit
@@ -211,7 +218,7 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-60"
               />
               {isEditing && (
-                <p className="text-[10px] text-zinc-500 mt-1">
+                <p className="text-[10px] text-zinc-400 mt-1">
                   Delete and re-add to change the date.
                 </p>
               )}
@@ -236,7 +243,7 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
 
           <div>
             <label htmlFor={`${id}-note`} className="block text-xs text-zinc-400 mb-1">
-              Note <span className="text-zinc-500">(optional, e.g. &quot;Q1 2026 fund letter&quot;)</span>
+              Note <span className="text-zinc-400">(optional, e.g. &quot;Q1 2026 fund letter&quot;)</span>
             </label>
             <input
               id={`${id}-note`}
@@ -268,28 +275,37 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
         {/* History list */}
         <div>
           <div className="text-xs font-medium text-zinc-300 mb-2">
-            History <span className="text-zinc-500 font-normal">({navs.length})</span>
+            History <span className="text-zinc-400 font-normal">({navs.length})</span>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-6 text-xs text-zinc-500">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            <div
+              className="flex items-center justify-center py-6 text-xs text-zinc-400"
+              role="status"
+              aria-busy="true"
+              aria-live="polite"
+            >
+              <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />
               Loading NAV history...
             </div>
           ) : navs.length === 0 ? (
-            <p className="text-xs text-zinc-500 text-center py-6">
+            <p className="text-xs text-zinc-400 text-center py-6" aria-live="polite">
               No NAV entries yet. Record the first one using the form above.
             </p>
           ) : (
-            <div className="max-h-72 overflow-y-auto rounded-lg border border-zinc-800/60 divide-y divide-zinc-800/50">
+            <ul
+              aria-label="NAV history"
+              className="max-h-72 overflow-y-auto rounded-lg border border-zinc-800/60 divide-y divide-zinc-800/50"
+            >
               {navs.map((row) => {
                 const isThisRowBeingEdited = editingDate === row.effective_date;
+                const isConfirmingDelete = confirmDeleteDate === row.effective_date;
                 return (
-                  <div
+                  <li
                     key={row.id}
                     className={`flex items-center justify-between px-3 py-2 hover:bg-zinc-800/20 transition-colors ${
                       isThisRowBeingEdited ? "bg-zinc-800/30" : ""
-                    }`}
+                    } ${isConfirmingDelete ? "bg-red-500/10" : ""}`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -297,39 +313,65 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
                           {row.effective_date}
                         </span>
                         <span className="text-sm tabular-nums font-medium text-zinc-100">
-                          {asset.currency} {row.nav.toFixed(2)}
+                          {formatCurrency(row.nav, asset.currency)}
                         </span>
                       </div>
                       {row.note && (
-                        <div className="text-[10px] text-zinc-500 truncate mt-0.5">
+                        <div className="text-[10px] text-zinc-400 truncate mt-0.5">
                           {row.note}
                         </div>
                       )}
                     </div>
                     <div className="flex items-center gap-1 ml-2">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(row)}
-                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/50 rounded transition-colors"
-                        aria-label={`Edit NAV for ${row.effective_date}`}
-                        title="Edit this NAV"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(row)}
-                        className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-700/50 rounded transition-colors"
-                        aria-label={`Delete NAV for ${row.effective_date}`}
-                        title="Delete this NAV"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      {isConfirmingDelete ? (
+                        <>
+                          <span className="text-[10px] text-red-300 mr-1" aria-live="assertive">
+                            Delete?
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(row)}
+                            className="px-2 py-1 inline-flex items-center justify-center min-h-6 text-[10px] font-medium text-white bg-red-600 hover:bg-red-500 rounded transition-colors"
+                            aria-label={`Confirm delete NAV for ${row.effective_date}`}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteDate(null)}
+                            className="px-2 py-1 inline-flex items-center justify-center min-h-6 text-[10px] font-medium text-zinc-200 bg-zinc-700 hover:bg-zinc-600 rounded transition-colors"
+                            aria-label="Cancel delete"
+                          >
+                            No
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => startEdit(row)}
+                            className="p-1.5 inline-flex items-center justify-center min-w-6 min-h-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 rounded transition-colors"
+                            aria-label={`Edit NAV for ${row.effective_date}`}
+                            title="Edit this NAV"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteDate(row.effective_date)}
+                            className="p-1.5 inline-flex items-center justify-center min-w-6 min-h-6 text-zinc-400 hover:text-red-400 hover:bg-zinc-700/50 rounded transition-colors"
+                            aria-label={`Delete NAV for ${row.effective_date}`}
+                            title="Delete this NAV"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
         </div>
       </div>

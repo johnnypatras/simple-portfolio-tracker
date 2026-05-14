@@ -126,6 +126,10 @@ export function AddManualNavModal({
       const adjustOpts = isAdjustment ? { isAdjustment: true } : {};
       const dateOpts = effectiveDate ? { effectiveDate } : {};
 
+      // Two-phase: (1) asset+NAV via addManualNavAsset, (2) optional position
+      // via upsertStockPosition. If (1) succeeds but (2) fails, the asset is
+      // already committed — show a recovery-friendly error so the user knows
+      // the asset was saved and can re-attempt the position separately.
       const assetId = await addManualNavAsset(
         {
           ticker: ticker.trim(),
@@ -142,19 +146,29 @@ export function AddManualNavModal({
 
       const qty = parseFloat(positionQuantity);
       if (positionBrokerId && qty > 0) {
-        await upsertStockPosition(
-          {
-            stock_asset_id: assetId,
-            broker_id: positionBrokerId,
-            quantity: qty,
-          },
-          {
-            ...adjustOpts,
-            ...dateOpts,
-            currentPriceNative: navNum ?? undefined,
-            assetCurrency: currency,
-          },
-        );
+        try {
+          await upsertStockPosition(
+            {
+              stock_asset_id: assetId,
+              broker_id: positionBrokerId,
+              quantity: qty,
+            },
+            {
+              ...adjustOpts,
+              ...dateOpts,
+              currentPriceNative: navNum ?? undefined,
+              assetCurrency: currency,
+            },
+          );
+        } catch (posErr) {
+          // Asset is already created and persisted. Surface a recovery
+          // message so the user knows they don't need to re-create the
+          // asset — they just need to add the position separately.
+          const posMsg = posErr instanceof Error ? posErr.message : "Failed to create initial position";
+          throw new Error(
+            `${name.trim()} was added, but the initial position could not be created: ${posMsg}. Open the asset to add a position separately.`,
+          );
+        }
       }
 
       onClose();
@@ -168,7 +182,7 @@ export function AddManualNavModal({
 
   return (
     <Modal open={open} onClose={onClose} title="Add Manual NAV Asset">
-      <p className="text-xs text-zinc-500 mb-4">
+      <p className="text-xs text-zinc-400 mb-4">
         For ELTIFs, SICAVs, closed-end funds, and other assets without a Yahoo
         ticker. You&apos;ll record the NAV manually from fund letters.
       </p>
@@ -490,7 +504,7 @@ export function AddManualNavModal({
         {/* Effective date (backdating) */}
         <div>
           <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
-            Effective date <span className="text-zinc-500">(optional, for backdating)</span>
+            Effective date <span className="text-zinc-400">(optional, for backdating)</span>
           </label>
           <input
             id={`${id}-effective-date`}
@@ -498,9 +512,9 @@ export function AddManualNavModal({
             max={today}
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           />
-          <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {navGapWarning && (

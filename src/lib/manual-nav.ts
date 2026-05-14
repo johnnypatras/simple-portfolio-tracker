@@ -38,7 +38,15 @@ export async function getLatestManualNavsAt(
     p_user_id: userId,
   });
   if (error) throw new Error(`Failed to fetch manual NAVs: ${error.message}`);
-  return (data ?? []) as LatestManualNav[];
+  // Normalize at the boundary instead of casting. The generated type widens
+  // `note` to non-nullable because PG's RETURNS TABLE doesn't reflect column
+  // nullability — RLS-scoped data can legitimately return NULL notes.
+  return (data ?? []).map<LatestManualNav>((r) => ({
+    asset_id: r.asset_id,
+    nav: Number(r.nav),
+    effective_date: r.effective_date,
+    note: r.note ?? null,
+  }));
 }
 
 /**
@@ -59,8 +67,28 @@ export function partitionStockAssetsForPricing<
   manualStockAssets: T[];
   yahooTickers: string[];
 } {
-  const yahooStockAssets = stockAssets.filter((a) => a.kind === "yahoo");
-  const manualStockAssets = stockAssets.filter((a) => a.kind === "manual");
+  const yahooStockAssets: T[] = [];
+  const manualStockAssets: T[] = [];
+  for (const a of stockAssets) {
+    // Exhaustive dispatch — DB CHECK (migration 015 + 018) enforces this at
+    // the data layer, but defense-in-depth: any unknown kind (e.g. corrupted
+    // row, future migration drift) emits a warning and goes to the Yahoo
+    // bucket so the asset doesn't silently disappear from the dashboard.
+    switch (a.kind) {
+      case "yahoo":
+        yahooStockAssets.push(a);
+        break;
+      case "manual":
+        manualStockAssets.push(a);
+        break;
+      default: {
+        const _exhaustive: never = a.kind;
+        void _exhaustive;
+        console.warn(`[partitionStockAssetsForPricing] Unknown kind="${a.kind}" on asset ${a.id} (${a.ticker}); defaulting to yahoo partition`);
+        yahooStockAssets.push(a);
+      }
+    }
+  }
   const yahooTickers = yahooStockAssets
     .map((a) => a.yahoo_ticker || a.ticker)
     .filter(Boolean);
