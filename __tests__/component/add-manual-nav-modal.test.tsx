@@ -42,9 +42,16 @@ vi.mock("focus-trap-react", () => ({
 }));
 
 import { AddManualNavModal } from "@/components/stocks/add-manual-nav-modal";
+import type { Broker } from "@/lib/types";
 
-const BROKERS = [
-  { id: "broker-1", name: "Trade Republic", institution_id: "inst-1" },
+const BROKERS: Broker[] = [
+  {
+    id: "broker-1",
+    user_id: "user-123",
+    name: "Trade Republic",
+    institution_id: "inst-1",
+    created_at: "2026-01-01T00:00:00Z",
+  },
 ];
 
 function renderOpen(propOverrides?: Partial<React.ComponentProps<typeof AddManualNavModal>>) {

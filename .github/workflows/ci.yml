@@ -31,6 +31,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Typecheck
+        # Explicit tsc --noEmit pass covers the whole tree, including
+        # __tests__/**/*.test-d.ts files that use @ts-expect-error to
+        # assert compile-time type contracts. `next build` does a typecheck
+        # but its scope can change between Next.js versions — this step
+        # locks in the contract that all .test-d.ts assertions are honored.
+        run: npm run typecheck
+
       - name: Build
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321

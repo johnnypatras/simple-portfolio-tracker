@@ -75,11 +75,7 @@ const ASSET: StockAssetWithPositions = {
   tags: [],
   kind: "manual",
   created_at: "2026-01-01T00:00:00Z",
-  updated_at: "2026-01-01T00:00:00Z",
   deleted_at: null,
-  last_was_adjustment: false,
-  last_was_transfer: false,
-  transfer_group_id: null,
   positions: [],
 };
 
