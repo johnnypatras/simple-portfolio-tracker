@@ -107,7 +107,7 @@ export function StaleNavBanner({ assets }: StaleNavBannerProps) {
             ? "1 manual NAV needs updating"
             : `${count} manual NAVs need updating`}
         </div>
-        <div className="text-[11px] text-amber-200/70 truncate">{summary}</div>
+        <div className="text-[11px] text-amber-200/70 truncate" title={summary}>{summary}</div>
       </div>
       <button
         type="button"

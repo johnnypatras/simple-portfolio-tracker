@@ -408,6 +408,7 @@ export function AddManualNavModal({
                 <input
                   id={`${id}-nav-value`}
                   type="number"
+                  inputMode="decimal"
                   value={navValue}
                   onChange={(e) => setNavValue(e.target.value)}
                   placeholder="105.50"
@@ -453,15 +454,16 @@ export function AddManualNavModal({
             <button
               type="button"
               aria-expanded={positionOpen}
+              aria-controls={`${id}-position-region`}
               onClick={() => setPositionOpen(!positionOpen)}
               className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/30 transition-colors"
             >
               {positionOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
               Add initial position
-              <span className="text-zinc-500">(optional)</span>
+              <span className="text-zinc-400">(optional)</span>
             </button>
             {positionOpen && (
-              <div className="px-3 pb-3 pt-1 border-t border-zinc-800/50">
+              <div id={`${id}-position-region`} className="px-3 pb-3 pt-1 border-t border-zinc-800/50">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label htmlFor={`${id}-broker`} className="block text-xs text-zinc-400 mb-1">
@@ -488,6 +490,7 @@ export function AddManualNavModal({
                     <input
                       id={`${id}-shares`}
                       type="number"
+                      inputMode="decimal"
                       value={positionQuantity}
                       onChange={(e) => setPositionQuantity(e.target.value)}
                       placeholder="0"
@@ -543,9 +546,10 @@ export function AddManualNavModal({
         <button
           type="submit"
           disabled={loading || !ticker.trim() || !name.trim()}
+          aria-busy={loading}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+          {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
           Add to Portfolio
         </button>
       </form>
