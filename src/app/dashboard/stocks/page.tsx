@@ -71,6 +71,9 @@ export default async function StocksPage() {
         fxValueChange24h={summary.stocksFxValueChange24h}
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
+        latestManualNavDates={Object.fromEntries(
+          manualNavs.map((n) => [n.asset_id, n.effective_date])
+        )}
       />
     </div>
   );

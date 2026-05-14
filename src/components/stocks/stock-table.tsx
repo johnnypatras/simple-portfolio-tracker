@@ -6,6 +6,7 @@ import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layer
 import dynamic from "next/dynamic";
 const AddStockModal = dynamic(() => import("./add-stock-modal").then(m => m.AddStockModal), { ssr: false });
 const AddManualNavModal = dynamic(() => import("./add-manual-nav-modal").then(m => m.AddManualNavModal), { ssr: false });
+const UpdateNavModal = dynamic(() => import("./update-nav-modal").then(m => m.UpdateNavModal), { ssr: false });
 import { StockPositionEditor } from "./stock-position-editor";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import type { TransferMode } from "@/lib/types";
@@ -78,14 +79,21 @@ interface StockTableProps {
   depositBreakdown?: { name: string; value: number }[];
   /** Trailing 12-month dividend data per Yahoo ticker */
   dividends?: YahooDividendMap;
+  /** Latest manual NAV effective_date per asset id, for staleness display */
+  latestManualNavDates?: Record<string, string>;
 }
 
-export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown, dividends }: StockTableProps) {
+export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown, dividends, latestManualNavDates }: StockTableProps) {
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
   const [addManualOpen, setAddManualOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [editingNavAsset, setEditingNavAsset] = useState<StockAssetWithPositions | null>(null);
+  const latestNavDatesMap = useMemo(
+    () => new Map(Object.entries(latestManualNavDates ?? {})),
+    [latestManualNavDates],
+  );
   const [buyOpen, setBuyOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<StockAssetWithPositions | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -346,8 +354,16 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
 
   // Column definitions (stable via useMemo)
   const columns = useMemo(
-    () => getStockColumns({ onEdit: handleEdit, onDelete: handleDelete, isExpanded, toggleExpand }),
-    [handleEdit, handleDelete, isExpanded, toggleExpand]
+    () =>
+      getStockColumns({
+        onEdit: handleEdit,
+        onDelete: handleDelete,
+        onEditNav: (asset) => setEditingNavAsset(asset),
+        isExpanded,
+        toggleExpand,
+        latestNavDates: latestNavDatesMap,
+      }),
+    [handleEdit, handleDelete, isExpanded, toggleExpand, latestNavDatesMap]
   );
 
   const {
@@ -1303,6 +1319,16 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
         <>
           <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
           <AddManualNavModal open={addManualOpen} onClose={() => setAddManualOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
+          {editingNavAsset && (
+            <UpdateNavModal
+              open={!!editingNavAsset}
+              onClose={() => {
+                setEditingNavAsset(null);
+                router.refresh();
+              }}
+              asset={editingNavAsset}
+            />
+          )}
           <TransferDialog
             open={buyOpen}
             onClose={() => setBuyOpen(false)}
