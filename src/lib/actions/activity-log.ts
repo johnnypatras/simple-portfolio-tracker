@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getFXRates } from "@/lib/prices/fx";
 import { captureAction } from "@/lib/actions/with-sentry";
+import * as Sentry from "@sentry/nextjs";
 import {
   cashAmountField,
   cashDelta,
@@ -110,7 +111,20 @@ export async function logActivity(params: {
     if (params.created_at) row.created_at = params.created_at;
     await supabase.from("activity_log").insert(row);
   } catch (err) {
+    // activity_log is the audit-trail substrate for undo, transfers, deltas,
+    // and the history view — a silent insert failure here means downstream
+    // operations later can't find the entry. Capture so the regression is
+    // investigable; do NOT re-throw so the parent mutation completes (the
+    // primary action is already successful at this point).
     console.error("[activity-log] Failed to log activity:", err);
+    Sentry.captureException(err, {
+      tags: { action: "activity-log.logActivity", entity_type: params.entity_type },
+      extra: {
+        entity_id: params.entity_id,
+        entity_table: params.entity_table,
+        action_type: params.action,
+      },
+    });
   }
 }
 

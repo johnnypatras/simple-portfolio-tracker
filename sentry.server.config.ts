@@ -16,4 +16,9 @@ Sentry.init({
   // Enable sending user PII (Personally Identifiable Information)
   // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
   sendDefaultPii: false,
+
+  // Filter known-benign noise:
+  //   - NEXT_NOT_FOUND / NEXT_REDIRECT are Next.js control-flow exceptions
+  //   - AbortError fires routinely from fetchWithTimeout's 8s budget
+  ignoreErrors: ["NEXT_NOT_FOUND", "NEXT_REDIRECT", "AbortError"],
 });

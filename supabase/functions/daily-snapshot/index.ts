@@ -167,7 +167,12 @@ Deno.serve(async (req: Request) => {
     // 3. Build per-user holdings and deduplicated price request sets
     const coinIdSet = new Set<string>();
     const yahooTickerSet = new Set<string>();
+    // currencySet seeds USD+EUR so the parallel FX fetches always include the
+    // cross-rate between the two written columns; heldCurrenciesSet tracks
+    // ONLY currencies that actually appear on user holdings — the abort guard
+    // below uses this to detect "FX required but unavailable" precisely.
     const currencySet = new Set<string>(["USD", "EUR"]);
+    const heldCurrenciesSet = new Set<string>();
 
     // Index crypto positions by asset ID
     const positionsByAsset = new Map<string, number>();
@@ -220,6 +225,7 @@ Deno.serve(async (req: Request) => {
         yahooTickerSet.add(yahooTicker);
       }
       currencySet.add(asset.currency);
+      heldCurrenciesSet.add(asset.currency);
       const holdings = userHoldings.get(asset.user_id);
       if (holdings) {
         holdings.stockAssets.push({
@@ -238,13 +244,14 @@ Deno.serve(async (req: Request) => {
       const amt = Number(acct.balance);
       if (amt === 0) continue;
       currencySet.add(acct.currency);
+      heldCurrenciesSet.add(acct.currency);
       const holdings = userHoldings.get(acct.user_id);
       if (holdings) holdings.cashItems.push({ currency: acct.currency, amount: amt });
     }
 
     // 4. Batch price fetches (4 API calls in parallel)
     const allTickers = [...yahooTickerSet];
-    const nonUsdEurCurrencies = [...currencySet].filter((c) => c !== "USD" && c !== "EUR");
+    const heldCurrencies = [...heldCurrenciesSet];
     const settled = await Promise.allSettled([
       fetchCoinGeckoPrices([...coinIdSet]),
       fetchYahooBatch(allTickers),
@@ -253,38 +260,65 @@ Deno.serve(async (req: Request) => {
     ]);
     const [cryptoSettled, yahooSettled, fxUsdSettled, fxEurSettled] = settled;
 
-    // When FX fetches fail but users hold non-USD/non-EUR assets (GBP, CHF,
-    // etc.), falling back to `{ USD: 1 }` produces a silently-corrupt
-    // snapshot because `convertToBase()` returns the unconverted native
-    // amount labelled as USD. Refuse to proceed in that case — partial
-    // snapshots for USD/EUR-only users are still fine.
+    // Both snapshot columns (USD + EUR totals) are ALWAYS written, so:
+    //   - the USD column needs fxUsd whenever any held currency != "USD"
+    //   - the EUR column needs fxEur whenever any held currency != "EUR"
+    // For a EUR-primary user holding USD assets (heldCurrencies=["USD"]),
+    // needsEurFx=true → if fxEurFailed we must abort. The earlier guard only
+    // checked `nonUsdEurCurrencies` (currencies other than USD AND EUR), so
+    // pure USD- or pure EUR-asset users were left to silently corrupt their
+    // snapshots when convertToBase() fell back to the unconverted amount.
     const fxUsdFailed = fxUsdSettled.status === "rejected";
     const fxEurFailed = fxEurSettled.status === "rejected";
-    if ((fxUsdFailed || fxEurFailed) && nonUsdEurCurrencies.length > 0) {
-      const reason = fxUsdFailed
+    const needsUsdFx = heldCurrencies.some((c) => c !== "USD");
+    const needsEurFx = heldCurrencies.some((c) => c !== "EUR");
+    const fxUsdNeededButFailed = fxUsdFailed && needsUsdFx;
+    const fxEurNeededButFailed = fxEurFailed && needsEurFx;
+    if (fxUsdNeededButFailed || fxEurNeededButFailed) {
+      const reason = fxUsdNeededButFailed
         ? (fxUsdSettled as PromiseRejectedResult).reason
         : (fxEurSettled as PromiseRejectedResult).reason;
       console.error(
-        `[daily-snapshot] FX fetch failed with non-USD/EUR currencies in scope (${nonUsdEurCurrencies.join(",")}) — aborting to avoid corrupt snapshots.`,
+        `[daily-snapshot] FX fetch failed with FX-dependent holdings in scope (held=${heldCurrencies.join(",")}, needsUsd=${needsUsdFx}, needsEur=${needsEurFx}) — aborting to avoid corrupt snapshots.`,
         reason,
       );
       Sentry.captureMessage(
-        "Daily snapshot aborted: FX fetch failed with non-USD/EUR currencies in scope",
+        "Daily snapshot aborted: FX fetch failed with FX-dependent holdings in scope",
         {
           level: "error",
           extra: {
             fxUsdFailed,
             fxEurFailed,
-            currencies: nonUsdEurCurrencies,
+            needsUsdFx,
+            needsEurFx,
+            heldCurrencies,
             reason: String(reason),
           },
         },
       );
       await Sentry.flush(2000);
       return jsonResponse(
-        { error: "fx_unavailable", currencies: nonUsdEurCurrencies, runId },
+        { error: "fx_unavailable", heldCurrencies, runId },
         503,
       );
+    }
+
+    // Surface rejected price fetches to Sentry so a sustained outage on
+    // CoinGecko or Yahoo doesn't silently degrade snapshots to $0 for one
+    // asset class. Both fall back to empty data — abort is reserved for FX
+    // because empty crypto/yahoo only zeros THAT asset class (the
+    // $0-with-prev-positive guard later may catch it for affected users).
+    if (cryptoSettled.status === "rejected") {
+      Sentry.captureException(cryptoSettled.reason, {
+        tags: { function: "daily-snapshot", phase: "coingecko_batch" },
+        extra: { runId, coinIdCount: coinIdSet.size },
+      });
+    }
+    if (yahooSettled.status === "rejected") {
+      Sentry.captureException(yahooSettled.reason, {
+        tags: { function: "daily-snapshot", phase: "yahoo_batch" },
+        extra: { runId, tickerCount: allTickers.length },
+      });
     }
 
     const cryptoPrices = cryptoSettled.status === "fulfilled"
@@ -314,11 +348,18 @@ Deno.serve(async (req: Request) => {
         if (Date.now() - v8StartedAt > V8_BUDGET_MS) {
           const remaining = missingTickers.length - i;
           console.warn(`[daily-snapshot] v8 fallback budget exhausted — skipping ${remaining} tickers`);
-          Sentry.addBreadcrumb({
-            category: "yahoo",
-            message: "v8 fallback budget exhausted",
-            data: { processed: i, skipped: remaining, totalMissing: missingTickers.length },
+          // captureMessage (not breadcrumb) so the event reaches Sentry even
+          // when the rest of the run succeeds — otherwise silently-skipped
+          // tickers cause user-visible snapshot dips with no signal.
+          Sentry.captureMessage("daily-snapshot: v8 fallback budget exhausted", {
             level: "warning",
+            tags: { function: "daily-snapshot", phase: "yahoo_v8_fallback" },
+            extra: {
+              runId,
+              processed: i,
+              skipped: remaining,
+              totalMissing: missingTickers.length,
+            },
           });
           break;
         }
@@ -577,11 +618,20 @@ async function fetchCoinGeckoPrices(
     }
     if (!res.ok) {
       console.error("[daily-snapshot] CoinGecko error:", res.status);
+      Sentry.captureMessage("daily-snapshot: CoinGecko batch returned non-2xx", {
+        level: "error",
+        tags: { function: "daily-snapshot", phase: "coingecko_batch" },
+        extra: { status: res.status, coinIdCount: coinIds.length },
+      });
       return {};
     }
     return await res.json();
   } catch (err) {
     console.error("[daily-snapshot] CoinGecko fetch error:", err);
+    Sentry.captureException(err, {
+      tags: { function: "daily-snapshot", phase: "coingecko_batch" },
+      extra: { coinIdCount: coinIds.length },
+    });
     return {};
   }
 }
@@ -621,6 +671,11 @@ async function fetchYahooBatch(
     const auth = await getYahooCrumb();
     if (!auth) {
       console.error("[daily-snapshot] Yahoo crumb auth failed");
+      Sentry.captureMessage("daily-snapshot: Yahoo crumb auth failed", {
+        level: "error",
+        tags: { function: "daily-snapshot", phase: "yahoo_crumb" },
+        extra: { tickerCount: symbols.length },
+      });
       return map;
     }
 
@@ -630,11 +685,21 @@ async function fetchYahooBatch(
     });
     if (!res.ok) {
       console.error("[daily-snapshot] Yahoo error:", res.status);
+      Sentry.captureMessage("daily-snapshot: Yahoo batch returned non-2xx", {
+        level: "error",
+        tags: { function: "daily-snapshot", phase: "yahoo_batch" },
+        extra: { status: res.status, tickerCount: symbols.length },
+      });
       return map;
     }
     const ct = res.headers.get("content-type") ?? "";
     if (!ct.includes("application/json")) {
       console.warn("[daily-snapshot] Yahoo batch returned non-JSON (captcha?), content-type:", ct);
+      Sentry.captureMessage("daily-snapshot: Yahoo batch returned non-JSON (captcha?)", {
+        level: "warning",
+        tags: { function: "daily-snapshot", phase: "yahoo_batch" },
+        extra: { contentType: ct, tickerCount: symbols.length },
+      });
       return map;
     }
     const json = await res.json();
@@ -650,6 +715,10 @@ async function fetchYahooBatch(
     }
   } catch (err) {
     console.error("[daily-snapshot] Yahoo fetch error:", err);
+    Sentry.captureException(err, {
+      tags: { function: "daily-snapshot", phase: "yahoo_batch" },
+      extra: { tickerCount: symbols.length },
+    });
   }
   return map;
 }
@@ -728,7 +797,16 @@ function convertToBase(
   if (fromCurrency === baseCurrency) return amount;
   const rate = rates[fromCurrency];
   if (!rate || rate === 0) {
+    // This branch is the failure mode the FX-abort guard above is designed
+    // to prevent — reaching it means the guard has a gap. Surface to Sentry
+    // so the run is investigable; the abort logic should be tightened so
+    // we never silently write an unconverted amount to the wrong column.
     console.error(`[daily-snapshot] CRITICAL: no FX rate for ${fromCurrency}→${baseCurrency}, returning unconverted value (SNAPSHOT WILL BE INACCURATE)`);
+    Sentry.captureMessage("daily-snapshot: convertToBase fallback hit — snapshot inaccurate", {
+      level: "error",
+      tags: { function: "daily-snapshot", phase: "convert_to_base" },
+      extra: { fromCurrency, baseCurrency, amount, availableRates: Object.keys(rates) },
+    });
     return amount;
   }
   // rates[X] = X per 1 base → base = amount / rates[X]
