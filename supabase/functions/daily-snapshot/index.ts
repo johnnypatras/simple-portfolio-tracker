@@ -1,5 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import * as Sentry from "npm:@sentry/deno@^10";
+// Pinned to the same patch-level major as the app's @sentry/nextjs (^10.51.0)
+// — `^10` would silently float through minor versions where a compromised
+// release could execute in service-role context (this isolate holds
+// SUPABASE_SERVICE_ROLE_KEY + COINGECKO_API_KEY).
+import * as Sentry from "npm:@sentry/deno@~10.51.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // ─── Sentry init ───────────────────────────────────────────
@@ -65,6 +69,10 @@ Deno.serve(async (req: Request) => {
   // surface as HTTP 500 "Misconfigured" rather than isolate crashes.
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     console.error("[daily-snapshot] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env var");
+    // Nothing to flush here (Sentry can't init without DSN/transport set up
+    // first), but if anyone adds a `Sentry.captureMessage("Misconfigured")`
+    // above, this flush guarantees it lands before the isolate exits.
+    await Sentry.flush(2000);
     return new Response("Misconfigured", { status: 500 });
   }
 
@@ -73,6 +81,7 @@ Deno.serve(async (req: Request) => {
   // and unauthenticated scans.
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
+    await Sentry.flush(2000);
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -85,7 +94,26 @@ Deno.serve(async (req: Request) => {
     .eq("key", "cron_secret")
     .single();
 
-  if (!configRow?.value || authHeader !== `Bearer ${configRow.value}`) {
+  // Timing-safe secret comparison. Plain `!==` leaks per-byte timing that an
+  // attacker could exploit to recover the cron_secret one character at a time.
+  // Deno's Web Crypto subtle interface doesn't expose timingSafeEqual, so we
+  // implement constant-time compare inline: short-circuit on length (length
+  // alone is low-information for an opaque token), then XOR-accumulate across
+  // all bytes regardless of mismatch position.
+  if (!configRow?.value) {
+    await Sentry.flush(2000);
+    return new Response("Unauthorized", { status: 401 });
+  }
+  const expected = new TextEncoder().encode(`Bearer ${configRow.value}`);
+  const received = new TextEncoder().encode(authHeader);
+  let match = expected.length === received.length;
+  if (match) {
+    let diff = 0;
+    for (let i = 0; i < expected.length; i++) diff |= expected[i] ^ received[i];
+    match = diff === 0;
+  }
+  if (!match) {
+    await Sentry.flush(2000);
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -339,6 +367,7 @@ Deno.serve(async (req: Request) => {
     const snapshots: {
       user_id: string;
       snapshot_date: string;
+      created_at: string;
       total_value_usd: number;
       total_value_eur: number;
       crypto_value_usd: number;
@@ -517,9 +546,14 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     Sentry.captureException(err);
+    // Full error details (which may include DB constraint names or other
+    // schema fingerprints) are logged + sent to Sentry. The HTTP response
+    // returns only a generic code + runId so the caller can correlate the
+    // failure with Sentry without us leaking schema details via response
+    // bodies (which are not marked private and could be cached upstream).
     console.error(`[daily-snapshot] Error (run ${runId}):`, err);
     await Sentry.flush(2000);
-    return jsonResponse({ error: String(err), runId }, 500);
+    return jsonResponse({ error: "internal_error", runId }, 500);
   }
 });
 

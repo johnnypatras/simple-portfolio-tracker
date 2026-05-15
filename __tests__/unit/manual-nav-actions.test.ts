@@ -397,4 +397,66 @@ describe("deleteManualNav", () => {
     expect(hoisted.validateUUID).toHaveBeenCalledWith(ASSET_ID, "Asset ID");
     expect(hoisted.validateDate).toHaveBeenCalledWith("2026-05-01", "Effective date");
   });
+
+  it("throws generic DB error when the asset-lookup query fails (between NAV probe and delete)", async () => {
+    // The action probes the NAV row, then loads the asset for activity-log
+    // entity_name + currency. If that asset lookup hits a real DB error
+    // (not no-rows), the user should see "Failed to load asset", not the
+    // generic delete-failed message that would come if we proceeded.
+    hoisted.mockClient = createMockClient([
+      { data: { id: NAV_ROW_ID, nav: 100, note: null }, error: null }, // NAV probe ok
+      { data: null, error: { message: "connection lost", code: "PGRST500" } }, // asset lookup fails
+    ]);
+    await expect(
+      deleteManualNav({ asset_id: ASSET_ID, effective_date: "2026-05-01" }),
+    ).rejects.toThrow(/Failed to load asset/);
+  });
+});
+
+describe("upsertManualNav — additional coverage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("throws when the existing-row probe (middle query) fails", async () => {
+    // Source order: select asset (ok) → maybeSingle for existing row (fail)
+    // → upsert (never reached). Tests the middle-query failure branch.
+    hoisted.mockClient = createMockClient([
+      { data: { ticker: "ENXF", currency: "EUR", kind: "manual" }, error: null },
+      { data: null, error: { message: "timeout", code: "PGRST500" } },
+    ]);
+    await expect(
+      upsertManualNav({ asset_id: ASSET_ID, effective_date: "2026-05-01", nav: 100 }),
+    ).rejects.toThrow(/Failed to check existing NAV/);
+  });
+});
+
+describe("addManualNavAsset — note handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hoisted.createStockAsset.mockResolvedValue(ASSET_ID);
+  });
+
+  it("skips validateName when note is empty string (no-op)", async () => {
+    hoisted.mockClient = createMockClient([
+      { data: { kind: "manual" }, error: null },
+      { data: null, error: null },
+    ]);
+    await addManualNavAsset(VALID_INPUT, {
+      initialNav: { nav: 100, effectiveDate: "2026-05-01", note: "" },
+    });
+    // Empty string is falsy in the `if (note)` guard → validateName not called.
+    expect(hoisted.validateName).not.toHaveBeenCalled();
+  });
+
+  it("skips validateName when note is undefined", async () => {
+    hoisted.mockClient = createMockClient([
+      { data: { kind: "manual" }, error: null },
+      { data: null, error: null },
+    ]);
+    await addManualNavAsset(VALID_INPUT, {
+      initialNav: { nav: 100, effectiveDate: "2026-05-01" },
+    });
+    expect(hoisted.validateName).not.toHaveBeenCalled();
+  });
 });
