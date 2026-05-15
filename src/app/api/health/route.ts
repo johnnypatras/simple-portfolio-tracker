@@ -34,10 +34,16 @@ export async function GET() {
     const today = new Date().toISOString().split("T")[0];
 
     const [snapshotRes, navTableRes, navRpcRes] = await Promise.allSettled([
+      // `created_at` (TIMESTAMPTZ written by the cron at run time) is the
+      // correct freshness signal — `snapshot_date` is a DATE column resolving
+      // to midnight UTC of the covered day, which can read ~24h older than
+      // the actual write for a cron that fires at 23:59 UTC. Ordering by
+      // `created_at` DESC also guards against a regression where the cron
+      // gets stuck writing yesterday's snapshot_date.
       supabase
         .from("portfolio_snapshots")
-        .select("snapshot_date")
-        .order("snapshot_date", { ascending: false })
+        .select("snapshot_date, created_at")
+        .order("created_at", { ascending: false })
         .limit(1)
         .abortSignal(controller.signal)
         .single(),
@@ -72,12 +78,16 @@ export async function GET() {
       );
     }
 
-    const lastSnapshot =
+    const lastSnapshotCreatedAt =
+      snapshotRes.status === "fulfilled"
+        ? (snapshotRes.value.data?.created_at as string | undefined)
+        : undefined;
+    const lastSnapshotDate =
       snapshotRes.status === "fulfilled"
         ? (snapshotRes.value.data?.snapshot_date as string | undefined)
         : undefined;
-    const ageHours = lastSnapshot
-      ? (Date.now() - new Date(lastSnapshot).getTime()) / 3_600_000
+    const ageHours = lastSnapshotCreatedAt
+      ? (Date.now() - new Date(lastSnapshotCreatedAt).getTime()) / 3_600_000
       : null;
     const snapshotStale = ageHours != null && ageHours > 26;
 
@@ -95,6 +105,7 @@ export async function GET() {
     return NextResponse.json({
       status: overallStatus,
       snapshotAgeHours: ageHours ? Math.round(ageHours) : null,
+      snapshotDate: lastSnapshotDate ?? null,
       snapshotStale,
       navPipeline: navPipelineOk ? "ok" : "degraded",
       navTable: navTableOk ? "ok" : "degraded",
