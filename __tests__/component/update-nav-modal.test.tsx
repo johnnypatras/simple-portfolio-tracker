@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 /**
@@ -92,16 +92,15 @@ function renderModal(propOverrides?: Partial<React.ComponentProps<typeof UpdateN
 beforeEach(() => {
   // vi.setSystemTime alone (no useFakeTimers) — matches stale-nav-banner pattern.
   // Faking timers would block waitFor's internal setTimeout polling.
+  // Note: no afterEach with useRealTimers() — calling it is a no-op when
+  // useFakeTimers() was never called, and including it falsely implies fake
+  // timers were active.
   vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
   vi.clearAllMocks();
   hoisted.navHistory = [];
   hoisted.fetchError = null;
   hoisted.upsertManualNav.mockResolvedValue(undefined);
   hoisted.deleteManualNav.mockResolvedValue(undefined);
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 describe("UpdateNavModal", () => {
@@ -134,12 +133,38 @@ describe("UpdateNavModal", () => {
     await waitFor(() => expect(screen.getByText(/Stale —/i)).toBeInTheDocument());
   });
 
-  it("shows fetch error in role='alert' when supabase fails", async () => {
+  it("does NOT show 'Stale —' at exactly the 45-day threshold (uses strict >)", async () => {
+    // 45 days before TODAY (2026-05-15) → 2026-03-31. Threshold is `daysAgo > 45`,
+    // so the exact boundary day should still render the "Updated" prefix.
+    hoisted.navHistory = [
+      { id: "n1", effective_date: "2026-03-31", nav: 100, note: null },
+    ];
+    renderModal();
+    await waitFor(() => expect(screen.getByText(/Updated/)).toBeInTheDocument());
+    expect(screen.queryByText(/Stale —/i)).not.toBeInTheDocument();
+  });
+
+  it("does NOT show 'Stale —' at 44 days (clearly under threshold)", async () => {
+    hoisted.navHistory = [
+      { id: "n1", effective_date: "2026-04-01", nav: 100, note: null },
+    ];
+    renderModal();
+    await waitFor(() => expect(screen.getByText(/Updated/)).toBeInTheDocument());
+    expect(screen.queryByText(/Stale —/i)).not.toBeInTheDocument();
+  });
+
+  it("shows fetch error in role='alert' and does NOT render a history list when supabase fails", async () => {
     hoisted.fetchError = { message: "Connection lost" };
     renderModal();
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/Connection lost/);
     });
+    // Defense against a regression where the component renders both an error
+    // banner AND a (potentially stale) history list — the user should not see
+    // entries they can interact with when the load failed.
+    // Note: query by role="list" (not getByLabelText) because the modal's
+    // dialog title also matches /NAV history/i via aria-labelledby.
+    expect(screen.queryByRole("list", { name: /NAV history/i })).not.toBeInTheDocument();
   });
 
   it("submits a new NAV via upsertManualNav and refreshes the list", async () => {

@@ -58,7 +58,9 @@ export default defineConfig({
         // Pure-augmentation functions are at ~95%; `fetchManualNavInputsFor`
         // pulls the file-level number down because it's a DB-touching helper
         // covered by manual-nav-cross-user.test.ts (integration), not unit.
-        "src/lib/portfolio/manual-nav-augmentation.ts": { statements: 80, branches: 65, functions: 65, lines: 82 },
+        // Functions threshold ratcheted to 75% (actual: 4/5 = 80%) to catch
+        // a regression that drops one of the 4 unit-covered functions.
+        "src/lib/portfolio/manual-nav-augmentation.ts": { statements: 80, branches: 65, functions: 75, lines: 82 },
 
         // ── Price utilities (currently 77-100%) ──
         "src/lib/prices/coingecko.ts": { statements: 75, branches: 60, functions: 75, lines: 75 },
