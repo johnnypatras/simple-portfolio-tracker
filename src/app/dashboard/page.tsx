@@ -8,11 +8,8 @@ import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { backfillCashflowsAndDeltas } from "@/lib/actions/backfill";
 import { assemblePortfolioView } from "@/lib/portfolio/assemble";
-import {
-  saveSnapshot,
-  getSnapshots,
-  getSnapshotAt,
-} from "@/lib/actions/snapshots";
+import { saveSnapshot, getSnapshots } from "@/lib/actions/snapshots";
+import { findSnapshotAt } from "@/lib/portfolio/snapshot-utils";
 import { ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -31,7 +28,7 @@ export default async function DashboardPage() {
   // so they run alongside DB queries.
   const [
     profile, cryptoAssets, stockAssets, cashAccounts,
-    chartSnapshots, snap3d, snap7d, snap30d, snap90d, snap1y,
+    chartSnapshots,
     sp500TRHistory,
     cashFlowResult,
     adjustmentDeltas,
@@ -40,19 +37,28 @@ export default async function DashboardPage() {
     getCryptoAssetsWithPositions(),
     getStockAssetsWithPositions(),
     getCashAccounts(),
-    // All snapshots — chart "All" period and panel all-time change share this data
+    // All snapshots — chart "All" period and panel all-time change share this
+    // data. We derive the 3d/7d/30d/90d/1y panel snapshots via in-memory binary
+    // search below; previously this ran 5 additional `getSnapshotAt(N)` calls,
+    // each issuing its own `auth.getUser` + snapshot lookup + manual-NAV
+    // augmentation (10 redundant DB queries) for data already returned here.
+    // The share-page pipeline (shared-portfolio.ts) uses the same pattern.
     getSnapshots(ALL_SNAPSHOTS_DAYS),
-    getSnapshotAt(3),            // for 3d change
-    getSnapshotAt(7),            // for 7d change
-    getSnapshotAt(30),           // for 30d change
-    getSnapshotAt(90),           // for 90d change
-    getSnapshotAt(365),          // for 1y change
     // S&P 500 Total Return — fetch max history so the benchmark line
     // matches the chart's "All" extent (Yahoo maps days > 365 to range="max")
     fetchIndexHistory("^SP500TR", ALL_SNAPSHOTS_DAYS),
     deriveCashFlows(),
     getAdjustmentDeltas(),
   ]);
+
+  // Derive period snapshots in-memory — `chartSnapshots` is already
+  // augmented with manual NAV by `getSnapshots`, so `findSnapshotAt` is a
+  // direct substitute for `getSnapshotAt`'s server-side lookup.
+  const snap3d = findSnapshotAt(chartSnapshots, 3);
+  const snap7d = findSnapshotAt(chartSnapshots, 7);
+  const snap30d = findSnapshotAt(chartSnapshots, 30);
+  const snap90d = findSnapshotAt(chartSnapshots, 90);
+  const snap1y = findSnapshotAt(chartSnapshots, 365);
 
   // Earliest snapshot for all-time change — reuse data already loaded for the chart
   const snapAll = chartSnapshots.length > 0 ? chartSnapshots[0] : null;

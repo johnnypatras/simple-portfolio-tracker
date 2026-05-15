@@ -190,7 +190,7 @@ export function augmentSnapshotsWithManualNavs(
  * Fetch a user's manual NAV positions + NAV history in parallel.
  *
  * Single source of truth for the augmentation inputs. Used by getSnapshots
- * (chart), getSnapshotAt (period-change cards), and getSharedPortfolio
+ * (chart + period-change cards via findSnapshotAt) and getSharedPortfolio
  * (cross-user share-page chart). Pass the appropriate client + userId:
  *
  *   - Authenticated server client + omitted userId → RLS scopes to auth.uid()
