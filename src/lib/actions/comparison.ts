@@ -115,7 +115,16 @@ export async function getComparisonData(
   // upstream that can throw (getLatestManualNavsAt is the only one — the
   // FXSafe / getPrices / getStockPrices variants fall back internally)
   // propagates its message through.
-  let cryptoPrices, allStockPrices, fxRates, fxRatesUsd, fxRatesEur, viewerNavs, ownerNavs;
+  // Explicit type annotations: `let cryptoPrices, ...` without initializer
+  // would be inferred as `any` by TypeScript. Drive types from the actual
+  // returns so a refactor in upstream fetchers surfaces here.
+  let cryptoPrices: Awaited<ReturnType<typeof getPrices>>;
+  let allStockPrices: Awaited<ReturnType<typeof getStockPrices>>;
+  let fxRates: Awaited<ReturnType<typeof getFXRatesSafe>>;
+  let fxRatesUsd: Awaited<ReturnType<typeof getFXRatesSafe>>;
+  let fxRatesEur: Awaited<ReturnType<typeof getFXRatesSafe>>;
+  let viewerNavs: Awaited<ReturnType<typeof getLatestManualNavsAt>>;
+  let ownerNavs: Awaited<ReturnType<typeof getLatestManualNavsAt>>;
   try {
     [cryptoPrices, allStockPrices, fxRates, fxRatesUsd, fxRatesEur, viewerNavs, ownerNavs] =
       await Promise.all([

@@ -21,7 +21,7 @@ const hoisted = vi.hoisted(() => ({
   revalidateDashboard: vi.fn(),
   validateUUID: vi.fn(),
   validateAmount: vi.fn(),
-  validateDate: vi.fn(),
+  validatePastOrTodayDate: vi.fn(),
   validateName: vi.fn(),
   formatCurrency: vi.fn((n: number, c: string) => `${c} ${n.toFixed(2)}`),
 }));
@@ -100,7 +100,7 @@ vi.mock("@/lib/format", () => ({
 vi.mock("@/lib/validation", () => ({
   validateUUID: hoisted.validateUUID,
   validateAmount: hoisted.validateAmount,
-  validateDate: hoisted.validateDate,
+  validatePastOrTodayDate: hoisted.validatePastOrTodayDate,
   validateName: hoisted.validateName,
 }));
 
@@ -163,23 +163,25 @@ describe("addManualNavAsset", () => {
     ).rejects.toThrow(/already exists as a Yahoo-priced asset/);
   });
 
-  it("inserts initialNav row + logs activity when verification passes", async () => {
+  it("inserts initialNav row + logs activity with NAV row PK as entity_id", async () => {
     hoisted.mockClient = createMockClient([
       { data: { kind: "manual" }, error: null }, // select kind
-      { data: null, error: null }, // insert
+      { data: { id: NAV_ROW_ID }, error: null }, // insert .select("id").single()
     ]);
     await addManualNavAsset(VALID_INPUT, {
       initialNav: { nav: 105.5, effectiveDate: "2026-05-01", note: " Q1 fund letter " },
     });
     // Validators were called for the initial NAV fields
     expect(hoisted.validateAmount).toHaveBeenCalledWith(105.5, "Initial NAV");
-    expect(hoisted.validateDate).toHaveBeenCalledWith("2026-05-01", "Initial NAV effective date");
+    expect(hoisted.validatePastOrTodayDate).toHaveBeenCalledWith("2026-05-01", "Initial NAV effective date");
     expect(hoisted.validateName).toHaveBeenCalledWith(" Q1 fund letter ", 500, "Note");
     expect(hoisted.logActivity).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "created",
         entity_type: "manual_nav_update",
-        entity_id: ASSET_ID,
+        // PK of the manual_nav_updates row, NOT the parent asset_id.
+        // Matches upsertManualNav's convention.
+        entity_id: NAV_ROW_ID,
         entity_table: "manual_nav_updates",
       }),
     );
@@ -245,7 +247,7 @@ describe("upsertManualNav", () => {
       note: "Q1 fund letter",
     });
     expect(hoisted.validateUUID).toHaveBeenCalledWith(ASSET_ID, "Asset ID");
-    expect(hoisted.validateDate).toHaveBeenCalledWith("2026-05-01", "Effective date");
+    expect(hoisted.validatePastOrTodayDate).toHaveBeenCalledWith("2026-05-01", "Effective date");
     expect(hoisted.validateAmount).toHaveBeenCalledWith(105.5, "NAV");
     expect(hoisted.validateName).toHaveBeenCalledWith("Q1 fund letter", 500, "Note");
   });
@@ -395,7 +397,7 @@ describe("deleteManualNav", () => {
     ]);
     await deleteManualNav({ asset_id: ASSET_ID, effective_date: "2026-05-01" });
     expect(hoisted.validateUUID).toHaveBeenCalledWith(ASSET_ID, "Asset ID");
-    expect(hoisted.validateDate).toHaveBeenCalledWith("2026-05-01", "Effective date");
+    expect(hoisted.validatePastOrTodayDate).toHaveBeenCalledWith("2026-05-01", "Effective date");
   });
 
   it("throws generic DB error when the asset-lookup query fails (between NAV probe and delete)", async () => {
@@ -440,7 +442,7 @@ describe("addManualNavAsset — note handling", () => {
   it("skips validateName when note is empty string (no-op)", async () => {
     hoisted.mockClient = createMockClient([
       { data: { kind: "manual" }, error: null },
-      { data: null, error: null },
+      { data: { id: NAV_ROW_ID }, error: null }, // insert .select("id").single()
     ]);
     await addManualNavAsset(VALID_INPUT, {
       initialNav: { nav: 100, effectiveDate: "2026-05-01", note: "" },
@@ -452,7 +454,7 @@ describe("addManualNavAsset — note handling", () => {
   it("skips validateName when note is undefined", async () => {
     hoisted.mockClient = createMockClient([
       { data: { kind: "manual" }, error: null },
-      { data: null, error: null },
+      { data: { id: NAV_ROW_ID }, error: null }, // insert .select("id").single()
     ]);
     await addManualNavAsset(VALID_INPUT, {
       initialNav: { nav: 100, effectiveDate: "2026-05-01" },

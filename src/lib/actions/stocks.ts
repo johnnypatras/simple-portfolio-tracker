@@ -224,6 +224,21 @@ export async function updateStockAsset(
     .is("deleted_at", null)
     .single();
 
+  // Reject yahoo_ticker change on a kind='manual' asset before hitting the DB.
+  // Migration 018 CHECK constraint (`stock_assets_manual_kind_no_yahoo_ticker`)
+  // catches this at write time, but surfaces a raw Postgres error to the user.
+  // Throw a clean domain message here so the UI can render it as a sensible
+  // toast rather than a constraint name.
+  if (
+    before?.kind === "manual" &&
+    normalizedYahoo !== undefined &&
+    normalizedYahoo !== null
+  ) {
+    throw new Error(
+      "Cannot set a Yahoo ticker on a manual NAV asset — delete and recreate as kind='yahoo' if you want Yahoo pricing.",
+    );
+  }
+
   const { error } = await supabase
     .from("stock_assets")
     .update(updatePayload)

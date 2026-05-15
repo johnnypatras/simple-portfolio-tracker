@@ -152,6 +152,15 @@ export function augmentSnapshotsWithManualNavs(
     if (byCurrency.size === 0) return snap;
 
     const eurPerUsd = snapshotEurPerUsd(snap);
+    // snapshotEurPerUsd is contractually positive: each branch returns a
+    // strictly-positive ratio, with `1` as the final fallback. So the EUR→USD
+    // division below cannot divide by zero. We assert it here so a future
+    // change to snapshotEurPerUsd that allows 0/negative is caught loudly.
+    if (eurPerUsd <= 0) {
+      throw new Error(
+        `Invariant violation: snapshotEurPerUsd returned non-positive value ${eurPerUsd}`,
+      );
+    }
     let manualUsd = 0;
     let manualEur = 0;
     for (const [currency, amount] of byCurrency) {
@@ -160,7 +169,7 @@ export function augmentSnapshotsWithManualNavs(
         manualEur += amount * eurPerUsd;
       } else if (currency === "EUR") {
         manualEur += amount;
-        manualUsd += eurPerUsd > 0 ? amount / eurPerUsd : amount;
+        manualUsd += amount / eurPerUsd;
       } else {
         manualUsd += amount;
         manualEur += amount * eurPerUsd;

@@ -100,7 +100,7 @@ export function StaleNavBanner({ assets }: StaleNavBannerProps) {
       aria-live="polite"
       className="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20"
     >
-      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
       <div className="flex-1 min-w-0">
         <div className="text-xs font-medium text-amber-200">
           {count === 1

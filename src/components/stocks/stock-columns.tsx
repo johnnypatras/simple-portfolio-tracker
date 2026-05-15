@@ -628,7 +628,7 @@ export function getStockColumns(handlers: {
               </div>
               {stale && (
                 <span
-                  className={`block text-[10px] tabular-nums inline-flex items-center gap-1 ${
+                  className={`inline-flex text-[10px] tabular-nums items-center gap-1 ${
                     isStale ? "text-amber-400" : "text-zinc-400"
                   }`}
                   title={isStale ? `NAV is older than ${STALE_NAV_DAYS_THRESHOLD} days — consider updating` : undefined}

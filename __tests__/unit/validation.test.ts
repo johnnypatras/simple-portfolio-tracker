@@ -8,6 +8,7 @@ import {
   validateCoinGeckoId,
   validateYahooTicker,
   validateDate,
+  validatePastOrTodayDate,
   validateApy,
   validateIsin,
   validateImageUrl,
@@ -465,6 +466,73 @@ describe("validateDate", () => {
   it("rejects SQL injection attempt", () => {
     expect(() => validateDate("2026-01-01' OR '1'='1")).toThrow(
       "must be YYYY-MM-DD format",
+    );
+  });
+
+  // Calendar round-trip rejections — regex matches these but the
+  // Date.UTC + getUTCFullYear/Month/Date round-trip catches the rollover.
+  it("rejects invalid calendar date 2026-02-30", () => {
+    expect(() => validateDate("2026-02-30")).toThrow("not a valid calendar date");
+  });
+
+  it("rejects invalid calendar date 2026-13-01 (month=13)", () => {
+    expect(() => validateDate("2026-13-01")).toThrow("not a valid calendar date");
+  });
+
+  it("rejects invalid calendar date 2026-13-99 (both month and day invalid)", () => {
+    expect(() => validateDate("2026-13-99")).toThrow("not a valid calendar date");
+  });
+
+  it("rejects non-leap-year Feb 29 (2025-02-29)", () => {
+    expect(() => validateDate("2025-02-29")).toThrow("not a valid calendar date");
+  });
+
+  it("accepts leap-year Feb 29 (2024-02-29)", () => {
+    expect(() => validateDate("2024-02-29")).not.toThrow();
+  });
+});
+
+describe("validatePastOrTodayDate", () => {
+  // System time is intentionally NOT mocked in this file — tests use dates
+  // relative to "now" via Date offsets to stay deterministic across runs.
+
+  it("accepts today's date", () => {
+    const today = new Date().toISOString().split("T")[0];
+    expect(() => validatePastOrTodayDate(today)).not.toThrow();
+  });
+
+  it("accepts a date one day in the past", () => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 1);
+    const yesterday = d.toISOString().split("T")[0];
+    expect(() => validatePastOrTodayDate(yesterday)).not.toThrow();
+  });
+
+  it("rejects a date one day in the future", () => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + 1);
+    const tomorrow = d.toISOString().split("T")[0];
+    expect(() => validatePastOrTodayDate(tomorrow)).toThrow("cannot be in the future");
+  });
+
+  it("rejects a far-future date (typo scenario: 2099 meant 2029)", () => {
+    expect(() => validatePastOrTodayDate("2099-01-15")).toThrow("cannot be in the future");
+  });
+
+  it("inherits validateDate's calendar round-trip check (rejects 2026-02-30)", () => {
+    expect(() => validatePastOrTodayDate("2026-02-30")).toThrow("not a valid calendar date");
+  });
+
+  it("inherits validateDate's format check (rejects DD/MM/YYYY)", () => {
+    expect(() => validatePastOrTodayDate("21/03/2026")).toThrow("must be YYYY-MM-DD format");
+  });
+
+  it("uses custom label in future-date error message", () => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + 30);
+    const future = d.toISOString().split("T")[0];
+    expect(() => validatePastOrTodayDate(future, "NAV effective date")).toThrow(
+      "NAV effective date cannot be in the future",
     );
   });
 });

@@ -182,12 +182,12 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
             <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-300">
               {isEditing ? (
                 <>
-                  <Pencil className="w-3 h-3" />
+                  <Pencil className="w-3 h-3" aria-hidden="true" />
                   Editing NAV for {editingDate}
                 </>
               ) : (
                 <>
-                  <Plus className="w-3 h-3" />
+                  <Plus className="w-3 h-3" aria-hidden="true" />
                   Record new NAV
                 </>
               )}
@@ -198,7 +198,7 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
                 onClick={cancelEdit}
                 className="text-[10px] text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3 h-3" aria-hidden="true" />
                 Cancel edit
               </button>
             )}
@@ -298,7 +298,8 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
           ) : (
             <ul
               aria-label="NAV history"
-              className="max-h-72 overflow-y-auto rounded-lg border border-zinc-800/60 divide-y divide-zinc-800/50"
+              tabIndex={0}
+              className="max-h-72 overflow-y-auto rounded-lg border border-zinc-800/60 divide-y divide-zinc-800/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             >
               {navs.map((row) => {
                 const isThisRowBeingEdited = editingDate === row.effective_date;
@@ -366,7 +367,7 @@ export function UpdateNavModal({ open, onClose, asset }: UpdateNavModalProps) {
                             aria-label={`Delete NAV for ${row.effective_date}`}
                             title="Delete this NAV"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                           </button>
                         </>
                       )}

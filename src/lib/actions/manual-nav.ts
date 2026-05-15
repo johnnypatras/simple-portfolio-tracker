@@ -11,7 +11,7 @@ import { MAX_NAV_NOTE_LENGTH } from "@/lib/constants";
 import {
   validateUUID,
   validateAmount,
-  validateDate,
+  validatePastOrTodayDate,
   validateName,
 } from "@/lib/validation";
 import type {
@@ -73,10 +73,10 @@ export async function addManualNavAsset(
       const { nav, effectiveDate, note } = opts.initialNav;
       validateAmount(nav, "Initial NAV");
       if (nav <= 0) throw new Error("Initial NAV must be positive");
-      validateDate(effectiveDate, "Initial NAV effective date");
+      validatePastOrTodayDate(effectiveDate, "Initial NAV effective date");
       if (note) validateName(note, MAX_NAV_NOTE_LENGTH, "Note");
 
-      const { error } = await supabase
+      const { data: inserted, error } = await supabase
         .from("manual_nav_updates")
         .insert({
           user_id: user.id,
@@ -84,13 +84,19 @@ export async function addManualNavAsset(
           effective_date: effectiveDate,
           nav,
           note: note?.trim() || null,
-        });
+        })
+        .select("id")
+        .single();
       if (error) throw new Error(`Failed to seed initial NAV: ${error.message}`);
 
       await logActivity({
         action: "created",
         entity_type: "manual_nav_update",
-        entity_id: assetId,
+        // entity_id is the manual_nav_updates row PK so entity_table+entity_id
+        // form a real FK to the audit row, matching upsertManualNav's pattern
+        // and the documented convention. Was previously the parent asset_id —
+        // which broke the convention and made undo/lookup ambiguous.
+        entity_id: inserted?.id ?? assetId,
         entity_table: "manual_nav_updates",
         entity_name: `${input.ticker} NAV ${effectiveDate}`,
         description: `Initial NAV: ${formatCurrency(nav, input.currency ?? "USD")} as of ${effectiveDate}`,
@@ -119,7 +125,7 @@ export async function upsertManualNav(input: ManualNavInput): Promise<void> {
     if (!user) throw new Error("Not authenticated");
 
     validateUUID(input.asset_id, "Asset ID");
-    validateDate(input.effective_date, "Effective date");
+    validatePastOrTodayDate(input.effective_date, "Effective date");
     validateAmount(input.nav, "NAV");
     if (input.nav <= 0) throw new Error("NAV must be positive");
     if (input.note) validateName(input.note, MAX_NAV_NOTE_LENGTH, "Note");
@@ -215,7 +221,7 @@ export async function deleteManualNav(input: {
     if (!user) throw new Error("Not authenticated");
 
     validateUUID(input.asset_id, "Asset ID");
-    validateDate(input.effective_date, "Effective date");
+    validatePastOrTodayDate(input.effective_date, "Effective date");
 
     // Probe for the row to delete. Disambiguate not-found (PGRST116) from
     // real DB error so the user sees a clear message instead of "NAV entry

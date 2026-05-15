@@ -225,7 +225,7 @@ export function AddManualNavModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor={`${id}-isin`} className="block text-xs text-zinc-400 mb-1">
-              ISIN <span className="text-zinc-500">(optional)</span>
+              ISIN <span className="text-zinc-400">(optional)</span>
             </label>
             <input
               id={`${id}-isin`}
@@ -279,6 +279,10 @@ export function AddManualNavModal({
             <input
               id={`${id}-subtype`}
               type="text"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={subcategoryOpen}
+              aria-controls={`${id}-subtype-list`}
               value={subcategory}
               onChange={(e) => {
                 setSubcategory(e.target.value);
@@ -286,6 +290,12 @@ export function AddManualNavModal({
               }}
               onFocus={() => setSubcategoryOpen(true)}
               onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && subcategoryOpen) {
+                  e.preventDefault();
+                  setSubcategoryOpen(false);
+                }
+              }}
               placeholder="e.g. ELTIF, SICAV..."
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             />
@@ -300,11 +310,17 @@ export function AddManualNavModal({
                 );
                 if (filtered.length === 0) return null;
                 return (
-                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                  <div
+                    id={`${id}-subtype-list`}
+                    role="listbox"
+                    className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto"
+                  >
                     {filtered.map((s) => (
                       <button
                         key={s}
                         type="button"
+                        role="option"
+                        aria-selected={false}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
                           setSubcategory(s);
@@ -333,16 +349,20 @@ export function AddManualNavModal({
                 <button
                   type="button"
                   onClick={() => setTags(tags.filter((t) => t !== tag))}
-                  className="text-zinc-500 hover:text-zinc-300"
+                  className="text-zinc-400 hover:text-zinc-200"
                   aria-label={`Remove tag ${tag}`}
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3 h-3" aria-hidden="true" />
                 </button>
               </span>
             ))}
             <input
               id={`${id}-tags`}
               type="text"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={tagsOpen}
+              aria-controls={`${id}-tags-list`}
               value={tagInput}
               onChange={(e) => {
                 setTagInput(e.target.value);
@@ -351,6 +371,11 @@ export function AddManualNavModal({
               onFocus={() => setTagsOpen(true)}
               onBlur={() => setTimeout(() => setTagsOpen(false), 150)}
               onKeyDown={(e) => {
+                if (e.key === "Escape" && tagsOpen) {
+                  e.preventDefault();
+                  setTagsOpen(false);
+                  return;
+                }
                 if (e.key === "Enter" && tagInput.trim()) {
                   e.preventDefault();
                   const v = tagInput.trim();
@@ -373,11 +398,17 @@ export function AddManualNavModal({
               );
               if (filtered.length === 0) return null;
               return (
-                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                <div
+                  id={`${id}-tags-list`}
+                  role="listbox"
+                  className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto"
+                >
                   {filtered.map((t) => (
                     <button
                       key={t}
                       type="button"
+                      role="option"
+                      aria-selected={false}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         setTags([...tags, t]);
@@ -397,7 +428,7 @@ export function AddManualNavModal({
         {/* Initial NAV — strongly encouraged */}
         <div className="border border-zinc-800/50 rounded-lg overflow-hidden bg-zinc-900/20">
           <div className="px-3 py-2 text-xs text-zinc-300 font-medium border-b border-zinc-800/50">
-            Initial NAV <span className="text-zinc-500 font-normal">(recommended)</span>
+            Initial NAV <span className="text-zinc-400 font-normal">(recommended)</span>
           </div>
           <div className="px-3 py-3 space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -433,7 +464,7 @@ export function AddManualNavModal({
             </div>
             <div>
               <label htmlFor={`${id}-nav-note`} className="block text-xs text-zinc-400 mb-1">
-                Note <span className="text-zinc-500">(optional, e.g. &quot;Q1 2026 fund letter&quot;)</span>
+                Note <span className="text-zinc-400">(optional, e.g. &quot;Q1 2026 fund letter&quot;)</span>
               </label>
               <input
                 id={`${id}-nav-note`}
