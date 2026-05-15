@@ -13,6 +13,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
     "test:component": "vitest run --project component",
     "test:integration": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor && vitest run --project integration && supabase stop",

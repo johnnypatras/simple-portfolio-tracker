@@ -34,11 +34,19 @@ export default defineConfig({
         "src/lib/deltas.ts": { statements: 95, branches: 95, functions: 95, lines: 95 },
         "src/lib/format.ts": { statements: 95, branches: 90, functions: 95, lines: 95 },
         "src/lib/rate-limit.ts": { statements: 80, branches: 85, functions: 75, lines: 86 },
+        "src/lib/manual-nav.ts": { statements: 85, branches: 70, functions: 70, lines: 88 },
         "src/lib/share-utils.ts": { statements: 95, branches: 95, functions: 95, lines: 95 },
         "src/lib/split-helpers.ts": { statements: 95, branches: 85, functions: 95, lines: 95 },
         "src/lib/stock-categories.ts": { statements: 95, branches: 95, functions: 95, lines: 95 },
         "src/lib/validation.ts": { statements: 94, branches: 92, functions: 87, lines: 96 },
         "src/lib/undo-remap.ts": { statements: 95, branches: 95, functions: 95, lines: 95 },
+
+        // ── Manual-NAV action module — server action mutations ──
+        // src/lib/actions/manual-nav.ts is covered by manual-nav-actions.test.ts
+        // (23 unit tests with vi.hoisted + vi.mock pattern). High threshold
+        // reflects the audit-driven coverage push and the security-critical
+        // nature of the mutations (RLS-scoped, validators, kind verification).
+        "src/lib/actions/manual-nav.ts": { statements: 95, branches: 85, functions: 95, lines: 95 },
 
         // ── Portfolio analysis modules (currently 89-100%) ──
         "src/lib/portfolio/aggregate.ts": { statements: 90, branches: 65, functions: 95, lines: 95 },
@@ -47,6 +55,10 @@ export default defineConfig({
         "src/lib/portfolio/dashboard-insights.ts": { statements: 90, branches: 75, functions: 80, lines: 95 },
         "src/lib/portfolio/holdings.ts": { statements: 95, branches: 70, functions: 95, lines: 95 },
         "src/lib/portfolio/institution-grouping.ts": { statements: 85, branches: 55, functions: 95, lines: 90 },
+        // Pure-augmentation functions are at ~95%; `fetchManualNavInputsFor`
+        // pulls the file-level number down because it's a DB-touching helper
+        // covered by manual-nav-cross-user.test.ts (integration), not unit.
+        "src/lib/portfolio/manual-nav-augmentation.ts": { statements: 80, branches: 65, functions: 65, lines: 82 },
 
         // ── Price utilities (currently 77-100%) ──
         "src/lib/prices/coingecko.ts": { statements: 75, branches: 60, functions: 75, lines: 75 },

@@ -1,5 +1,23 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import * as Sentry from "npm:@sentry/deno@^10";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+
+// ─── Sentry init ───────────────────────────────────────────
+// Runs once per cold start, idempotent across warm invocations.
+// When SENTRY_DSN is unset (local `supabase functions serve` / smoke tests),
+// init is a no-op and downstream capture/breadcrumb calls also no-op —
+// the instrumentation is strict-additive and never alters the snapshot
+// path's behavior. Sample rate matches sentry.server.config.ts (10% prod).
+const SENTRY_DSN = Deno.env.get("SENTRY_DSN") ?? "";
+const SENTRY_ENVIRONMENT = Deno.env.get("SENTRY_ENVIRONMENT") ?? "production";
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    tracesSampleRate: 0.1,
+    sendDefaultPii: false,
+    environment: SENTRY_ENVIRONMENT,
+  });
+}
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -71,6 +89,15 @@ Deno.serve(async (req: Request) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
+  // Per-invocation correlation: lets operators trace a single cron tick
+  // across all Sentry events, Supabase logs, and the HTTP response payload.
+  // Each Deno.serve invocation runs in its own async context, so tags set
+  // here are scoped to this invocation via Sentry's OTel context manager.
+  const runId = crypto.randomUUID();
+  Sentry.setTag("function", "daily-snapshot");
+  Sentry.setTag("cron_run_id", runId);
+  const startedAt = Date.now();
+
   try {
 
     // 1. Fetch all active users
@@ -81,8 +108,16 @@ Deno.serve(async (req: Request) => {
 
     if (usersErr) throw new Error(`Failed to fetch users: ${usersErr.message}`);
     if (!users || users.length === 0) {
-      return jsonResponse({ message: "No active users", snapshots: 0 });
+      await Sentry.flush(2000);
+      return jsonResponse({ message: "No active users", snapshots: 0, runId });
     }
+
+    Sentry.addBreadcrumb({
+      category: "snapshot",
+      message: "Active users loaded",
+      data: { count: users.length },
+      level: "info",
+    });
 
     const userIds = users.map((u: { id: string }) => u.id);
 
@@ -205,8 +240,21 @@ Deno.serve(async (req: Request) => {
         `[daily-snapshot] FX fetch failed with non-USD/EUR currencies in scope (${nonUsdEurCurrencies.join(",")}) — aborting to avoid corrupt snapshots.`,
         reason,
       );
+      Sentry.captureMessage(
+        "Daily snapshot aborted: FX fetch failed with non-USD/EUR currencies in scope",
+        {
+          level: "error",
+          extra: {
+            fxUsdFailed,
+            fxEurFailed,
+            currencies: nonUsdEurCurrencies,
+            reason: String(reason),
+          },
+        },
+      );
+      await Sentry.flush(2000);
       return jsonResponse(
-        { error: "fx_unavailable", currencies: nonUsdEurCurrencies },
+        { error: "fx_unavailable", currencies: nonUsdEurCurrencies, runId },
         503,
       );
     }
@@ -238,6 +286,12 @@ Deno.serve(async (req: Request) => {
         if (Date.now() - v8StartedAt > V8_BUDGET_MS) {
           const remaining = missingTickers.length - i;
           console.warn(`[daily-snapshot] v8 fallback budget exhausted — skipping ${remaining} tickers`);
+          Sentry.addBreadcrumb({
+            category: "yahoo",
+            message: "v8 fallback budget exhausted",
+            data: { processed: i, skipped: remaining, totalMissing: missingTickers.length },
+            level: "warning",
+          });
           break;
         }
         const chunk = missingTickers.slice(i, i + CHUNK_SIZE);
@@ -340,6 +394,15 @@ Deno.serve(async (req: Request) => {
             break;
           default:
             console.warn(`[daily-snapshot] Unknown stock asset kind="${asset.kind}" for user ${holdings.userId}, asset ${asset.asset_id}; skipping`);
+            Sentry.captureMessage("Unknown stock asset kind — DB CHECK invariant violated", {
+              level: "error",
+              extra: {
+                kind: asset.kind,
+                userId: holdings.userId,
+                assetId: asset.asset_id,
+                ticker: asset.ticker,
+              },
+            });
             continue;
         }
         if (priceNative === undefined) continue;
@@ -376,6 +439,15 @@ Deno.serve(async (req: Request) => {
         console.error(
           `[daily-snapshot] VALIDATION FAILED for ${userId}: total ($${roundedTotal}) ≠ components ($${componentSum}), drift $${drift}`
         );
+        Sentry.captureMessage("Snapshot validation drift exceeded $1", {
+          level: "error",
+          extra: {
+            userId,
+            total: roundedTotal,
+            componentSum,
+            drift,
+          },
+        });
       }
 
       const hasHoldings = holdings.cryptoAssets.length > 0 || holdings.stockAssets.length > 0 || holdings.cashItems.length > 0;
@@ -383,6 +455,15 @@ Deno.serve(async (req: Request) => {
         console.warn(
           `[daily-snapshot] SKIPPING ${userId}: $0 total but has holdings (crypto=${holdings.cryptoAssets.length}, stocks=${holdings.stockAssets.length}, cash=${holdings.cashItems.length}) — likely API failure`
         );
+        Sentry.captureMessage("Snapshot skipped: $0 total with holdings (likely API failure)", {
+          level: "warning",
+          extra: {
+            userId,
+            cryptoCount: holdings.cryptoAssets.length,
+            stockCount: holdings.stockAssets.length,
+            cashCount: holdings.cashItems.length,
+          },
+        });
         continue;
       }
 
@@ -412,15 +493,33 @@ Deno.serve(async (req: Request) => {
       if (upsertErr) throw new Error(`Upsert failed: ${upsertErr.message}`);
     }
 
+    Sentry.addBreadcrumb({
+      category: "snapshot",
+      message: "Snapshots upserted",
+      data: {
+        count: snapshots.length,
+        coins: coinIdSet.size,
+        stocks: yahooTickerSet.size,
+        currencies: currencySet.size,
+        v8Fallback: missingTickers.length,
+        elapsedMs: Date.now() - startedAt,
+      },
+      level: "info",
+    });
+    await Sentry.flush(2000);
+
     return jsonResponse({
       message: "Snapshots saved",
       snapshots: snapshots.length,
       prices: { coins: coinIdSet.size, stocks: yahooTickerSet.size, currencies: currencySet.size },
       v8Fallback: missingTickers.length,
+      runId,
     });
   } catch (err) {
-    console.error("[daily-snapshot] Error:", err);
-    return jsonResponse({ error: String(err) }, 500);
+    Sentry.captureException(err);
+    console.error(`[daily-snapshot] Error (run ${runId}):`, err);
+    await Sentry.flush(2000);
+    return jsonResponse({ error: String(err), runId }, 500);
   }
 });
 
