@@ -74,8 +74,8 @@ describe("cash_accounts constraints", () => {
   // ── P1: Unique Index ────────────────────────────────────────
 
   describe("P1 — unique index (uq_cash_accounts_active)", () => {
-    it("two unnamed deposits at same institution+currency → second INSERT fails", async () => {
-      // First unnamed deposit at wallet (name=NULL)
+    it("two unnamed deposits at same wallet_id+currency → second INSERT fails", async () => {
+      // First unnamed deposit at walletId (name=NULL)
       const { error: err1 } = await clientA.from("cash_accounts").insert({
         user_id: userIdA,
         wallet_id: walletId,
@@ -85,28 +85,67 @@ describe("cash_accounts constraints", () => {
       });
       expect(err1).toBeNull();
 
-      // Second unnamed deposit at same institution+currency → unique violation
-      // Use broker_id instead of wallet_id to avoid chk_cash_origin, but same institution
-      const { data: wallet2 } = await clientA
-        .from("wallets")
-        .insert({
-          user_id: userIdA,
-          name: "Constraint-Wallet-2",
-          wallet_type: "custodial",
-          institution_id: institutionId,
-        })
-        .select("id")
-        .single();
-
+      // Second deposit at the SAME wallet_id + currency → unique violation
+      // (Per migration 019, the key now includes wallet_id/broker_id so two
+      // *different* wallets at the same institution+currency are allowed —
+      // see the next test. Same wallet_id + currency must still collide.)
       const { error: err2 } = await clientA.from("cash_accounts").insert({
         user_id: userIdA,
-        wallet_id: wallet2!.id,
+        wallet_id: walletId,
         institution_id: institutionId,
         currency: "USD",
         balance: 200,
       });
       expect(err2).not.toBeNull();
       expect(err2!.code).toBe("23505"); // unique_violation
+    });
+
+    it("two unnamed deposits at different wallets, same institution+currency → both succeed (migration 019)", async () => {
+      // Fresh institution to avoid earlier-test fixtures
+      const { data: inst019 } = await clientA
+        .from("institutions")
+        .insert({ user_id: userIdA, name: "Mig019-Test-Inst" })
+        .select("id")
+        .single();
+
+      const { data: walletA } = await clientA
+        .from("wallets")
+        .insert({
+          user_id: userIdA,
+          name: "Mig019-Wallet-A",
+          wallet_type: "custodial",
+          institution_id: inst019!.id,
+        })
+        .select("id")
+        .single();
+      const { data: walletB } = await clientA
+        .from("wallets")
+        .insert({
+          user_id: userIdA,
+          name: "Mig019-Wallet-B",
+          wallet_type: "custodial",
+          institution_id: inst019!.id,
+        })
+        .select("id")
+        .single();
+
+      const { error: errA } = await clientA.from("cash_accounts").insert({
+        user_id: userIdA,
+        wallet_id: walletA!.id,
+        institution_id: inst019!.id,
+        currency: "USD",
+        balance: 100,
+      });
+      const { error: errB } = await clientA.from("cash_accounts").insert({
+        user_id: userIdA,
+        wallet_id: walletB!.id,
+        institution_id: inst019!.id,
+        currency: "USD",
+        balance: 200,
+      });
+
+      expect(errA).toBeNull();
+      expect(errB).toBeNull();
     });
 
     it("one named + one unnamed at same institution+currency → both succeed", async () => {
