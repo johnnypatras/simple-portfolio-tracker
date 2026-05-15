@@ -96,6 +96,25 @@ export function validateDate(s: string, label = "Date"): void {
   }
 }
 
+/**
+ * Like `validateDate` but additionally rejects future dates. Use for fields
+ * that have today-or-past semantics: NAV effective dates (fund letters are
+ * always published for a date <= today), backdated trade dates, snapshot
+ * dates, transfer effective dates. The comparison uses UTC midnight to match
+ * the DATE column's storage semantics so a same-day-different-timezone entry
+ * doesn't trip.
+ */
+export function validatePastOrTodayDate(s: string, label = "Date"): void {
+  validateDate(s, label);
+  const [yStr, mStr, dStr] = s.split("-");
+  const inputMs = Date.UTC(Number(yStr), Number(mStr) - 1, Number(dStr));
+  const now = new Date();
+  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  if (inputMs > todayMs) {
+    throw new Error(`${label} cannot be in the future: "${s}"`);
+  }
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -129,9 +129,10 @@ export function injectManualNavPrices(
  *   stale-threshold check downstream so the UI surfaces the anomaly.
  * - Future effective_date → `{label: "future date", daysAgo: -daysFromNow}`
  *   distinguishable from "today" so the UI can render an error state.
- *   Server-side validateDate now rejects future dates at write time, but
- *   defense-in-depth: a pre-existing future-dated row shouldn't render as
- *   "Updated today".
+ *   Server-side validatePastOrTodayDate rejects future dates at write time,
+ *   but this branch is defense-in-depth: a pre-existing future-dated row
+ *   (e.g. from an older backup or pre-validator import) shouldn't render
+ *   as "Updated today".
  */
 export function navStaleness(effectiveDate: string, now = new Date()): { label: string; daysAgo: number } {
   const d = new Date(effectiveDate + "T00:00:00Z");

@@ -596,9 +596,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                 aria-expanded={addMenuOpen}
                 className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3 h-3" aria-hidden="true" />
                 Add
-                <ChevronDown className="w-3 h-3 opacity-80" />
+                <ChevronDown className="w-3 h-3 opacity-80" aria-hidden="true" />
               </button>
               {addMenuOpen && (
                 <>

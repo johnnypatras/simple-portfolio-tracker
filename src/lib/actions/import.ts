@@ -759,11 +759,12 @@ export async function importFromJson(
           count: "exact",
         });
       if (error) return fail(`Manual NAV updates batch: ${error.message}`);
+      // `count` from PostgREST upsert is total rows AFFECTED (inserts + updates
+      // combined), not just inserts — so we can't split it. Report all of them
+      // under counts.manualNavUpdates. The `skipped.manualNavUpdates` field is
+      // populated only by the orphan-asset_id drop above (line 740), which is
+      // the genuine "skipped because we refused to import" case.
       counts.manualNavUpdates += count ?? navRows.length;
-      // Anything not in the count diff means it was an existing row that got
-      // updated rather than inserted — surface that in skipped for clarity.
-      const inserted = count ?? navRows.length;
-      skipped.manualNavUpdates += navRows.length - inserted;
     }
   }
 
