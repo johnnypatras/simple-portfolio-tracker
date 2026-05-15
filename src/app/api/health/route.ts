@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -102,6 +103,26 @@ export async function GET() {
 
     const overallStatus = snapshotStale || !navPipelineOk ? "warning" : "ok";
 
+    // Surface NAV pipeline degradation to Sentry so the warning is alertable
+    // without depending on someone manually polling /api/health. A 200 with
+    // status:"warning" is invisible to external uptime monitors.
+    if (!navPipelineOk) {
+      Sentry.captureMessage("Health probe: manual-NAV pipeline degraded", {
+        level: "warning",
+        tags: { route: "/api/health", probe: "nav_pipeline" },
+        extra: { navTableOk, navRpcOk },
+      });
+    }
+    // Stale snapshot is also an operational signal — surface it directly
+    // instead of waiting for the user to notice the dashboard banner.
+    if (snapshotStale) {
+      Sentry.captureMessage("Health probe: snapshot stale (>26h)", {
+        level: "warning",
+        tags: { route: "/api/health", probe: "snapshot_age" },
+        extra: { ageHours: ageHours ?? null, snapshotDate: lastSnapshotDate ?? null },
+      });
+    }
+
     return NextResponse.json({
       status: overallStatus,
       snapshotAgeHours: ageHours ? Math.round(ageHours) : null,
@@ -112,8 +133,11 @@ export async function GET() {
       navRpc: navRpcOk ? "ok" : "degraded",
       ms: Date.now() - start,
     });
-  } catch {
+  } catch (err) {
     clearTimeout(timeout);
+    Sentry.captureException(err, {
+      tags: { route: "/api/health", probe: "outer_catch" },
+    });
     return NextResponse.json(
       { status: "error", error: "unreachable", ms: Date.now() - start },
       { status: 503 }

@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/actions/activity-log";
 import { validateUUID, validateName, validateCurrency } from "@/lib/validation";
 import { MAX_LABEL_LENGTH } from "@/lib/constants";
 import { captureAction } from "@/lib/actions/with-sentry";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * Fetch all institutions for the current user with computed roles.
@@ -175,12 +176,19 @@ export async function updateInstitutionRoles(
 
   // Propagate country to all linked cash accounts
   if (opts.country !== undefined) {
-    await supabase
+    const { error: regionErr } = await supabase
       .from("cash_accounts")
       .update({ region: opts.country })
       .eq("institution_id", institutionId)
       .eq("user_id", user.id)
       .is("deleted_at", null);
+    if (regionErr) {
+      console.error(`[institutions] Region propagation failed for "${instName}":`, regionErr.message);
+      Sentry.captureException(regionErr, {
+        tags: { action: "institutions.updateInstitutionRoles", phase: "region_propagation" },
+        extra: { institutionId, country: opts.country },
+      });
+    }
   }
 
   // Create sibling wallet if requested
@@ -202,7 +210,13 @@ export async function updateInstitutionRoles(
         institution_id: institutionId,
       }).select("*").single();
       if (walletErr) {
+        // Surface to Sentry — the parent action returns success so without
+        // this capture the user sees "saved" but no wallet exists.
         console.error(`[institutions] Sibling wallet creation failed for "${instName}":`, walletErr.message);
+        Sentry.captureException(walletErr, {
+          tags: { action: "institutions.updateInstitutionRoles", phase: "sibling_wallet" },
+          extra: { institutionId, instName },
+        });
       } else if (walletCreated) {
         await logActivity({
           action: "created",
@@ -234,7 +248,12 @@ export async function updateInstitutionRoles(
         institution_id: institutionId,
       }).select("*").single();
       if (brokerErr) {
+        // Surface to Sentry — see sibling-wallet comment above.
         console.error(`[institutions] Sibling broker creation failed for "${instName}":`, brokerErr.message);
+        Sentry.captureException(brokerErr, {
+          tags: { action: "institutions.updateInstitutionRoles", phase: "sibling_broker" },
+          extra: { institutionId, instName },
+        });
       } else if (brokerCreated) {
         await logActivity({
           action: "created",

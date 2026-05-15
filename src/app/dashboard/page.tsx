@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
@@ -84,12 +85,26 @@ export default async function DashboardPage() {
     cashValueEur: summary.cashValueEur,
     stocksHomeCurrencyEur: summary.stocksHomeCurrencyEur,
     cashHomeCurrencyEur: summary.cashHomeCurrencyEur,
-  }).catch((err) => console.error("[snapshots] fire-and-forget save failed:", err));
+  }).catch((err) => {
+    // saveSnapshot is intentionally fire-and-forget (not awaited so it
+    // doesn't block render) and intentionally not wrapped in captureAction
+    // (uses richer manual captureMessage at its drift/sanity checkpoints).
+    // The dashboard-side catch is the only place fire-and-forget rejections
+    // surface — without Sentry here, a snapshot-save outage is invisible
+    // until /api/health reports `snapshotStale: true` the next day.
+    console.error("[snapshots] fire-and-forget save failed:", err);
+    Sentry.captureException(err, {
+      tags: { action: "snapshots.saveSnapshot", channel: "fire_and_forget" },
+    });
+  });
 
   // ── Backfill legacy cashflow/delta rows (fire-and-forget) ─
-  backfillCashflowsAndDeltas().catch((err) =>
-    console.error("[backfill] fire-and-forget failed:", err)
-  );
+  backfillCashflowsAndDeltas().catch((err) => {
+    console.error("[backfill] fire-and-forget failed:", err);
+    Sentry.captureException(err, {
+      tags: { action: "backfill.backfillCashflowsAndDeltas", channel: "fire_and_forget" },
+    });
+  });
 
   const pastSnapshots = {
     "24h": null,
