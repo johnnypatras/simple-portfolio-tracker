@@ -54,6 +54,8 @@ function makeClient(
 
   const prevSnapshotBuilder = {
     select: vi.fn().mockReturnThis(),
+    // .eq("user_id", user.id) added in audit R1 Phase 4 for defense-in-depth
+    eq: vi.fn().mockReturnThis(),
     lt: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),

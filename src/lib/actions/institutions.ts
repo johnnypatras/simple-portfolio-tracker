@@ -160,6 +160,7 @@ export async function updateInstitutionRoles(
       .from("institutions")
       .select("*")
       .eq("id", institutionId)
+      .eq("user_id", user.id)
       .is("deleted_at", null)
       .single();
     await logActivity({

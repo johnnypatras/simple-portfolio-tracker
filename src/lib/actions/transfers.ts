@@ -99,7 +99,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     // For all other cases, validate the pre-existing source now to avoid
     // orphaning entities (broker, wallet, asset) if balance is insufficient.
     if (currentSource && !input.newCashDeposit) {
-      const earlyState = await fetchSourceState(supabase, currentSource);
+      const earlyState = await fetchSourceState(supabase, currentSource, user.id);
       validateSufficientBalance(currentSource, earlyState);
     }
 
@@ -184,7 +184,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       // explicitly instead of using `!` so a future refactor that moves the
       // assignment fails loudly rather than silently passing `undefined`.
       if (!transferGroupId) throw new Error("Transfer logic error: transferGroupId not set for two-legged transfer");
-      originalState = await fetchSourceState(supabase, currentSource);
+      originalState = await fetchSourceState(supabase, currentSource, user.id);
       prices = await fetchPrices(supabase, currentSource, destination);
       validateSufficientBalance(currentSource, originalState);
       await executeSourceLeg(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
@@ -192,7 +192,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
 
     // ── Step 6: Execute destination leg (increase) with rollback on failure
     try {
-      await executeDestLeg(supabase, destination, transferGroupId, prices.destination, input.effectiveDate);
+      await executeDestLeg(supabase, destination, transferGroupId, prices.destination, user.id, input.effectiveDate);
     } catch (destErr) {
       if (currentSource && originalState) {
         // Rollback source: restore to original state
@@ -278,10 +278,14 @@ function validateSufficientBalance(source: TransferSide, state: SourceOriginalSt
 
 async function fetchSourceState(
   supabase: SupabaseClient,
-  source: TransferSide
+  source: TransferSide,
+  userId: string,
 ): Promise<SourceOriginalState> {
   switch (source.type) {
     case "crypto_position": {
+      // Position tables don't have a user_id column — RLS via parent
+      // crypto_asset/wallet is the only feasible scope. user_id passed
+      // for symmetry with cash_account branch + future-proofing.
       const { data, error } = await supabase
         .from("crypto_positions")
         .select("quantity")
@@ -308,6 +312,7 @@ async function fetchSourceState(
         .from("cash_accounts")
         .select("id, balance, currency")
         .eq("id", source.accountId)
+        .eq("user_id", userId)
         .is("deleted_at", null)
         .single();
       if (error || !data) throw new Error("Source cash account not found");
@@ -454,6 +459,7 @@ async function executeDestLeg(
   destination: TransferSide,
   transferGroupId: string | undefined,
   prices: SidePrices,
+  userId: string,
   effectiveDate?: string
 ): Promise<void> {
   switch (destination.type) {
@@ -513,6 +519,7 @@ async function executeDestLeg(
         .from("cash_accounts")
         .select("id, balance, currency")
         .eq("id", destination.accountId)
+        .eq("user_id", userId)
         .is("deleted_at", null)
         .single();
       if (error || !existing) throw new Error("Destination cash account not found");

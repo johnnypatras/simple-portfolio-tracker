@@ -567,7 +567,8 @@ export async function backfillCryptoImages() {
         const { error: updateErr } = await supabase
           .from("crypto_assets")
           .update({ image_url: safeUrl })
-          .eq("id", asset.id);
+          .eq("id", asset.id)
+          .eq("user_id", user.id);
         if (updateErr) console.warn(`[backfill] Failed to update image for ${asset.coingecko_id}:`, updateErr.message);
       }
     })

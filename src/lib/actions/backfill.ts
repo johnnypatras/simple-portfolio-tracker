@@ -162,7 +162,8 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             cashflow_status: "complete",
             cashflow_attempted_at: now.toISOString(),
           })
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("user_id", user.id);
         if (cfWriteErr) {
           console.error(`[backfill] Cashflow write failed for row ${row.id as string}:`, cfWriteErr.message);
           pending++;
@@ -178,7 +179,8 @@ export async function backfillCashflowsAndDeltas(): Promise<{
             delta_status: "complete",
             delta_attempted_at: now.toISOString(),
           })
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("user_id", user.id);
         if (deltaWriteErr) {
           console.error(`[backfill] Delta write failed for row ${row.id as string}:`, deltaWriteErr.message);
           pending++;
@@ -275,7 +277,8 @@ export async function backfillCashflowsAndDeltas(): Promise<{
               cashflow_status: hasEstimate ? "complete" : "failed",
               cashflow_attempted_at: now.toISOString(),
             })
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .eq("user_id", user.id);
           if (cfEstErr) console.error(`[backfill] Cashflow fallback write failed for row ${row.id as string}:`, cfEstErr.message);
         }
         if (isDelta) {
@@ -287,7 +290,8 @@ export async function backfillCashflowsAndDeltas(): Promise<{
               delta_status: hasEstimate ? "complete" : "failed",
               delta_attempted_at: now.toISOString(),
             })
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .eq("user_id", user.id);
           if (deltaEstErr) console.error(`[backfill] Delta fallback write failed for row ${row.id as string}:`, deltaEstErr.message);
         }
         failed++;
@@ -299,7 +303,8 @@ export async function backfillCashflowsAndDeltas(): Promise<{
         const { error: pendingWriteErr } = await supabase
           .from("activity_log")
           .update(pendingUpdate)
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("user_id", user.id);
         if (pendingWriteErr) console.error(`[backfill] Pending update write failed for row ${row.id as string}:`, pendingWriteErr.message);
         pending++;
       }
