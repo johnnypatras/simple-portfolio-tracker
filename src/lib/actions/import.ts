@@ -10,6 +10,7 @@ import type { Database } from "@/types/database";
 import {
   validateAmount,
   validateDate,
+  validatePastOrTodayDate,
   validateQuantity,
   validateCurrency,
   validateName,
@@ -131,10 +132,15 @@ export async function validateBackup(
       if (!Number.isFinite(navNum) || navNum <= 0) {
         return { ok: false, error: `manualNavUpdates[${i}].nav must be a positive finite number` };
       }
-      // validateDate is regex-only; tighten by parsing the actual date.
+      // validatePastOrTodayDate does format + calendar round-trip + future-date
+      // rejection. The R2 audit added the validator and wired it into the
+      // interactive write paths (addManualNavAsset/upsertManualNav); this
+      // closes the import path that was bypassing the future-date check.
       const dateStr = String(raw.effective_date);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || Number.isNaN(new Date(dateStr + "T00:00:00Z").getTime())) {
-        return { ok: false, error: `manualNavUpdates[${i}].effective_date must be a valid YYYY-MM-DD date` };
+      try {
+        validatePastOrTodayDate(dateStr, `manualNavUpdates[${i}].effective_date`);
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
       if (typeof raw.asset_id !== "string" || raw.asset_id.length === 0) {
         return { ok: false, error: `manualNavUpdates[${i}].asset_id must be a non-empty string` };

@@ -77,10 +77,21 @@ export function computeCompensatingUpdate(
     if (JSON.stringify(beforeVal) === JSON.stringify(afterVal)) continue;
 
     if (valueFieldSet.has(key)) {
-      // Delta reversal: apply inverse of (after - before) to current
-      const delta = (Number(beforeVal) || 0) - (Number(afterVal) || 0);
-      const currentVal = Number(currentEntity[key]) || 0;
-      update[key] = currentVal + delta;
+      // Delta reversal: apply inverse of (after - before) to current.
+      // Audit R1 Phase 5: `Number(x) || 0` silently masked NaN/undefined/
+      // garbage as zero — a hand-edited or corrupted snapshot would have
+      // its field zeroed out via `update[key] = current + (0 - 0)`. Now
+      // we explicitly require finite numbers; undo fails loudly on
+      // corruption rather than writing a destructive value.
+      const before = Number(beforeVal);
+      const after = Number(afterVal);
+      const current = Number(currentEntity[key]);
+      if (!Number.isFinite(before) || !Number.isFinite(after) || !Number.isFinite(current)) {
+        throw new Error(
+          `Cannot compute compensating update for ${entityTable}.${key}: non-finite value (before=${JSON.stringify(beforeVal)}, after=${JSON.stringify(afterVal)}, current=${JSON.stringify(currentEntity[key])})`,
+        );
+      }
+      update[key] = current + (before - after);
     } else {
       // Identity field: restore only if current still matches after_snapshot.
       // If it was changed since, skip to avoid clobbering.

@@ -296,12 +296,23 @@ export async function computeDeltaFromSnapshots(
         throw new Error(`Yahoo returned no price history for ${asset.yahoo_ticker} (${daysSince} days)`);
       }
 
-      let priceNative = 0;
+      // Use null sentinel (not 0) to distinguish "no historical price found
+      // on-or-before txDate" from "found price was zero." Audit R1 Phase 5:
+      // the old code treated both as missing → fell back to history[0].close
+      // → if that was also zero, silently wrote deltaNative = 0 and marked
+      // the row 'complete', appearing to apply the adjustment but contributing
+      // nothing to the back-fill formula.
+      let priceNative: number | null = null;
       for (const h of history) {
         if (h.date <= txDate) priceNative = h.close;
         else break;
       }
-      if (priceNative === 0) priceNative = history[0].close;
+      if (priceNative === null) priceNative = history[0].close;
+      if (!Number.isFinite(priceNative) || priceNative <= 0) {
+        throw new Error(
+          `Yahoo returned non-positive price for ${asset.yahoo_ticker} at ${txDate} (price=${priceNative}). Refusing to write zero-valued delta.`,
+        );
+      }
 
       const deltaNative = qtyDelta * priceNative;
       return toUsdAndEur(deltaNative, asset.currency ?? "USD", txDate);

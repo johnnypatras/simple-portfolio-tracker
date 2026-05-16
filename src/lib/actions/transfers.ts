@@ -22,7 +22,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   validateAmount,
   validateCurrency,
-  validateDate,
+  validatePastOrTodayDate,
 } from "@/lib/validation";
 import {
   validateSideShape,
@@ -74,7 +74,10 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     if (input.newCashDeposit.amount <= 0) throw new Error("Cash deposit amount must be positive");
     validateCurrency(input.newCashDeposit.currency);
   }
-  if (input.effectiveDate) validateDate(input.effectiveDate, "Effective date");
+  // Transfers are recorded for events that already happened; future-dated
+  // effectiveDate would corrupt every COALESCE(effective_date, created_at)
+  // pipeline (chart enrichment, S&P benchmark, period changes, history).
+  if (input.effectiveDate) validatePastOrTodayDate(input.effectiveDate, "Effective date");
 
   // Use a local destination variable to avoid mutating input
   let destination: TransferSide = input.destination;
