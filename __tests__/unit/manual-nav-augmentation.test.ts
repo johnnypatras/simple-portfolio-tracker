@@ -108,11 +108,12 @@ describe("snapshotEurPerUsd", () => {
     expect(snapshotEurPerUsd(snap)).toBe(0.85);
   });
 
-  it("falls through to crypto totals when stocks/total ratio is single-zero", () => {
+  it("returns null when stocks/total/crypto/cash ratios are all single-zero", () => {
     // total_value_eur=0 but total_value_usd=1000 means the snapshot has USD
-    // but no EUR aggregation — falls through to crypto totals which the
-    // makeSnapshot helper does NOT populate, so cash ratio kicks in.
-    // Verify by zeroing both crypto AND cash to force final 1.0 fallback.
+    // but no EUR aggregation. With crypto AND cash also single-zero, no tier
+    // can derive a real rate. Audit R1 Phase 5 changed the contract from
+    // `1` fallback to `null` so callers explicitly skip cross-currency mirror
+    // instead of contaminating the foreign column with a 1:1 identity copy.
     expect(
       snapshotEurPerUsd(
         makeSnapshot({
@@ -124,7 +125,7 @@ describe("snapshotEurPerUsd", () => {
           cash_value_usd: 0,
         }),
       ),
-    ).toBe(1);
+    ).toBeNull();
   });
 
   it("prefers crypto totals ratio when total ratio is unusable", () => {
@@ -143,7 +144,11 @@ describe("snapshotEurPerUsd", () => {
     expect(r).toBeCloseTo(0.85, 5);
   });
 
-  it("falls back to 1.0 when ALL ratios are unavailable (totals/crypto/cash all single-zero or null)", () => {
+  it("returns null when ALL ratios are unavailable (totals/crypto/cash all single-zero or null)", () => {
+    // Pre-positions snapshot with everything zero/null → no determinable FX
+    // rate. Audit R1 Phase 5: returning `null` (not `1`) prevents the
+    // augmentSnapshotsWithManualNavs cross-currency mirror from corrupting
+    // the foreign column (e.g. EUR ELTIF NAV written 1:1 into stocks_value_usd).
     expect(
       snapshotEurPerUsd(
         makeSnapshot({
@@ -155,7 +160,40 @@ describe("snapshotEurPerUsd", () => {
           cash_value_usd: 0,
         }),
       ),
-    ).toBe(1);
+    ).toBeNull();
+  });
+
+  it("augmentation skips USD mirror when eurPerUsd is null (EUR ELTIF on zero-total snapshot)", () => {
+    // Direct test of the audit R1 Phase 5 contract change: with no FX rate
+    // determinable, EUR contribution adds to stocks_value_eur as usual but
+    // stocks_value_usd is NOT polluted by a 1:1 identity copy.
+    const positions: ManualPositionRow[] = [
+      { stock_asset_id: ASSET_A, quantity: 1, currency: "EUR" },
+    ];
+    const navs: ManualNavRow[] = [
+      { asset_id: ASSET_A, effective_date: "2026-04-01", nav: 1000 },
+    ];
+    const result = augmentSnapshotsWithManualNavs(
+      [
+        makeSnapshot({
+          snapshot_date: "2026-04-15",
+          total_value_eur: 0,
+          total_value_usd: 0,
+          crypto_value_eur: 0,
+          crypto_value_usd: 0,
+          cash_value_eur: 0,
+          cash_value_usd: 0,
+          stocks_value_eur: 0,
+          stocks_value_usd: 0,
+        }),
+      ],
+      positions,
+      navs,
+    );
+    expect(result[0].stocks_value_eur).toBeCloseTo(1000, 2);
+    // Old behaviour would have written 1000 here (1:1 identity contamination);
+    // new behaviour correctly leaves it at 0 because no FX rate is known.
+    expect(result[0].stocks_value_usd).toBe(0);
   });
 });
 

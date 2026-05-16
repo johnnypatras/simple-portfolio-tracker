@@ -84,10 +84,14 @@ export function buildNavIndex(navs: ManualNavRow[]): Map<string, ManualNavRow[]>
  *   2. `crypto_value_eur / crypto_value_usd` — CoinGecko returns both
  *      currencies directly, so this ratio is reliable when crypto is held
  *   3. `cash_value_eur / cash_value_usd` — same idea for cash positions
- *   4. 1.0 — last-resort fallback (zero-total snapshot, no augmentation
- *      arithmetic is meaningful anyway)
+ *   4. `null` — no determinable rate. Audit R1 Phase 5 changed this from
+ *      identity-fallback (`1`) to null because the old behaviour silently
+ *      corrupted the cross-currency mirror: a EUR ELTIF on a zero-total
+ *      pre-positions snapshot got written into `stocks_value_usd` as a 1:1
+ *      copy (e.g. €1000 NAV → $1000 USD instead of $1080). Callers now
+ *      skip the cross-currency mirror entirely when null is returned.
  */
-export function snapshotEurPerUsd(snap: PortfolioSnapshot): number {
+export function snapshotEurPerUsd(snap: PortfolioSnapshot): number | null {
   const totalUsd = snap.total_value_usd ?? 0;
   const totalEur = snap.total_value_eur ?? 0;
   if (totalUsd > 0 && totalEur > 0) return totalEur / totalUsd;
@@ -100,7 +104,7 @@ export function snapshotEurPerUsd(snap: PortfolioSnapshot): number {
   const cashEur = snap.cash_value_eur ?? 0;
   if (cashUsd > 0 && cashEur > 0) return cashEur / cashUsd;
 
-  return 1;
+  return null;
 }
 
 /**
@@ -152,11 +156,11 @@ export function augmentSnapshotsWithManualNavs(
     if (byCurrency.size === 0) return snap;
 
     const eurPerUsd = snapshotEurPerUsd(snap);
-    // snapshotEurPerUsd is contractually positive: each branch returns a
-    // strictly-positive ratio, with `1` as the final fallback. So the EUR→USD
-    // division below cannot divide by zero. We assert it here so a future
-    // change to snapshotEurPerUsd that allows 0/negative is caught loudly.
-    if (eurPerUsd <= 0) {
+    // Defense-in-depth: when snapshotEurPerUsd returns a real number it is
+    // guaranteed strictly-positive by construction (each branch divides only
+    // when both numerator AND denominator are > 0). The check below catches
+    // a future regression that allowed zero/negative through any branch.
+    if (eurPerUsd !== null && eurPerUsd <= 0) {
       throw new Error(
         `Invariant violation: snapshotEurPerUsd returned non-positive value ${eurPerUsd}`,
       );
@@ -166,13 +170,21 @@ export function augmentSnapshotsWithManualNavs(
     for (const [currency, amount] of byCurrency) {
       if (currency === "USD") {
         manualUsd += amount;
-        manualEur += amount * eurPerUsd;
+        // Skip the EUR mirror when no real FX rate is available — better to
+        // leave the foreign column at 0 than corrupt it with a 1:1 identity
+        // copy of the USD amount. Affects zero-total pre-positions snapshots.
+        if (eurPerUsd !== null) manualEur += amount * eurPerUsd;
       } else if (currency === "EUR") {
         manualEur += amount;
-        manualUsd += amount / eurPerUsd;
+        if (eurPerUsd !== null) manualUsd += amount / eurPerUsd;
       } else {
-        manualUsd += amount;
-        manualEur += amount * eurPerUsd;
+        // Non-USD/EUR currencies (rare for ELTIFs). When no FX rate is
+        // available we can't determine either column accurately; skip
+        // entirely rather than write the worst-case 1:1 approximation.
+        if (eurPerUsd !== null) {
+          manualUsd += amount;
+          manualEur += amount * eurPerUsd;
+        }
       }
     }
 

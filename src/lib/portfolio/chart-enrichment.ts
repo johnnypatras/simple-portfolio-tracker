@@ -257,22 +257,36 @@ function enrichCashFlowAdjusted(
     const adjustedFirstDisp = firstSliceVal + (finalDeltaDisplay - deltaDisp(firstDelta));
 
     // Convert adjusted display value → USD for unit calculation.
-    // Three-tier FX ratio: per-class → portfolio-wide → identity (all zero).
-    const fxRatioUsdPerDisp =
-      firstSliceUsd > 0 && firstSliceVal > 0
-        ? firstSliceUsd / firstSliceVal
-        : firstPoint.value > 0
-          ? firstPoint.valueUsd / firstPoint.value
-          : 1;
-    const adjustedFirstUsd = adjustedFirstDisp * fxRatioUsdPerDisp;
+    // Four-tier FX ratio (audit R1 Phase 5): per-class → portfolio-wide →
+    // forward-scan → skip. Identity-rate fallback corrupted S&P seeding by
+    // ~15-18% for EUR-primary users whose first chart point was empty (e.g.
+    // all-adjustment imports backdated before any positions existed). Now:
+    // tier 3 scans forward for the first non-zero point's portfolio-wide
+    // ratio; tier 4 (no non-zero point anywhere) skips seeding entirely.
+    let fxRatioUsdPerDisp: number | null = null;
+    if (firstSliceUsd > 0 && firstSliceVal > 0) {
+      fxRatioUsdPerDisp = firstSliceUsd / firstSliceVal;
+    } else if (firstPoint.value > 0) {
+      fxRatioUsdPerDisp = firstPoint.valueUsd / firstPoint.value;
+    } else {
+      for (const p of points) {
+        if (p.value > 0 && p.valueUsd > 0) {
+          fxRatioUsdPerDisp = p.valueUsd / p.value;
+          break;
+        }
+      }
+    }
 
-    const neededUnits = adjustedFirstUsd / sp500StartPrice;
-    if (neededUnits !== preChartUnits) {
-      const seedDelta = neededUnits - preChartUnits;
-      sp500Units += seedDelta;
-      preChartUnits = neededUnits;
-      for (const [date, units] of unitsByDate) {
-        unitsByDate.set(date, units + seedDelta);
+    if (fxRatioUsdPerDisp !== null && fxRatioUsdPerDisp > 0) {
+      const adjustedFirstUsd = adjustedFirstDisp * fxRatioUsdPerDisp;
+      const neededUnits = adjustedFirstUsd / sp500StartPrice;
+      if (neededUnits !== preChartUnits) {
+        const seedDelta = neededUnits - preChartUnits;
+        sp500Units += seedDelta;
+        preChartUnits = neededUnits;
+        for (const [date, units] of unitsByDate) {
+          unitsByDate.set(date, units + seedDelta);
+        }
       }
     }
   }
