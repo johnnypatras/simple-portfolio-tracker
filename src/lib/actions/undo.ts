@@ -175,21 +175,31 @@ async function undoSingleEntry(
           };
         }
 
-        // Apply the compensating update
-        const { error } = await supabase
+        // Apply the compensating update — defense-in-depth user_id filter
+        // matches the convention used in the "created"/"removed" branches
+        // (lines ~142 / ~153). RLS already scopes by auth.uid(), but the
+        // explicit filter is the documented project standard.
+        let compQuery = supabase
           .from(effectiveTable)
           .update(compensatingFields)
           .eq("id", log.entity_id);
+        if (TABLES_WITH_USER_ID.has(effectiveTable)) {
+          compQuery = compQuery.eq("user_id", userId);
+        }
+        const { error } = await compQuery;
         if (error) throw error;
 
         // Read entity after compensation for the after_snapshot. If this
         // read fails, we'd silently write null into after_snapshot and
         // mark the entry undone — log the error so it surfaces instead.
-        const { data: afterEntity, error: afterErr } = await supabase
+        let afterRead = supabase
           .from(effectiveTable)
           .select("*")
-          .eq("id", log.entity_id)
-          .single();
+          .eq("id", log.entity_id);
+        if (TABLES_WITH_USER_ID.has(effectiveTable)) {
+          afterRead = afterRead.eq("user_id", userId);
+        }
+        const { data: afterEntity, error: afterErr } = await afterRead.single();
         if (afterErr) {
           console.error(`[undo] Failed to read after-snapshot for ${effectiveTable}/${log.entity_id}:`, afterErr.message);
           Sentry.captureException(afterErr, {
@@ -433,6 +443,7 @@ export async function undoActivity(
     .from("activity_log")
     .select("id")
     .eq("split_from_id", log.id)
+    .eq("user_id", user.id)
     .limit(1);
 
   if (splitChildren?.length) {
@@ -461,6 +472,7 @@ export async function undoActivity(
       .from("activity_log")
       .select("id")
       .eq("compensates_for", log.id)
+      .eq("user_id", user.id)
       .is("undone_at", null)
       .limit(1);
 

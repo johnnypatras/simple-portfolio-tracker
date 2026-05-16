@@ -73,6 +73,7 @@ export async function saveSnapshot(values: {
   const { data: prev } = await supabase
     .from("portfolio_snapshots")
     .select("total_value_usd, snapshot_date")
+    .eq("user_id", user.id)
     .lt("snapshot_date", today)
     .order("snapshot_date", { ascending: false })
     .limit(1)
