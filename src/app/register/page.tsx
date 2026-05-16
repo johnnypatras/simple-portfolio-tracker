@@ -135,7 +135,7 @@ function InviteForm() {
             Invite Code <span className="text-zinc-400">(optional)</span>
           </label>
           <div className="relative">
-            <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               id="register-invite-code"
               type="text"
@@ -153,7 +153,7 @@ function InviteForm() {
             Display Name <span className="text-zinc-400">(optional)</span>
           </label>
           <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               id="register-display-name"
               type="text"
@@ -172,7 +172,7 @@ function InviteForm() {
               First Name <span className="text-zinc-400">(optional)</span>
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
               <input
                 id="register-first-name"
                 type="text"
@@ -188,7 +188,7 @@ function InviteForm() {
               Last Name <span className="text-zinc-400">(optional)</span>
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
               <input
                 id="register-last-name"
                 type="text"
@@ -205,7 +205,7 @@ function InviteForm() {
         <div>
           <label htmlFor="register-email" className="block text-sm text-zinc-400 mb-1.5">Email</label>
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               id="register-email"
               type="email"
@@ -224,7 +224,7 @@ function InviteForm() {
             Password
           </label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               id="register-password"
               type={showPassword ? "text" : "password"}
@@ -239,7 +239,7 @@ function InviteForm() {
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               aria-label={showPassword ? "Hide password" : "Show password"}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-300"
             >
               {showPassword ? (
                 <EyeOff className="w-4 h-4" />
@@ -256,7 +256,7 @@ function InviteForm() {
             Confirm Password
           </label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               id="register-confirm-password"
               type={showPassword ? "text" : "password"}
@@ -307,7 +307,7 @@ export default function InvitePage() {
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
       <Suspense
         fallback={
-          <div className="text-zinc-500 text-sm">Loading...</div>
+          <div className="text-zinc-400 text-sm">Loading...</div>
         }
       >
         <InviteForm />

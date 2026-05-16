@@ -116,7 +116,7 @@ function SharedHoldingRow({
             <div className="text-xs text-zinc-400">
               {delta >= 0 ? "+" : ""}
               {fmtCurrency(Math.abs(delta), currency, 0)}
-              <span className="text-zinc-500">
+              <span className="text-zinc-400">
                 {delta >= 0 ? " more" : " less"}
               </span>
             </div>
@@ -180,7 +180,7 @@ function ShowMoreToggle({
   return (
     <button
       onClick={onToggle}
-      className="flex items-center gap-1 mt-2 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+      className="flex items-center gap-1 mt-2 text-[11px] text-zinc-400 hover:text-zinc-300 transition-colors"
     >
       {expanded ? (
         <>

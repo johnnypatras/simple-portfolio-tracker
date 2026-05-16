@@ -66,7 +66,7 @@ export default async function CashPage() {
           <MobileMenuButton />
           <h1 className="text-2xl font-semibold text-zinc-100">Banks & Deposits</h1>
         </div>
-        <p className="text-sm text-zinc-500 mt-1">
+        <p className="text-sm text-zinc-400 mt-1">
           Bank accounts and fiat deposits
         </p>
       </div>

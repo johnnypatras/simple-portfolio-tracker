@@ -59,7 +59,7 @@ export function ColumnSettingsPopover({
       <button
         ref={buttonRef}
         onClick={() => setOpen((prev) => !prev)}
-        className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+        className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
         title="Configure columns"
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -116,7 +116,7 @@ export function ColumnSettingsPopover({
                     />
                     <span
                       className={`text-sm truncate ${
-                        col.visible ? "text-zinc-200" : "text-zinc-500"
+                        col.visible ? "text-zinc-200" : "text-zinc-400"
                       }`}
                     >
                       {col.label}
@@ -131,7 +131,7 @@ export function ColumnSettingsPopover({
                         onClick={() => onMove(col.key, "up")}
                         disabled={isFirst}
                         aria-label={`Move ${col.label} up`}
-                        className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 disabled:cursor-not-allowed transition-colors"
+                        className="p-0.5 rounded text-zinc-400 hover:text-zinc-300 disabled:text-zinc-700 disabled:cursor-not-allowed transition-colors"
                         title="Move up"
                       >
                         <ChevronUp className="w-3 h-3" />
@@ -141,7 +141,7 @@ export function ColumnSettingsPopover({
                         onClick={() => onMove(col.key, "down")}
                         disabled={isLast}
                         aria-label={`Move ${col.label} down`}
-                        className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 disabled:text-zinc-700 disabled:cursor-not-allowed transition-colors"
+                        className="p-0.5 rounded text-zinc-400 hover:text-zinc-300 disabled:text-zinc-700 disabled:cursor-not-allowed transition-colors"
                         title="Move down"
                       >
                         <ChevronDown className="w-3 h-3" />

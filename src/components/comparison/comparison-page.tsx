@@ -32,7 +32,7 @@ function StatCard({
       <div className="text-xs text-zinc-400 mb-1">{label}</div>
       <div className="text-lg font-semibold text-zinc-100">{value}</div>
       {subtext && (
-        <div className={`text-xs mt-0.5 ${subtextColor ?? "text-zinc-500"}`}>
+        <div className={`text-xs mt-0.5 ${subtextColor ?? "text-zinc-400"}`}>
           {subtext}
         </div>
       )}
@@ -117,7 +117,7 @@ export function ComparisonPage({ data, token }: ComparisonPageProps) {
           Back to shared portfolio
         </Link>
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="text-zinc-500 text-sm mb-3">
+          <div className="text-zinc-400 text-sm mb-3">
             You haven&apos;t added any assets yet.
           </div>
           <Link

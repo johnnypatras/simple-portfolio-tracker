@@ -146,13 +146,13 @@ export function CashAccountModal({
         {cashAccount?.last_was_transfer && (
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
             <span className="text-[10px] text-teal-400 font-medium" title="Last change was a sell/buy/move transfer">Xfer</span>
-            <span className="text-[10px] text-zinc-500">Last changed via transfer</span>
+            <span className="text-[10px] text-zinc-400">Last changed via transfer</span>
           </div>
         )}
         {!cashAccount?.last_was_transfer && cashAccount?.last_was_adjustment && (
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
             <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">Adj.</span>
-            <span className="text-[10px] text-zinc-500">Last saved as portfolio adjustment</span>
+            <span className="text-[10px] text-zinc-400">Last saved as portfolio adjustment</span>
           </div>
         )}
 
@@ -210,7 +210,7 @@ export function CashAccountModal({
         {/* APY */}
         <div>
           <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-400 mb-1">
-            APY % <span className="text-zinc-500">(optional)</span>
+            APY % <span className="text-zinc-400">(optional)</span>
           </label>
           <input
             id={`${id}-apy`}
@@ -236,7 +236,7 @@ export function CashAccountModal({
             onChange={(e) => setEffectiveDate(e.target.value)}
             className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
           />
-          <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {/* Error display */}
@@ -268,6 +268,7 @@ export function CashAccountModal({
             <button
               type="submit"
               disabled={loading}
+              aria-busy={loading}
               className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
             >
               {loading

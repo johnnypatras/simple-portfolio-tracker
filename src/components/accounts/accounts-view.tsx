@@ -290,12 +290,12 @@ export function AccountsView({
                   {slices.map(s => (
                     <span key={s.label} className="flex items-center gap-1.5">
                       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                      <span className="text-zinc-500">{s.label}</span>
+                      <span className="text-zinc-400">{s.label}</span>
                       <span className="text-zinc-400 tabular-nums">{s.pct.toFixed(0)}%</span>
-                      <span className="hidden md:inline text-zinc-500 tabular-nums">{formatCurrency(s.value, primaryCurrency)}</span>
+                      <span className="hidden md:inline text-zinc-400 tabular-nums">{formatCurrency(s.value, primaryCurrency)}</span>
                     </span>
                   ))}
-                  <span className="hidden md:flex items-center gap-x-4 text-zinc-500">
+                  <span className="hidden md:flex items-center gap-x-4 text-zinc-400">
                     <span>·</span>
                     <span>{nonEmptyGroups.length} institution{nonEmptyGroups.length !== 1 ? "s" : ""}, {totalAssets} asset{totalAssets !== 1 ? "s" : ""}</span>
                   </span>
@@ -376,9 +376,9 @@ export function AccountsView({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
                   {isExpanded ? (
-                    <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" />
+                    <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
                   ) : (
-                    <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-zinc-400 shrink-0" />
                   )}
                   <HeaderIcon className={`w-4 h-4 shrink-0 ${isSelfCustody ? "text-amber-500/70" : "text-zinc-400"}`} />
                   <span className="font-medium text-zinc-100 truncate">
@@ -396,7 +396,7 @@ export function AccountsView({
                           institution.roles.map((role) => (
                             <span
                               key={role}
-                              className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500"
+                              className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400"
                             >
                               {role}
                             </span>
@@ -404,7 +404,7 @@ export function AccountsView({
                         )}
                       </div>
                       {assetCounts && (
-                        <span className="hidden md:inline text-[11px] text-zinc-500">{assetCounts}</span>
+                        <span className="hidden md:inline text-[11px] text-zinc-400">{assetCounts}</span>
                       )}
                     </>
                   )}
@@ -460,7 +460,7 @@ export function AccountsView({
                   )}
                   <div className="text-right">
                     {isEmpty ? (
-                      <span className="text-sm text-zinc-500">No assets</span>
+                      <span className="text-sm text-zinc-400">No assets</span>
                     ) : (
                       <>
                         <span className="text-sm font-medium text-zinc-200">
@@ -519,7 +519,7 @@ export function AccountsView({
                             }`}
                           >
                             <span className="text-zinc-200 font-medium w-16 shrink-0">{row.ticker}</span>
-                            <span className="hidden md:inline text-zinc-500 truncate flex-1 min-w-0">
+                            <span className="hidden md:inline text-zinc-400 truncate flex-1 min-w-0">
                               {row.name}
                               {row.apy > 0 && (
                                 <span className="text-emerald-500/70 text-xs ml-2">{row.apy}% APY</span>
@@ -534,7 +534,7 @@ export function AccountsView({
                                     const asset = cryptoAssets.find((a) => a.id === row.assetId);
                                     if (asset) setEditingCryptoAsset(asset);
                                   }}
-                                  className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                                  className="p-1 rounded text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                                   title="Edit positions"
                                   aria-label="Edit positions"
                                 >
@@ -545,7 +545,7 @@ export function AccountsView({
                                     e.stopPropagation();
                                     setDeleteTarget({ type: "crypto", id: row.assetId, label: `${row.ticker} (${row.name})` });
                                   }}
-                                  className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                                  className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                                   title="Remove asset"
                                   aria-label="Remove asset"
                                 >
@@ -553,7 +553,7 @@ export function AccountsView({
                                 </button>
                               </span>
                             )}
-                            <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
+                            <span className="hidden md:inline text-zinc-400 text-xs tabular-nums w-20 text-right shrink-0">
                               ×{formatQuantity(row.quantity)}
                             </span>
                             <span className="text-right shrink-0 pl-2 min-w-[7rem]">
@@ -569,7 +569,7 @@ export function AccountsView({
                           </div>
                           {activeRowId === row.positionId && (
                             <div className="flex items-center gap-2 py-1.5 pl-1 mb-1">
-                              <span className="md:hidden text-xs text-zinc-500 truncate min-w-0">
+                              <span className="md:hidden text-xs text-zinc-400 truncate min-w-0">
                                 {row.name}
                                 {row.apy > 0 && <span className="text-emerald-500/70 ml-1">{row.apy}% APY</span>}
                                 <span className="text-zinc-600 mx-1">·</span>
@@ -590,7 +590,7 @@ export function AccountsView({
                                   </button>
                                   <button
                                     onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "crypto", id: row.assetId, label: `${row.ticker} (${row.name})` }); }}
-                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-400 hover:bg-red-950/40 hover:text-red-400 transition-colors"
                                   >
                                     <Trash2 className="w-3 h-3" />
                                     Delete
@@ -630,12 +630,12 @@ export function AccountsView({
                             <span className="text-zinc-200 font-medium w-16 shrink-0">{row.ticker}</span>
                             <span className="w-11 shrink-0">
                               {row.currency !== primaryCurrency && (
-                                <span className="text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-zinc-800 text-zinc-500 font-normal">
+                                <span className="text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-zinc-800 text-zinc-400 font-normal">
                                   {row.currency}
                                 </span>
                               )}
                             </span>
-                            <span className="hidden md:inline text-zinc-500 truncate flex-1 min-w-0">{row.name}</span>
+                            <span className="hidden md:inline text-zinc-400 truncate flex-1 min-w-0">{row.name}</span>
                             <span className="flex-1 md:hidden" />
                             {!isReadOnly && (
                               <span className="hidden md:flex items-center gap-0.5 shrink-0">
@@ -645,7 +645,7 @@ export function AccountsView({
                                     const asset = stockAssets.find((a) => a.id === row.assetId);
                                     if (asset) setEditingStockAsset(asset);
                                   }}
-                                  className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                                  className="p-1 rounded text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                                   title="Edit positions"
                                   aria-label="Edit positions"
                                 >
@@ -656,7 +656,7 @@ export function AccountsView({
                                     e.stopPropagation();
                                     setDeleteTarget({ type: "stock", id: row.assetId, label: `${row.ticker} (${row.name})` });
                                   }}
-                                  className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                                  className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                                   title="Remove asset"
                                   aria-label="Remove asset"
                                 >
@@ -664,7 +664,7 @@ export function AccountsView({
                                 </button>
                               </span>
                             )}
-                            <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
+                            <span className="hidden md:inline text-zinc-400 text-xs tabular-nums w-20 text-right shrink-0">
                               ×{formatQuantity(row.quantity, 2)}
                             </span>
                             <span className="text-right shrink-0 pl-2 min-w-[7rem]">
@@ -680,7 +680,7 @@ export function AccountsView({
                           </div>
                           {activeRowId === row.positionId && (
                             <div className="flex items-center gap-2 py-1.5 pl-1 mb-1">
-                              <span className="md:hidden text-xs text-zinc-500 truncate min-w-0">
+                              <span className="md:hidden text-xs text-zinc-400 truncate min-w-0">
                                 {row.name}
                                 <span className="text-zinc-600 mx-1">·</span>
                                 ×{formatQuantity(row.quantity, 2)}
@@ -700,7 +700,7 @@ export function AccountsView({
                                   </button>
                                   <button
                                     onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "stock", id: row.assetId, label: `${row.ticker} (${row.name})` }); }}
-                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-400 hover:bg-red-950/40 hover:text-red-400 transition-colors"
                                   >
                                     <Trash2 className="w-3 h-3" />
                                     Delete
@@ -767,11 +767,11 @@ export function AccountsView({
                           >
                             <span className="text-zinc-200 font-medium truncate min-w-0 md:shrink-0 md:truncate-none">
                               {row.label}
-                              <span className="text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-zinc-800 text-zinc-500 ml-1.5 font-normal">
+                              <span className="text-[10px] uppercase tracking-wider px-1 py-0.5 rounded bg-zinc-800 text-zinc-400 ml-1.5 font-normal">
                                 {row.currency}
                               </span>
                             </span>
-                            <span className="hidden md:inline text-zinc-500 truncate flex-1 min-w-0 ml-3">
+                            <span className="hidden md:inline text-zinc-400 truncate flex-1 min-w-0 ml-3">
                               {row.apy > 0 && (
                                 <span className="text-emerald-500/70 text-xs">{row.apy}% APY</span>
                               )}
@@ -785,7 +785,7 @@ export function AccountsView({
                                     const acct = cashAccounts.find((c) => c.id === row.id);
                                     if (acct) setEditingCashAccount(acct);
                                   }}
-                                  className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                                  className="p-1 rounded text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                                   title="Edit"
                                 >
                                   <Pencil className="w-3 h-3" />
@@ -795,7 +795,7 @@ export function AccountsView({
                                     e.stopPropagation();
                                     setDeleteTarget({ type: "cash", id: row.id, label: row.label });
                                   }}
-                                  className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                                  className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                                   title="Remove"
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -803,7 +803,7 @@ export function AccountsView({
                               </span>
                             )}
                             {row.currency !== primaryCurrency ? (
-                              <span className="hidden md:inline text-zinc-500 text-xs tabular-nums w-20 text-right shrink-0">
+                              <span className="hidden md:inline text-zinc-400 text-xs tabular-nums w-20 text-right shrink-0">
                                 {formatCurrency(row.amount, row.currency)}
                               </span>
                             ) : (
@@ -815,7 +815,7 @@ export function AccountsView({
                           </div>
                           {activeRowId === row.id && (
                             <div className="flex items-center gap-2 py-1.5 pl-1 mb-1">
-                              <span className="md:hidden text-xs text-zinc-500 truncate min-w-0">
+                              <span className="md:hidden text-xs text-zinc-400 truncate min-w-0">
                                 {row.apy > 0 && <span className="text-emerald-500/70">{row.apy}% APY</span>}
                                 {row.apy > 0 && row.currency !== primaryCurrency && <span className="text-zinc-600 mx-1">·</span>}
                                 {row.currency !== primaryCurrency && formatCurrency(row.amount, row.currency)}
@@ -836,7 +836,7 @@ export function AccountsView({
                                   </button>
                                   <button
                                     onClick={() => { setActiveRowId(null); setDeleteTarget({ type: "cash", id: row.id, label: row.label }); }}
-                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-500 hover:bg-red-950/40 hover:text-red-400 transition-colors"
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-zinc-400 hover:bg-red-950/40 hover:text-red-400 transition-colors"
                                   >
                                     <Trash2 className="w-3 h-3" />
                                     Delete
@@ -852,7 +852,7 @@ export function AccountsView({
 
                 {/* Empty state */}
                 {crypto.length === 0 && stocks.length === 0 && cash.length === 0 && (
-                  <div className="pt-3 text-center text-sm text-zinc-500">
+                  <div className="pt-3 text-center text-sm text-zinc-400">
                     No assets linked to this institution yet
                   </div>
                 )}
@@ -899,7 +899,7 @@ export function AccountsView({
       {groups.length === 0 && (
         <div className="text-center py-16">
           <Building2 className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">
+          <p className="text-zinc-400 text-sm">
             No institutions yet. Create one to get started.
           </p>
         </div>
@@ -1080,7 +1080,7 @@ function AssetSection({
             {label} ({count})
           </span>
         </div>
-        <span className="text-xs text-zinc-500 tabular-nums">
+        <span className="text-xs text-zinc-400 tabular-nums">
           {formatCurrency(totalValue, primaryCurrency)}
         </span>
       </div>
@@ -1149,7 +1149,7 @@ function AddAssetDropdown({
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800/50"
+        className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800/50"
       >
         <Plus className="w-3 h-3" />
         Add

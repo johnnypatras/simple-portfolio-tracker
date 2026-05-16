@@ -381,11 +381,11 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
           })()}
         </div>
         {stablecoinTotal > 0 && (
-          <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+          <p className="text-[11px] text-zinc-400 mt-0.5 tabular-nums">
             excl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins
           </p>
         )}
-        <p className="text-[11px] text-zinc-500 mt-0.5">
+        <p className="text-[11px] text-zinc-400 mt-0.5">
           {assets.length} asset{assets.length !== 1 ? "s" : ""} · {totalPositions} position{totalPositions !== 1 ? "s" : ""}
         </p>
       </div>
@@ -415,7 +415,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
               className={`p-1.5 rounded-lg transition-colors min-w-[4.5rem] flex items-center justify-center gap-1 ${
                 isGrouped
                   ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
-                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                  : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
               }`}
               title={GROUP_MODE_LABELS[GROUP_MODE_CYCLE[(GROUP_MODE_CYCLE.indexOf(groupMode) + 1) % GROUP_MODE_CYCLE.length]]}
               aria-label={GROUP_MODE_LABELS[GROUP_MODE_CYCLE[(GROUP_MODE_CYCLE.indexOf(groupMode) + 1) % GROUP_MODE_CYCLE.length]]}
@@ -435,7 +435,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
             {assets.length > 1 && (
               <button
                 onClick={handleCycleSort}
-                className="md:hidden p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                 title={`Sort: ${CRYPTO_SORT_OPTIONS.find((o) => o.key === sortKey)?.label}`}
                 aria-label={`Sort: ${CRYPTO_SORT_OPTIONS.find((o) => o.key === sortKey)?.label}`}
               >
@@ -465,7 +465,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
             )}
             <button
               onClick={toggleExpandAll}
-              className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
               title={
                 isGrouped
                   ? allGroupAssetsExpanded ? "Collapse all" : "Expand all"
@@ -514,8 +514,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
       {assets.length === 0 ? (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
           <Bitcoin className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-          <p className="text-sm text-zinc-500">No crypto assets yet</p>
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-400">No crypto assets yet</p>
+          <p className="text-xs text-zinc-400 mt-1">
             Search and add your first cryptocurrency
           </p>
         </div>
@@ -535,9 +535,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                         className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-blue-500/40"
                       >
                         {isGroupOpen ? (
-                          <ChevronDown className="w-3 h-3 text-zinc-500" />
+                          <ChevronDown className="w-3 h-3 text-zinc-400" />
                         ) : (
-                          <ChevronRight className="w-3 h-3 text-zinc-500" />
+                          <ChevronRight className="w-3 h-3 text-zinc-400" />
                         )}
                         <span
                           className={`text-sm font-semibold uppercase tracking-wider ${
@@ -546,7 +546,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                         >
                           {group.label}
                         </span>
-                        <span className="text-[11px] text-zinc-500">
+                        <span className="text-[11px] text-zinc-400">
                           ({group.entryCount})
                         </span>
                         <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -598,9 +598,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                           className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-blue-500/40"
                         >
                           {isGroupOpen ? (
-                            <ChevronDown className="w-3 h-3 text-zinc-500" />
+                            <ChevronDown className="w-3 h-3 text-zinc-400" />
                           ) : (
-                            <ChevronRight className="w-3 h-3 text-zinc-500" />
+                            <ChevronRight className="w-3 h-3 text-zinc-400" />
                           )}
                           <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                             {group.walletName}
@@ -610,7 +610,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               {wtInfo.label}
                             </span>
                           )}
-                          <span className="text-[11px] text-zinc-500">
+                          <span className="text-[11px] text-zinc-400">
                             ({group.entryCount})
                           </span>
                           <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -661,16 +661,16 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                             className={`w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 ${borderColor}`}
                           >
                             {isGroupOpen ? (
-                              <ChevronDown className="w-3 h-3 text-zinc-500" />
+                              <ChevronDown className="w-3 h-3 text-zinc-400" />
                             ) : (
-                              <ChevronRight className="w-3 h-3 text-zinc-500" />
+                              <ChevronRight className="w-3 h-3 text-zinc-400" />
                             )}
                             <span
                               className={`text-sm font-semibold uppercase tracking-wider ${group.color}`}
                             >
                               {group.label}
                             </span>
-                            <span className="text-[11px] text-zinc-500">
+                            <span className="text-[11px] text-zinc-400">
                               ({group.entryCount})
                             </span>
                             <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -721,14 +721,14 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                             className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-blue-500/40"
                           >
                             {isGroupOpen ? (
-                              <ChevronDown className="w-3 h-3 text-zinc-500" />
+                              <ChevronDown className="w-3 h-3 text-zinc-400" />
                             ) : (
-                              <ChevronRight className="w-3 h-3 text-zinc-500" />
+                              <ChevronRight className="w-3 h-3 text-zinc-400" />
                             )}
                             <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
                               {group.label}
                             </span>
-                            <span className="text-[11px] text-zinc-500">
+                            <span className="text-[11px] text-zinc-400">
                               ({group.entryCount})
                             </span>
                             <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -776,14 +776,14 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               className="w-full flex items-center gap-2 px-3 py-2 mb-1 rounded-lg bg-zinc-800/40 border-l-2 border-l-blue-500/40"
                             >
                               {isGroupOpen ? (
-                                <ChevronDown className="w-3 h-3 text-zinc-500" />
+                                <ChevronDown className="w-3 h-3 text-zinc-400" />
                               ) : (
-                                <ChevronRight className="w-3 h-3 text-zinc-500" />
+                                <ChevronRight className="w-3 h-3 text-zinc-400" />
                               )}
                               <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
                                 {group.label}
                               </span>
-                              <span className="text-[11px] text-zinc-500">
+                              <span className="text-[11px] text-zinc-400">
                                 ({group.entryCount})
                               </span>
                               <span className="ml-auto text-xs font-medium text-zinc-400 tabular-nums">
@@ -891,9 +891,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                             {groupHeaderCells(orderedColumns,
                               <div className="flex items-center gap-2">
                                 {isGroupOpen ? (
-                                  <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                                  <ChevronDown className="w-3 h-3 text-zinc-400 shrink-0" />
                                 ) : (
-                                  <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                                  <ChevronRight className="w-3 h-3 text-zinc-400 shrink-0" />
                                 )}
                                 <span
                                   className={`text-sm font-semibold uppercase tracking-wider ${
@@ -902,7 +902,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 >
                                   {group.label}
                                 </span>
-                                <span className="text-[11px] text-zinc-500">
+                                <span className="text-[11px] text-zinc-400">
                                   {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                 </span>
                                 {isGroupOpen && (
@@ -955,9 +955,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               {groupHeaderCells(orderedColumns,
                                 <div className="flex items-center gap-2">
                                   {isGroupOpen ? (
-                                    <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                                    <ChevronDown className="w-3 h-3 text-zinc-400 shrink-0" />
                                   ) : (
-                                    <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                                    <ChevronRight className="w-3 h-3 text-zinc-400 shrink-0" />
                                   )}
                                   <span className={`text-sm font-semibold uppercase tracking-wider ${groupColor}`}>
                                     {group.walletName}
@@ -967,7 +967,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                       {wtInfo.label}
                                     </span>
                                   )}
-                                  <span className="text-[11px] text-zinc-500">
+                                  <span className="text-[11px] text-zinc-400">
                                     {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                   </span>
                                   {isGroupOpen && (
@@ -1019,16 +1019,16 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">
                                     {isGroupOpen ? (
-                                      <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                                      <ChevronDown className="w-3 h-3 text-zinc-400 shrink-0" />
                                     ) : (
-                                      <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                                      <ChevronRight className="w-3 h-3 text-zinc-400 shrink-0" />
                                     )}
                                     <span
                                       className={`text-sm font-semibold uppercase tracking-wider ${group.color}`}
                                     >
                                       {group.label}
                                     </span>
-                                    <span className="text-[11px] text-zinc-500">
+                                    <span className="text-[11px] text-zinc-400">
                                       {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                     </span>
                                     {isGroupOpen && (
@@ -1080,14 +1080,14 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">
                                     {isGroupOpen ? (
-                                      <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                                      <ChevronDown className="w-3 h-3 text-zinc-400 shrink-0" />
                                     ) : (
-                                      <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                                      <ChevronRight className="w-3 h-3 text-zinc-400 shrink-0" />
                                     )}
                                     <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
                                       {group.label}
                                     </span>
-                                    <span className="text-[11px] text-zinc-500">
+                                    <span className="text-[11px] text-zinc-400">
                                       {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                     </span>
                                     {isGroupOpen && (
@@ -1145,7 +1145,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                       {rowExpanded && row.asset.positions.length === 0 && (
                                         <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                           <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-                                            <p className="text-xs text-zinc-500">
+                                            <p className="text-xs text-zinc-400">
                                               No positions — click edit to add quantities
                                             </p>
                                           </td>
@@ -1177,14 +1177,14 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 {groupHeaderCells(orderedColumns,
                                   <div className="flex items-center gap-2">
                                     {isGroupOpen ? (
-                                      <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+                                      <ChevronDown className="w-3 h-3 text-zinc-400 shrink-0" />
                                     ) : (
-                                      <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+                                      <ChevronRight className="w-3 h-3 text-zinc-400 shrink-0" />
                                     )}
                                     <span className={`text-sm font-semibold tracking-wider ${groupColor}`}>
                                       {group.label}
                                     </span>
-                                    <span className="text-[11px] text-zinc-500">
+                                    <span className="text-[11px] text-zinc-400">
                                       {group.entryCount} asset{group.entryCount !== 1 ? "s" : ""}
                                     </span>
                                     {isGroupOpen && (
@@ -1242,7 +1242,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                       {rowExpanded && row.asset.positions.length === 0 && (
                                         <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                           <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-                                            <p className="text-xs text-zinc-500">
+                                            <p className="text-xs text-zinc-400">
                                               No positions — click edit to add quantities
                                             </p>
                                           </td>
@@ -1304,7 +1304,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               {rowExpanded && row.asset.positions.length === 0 && (
                                 <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
                                   <td colSpan={orderedColumns.length} className="pl-10 pr-4 py-3">
-                                    <p className="text-xs text-zinc-500">
+                                    <p className="text-xs text-zinc-400">
                                       No positions — click the layers icon to add quantities
                                     </p>
                                   </td>
@@ -1376,7 +1376,7 @@ function GroupedCryptoEntryRows({
           if (col.key === "holdings") {
             return (
               <td key={col.key} className={`${pl} py-3 text-right ${hidden}`}>
-                <span className="text-xs text-zinc-500 tabular-nums">
+                <span className="text-xs text-zinc-400 tabular-nums">
                   {entry.groupQty > 0 ? formatQuantity(entry.groupQty, 8) : "—"}
                 </span>
               </td>
@@ -1394,7 +1394,7 @@ function GroupedCryptoEntryRows({
           if (col.key === "source") {
             return (
               <td key={col.key} className={`${pl} py-3 text-left ${hidden}`}>
-                <span className="text-xs text-zinc-500">—</span>
+                <span className="text-xs text-zinc-400">—</span>
               </td>
             );
           }
@@ -1441,7 +1441,7 @@ function GroupedCryptoEntryRows({
       {rowExpanded && entry.positions.length === 0 && (
         <tr className="bg-zinc-950/50 border-b border-zinc-800/20">
           <td colSpan={orderedColumns.length} className="pl-16 pr-4 py-3">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-400">
               No positions — click edit to add quantities
             </p>
           </td>
@@ -1506,7 +1506,7 @@ function CustodyGroupHeader({
           <span className={`text-[11px] font-medium ${group.textColor}`}>
             {group.label} ({group.positions.length})
           </span>
-          <span className="text-[11px] text-zinc-500 tabular-nums">
+          <span className="text-[11px] text-zinc-400 tabular-nums">
             {subtotal}
           </span>
         </div>
@@ -1572,7 +1572,7 @@ function ExpandedCryptoRow({
         if (col.key === "asset") {
           return (
             <td key={col.key} className={`${assetPl} pr-4 py-2`}>
-              <span className="text-xs text-zinc-500">{walletName}</span>
+              <span className="text-xs text-zinc-400">{walletName}</span>
               {network && (
                 <span className="ml-1.5 text-[10px] text-zinc-400">· {network}</span>
               )}
@@ -1621,7 +1621,7 @@ function ExpandedCryptoRow({
                   {apy.toFixed(apy % 1 === 0 ? 0 : 2)}%
                 </span>
               ) : (
-                <span className="text-xs text-zinc-500">—</span>
+                <span className="text-xs text-zinc-400">—</span>
               )}
             </td>
           );
@@ -1678,7 +1678,7 @@ function MobileCryptoCard({
             <p className="text-sm font-medium text-zinc-200 truncate">
               {row.asset.name}
             </p>
-            <p className="text-xs text-zinc-500 uppercase">{row.asset.ticker}</p>
+            <p className="text-xs text-zinc-400 uppercase">{row.asset.ticker}</p>
           </div>
         </div>
         <div className="text-right shrink-0 ml-3">
@@ -1702,7 +1702,7 @@ function MobileCryptoCard({
                 {row.priceUsd > 0 ? formatCurrency(row.priceUsd, "USD") : "No data"}
               </p>
               {primaryCurrency.toUpperCase() !== "USD" && row.priceInBase > 0 && (
-                <p className="text-zinc-500 tabular-nums mt-0.5">
+                <p className="text-zinc-400 tabular-nums mt-0.5">
                   {formatCurrency(row.priceInBase, primaryCurrency)}
                 </p>
               )}
@@ -1754,7 +1754,7 @@ function MobileCryptoCard({
                     const method = pos.acquisition_method ?? "bought";
                     return (
                       <div key={pos.id} className="flex gap-2 text-xs min-w-0">
-                        <span className="text-zinc-500 truncate shrink min-w-0">
+                        <span className="text-zinc-400 truncate shrink min-w-0">
                           {pos.wallet_name}
                           {pos.network && <span className="text-zinc-400"> · {pos.network}</span>}
                         </span>

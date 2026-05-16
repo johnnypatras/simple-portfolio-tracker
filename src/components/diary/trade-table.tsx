@@ -212,7 +212,7 @@ export function TradeTable({
                 className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
                   action === "buy"
                     ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30"
-                    : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+                    : "bg-zinc-800/50 text-zinc-400 hover:text-zinc-300"
                 }`}
               >
                 Buy
@@ -223,7 +223,7 @@ export function TradeTable({
                 className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
                   action === "sell"
                     ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
-                    : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+                    : "bg-zinc-800/50 text-zinc-400 hover:text-zinc-300"
                 }`}
               >
                 Sell
@@ -378,7 +378,7 @@ export function TradeTable({
         <div>
           <label htmlFor={`${id}-notes`} className="block text-xs text-zinc-400 mb-1">
             Notes{" "}
-            <span className="text-zinc-500 font-normal">(optional)</span>
+            <span className="text-zinc-400 font-normal">(optional)</span>
           </label>
           <input
             id={`${id}-notes`}
@@ -416,6 +416,7 @@ export function TradeTable({
             <button
               type="submit"
               disabled={loading}
+              aria-busy={loading}
               className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
             >
               {loading ? "Saving..." : editing ? "Save Changes" : "Log Trade"}
@@ -553,13 +554,13 @@ export function TradeTable({
                     <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto transition-opacity">
                       <button
                         onClick={() => openEdit(t)}
-                        className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <ConfirmButton
                         onConfirm={() => handleDelete(t.id)}
-                        className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </ConfirmButton>
@@ -600,7 +601,7 @@ export function TradeTable({
                 {/* Row 2: Qty × Price = Total */}
                 <p className="text-sm text-zinc-300 mt-1 tabular-nums">
                   {formatQuantity(t.quantity)} × {formatMoney(t.price, t.currency)}
-                  <span className="text-zinc-500 mx-1.5">=</span>
+                  <span className="text-zinc-400 mx-1.5">=</span>
                   <span className="font-medium text-zinc-200">
                     {formatMoney(t.total_value, t.currency)}
                   </span>
@@ -622,13 +623,13 @@ export function TradeTable({
                 <div className="flex items-center gap-0.5 shrink-0">
                   <button
                     onClick={() => openEdit(t)}
-                    className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <ConfirmButton
                     onConfirm={() => handleDelete(t.id)}
-                    className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </ConfirmButton>

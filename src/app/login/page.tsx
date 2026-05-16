@@ -109,7 +109,7 @@ export default function LoginPage() {
           <h1 className="text-xl font-semibold text-zinc-100">
             Portfolio Tracker
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-400 mt-1">
             Sign in to your account
           </p>
         </div>
@@ -122,7 +122,7 @@ export default function LoginPage() {
                 Authenticator Code
               </label>
               <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                 <input
                   id="login-mfa-code"
                   type="text"
@@ -161,7 +161,7 @@ export default function LoginPage() {
                 setChallengeId(null);
                 setMfaCode("");
               }}
-              className="w-full text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="w-full text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
             >
               Back to login
             </button>
@@ -174,7 +174,7 @@ export default function LoginPage() {
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                 <input
                   id="login-email"
                   type="email"
@@ -193,7 +193,7 @@ export default function LoginPage() {
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                 <input
                   id="login-password"
                   type={showPassword ? "text" : "password"}
@@ -207,7 +207,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-300"
                 >
                   {showPassword ? (
                     <EyeOff className="w-4 h-4" />
@@ -221,7 +221,7 @@ export default function LoginPage() {
             <div className="flex justify-end">
               <a
                 href="/forgot-password"
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
               >
                 Forgot your password?
               </a>

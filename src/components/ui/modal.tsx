@@ -50,9 +50,9 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
             <button
               onClick={onClose}
               aria-label="Close"
-              className="p-1 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              className="p-1 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
             >
-              <X className="w-4 h-4" />
+              <X aria-hidden="true" className="w-4 h-4" />
             </button>
           </div>
           {/* Body — scrollable when content exceeds viewport */}

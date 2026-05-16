@@ -372,7 +372,7 @@ export function StockPositionEditor({
                   <button
                     type="button"
                     onClick={() => setTags(tags.filter((t) => t !== tag))}
-                    className="text-zinc-500 hover:text-zinc-300"
+                    className="text-zinc-400 hover:text-zinc-300"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -573,7 +573,7 @@ export function StockPositionEditor({
                         setTransferOpen(true);
                       }}
                       disabled={isBusy}
-                      className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
+                      className="p-1 rounded text-zinc-400 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
                       title="Move to another broker"
                       aria-label="Move to another broker"
                     >
@@ -584,7 +584,7 @@ export function StockPositionEditor({
                         handleDelete(existingPosition.id, brokerId)
                       }
                       disabled={isBusy}
-                      className="p-1.5 sm:p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                      className="p-1.5 sm:p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                       title="Remove"
                       aria-label="Remove"
                     >

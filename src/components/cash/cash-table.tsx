@@ -327,11 +327,11 @@ export function CashTable({
           </p>
         )}
         {stablecoinTotal > 0 && (
-          <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+          <p className="text-[11px] text-zinc-400 mt-0.5 tabular-nums">
             incl. {formatCurrency(stablecoinTotal, primaryCurrency)} stablecoins
           </p>
         )}
-        <p className="text-[11px] text-zinc-500 mt-0.5">
+        <p className="text-[11px] text-zinc-400 mt-0.5">
           {bankCount > 0 && (
             <>{bankCount} bank account{bankCount !== 1 ? "s" : ""}</>
           )}
@@ -350,7 +350,7 @@ export function CashTable({
         {allGroupIds.length > 0 && (
           <button
             onClick={toggleExpandAll}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
             title={allExpanded ? "Collapse all" : "Expand all"}
           >
             {allExpanded ? (
@@ -384,8 +384,8 @@ export function CashTable({
       {!hasAnyRows && stablecoinWalletGroups.length === 0 ? (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-8 text-center">
           <Landmark className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-          <p className="text-sm text-zinc-500">No cash holdings yet</p>
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-400">No cash holdings yet</p>
+          <p className="text-xs text-zinc-400 mt-1">
             Add a bank account or fiat deposit to get started
           </p>
           {!isReadOnly && (
@@ -409,9 +409,9 @@ export function CashTable({
             {cashRows.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <Landmark className="w-3.5 h-3.5 text-zinc-500" />
+                  <Landmark className="w-3.5 h-3.5 text-zinc-400" />
                   <span className="text-xs font-medium text-zinc-400">Cash Accounts</span>
-                  <span className="text-xs text-zinc-500">{formatCurrency(cashTotal, primaryCurrency)}</span>
+                  <span className="text-xs text-zinc-400">{formatCurrency(cashTotal, primaryCurrency)}</span>
                   {cashGroupIds.length > 1 && (
                     <button
                       onClick={() => toggleSectionGroups(cashGroupIds)}
@@ -430,7 +430,7 @@ export function CashTable({
                         <button type="button" onClick={() => toggleExpand(row.id)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
                           <div className="text-left min-w-0">
                             <p className="text-sm font-medium text-zinc-200 truncate">{row.data.groupName}</p>
-                            <p className="text-xs text-zinc-500">
+                            <p className="text-xs text-zinc-400">
                               {row.data.origin} · {row.data.accounts.length} {row.data.origin === "Bank" ? "account" : "deposit"}{row.data.accounts.length !== 1 ? "s" : ""}
                             </p>
                           </div>
@@ -448,7 +448,7 @@ export function CashTable({
                                 <div key={acct.id} className="flex items-center justify-between text-xs">
                                   <div>
                                     <span className="text-zinc-400">{displayName}</span>
-                                    <span className="text-zinc-500 ml-1.5">{acct.currency}</span>
+                                    <span className="text-zinc-400 ml-1.5">{acct.currency}</span>
                                     {acct.last_was_transfer ? (
                                       <span className="text-[10px] text-teal-400 font-medium ml-1.5" title="Last change was a sell/buy/move transfer">Xfer</span>
                                     ) : acct.last_was_adjustment ? (
@@ -459,8 +459,8 @@ export function CashTable({
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(acctValueBase, primaryCurrency)}</span>
                                     {!isReadOnly && (
                                       <>
-                                        <button type="button" aria-label={`Edit ${acct.name ?? acct.currency}`} onClick={() => openEditCash(acct)} className="p-1 text-zinc-500 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
-                                        <ConfirmButton showAdjustmentCheckbox onConfirm={(opts) => handleDeleteCash(acct.id, opts)} className="p-1 text-zinc-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
+                                        <button type="button" aria-label={`Edit ${acct.name ?? acct.currency}`} onClick={() => openEditCash(acct)} className="p-1 text-zinc-400 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
+                                        <ConfirmButton showAdjustmentCheckbox onConfirm={(opts) => handleDeleteCash(acct.id, opts)} className="p-1 text-zinc-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                       </>
                                     )}
                                   </div>
@@ -480,9 +480,9 @@ export function CashTable({
             {stablecoinWalletGroups.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <Coins className="w-3.5 h-3.5 text-zinc-500" />
+                  <Coins className="w-3.5 h-3.5 text-zinc-400" />
                   <span className="text-xs font-medium text-zinc-400">Stablecoins</span>
-                  <span className="text-xs text-zinc-500">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
+                  <span className="text-xs text-zinc-400">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
                   {stablecoinGroupIds.length > 1 && (
                     <button
                       onClick={() => toggleSectionGroups(stablecoinGroupIds)}
@@ -502,7 +502,7 @@ export function CashTable({
                         <button type="button" onClick={() => toggleExpand(groupId)} className="w-full px-4 py-3 flex items-center justify-between overflow-hidden">
                           <div className="text-left min-w-0">
                             <p className="text-sm font-medium text-zinc-200 truncate">{group.walletName}</p>
-                            <p className="text-xs text-zinc-500">{group.positions.length} stablecoin{group.positions.length !== 1 ? "s" : ""}</p>
+                            <p className="text-xs text-zinc-400">{group.positions.length} stablecoin{group.positions.length !== 1 ? "s" : ""}</p>
                           </div>
                           <div className="text-right shrink-0 ml-3">
                             <p className="text-sm font-medium text-zinc-200 tabular-nums">{formatCurrency(group.totalValue, primaryCurrency)}</p>
@@ -515,7 +515,7 @@ export function CashTable({
                               <div key={pos.positionId} className="flex items-center justify-between text-xs">
                                 <div>
                                   <span className="text-zinc-400">{pos.assetName}</span>
-                                  <span className="text-zinc-500 ml-1.5">{pos.pegCurrency}</span>
+                                  <span className="text-zinc-400 ml-1.5">{pos.pegCurrency}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="text-zinc-300 tabular-nums">{formatCurrency(pos.valueInPrimary, primaryCurrency)}</span>
@@ -560,7 +560,7 @@ export function CashTable({
                         return (
                           <td key={col.key} className="px-4 py-2">
                             <div className="flex items-center gap-2">
-                              <Landmark className="w-3.5 h-3.5 text-zinc-500" />
+                              <Landmark className="w-3.5 h-3.5 text-zinc-400" />
                               <span className="text-xs font-medium text-zinc-400">Cash Accounts</span>
                               {cashGroupIds.length > 1 && (
                                 <button
@@ -578,7 +578,7 @@ export function CashTable({
                       if (col.key === "value") {
                         return (
                           <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
-                            <span className="text-xs text-zinc-500">{formatCurrency(cashTotal, primaryCurrency)}</span>
+                            <span className="text-xs text-zinc-400">{formatCurrency(cashTotal, primaryCurrency)}</span>
                           </td>
                         );
                       }
@@ -590,7 +590,7 @@ export function CashTable({
                 {cashRows.length === 0 && stablecoinWalletGroups.length === 0 ? (
                   <tr className="border-b border-zinc-800/30">
                     <td colSpan={orderedColumns.length} className="px-4 py-4 text-center">
-                      <p className="text-xs text-zinc-500">No cash accounts yet &mdash; click Add Cash to create one</p>
+                      <p className="text-xs text-zinc-400">No cash accounts yet &mdash; click Add Cash to create one</p>
                     </td>
                   </tr>
                 ) : (
@@ -628,7 +628,7 @@ export function CashTable({
                           return (
                             <td key={col.key} className="px-4 py-2">
                               <div className="flex items-center gap-2">
-                                <Coins className="w-3.5 h-3.5 text-zinc-500" />
+                                <Coins className="w-3.5 h-3.5 text-zinc-400" />
                                 <span className="text-xs font-medium text-zinc-400">Stablecoins</span>
                                 {stablecoinGroupIds.length > 1 && (
                                   <button
@@ -646,7 +646,7 @@ export function CashTable({
                         if (col.key === "value") {
                           return (
                             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
-                              <span className="text-xs text-zinc-500">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
+                              <span className="text-xs text-zinc-400">{formatCurrency(stablecoinTotal, primaryCurrency)}</span>
                             </td>
                           );
                         }
@@ -756,14 +756,14 @@ function ExpandedCashRow({
           const origin = account.wallet_id ? "Exchange" : account.broker_id ? "Broker" : "Bank";
           return (
             <td key={col.key} className={`px-4 py-2 text-left ${hidden}`}>
-              <span className="text-xs text-zinc-500">{origin}</span>
+              <span className="text-xs text-zinc-400">{origin}</span>
             </td>
           );
         }
         if (col.key === "currency") {
           return (
             <td key={col.key} className={`px-4 py-2 text-left ${hidden}`}>
-              <span className="text-xs text-zinc-500">{account.currency}</span>
+              <span className="text-xs text-zinc-400">{account.currency}</span>
             </td>
           );
         }
@@ -782,7 +782,7 @@ function ExpandedCashRow({
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
               <span
                 className={`text-xs tabular-nums ${
-                  showConverted ? "text-zinc-500" : "text-zinc-400"
+                  showConverted ? "text-zinc-400" : "text-zinc-400"
                 }`}
               >
                 {formatCurrency(valueInBase, ctx.primaryCurrency)}
@@ -798,7 +798,7 @@ function ExpandedCashRow({
                   {account.apy}%
                 </span>
               ) : (
-                <span className="text-xs text-zinc-500">&mdash;</span>
+                <span className="text-xs text-zinc-400">&mdash;</span>
               )}
             </td>
           );
@@ -807,7 +807,7 @@ function ExpandedCashRow({
           return (
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
               {account.region && (
-                <span className="text-xs text-zinc-500">{countryName(account.region)}</span>
+                <span className="text-xs text-zinc-400">{countryName(account.region)}</span>
               )}
             </td>
           );
@@ -819,7 +819,7 @@ function ExpandedCashRow({
                 <div className="flex items-center justify-end gap-1">
                   <button
                     onClick={onEdit}
-                    className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
                     aria-label="Edit account"
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -827,7 +827,7 @@ function ExpandedCashRow({
                   <ConfirmButton
                     showAdjustmentCheckbox
                     onConfirm={onDelete}
-                    className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </ConfirmButton>
@@ -886,9 +886,9 @@ function StablecoinWalletGroupRow({
           return (
             <td key={col.key} className="px-4 py-2.5">
               <div className="flex items-center gap-2">
-                <Chevron className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <Chevron className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                 <span className="text-sm font-medium text-zinc-200">{group.walletName}</span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-zinc-400">
                   {group.positions.length} stablecoin{group.positions.length !== 1 ? "s" : ""}
                 </span>
               </div>
@@ -898,7 +898,7 @@ function StablecoinWalletGroupRow({
         if (col.key === "currency") {
           return (
             <td key={col.key} className={`px-4 py-2.5 text-left ${hidden}`}>
-              <span className="text-xs text-zinc-500">{group.pegCurrency}</span>
+              <span className="text-xs text-zinc-400">{group.pegCurrency}</span>
             </td>
           );
         }
@@ -919,7 +919,7 @@ function StablecoinWalletGroupRow({
                   ~{group.weightedApy.toFixed(2)}%
                 </span>
               ) : (
-                <span className="text-sm text-zinc-500">&mdash;</span>
+                <span className="text-sm text-zinc-400">&mdash;</span>
               )}
             </td>
           );
@@ -967,7 +967,7 @@ function ExpandedStablecoinPositionRow({
         if (col.key === "currency") {
           return (
             <td key={col.key} className={`px-4 py-2 text-left ${hidden}`}>
-              <span className="text-xs text-zinc-500">{position.pegCurrency}</span>
+              <span className="text-xs text-zinc-400">{position.pegCurrency}</span>
             </td>
           );
         }
@@ -983,7 +983,7 @@ function ExpandedStablecoinPositionRow({
         if (col.key === "value") {
           return (
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
-              <span className="text-xs text-zinc-500 tabular-nums">
+              <span className="text-xs text-zinc-400 tabular-nums">
                 {formatCurrency(position.valueInPrimary, ctx.primaryCurrency)}
               </span>
             </td>
@@ -997,7 +997,7 @@ function ExpandedStablecoinPositionRow({
                   {position.apy.toFixed(2)}%
                 </span>
               ) : (
-                <span className="text-xs text-zinc-500">&mdash;</span>
+                <span className="text-xs text-zinc-400">&mdash;</span>
               )}
             </td>
           );

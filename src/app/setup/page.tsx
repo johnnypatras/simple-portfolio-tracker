@@ -79,7 +79,7 @@ export default function SetupPage() {
                   <code className="text-xs text-amber-400 font-mono">
                     {v.name}
                   </code>
-                  <span className="text-xs text-zinc-500">{v.where}</span>
+                  <span className="text-xs text-zinc-400">{v.where}</span>
                 </div>
               ))}
             </div>
@@ -102,7 +102,7 @@ export default function SetupPage() {
             href="https://github.com/johnnypatras/simple-portfolio-tracker#getting-started"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-zinc-500 hover:text-zinc-300"
+            className="text-zinc-400 hover:text-zinc-300"
           >
             README
           </a>{" "}

@@ -481,21 +481,23 @@ export function getStockColumns(handlers: {
       renderCell: (row) => (
         <button
           onClick={() => handlers.toggleExpand(row.asset.id)}
+          aria-expanded={handlers.isExpanded(row.asset.id)}
+          aria-label={`${handlers.isExpanded(row.asset.id) ? "Collapse" : "Expand"} ${row.asset.name}`}
           className="flex items-center gap-2 text-left min-w-0"
         >
           {handlers.isExpanded(row.asset.id) ? (
-            <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            <ChevronDown aria-hidden="true" className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           ) : (
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            <ChevronRight aria-hidden="true" className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           )}
           <div className="min-w-0">
             <span className="text-sm font-medium text-zinc-200 truncate block">
               {row.asset.name}
             </span>
-            <span className="text-xs text-zinc-500 uppercase">
+            <span className="text-xs text-zinc-400 uppercase">
               {row.asset.ticker}
               {row.asset.isin && (
-                <span className="text-zinc-500 ml-1.5 normal-case">
+                <span className="text-zinc-400 ml-1.5 normal-case">
                   {row.asset.isin}
                 </span>
               )}
@@ -530,7 +532,7 @@ export function getStockColumns(handlers: {
             {TYPE_LABELS[row.asset.category]}
           </span>
           {row.asset.subcategory && (
-            <span className="block text-[11px] text-zinc-500 leading-tight truncate">
+            <span className="block text-[11px] text-zinc-400 leading-tight truncate">
               {row.asset.subcategory}
             </span>
           )}
@@ -547,7 +549,7 @@ export function getStockColumns(handlers: {
       renderCell: (row) => {
         const tags = row.asset.tags;
         if (!tags || tags.length === 0) {
-          return <span className="text-xs text-zinc-500">—</span>;
+          return <span className="text-xs text-zinc-400">—</span>;
         }
         const visible = tags.slice(0, 2);
         const remaining = tags.length - 2;
@@ -562,7 +564,7 @@ export function getStockColumns(handlers: {
               </span>
             ))}
             {remaining > 0 && (
-              <span className="text-[10px] text-zinc-500">
+              <span className="text-[10px] text-zinc-400">
                 +{remaining} more
               </span>
             )}
@@ -584,13 +586,13 @@ export function getStockColumns(handlers: {
               ~{row.dividendYield.toFixed(2)}%
             </span>
             {row.dividendCount > 0 && (
-              <span className="block text-[11px] tabular-nums text-zinc-500">
+              <span className="block text-[11px] tabular-nums text-zinc-400">
                 {row.dividendCount}x/yr
               </span>
             )}
           </div>
         ) : (
-          <span className="text-xs text-zinc-500">—</span>
+          <span className="text-xs text-zinc-400">—</span>
         ),
     },
     {
@@ -699,7 +701,7 @@ export function getStockColumns(handlers: {
       width: "w-24",
       hiddenBelow: "xl",
       renderCell: (row) => (
-        <span className="text-xs text-zinc-500 tabular-nums">
+        <span className="text-xs text-zinc-400 tabular-nums">
           {row.totalQty > 0 ? formatQuantity(row.totalQty, 4) : "—"}
         </span>
       ),
@@ -713,7 +715,7 @@ export function getStockColumns(handlers: {
       renderHeader: (ctx) =>
         `Value (${ctx.primaryCurrency})`,
       renderCell: (row, ctx) => (
-        <span className={`text-sm tabular-nums ${row.priceUnavailable ? "text-zinc-500" : "font-semibold text-zinc-100"}`}>
+        <span className={`text-sm tabular-nums ${row.priceUnavailable ? "text-zinc-400" : "font-semibold text-zinc-100"}`}>
           {row.priceUnavailable
             ? "—"
             : row.valueBase > 0
@@ -733,17 +735,19 @@ export function getStockColumns(handlers: {
         <div className="flex items-center justify-end gap-1">
           <button
             onClick={() => handlers.onEdit(row.asset)}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+            aria-label={`Edit positions for ${row.asset.name}`}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
             title="Edit positions"
           >
-            <Pencil className="w-3.5 h-3.5" />
+            <Pencil aria-hidden="true" className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => handlers.onDelete(row.asset.id, row.asset.name)}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+            aria-label={`Remove ${row.asset.name}`}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
             title="Remove asset"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
           </button>
         </div>
       ),

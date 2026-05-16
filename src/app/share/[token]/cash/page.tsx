@@ -64,7 +64,7 @@ export default async function SharedCashPage({
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-zinc-100">Banks & Deposits</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <p className="text-sm text-zinc-400 mt-1">
           Bank accounts and fiat deposits
         </p>
       </div>

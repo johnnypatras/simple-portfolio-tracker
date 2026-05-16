@@ -252,15 +252,15 @@ export function CommandPalette({
         >
           {/* Input bar */}
           <div className="flex items-center gap-2 px-4 border-b border-zinc-800/50">
-            <Search className="w-4 h-4 text-zinc-500 shrink-0" />
+            <Search className="w-4 h-4 text-zinc-400 shrink-0" />
             <Command.Input
               value={search}
               onValueChange={setSearch}
               placeholder="Search holdings, pages, actions..."
-              className="w-full py-3 bg-transparent text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+              className="w-full py-3 bg-transparent text-base sm:text-sm text-zinc-100 placeholder:text-zinc-400 outline-none"
               autoFocus
             />
-            <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-500 font-mono shrink-0 border border-zinc-700/50">
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-400 font-mono shrink-0 border border-zinc-700/50">
               ⌘K
             </kbd>
           </div>
@@ -296,7 +296,7 @@ export function CommandPalette({
                             className="w-5 h-5 rounded-full shrink-0"
                           />
                         ) : (
-                          <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0 flex items-center justify-center text-[10px] text-zinc-500 font-medium">
+                          <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0 flex items-center justify-center text-[10px] text-zinc-400 font-medium">
                             {(h.ticker ?? h.name)[0]}
                           </div>
                         )}
@@ -329,7 +329,7 @@ export function CommandPalette({
                             <button
                               type="button"
                               aria-label={isExpanded ? "Hide details" : "Show details"}
-                              className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-500 hover:text-zinc-300 transition-colors"
+                              className="p-0.5 rounded hover:bg-zinc-700/50 text-zinc-400 hover:text-zinc-300 transition-colors"
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -382,7 +382,7 @@ export function CommandPalette({
                     onSelect={() => go(p.path)}
                     className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer data-[selected=true]:bg-zinc-800 text-zinc-300 data-[selected=true]:text-zinc-100"
                   >
-                    <Icon className="w-4 h-4 text-zinc-500 shrink-0" />
+                    <Icon className="w-4 h-4 text-zinc-400 shrink-0" />
                     <span>{p.label}</span>
                   </Command.Item>
                 );
@@ -402,7 +402,7 @@ export function CommandPalette({
                       onSelect={() => go(a.path)}
                       className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer data-[selected=true]:bg-zinc-800 text-zinc-300 data-[selected=true]:text-zinc-100"
                     >
-                      <Icon className="w-4 h-4 text-zinc-500 shrink-0" />
+                      <Icon className="w-4 h-4 text-zinc-400 shrink-0" />
                       <span>{a.label}</span>
                     </Command.Item>
                   );
@@ -440,7 +440,7 @@ export function CommandPalette({
                               className="w-5 h-5 rounded-full shrink-0"
                             />
                           ) : (
-                            <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0 flex items-center justify-center text-[10px] text-zinc-500 font-medium">
+                            <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0 flex items-center justify-center text-[10px] text-zinc-400 font-medium">
                               {r.ticker[0]}
                             </div>
                           )}

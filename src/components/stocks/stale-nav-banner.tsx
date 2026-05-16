@@ -116,7 +116,7 @@ export function StaleNavBanner({ assets }: StaleNavBannerProps) {
         aria-label="Dismiss banner until tomorrow"
         title="Dismiss until tomorrow"
       >
-        <X className="w-3.5 h-3.5" />
+        <X aria-hidden="true" className="w-3.5 h-3.5" />
       </button>
     </div>
   );

@@ -136,17 +136,19 @@ export function getCashColumns(handlers: {
         return (
           <button
             onClick={() => handlers.toggleExpand(row.id)}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${groupName}`}
             className="flex items-center gap-2 text-left min-w-0"
           >
             {expanded ? (
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              <ChevronDown aria-hidden="true" className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
             ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              <ChevronRight aria-hidden="true" className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
             )}
             <span className="text-sm font-medium text-zinc-200">
               {groupName}
             </span>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-zinc-400">
               {accounts.length} {itemLabel}
               {accounts.length !== 1 ? "s" : ""}
             </span>
@@ -163,7 +165,7 @@ export function getCashColumns(handlers: {
       align: "left",
       hiddenBelow: "lg",
       renderCell: (row) => (
-        <span className="text-xs text-zinc-500">{row.data.origin}</span>
+        <span className="text-xs text-zinc-400">{row.data.origin}</span>
       ),
     },
 
@@ -176,7 +178,7 @@ export function getCashColumns(handlers: {
       renderCell: (row) => {
         const currencies = [...new Set(row.data.accounts.map((a) => a.currency))];
         return (
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-zinc-400">
             {currencies.join(", ")}
           </span>
         );
@@ -211,7 +213,7 @@ export function getCashColumns(handlers: {
             ~{row.data.weightedApy.toFixed(2)}%
           </span>
         ) : (
-          <span className="text-sm text-zinc-500">&mdash;</span>
+          <span className="text-sm text-zinc-400">&mdash;</span>
         ),
     },
 
@@ -225,7 +227,7 @@ export function getCashColumns(handlers: {
       hiddenBelow: "md",
       renderCell: (row) =>
         row.data.region ? (
-          <span className="text-xs text-zinc-500">{countryName(row.data.region)}</span>
+          <span className="text-xs text-zinc-400">{countryName(row.data.region)}</span>
         ) : null,
     },
 

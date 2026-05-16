@@ -278,7 +278,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                 <span className="text-orange-300">BTC {fmtCurrencyCompact(insights.btcValueInBase, cur)}</span>
                 {cryptoValue - insights.btcValueInBase > 0 && (
                   <>
-                    <span className="text-zinc-500" aria-hidden="true"> · </span>
+                    <span className="text-zinc-400" aria-hidden="true"> · </span>
                     <span className="text-amber-300">Alts {fmtCurrencyCompact(cryptoValue - insights.btcValueInBase, cur)}</span>
                   </>
                 )}
@@ -291,7 +291,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
               <p className="text-[11px] pl-6 sm:pl-[10rem] pb-1">
                 {insights.equitiesBreakdown.map((e, i) => (
                   <span key={e.label}>
-                    {i > 0 && <span className="text-zinc-500" aria-hidden="true"> · </span>}
+                    {i > 0 && <span className="text-zinc-400" aria-hidden="true"> · </span>}
                     <span className="text-blue-300">{e.label} {fmtCurrencyCompact(e.value, cur)}</span>
                   </span>
                 ))}
@@ -304,7 +304,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
               <p className="text-[11px] pl-6 sm:pl-[10rem] pb-1">
                 {insights.cashCurrencyBreakdown.map((e, i) => (
                   <span key={e.currency}>
-                    {i > 0 && <span className="text-zinc-500" aria-hidden="true"> · </span>}
+                    {i > 0 && <span className="text-zinc-400" aria-hidden="true"> · </span>}
                     <span className="text-emerald-300">{e.currency} {fmtCurrencyCompact(e.value, cur)}</span>
                   </span>
                 ))}
@@ -345,7 +345,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                       <p className="text-[11px] pl-6 sm:pl-[10rem] pb-1">
                         {parts.map((p, i) => (
                           <span key={p.label}>
-                            {i > 0 && <span className="text-zinc-500" aria-hidden="true"> · </span>}
+                            {i > 0 && <span className="text-zinc-400" aria-hidden="true"> · </span>}
                             <span className={textColor}>{p.label} {fmtCurrencyCompact(p.value, displayCur)}</span>
                           </span>
                         ))}
@@ -618,7 +618,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                             const pctWithin = entry.value > 0 ? (s.value / entry.value) * 100 : 0;
                             return (
                               <span key={s.label}>
-                                {i > 0 && <span className="text-zinc-500" aria-hidden="true"> · </span>}
+                                {i > 0 && <span className="text-zinc-400" aria-hidden="true"> · </span>}
                                 <span className={`whitespace-nowrap ${barTextColor(segmentColor(entry.color, i))}`}>
                                   {s.label} {fmtCurrencyCompact(s.value, cur)} ({Math.round(pctWithin)}%)
                                 </span>
@@ -830,7 +830,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                             const pctWithin = entry.value > 0 ? (s.value / entry.value) * 100 : 0;
                             return (
                               <span key={s.label}>
-                                {i > 0 && <span className="text-zinc-500" aria-hidden="true"> · </span>}
+                                {i > 0 && <span className="text-zinc-400" aria-hidden="true"> · </span>}
                                 <span className={`whitespace-nowrap ${barTextColor(segmentColor(entry.color, i))}`}>
                                   {s.label} {fmtCurrencyCompact(s.value, cur)} ({Math.round(pctWithin)}%)
                                 </span>
@@ -1041,7 +1041,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows, adj
                         </span>
                       )}
                       {entry.fiatValue > 0 && entry.stablecoinValue > 0 && (
-                        <span className="text-zinc-500" aria-hidden="true"> · </span>
+                        <span className="text-zinc-400" aria-hidden="true"> · </span>
                       )}
                       {entry.stablecoinValue > 0 && (
                         <span className="whitespace-nowrap text-emerald-400">

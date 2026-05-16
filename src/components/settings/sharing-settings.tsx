@@ -178,7 +178,7 @@ export function SharingSettings() {
                       : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"
                   }`}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${selected ? "text-blue-400" : "text-zinc-500"}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${selected ? "text-blue-400" : "text-zinc-400"}`} />
                   <div className="min-w-0">
                     <p className={`text-sm font-medium ${selected ? "text-zinc-100" : "text-zinc-300"}`}>
                       {opt.label}
@@ -213,7 +213,7 @@ export function SharingSettings() {
         {/* Label */}
         <div>
           <label htmlFor="share-label" className="block text-sm text-zinc-400 mb-1.5">
-            Label <span className="text-zinc-500">(optional)</span>
+            Label <span className="text-zinc-400">(optional)</span>
           </label>
           <input
             id="share-label"
@@ -263,7 +263,7 @@ export function SharingSettings() {
                   key={share.id}
                   className="flex items-center gap-3 px-3 py-2.5 bg-zinc-900/50 border border-zinc-800/50 rounded-lg"
                 >
-                  <Link2 className="w-4 h-4 text-zinc-500 shrink-0" />
+                  <Link2 className="w-4 h-4 text-zinc-400 shrink-0" />
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -298,7 +298,7 @@ export function SharingSettings() {
                     onConfirm={() => handleRevoke(share.id)}
                     confirmLabel="Revoke?"
                     confirmLabelClassName="text-red-400"
-                    className="shrink-0 p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    className="shrink-0 p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                     title="Revoke link"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

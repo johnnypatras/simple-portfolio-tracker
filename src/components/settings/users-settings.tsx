@@ -302,7 +302,7 @@ export function UsersSettings() {
                       <>
                         <button
                           onClick={() => copyCode(code.code)}
-                          className="p-1.5 text-zinc-500 hover:text-zinc-300 transition-colors"
+                          className="p-1.5 text-zinc-400 hover:text-zinc-300 transition-colors"
                           title="Copy invite link"
                           aria-label="Copy invite link"
                         >
@@ -315,7 +315,7 @@ export function UsersSettings() {
                         <ConfirmButton
                           onConfirm={() => handleDeleteCode(code.id)}
                           confirmLabel="Delete?"
-                          className="p-1.5 text-zinc-500 hover:text-red-400 transition-colors"
+                          className="p-1.5 text-zinc-400 hover:text-red-400 transition-colors"
                           title="Delete code"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

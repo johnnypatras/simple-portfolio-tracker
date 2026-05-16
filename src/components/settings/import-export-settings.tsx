@@ -234,7 +234,7 @@ export function ImportExportSettings() {
       {/* ── Full JSON Backup ─────────────────────────── */}
       <div>
         <h3 className="text-sm font-medium text-zinc-200 mb-3 flex items-center gap-2">
-          <Database className="w-4 h-4 text-zinc-500" />
+          <Database className="w-4 h-4 text-zinc-400" />
           Full Backup
         </h3>
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-4">
@@ -267,7 +267,7 @@ export function ImportExportSettings() {
       {/* ── CSV Exports ──────────────────────────────── */}
       <div>
         <h3 className="text-sm font-medium text-zinc-200 mb-3 flex items-center gap-2">
-          <FileText className="w-4 h-4 text-zinc-500" />
+          <FileText className="w-4 h-4 text-zinc-400" />
           CSV Exports
         </h3>
         <div className="space-y-2">
@@ -302,7 +302,7 @@ export function ImportExportSettings() {
       {/* ── Import ─────────────────────────────────── */}
       <div>
         <h3 className="text-sm font-medium text-zinc-200 mb-3 flex items-center gap-2">
-          <Upload className="w-4 h-4 text-zinc-500" />
+          <Upload className="w-4 h-4 text-zinc-400" />
           Import
         </h3>
 
@@ -350,9 +350,10 @@ export function ImportExportSettings() {
               <p className="text-sm font-medium text-zinc-200">Backup Preview</p>
               <button
                 onClick={handleCancelImport}
-                className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                aria-label="Cancel import preview"
+                className="text-zinc-400 hover:text-zinc-300 transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X aria-hidden="true" className="w-4 h-4" />
               </button>
             </div>
 
@@ -386,7 +387,7 @@ export function ImportExportSettings() {
                   }`}
                 >
                   <span className="font-medium">Merge</span>
-                  <span className="block text-zinc-500 mt-0.5">
+                  <span className="block text-zinc-400 mt-0.5">
                     Skip duplicates, add new data only
                   </span>
                 </button>
@@ -399,7 +400,7 @@ export function ImportExportSettings() {
                   }`}
                 >
                   <span className="font-medium">Replace</span>
-                  <span className="block text-zinc-500 mt-0.5">
+                  <span className="block text-zinc-400 mt-0.5">
                     Delete all existing data first
                   </span>
                 </button>
