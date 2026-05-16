@@ -303,7 +303,7 @@ function PeriodSelector({
           className={`px-2 py-0.5 text-xs rounded-md transition-colors ${
             i === activeIdx
               ? "bg-blue-600 text-white"
-              : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+              : "text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800"
           }`}
         >
           {p.label}

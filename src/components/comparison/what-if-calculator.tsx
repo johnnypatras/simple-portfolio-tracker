@@ -201,12 +201,12 @@ function ResultRow({
       {/* Change */}
       <div className={`text-xs text-right ${changeColorClass(delta)}`}>
         {Math.abs(delta) < 1 ? (
-          <span className="text-zinc-500">—</span>
+          <span className="text-zinc-400">—</span>
         ) : (
           <>
             {delta >= 0 ? "+" : ""}
             {fmtCurrency(Math.abs(delta), currency, 0)}
-            {delta < 0 && <span className="text-zinc-500"> less</span>}
+            {delta < 0 && <span className="text-zinc-400"> less</span>}
           </>
         )}
       </div>
@@ -276,7 +276,7 @@ export function WhatIfCalculator({
         <button
           type="button"
           onClick={reset}
-          className="flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-300 transition-colors"
         >
           <RotateCcw className="w-3 h-3" />
           Reset

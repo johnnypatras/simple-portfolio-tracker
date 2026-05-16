@@ -465,12 +465,14 @@ export function getCryptoColumns(handlers: {
       renderCell: (row) => (
         <button
           onClick={() => handlers.toggleExpand(row.asset.id)}
+          aria-expanded={handlers.isExpanded(row.asset.id)}
+          aria-label={`${handlers.isExpanded(row.asset.id) ? "Collapse" : "Expand"} ${row.asset.name}`}
           className="flex items-center gap-2 text-left min-w-0"
         >
           {handlers.isExpanded(row.asset.id) ? (
-            <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            <ChevronDown aria-hidden="true" className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           ) : (
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            <ChevronRight aria-hidden="true" className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           )}
           {row.asset.image_url ? (
             <Image src={row.asset.image_url} alt="" width={20} height={20} className="rounded-full bg-zinc-800 shrink-0" />
@@ -481,7 +483,7 @@ export function getCryptoColumns(handlers: {
             <span className="text-sm font-medium text-zinc-200 truncate block">
               {row.asset.name}
             </span>
-            <span className="text-xs text-zinc-500 uppercase">
+            <span className="text-xs text-zinc-400 uppercase">
               {row.asset.ticker}
             </span>
           </div>
@@ -498,7 +500,7 @@ export function getCryptoColumns(handlers: {
       renderCell: (row) => {
         const positions = row.asset.positions;
         if (positions.length === 0)
-          return <span className="text-xs text-zinc-500">—</span>;
+          return <span className="text-xs text-zinc-400">—</span>;
 
         const types = new Set(positions.map((p) => p.wallet_type));
 
@@ -512,7 +514,7 @@ export function getCryptoColumns(handlers: {
           return match ? (
             <span className={`text-xs font-medium ${match.color}`}>{match.label}</span>
           ) : (
-            <span className="text-xs text-zinc-500">—</span>
+            <span className="text-xs text-zinc-400">—</span>
           );
         }
 
@@ -529,7 +531,7 @@ export function getCryptoColumns(handlers: {
       renderCell: (row) => {
         const method = getDominantMethod(row.asset.positions);
         if (row.asset.positions.length === 0) {
-          return <span className="text-xs text-zinc-500">—</span>;
+          return <span className="text-xs text-zinc-400">—</span>;
         }
         return (
           <span
@@ -552,7 +554,7 @@ export function getCryptoColumns(handlers: {
         return chain ? (
           <span className="text-xs text-zinc-400">{chain}</span>
         ) : (
-          <span className="text-xs text-zinc-500">—</span>
+          <span className="text-xs text-zinc-400">—</span>
         );
       },
     },
@@ -568,7 +570,7 @@ export function getCryptoColumns(handlers: {
         return sub ? (
           <span className="text-xs text-zinc-400">{sub}</span>
         ) : (
-          <span className="text-xs text-zinc-500">—</span>
+          <span className="text-xs text-zinc-400">—</span>
         );
       },
     },
@@ -585,7 +587,7 @@ export function getCryptoColumns(handlers: {
             {row.weightedApy.toFixed(row.weightedApy % 1 === 0 ? 0 : 2)}%
           </span>
         ) : (
-          <span className="text-xs text-zinc-500">—</span>
+          <span className="text-xs text-zinc-400">—</span>
         ),
     },
     {
@@ -614,7 +616,7 @@ export function getCryptoColumns(handlers: {
             )}
           </div>
         ) : (
-          <span className="text-xs text-zinc-500">No data</span>
+          <span className="text-xs text-zinc-400">No data</span>
         ),
     },
     {
@@ -624,7 +626,7 @@ export function getCryptoColumns(handlers: {
       align: "right",
       width: "w-32",
       renderCell: (row) => (
-        <span className="text-xs text-zinc-500 tabular-nums">
+        <span className="text-xs text-zinc-400 tabular-nums">
           {row.totalQty > 0 ? formatQuantity(row.totalQty, 8) : "—"}
         </span>
       ),
@@ -656,17 +658,19 @@ export function getCryptoColumns(handlers: {
         <div className="flex items-center justify-end gap-1">
           <button
             onClick={() => handlers.onEdit(row.asset)}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+            aria-label={`Edit positions for ${row.asset.name}`}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
             title="Edit positions"
           >
-            <Pencil className="w-3.5 h-3.5" />
+            <Pencil aria-hidden="true" className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => handlers.onDelete(row.asset.id, row.asset.name)}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+            aria-label={`Remove ${row.asset.name}`}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
             title="Remove asset"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
           </button>
         </div>
       ),

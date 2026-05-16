@@ -49,7 +49,7 @@ export default async function HistoryPage({
             Activity History
           </h1>
         </div>
-        <p className="text-sm text-zinc-500 mt-1">
+        <p className="text-sm text-zinc-400 mt-1">
           Audit trail of all portfolio changes
         </p>
       </div>

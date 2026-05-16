@@ -85,19 +85,19 @@ export function ConfirmButton({
             setAdjChecked(false);
           }}
           aria-label="Confirm"
-          className="p-1 rounded text-emerald-400 hover:bg-emerald-500/15 transition-colors"
+          className="p-1.5 min-w-6 min-h-6 rounded text-emerald-400 hover:bg-emerald-500/15 transition-colors"
           title="Confirm"
         >
-          <Check className="w-3.5 h-3.5" />
+          <Check aria-hidden="true" className="w-3.5 h-3.5" />
         </button>
         <button
           type="button"
           onClick={() => { setConfirming(false); setAdjChecked(false); }}
           aria-label="Cancel"
-          className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+          className="p-1.5 min-w-6 min-h-6 rounded text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
           title="Cancel"
         >
-          <X className="w-3.5 h-3.5" />
+          <X aria-hidden="true" className="w-3.5 h-3.5" />
         </button>
       </div>
     );

@@ -152,7 +152,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
       <form onSubmit={handleChangeEmail} className="max-w-md space-y-3">
         <h3 className="text-sm font-medium text-zinc-300">Change Email</h3>
         <div className="relative">
-          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
           <input
             id="account-new-email"
             type="email"
@@ -187,7 +187,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
       <form onSubmit={handleChangePassword} className="max-w-md space-y-3 border-t border-zinc-800 pt-6">
         <h3 className="text-sm font-medium text-zinc-300">Change Password</h3>
         <div className="relative">
-          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
           <input
             id="account-current-password"
             type={showPw ? "text" : "password"}
@@ -202,13 +202,13 @@ export function AccountSettings({ profile }: { profile: Profile }) {
             type="button"
             onClick={() => setShowPw(!showPw)}
             aria-label={showPw ? "Hide password" : "Show password"}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-300"
           >
             {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
         <div className="relative">
-          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
           <input
             id="account-new-password"
             type={showPw ? "text" : "password"}
@@ -222,7 +222,7 @@ export function AccountSettings({ profile }: { profile: Profile }) {
           />
         </div>
         <div className="relative">
-          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
           <input
             id="account-confirm-password"
             type={showPw ? "text" : "password"}

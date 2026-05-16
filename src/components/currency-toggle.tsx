@@ -31,6 +31,8 @@ export function CurrencyToggle({
 
   return (
     <div
+      role="group"
+      aria-label="Display currency"
       className={`flex items-center bg-zinc-800/60 rounded-lg p-0.5 transition-opacity ${
         isPending ? "opacity-60" : ""
       }`}

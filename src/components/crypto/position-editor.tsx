@@ -544,7 +544,7 @@ export function PositionEditor({
                         setTransferOpen(true);
                       }}
                       disabled={isBusy}
-                      className="p-1.5 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
+                      className="p-1.5 rounded text-zinc-400 hover:text-blue-400 hover:bg-zinc-800/50 transition-colors disabled:opacity-50 shrink-0"
                       title="Move to another wallet"
                       aria-label="Move to another wallet"
                     >
@@ -555,7 +555,7 @@ export function PositionEditor({
                         handleDelete(existingPosition.id, walletId)
                       }
                       disabled={isBusy}
-                      className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+                      className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
                       title="Remove"
                       aria-label="Remove"
                     >

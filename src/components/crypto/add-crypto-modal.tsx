@@ -241,7 +241,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         <div className="space-y-3">
           {/* Search input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               type="text"
               aria-label="Search coins"
@@ -252,14 +252,14 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               autoFocus
             />
             {searching && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 animate-spin" />
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 animate-spin" />
             )}
           </div>
 
           {/* Results */}
           <div className="max-h-72 overflow-y-auto space-y-0.5">
             {results.length === 0 && query.length >= 2 && !searching && (
-              <p className="text-sm text-zinc-500 text-center py-4">
+              <p className="text-sm text-zinc-400 text-center py-4">
                 No coins found
               </p>
             )}
@@ -285,12 +285,12 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                     <span className="text-sm font-medium text-zinc-200 truncate">
                       {coin.name}
                     </span>
-                    <span className="text-xs text-zinc-500 uppercase">
+                    <span className="text-xs text-zinc-400 uppercase">
                       {coin.symbol}
                     </span>
                   </div>
                   {coin.market_cap_rank && (
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-zinc-400">
                       Rank #{coin.market_cap_rank}
                     </span>
                   )}
@@ -314,7 +314,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           </div>
 
           {query.length < 2 && (
-            <p className="text-xs text-zinc-500 text-center">
+            <p className="text-xs text-zinc-400 text-center">
               Type at least 2 characters to search
             </p>
           )}
@@ -327,7 +327,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           {/* Back link */}
           <button
             onClick={handleBackToSearch}
-            className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors mb-4"
+            className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-300 transition-colors mb-4"
           >
             <ArrowLeft className="w-3 h-3" />
             Back to search
@@ -351,12 +351,12 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 <span className="text-sm font-medium text-zinc-200">
                   {selectedCoin.name}
                 </span>
-                <span className="text-xs text-zinc-500 uppercase">
+                <span className="text-xs text-zinc-400 uppercase">
                   {selectedCoin.symbol}
                 </span>
               </div>
               {selectedCoin.market_cap_rank && (
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-zinc-400">
                   Rank #{selectedCoin.market_cap_rank}
                 </span>
               )}
@@ -377,7 +377,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
           </div>
 
           {detecting && (
-            <div className="flex items-center gap-2 text-xs text-zinc-500 mb-3">
+            <div className="flex items-center gap-2 text-xs text-zinc-400 mb-3">
               <Loader2 className="w-3 h-3 animate-spin" />
               Detecting chain &amp; category…
             </div>
@@ -401,7 +401,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               {!isExchange && (
               <div>
                 <label htmlFor={`${id}-chain`} className="block text-xs text-zinc-400 mb-1">
-                  Chain <span className="text-zinc-500">(optional)</span>
+                  Chain <span className="text-zinc-400">(optional)</span>
                 </label>
                 {chainOptions.length > 0 ? (
                   <select
@@ -433,11 +433,15 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               {/* Type */}
               <div className="relative">
                 <label htmlFor={`${id}-type`} className="block text-xs text-zinc-400 mb-1">
-                  Type <span className="text-zinc-500">(optional)</span>
+                  Type <span className="text-zinc-400">(optional)</span>
                 </label>
                 <input
                   id={`${id}-type`}
                   type="text"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={subcategoryDropdownOpen}
+                  aria-controls={`${id}-type-list`}
                   value={subcategory}
                   onChange={(e) => {
                     setSubcategory(e.target.value);
@@ -445,6 +449,11 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                   }}
                   onFocus={() => setSubcategoryDropdownOpen(true)}
                   onBlur={() => setTimeout(() => setSubcategoryDropdownOpen(false), 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && subcategoryDropdownOpen) {
+                      setSubcategoryDropdownOpen(false);
+                    }
+                  }}
                   placeholder="e.g. L1, DeFi..."
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 />
@@ -456,11 +465,17 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                   );
                   if (filtered.length === 0) return null;
                   return (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                    <div
+                      id={`${id}-type-list`}
+                      role="listbox"
+                      className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto"
+                    >
                       {filtered.map((s) => (
                         <button
                           key={s}
                           type="button"
+                          role="option"
+                          aria-selected={false}
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => {
                             setSubcategory(s);
@@ -494,7 +509,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                     <ChevronRight className="w-3 h-3" />
                   )}
                   Add initial position
-                  <span className="text-zinc-500">(optional)</span>
+                  <span className="text-zinc-400">(optional)</span>
                 </button>
 
                 {positionOpen && (
@@ -522,12 +537,12 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                           })}
                         </select>
                         {chain && chainFilteredWallets.length === 0 && (
-                          <p className="text-xs text-zinc-500 mt-1">
+                          <p className="text-xs text-zinc-400 mt-1">
                             No {chain}-specific wallets — showing all
                           </p>
                         )}
                         {chain && !showAllWallets && chainFilteredWallets.length > 0 && chainFilteredWallets.length < wallets.length && (
-                          <p className="text-xs text-zinc-500 mt-1">
+                          <p className="text-xs text-zinc-400 mt-1">
                             Showing {chain}-compatible only{" "}
                             <button
                               type="button"
@@ -575,7 +590,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                       </div>
                       <div>
                         <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-400 mb-1">
-                          APY % <span className="text-zinc-500">(optional)</span>
+                          APY % <span className="text-zinc-400">(optional)</span>
                         </label>
                         <input
                           id={`${id}-apy`}
@@ -607,7 +622,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 onChange={(e) => setEffectiveDate(e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
+              <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
             </div>
 
             {error && (
@@ -629,6 +644,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
             <button
               type="submit"
               disabled={adding}
+              aria-busy={adding}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {adding && <Loader2 className="w-4 h-4 animate-spin" />}

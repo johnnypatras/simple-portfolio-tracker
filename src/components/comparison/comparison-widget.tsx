@@ -141,7 +141,7 @@ export function ComparisonWidget({
             <button
               onClick={onClose}
               aria-label="Close"
-              className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              className="p-1 rounded-md text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -152,7 +152,7 @@ export function ComparisonWidget({
             {loading && (
               <div className="flex flex-col items-center justify-center py-12 gap-3">
                 <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-zinc-400">
                   Loading comparison...
                 </span>
               </div>

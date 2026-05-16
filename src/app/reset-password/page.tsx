@@ -70,7 +70,7 @@ export default function ResetPasswordPage() {
           <h1 className="text-xl font-semibold text-zinc-100">
             Set New Password
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-400 mt-1">
             {done ? "Password updated" : "Choose a new password for your account"}
           </p>
         </div>
@@ -94,7 +94,7 @@ export default function ResetPasswordPage() {
                 New Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                 <input
                   id="reset-password"
                   type={showPassword ? "text" : "password"}
@@ -110,7 +110,7 @@ export default function ResetPasswordPage() {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-300"
                 >
                   {showPassword ? (
                     <EyeOff className="w-4 h-4" />
@@ -126,7 +126,7 @@ export default function ResetPasswordPage() {
                 Confirm Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                 <input
                   id="reset-confirm-password"
                   type={showPassword ? "text" : "password"}

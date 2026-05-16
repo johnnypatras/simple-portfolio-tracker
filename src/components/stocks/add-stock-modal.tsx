@@ -237,7 +237,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
         <div className="space-y-3">
           {/* Search input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               type="text"
               aria-label="Search stocks and ETFs"
@@ -248,14 +248,14 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
               autoFocus
             />
             {searching && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 animate-spin" />
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 animate-spin" />
             )}
           </div>
 
           {/* Results dropdown */}
           <div className="max-h-72 overflow-y-auto space-y-0.5">
             {results.length === 0 && query.length >= 2 && !searching && (
-              <p className="text-sm text-zinc-500 text-center py-4">
+              <p className="text-sm text-zinc-400 text-center py-4">
                 No stocks or ETFs found
               </p>
             )}
@@ -280,12 +280,12 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                     <span className="text-sm font-medium text-zinc-200 uppercase">
                       {result.symbol}
                     </span>
-                    <span className="text-xs text-zinc-500 truncate">
+                    <span className="text-xs text-zinc-400 truncate">
                       {result.longname || result.shortname}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-500">
+                    <span className="text-[11px] text-zinc-400">
                       {result.exchDisp}
                     </span>
                     {result.currency && (
@@ -310,7 +310,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
           </div>
 
           {query.length < 2 && (
-            <p className="text-xs text-zinc-500 text-center">
+            <p className="text-xs text-zinc-400 text-center">
               Type at least 2 characters to search
             </p>
           )}
@@ -323,7 +323,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
           {/* Back link */}
           <button
             onClick={handleBackToSearch}
-            className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors mb-4"
+            className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-300 transition-colors mb-4"
           >
             <ArrowLeft className="w-3 h-3" />
             Back to search
@@ -344,7 +344,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
               <span className="text-sm font-medium text-zinc-200">
                 {selected.symbol}
               </span>
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-zinc-400">
                 {selected.exchDisp}
               </span>
               {selected.currency && (
@@ -404,7 +404,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
               <div>
                 <label htmlFor={`${id}-isin`} className="block text-xs text-zinc-400 mb-1">
                   ISIN{" "}
-                  <span className="text-zinc-500">(optional)</span>
+                  <span className="text-zinc-400">(optional)</span>
                 </label>
                 <input
                   id={`${id}-isin`}
@@ -464,6 +464,10 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 <input
                   id={`${id}-subtype`}
                   type="text"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={subcategoryOpen}
+                  aria-controls={`${id}-subtype-list`}
                   value={subcategory}
                   onChange={(e) => {
                     setSubcategory(e.target.value);
@@ -471,6 +475,9 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   }}
                   onFocus={() => setSubcategoryOpen(true)}
                   onBlur={() => setTimeout(() => setSubcategoryOpen(false), 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && subcategoryOpen) setSubcategoryOpen(false);
+                  }}
                   placeholder="e.g. UCITS, Non-UCITS..."
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                 />
@@ -484,11 +491,17 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   );
                   if (filtered.length === 0) return null;
                   return (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                    <div
+                      id={`${id}-subtype-list`}
+                      role="listbox"
+                      className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto"
+                    >
                       {filtered.map((s) => (
                         <button
                           key={s}
                           type="button"
+                          role="option"
+                          aria-selected={false}
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => {
                             setSubcategory(s);
@@ -519,7 +532,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                       <button
                         type="button"
                         onClick={() => setTags(tags.filter((t) => t !== tag))}
-                        className="text-zinc-500 hover:text-zinc-300"
+                        className="text-zinc-400 hover:text-zinc-300"
                         aria-label={`Remove tag ${tag}`}
                       >
                         <X className="w-3 h-3" />
@@ -529,6 +542,10 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   <input
                     id={`${id}-tags`}
                     type="text"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={tagsOpen}
+                    aria-controls={`${id}-tags-list`}
                     value={tagInput}
                     onChange={(e) => {
                       setTagInput(e.target.value);
@@ -537,6 +554,10 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                     onFocus={() => setTagsOpen(true)}
                     onBlur={() => setTimeout(() => setTagsOpen(false), 150)}
                     onKeyDown={(e) => {
+                      if (e.key === "Escape" && tagsOpen) {
+                        setTagsOpen(false);
+                        return;
+                      }
                       if (e.key === "Enter" && tagInput.trim()) {
                         e.preventDefault();
                         const v = tagInput.trim();
@@ -560,7 +581,11 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                   );
                   if (filtered.length === 0) return null;
                   return (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                    <div
+                      id={`${id}-tags-list`}
+                      role="listbox"
+                      className="absolute z-20 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl max-h-36 overflow-y-auto"
+                    >
                       {filtered.map((t) => (
                         <button
                           key={t}
@@ -597,7 +622,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                     <ChevronRight className="w-3 h-3" />
                   )}
                   Add initial position
-                  <span className="text-zinc-500">(optional)</span>
+                  <span className="text-zinc-400">(optional)</span>
                 </button>
 
                 {positionOpen && (
@@ -654,7 +679,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 onChange={(e) => setEffectiveDate(e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">Leave empty to use today&apos;s date</p>
+              <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
             </div>
 
             {error && (
@@ -676,6 +701,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
             <button
               type="submit"
               disabled={loading || !ticker.trim() || !name.trim()}
+              aria-busy={loading}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}

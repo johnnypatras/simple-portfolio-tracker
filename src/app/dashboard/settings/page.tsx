@@ -12,7 +12,7 @@ export default async function SettingsPage() {
           <MobileMenuButton />
           <h1 className="text-2xl font-semibold text-zinc-100">Settings</h1>
         </div>
-        <p className="text-sm text-zinc-500 mt-1">
+        <p className="text-sm text-zinc-400 mt-1">
           Manage your preferences and account
         </p>
       </div>

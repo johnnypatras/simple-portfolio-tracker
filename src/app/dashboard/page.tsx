@@ -131,7 +131,7 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-semibold text-zinc-100">Dashboard</h1>
           <FxStatusIndicator stale={fxStale} unavailable={fxUnavailable} />
         </div>
-        <p className="text-sm text-zinc-500 mt-1">
+        <p className="text-sm text-zinc-400 mt-1">
           Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
         </p>
       </div>

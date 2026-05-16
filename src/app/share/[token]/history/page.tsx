@@ -67,7 +67,7 @@ export default async function SharedHistoryPage({
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-zinc-100">Activity History</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <p className="text-sm text-zinc-400 mt-1">
           Audit trail of all portfolio changes
         </p>
       </div>

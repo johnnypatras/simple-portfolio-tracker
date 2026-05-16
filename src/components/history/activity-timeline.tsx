@@ -758,7 +758,7 @@ export function ActivityTimeline({
                                 )}
                               </button>
                               {isUndone ? (
-                                <span className="text-[10px] font-medium text-zinc-500 bg-zinc-800/50 px-1.5 py-0.5 rounded">
+                                <span className="text-[10px] font-medium text-zinc-400 bg-zinc-800/50 px-1.5 py-0.5 rounded">
                                   Undone
                                 </span>
                               ) : !isReadOnly ? (
@@ -766,7 +766,7 @@ export function ActivityTimeline({
                                   onConfirm={() => handleUndo(source.id)}
                                   confirmLabel="Undo?"
                                   confirmLabelClassName="text-amber-400"
-                                  className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
+                                  className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
                                   title="Undo this transfer"
                                 >
                                   <Undo2 className="w-3.5 h-3.5" />
@@ -790,7 +790,7 @@ export function ActivityTimeline({
                                       <LegIcon className="w-2.5 h-2.5" />
                                     </div>
                                     <span className="text-zinc-400 shrink-0">{leg.entity_name}</span>
-                                    <span className="text-zinc-500 truncate">{leg.description}</span>
+                                    <span className="text-zinc-400 truncate">{leg.description}</span>
                                   </div>
                                 );
                               })}
@@ -848,7 +848,7 @@ export function ActivityTimeline({
                                   onConfirm={() => handleUnsplit(parent.id)}
                                   confirmLabel="Unsplit?"
                                   confirmLabelClassName="text-violet-400"
-                                  className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-500 hover:text-violet-400 hover:bg-violet-500/10 transition-all"
+                                  className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-400 hover:text-violet-400 hover:bg-violet-500/10 transition-all"
                                   title="Unsplit — restore original entry"
                                 >
                                   <Merge className="w-3.5 h-3.5" />
@@ -895,7 +895,7 @@ export function ActivityTimeline({
                                         {formatEffectiveDate(child.effective_date)}
                                       </span>
                                     )}
-                                    <span className="text-zinc-500 truncate">{child.description}</span>
+                                    <span className="text-zinc-400 truncate">{child.description}</span>
                                   </div>
                                 );
                               })}
@@ -996,7 +996,7 @@ export function ActivityTimeline({
                               </button>
                               <button
                                 onClick={() => setBackdatingId(null)}
-                                className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                                className="p-1 rounded text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                                 title="Cancel"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -1055,7 +1055,7 @@ export function ActivityTimeline({
                             </button>
                           )}
                           {log.undone_at ? (
-                            <span className="text-[10px] font-medium text-zinc-500 bg-zinc-800/50 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] font-medium text-zinc-400 bg-zinc-800/50 px-1.5 py-0.5 rounded">
                               Undone
                             </span>
                           ) : !isReadOnly && log.entity_id ? (
@@ -1063,7 +1063,7 @@ export function ActivityTimeline({
                               onConfirm={() => handleUndo(log.id)}
                               confirmLabel="Undo?"
                               confirmLabelClassName="text-amber-400"
-                              className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
+                              className="md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
                               title="Undo this action"
                             >
                               <Undo2 className="w-3.5 h-3.5" />

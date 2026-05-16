@@ -45,7 +45,7 @@ export default function ForgotPasswordPage() {
           <h1 className="text-xl font-semibold text-zinc-100">
             Reset Password
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-400 mt-1">
             {sent
               ? "Check your email"
               : "Enter your email to receive a reset link"}
@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                 <input
                   id="forgot-email"
                   type="email"
@@ -111,7 +111,7 @@ export default function ForgotPasswordPage() {
 
             <a
               href="/login"
-              className="flex items-center justify-center gap-2 w-full text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="flex items-center justify-center gap-2 w-full text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to login

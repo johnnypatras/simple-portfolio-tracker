@@ -106,7 +106,7 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
   if (vs.totalValue === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-        <div className="text-zinc-500 text-sm mb-3">
+        <div className="text-zinc-400 text-sm mb-3">
           You haven&apos;t added any assets yet.
         </div>
         <Link
@@ -175,7 +175,7 @@ export function ComparisonContent({ data, token }: ComparisonContentProps) {
           <AllocationBar allocation={os.allocation} label={owner.name} />
         </div>
         {/* Allocation delta summary */}
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-400">
           <DeltaBadge
             label="Crypto"
             delta={vs.allocation.crypto - os.allocation.crypto}

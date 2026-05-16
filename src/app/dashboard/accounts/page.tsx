@@ -62,7 +62,7 @@ export default async function AccountsPage() {
           <MobileMenuButton />
           <h1 className="text-2xl font-semibold text-zinc-100">Accounts</h1>
         </div>
-        <p className="text-sm text-zinc-500 mt-1">
+        <p className="text-sm text-zinc-400 mt-1">
           View all institutions and their assets in one place
         </p>
       </div>

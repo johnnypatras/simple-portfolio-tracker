@@ -992,7 +992,7 @@ export function TransferDialog({
     <Modal open={open} onClose={onClose} title={title}>
       {dataLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+          <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
           <span className="ml-2 text-sm text-zinc-400">Loading...</span>
         </div>
       ) : (
@@ -1154,7 +1154,7 @@ export function TransferDialog({
                         setBuyLocationId("");
                         setBuyCreatingNew(false);
                       }}
-                      className="text-xs text-zinc-500 hover:text-zinc-300"
+                      className="text-xs text-zinc-400 hover:text-zinc-300"
                     >
                       Change
                     </button>
@@ -1162,7 +1162,7 @@ export function TransferDialog({
                 ) : (
                   <div className="relative">
                     <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">
-                      <Search className="w-3.5 h-3.5 text-zinc-500 mr-2 flex-shrink-0" />
+                      <Search className="w-3.5 h-3.5 text-zinc-400 mr-2 flex-shrink-0" />
                       <input
                         type="text"
                         value={buySearchQuery}
@@ -1171,7 +1171,7 @@ export function TransferDialog({
                         placeholder={buyAssetType === "stock" ? "Search stocks or ETFs..." : "Search crypto..."}
                         className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
                       />
-                      {buySearching && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-500" />}
+                      {buySearching && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" />}
                     </div>
                     {buySearchResults.length > 0 && (
                       <div className="absolute z-10 mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -1228,7 +1228,7 @@ export function TransferDialog({
                               setBuyCreatingNew(false);
                               setBuyNewLocationName("");
                             }}
-                            className="text-xs text-zinc-500 hover:text-zinc-300"
+                            className="text-xs text-zinc-400 hover:text-zinc-300"
                           >
                             Cancel
                           </button>
@@ -1290,7 +1290,7 @@ export function TransferDialog({
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                       />
                       {buyValue !== null && (
-                        <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-2">
+                        <div className="text-[10px] text-zinc-400 mt-1 flex items-center gap-2">
                           <span>
                             Market: {buyAssetCurrency} {buyValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                           </span>
@@ -1303,7 +1303,7 @@ export function TransferDialog({
                             <button
                               type="button"
                               onClick={() => { setBuyAmountManual(false); }}
-                              className="text-zinc-500 hover:text-zinc-300 underline"
+                              className="text-zinc-400 hover:text-zinc-300 underline"
                             >
                               reset
                             </button>
@@ -1320,7 +1320,7 @@ export function TransferDialog({
           {/* ── Arrow divider ── */}
           <div className="flex items-center justify-center gap-2">
             <div className="h-px flex-1 bg-zinc-800" />
-            <ArrowDown className="w-4 h-4 text-zinc-500" />
+            <ArrowDown className="w-4 h-4 text-zinc-400" />
             {autoCalcValue !== null && mode !== "move" && (
               <span className="text-xs text-zinc-400">
                 ~{parseFloat(destAmount || "0").toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -1441,7 +1441,7 @@ export function TransferDialog({
                         />
                         <span className="text-xs text-zinc-300 leading-tight">
                           Existing money already in the account
-                          <span className="block text-[10px] text-zinc-500">Won&apos;t count as a new deposit (S&amp;P benchmark ignores it)</span>
+                          <span className="block text-[10px] text-zinc-400">Won&apos;t count as a new deposit (S&amp;P benchmark ignores it)</span>
                         </span>
                       </label>
                       <label className="flex items-start gap-2 cursor-pointer">
@@ -1454,7 +1454,7 @@ export function TransferDialog({
                         />
                         <span className="text-xs text-zinc-300 leading-tight">
                           A new deposit I&apos;m making now
-                          <span className="block text-[10px] text-zinc-500">Counts toward portfolio cashflow (S&amp;P benchmark adds it)</span>
+                          <span className="block text-[10px] text-zinc-400">Counts toward portfolio cashflow (S&amp;P benchmark adds it)</span>
                         </span>
                       </label>
                     </fieldset>
@@ -1624,7 +1624,7 @@ export function TransferDialog({
               className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
             />
             {mode === "buy" && cashState === "prompt" && cashBalance && (
-              <p className="text-[10px] text-zinc-500 mt-1">
+              <p className="text-[10px] text-zinc-400 mt-1">
                 Both the cash seed and the trade are recorded on this date. To use different dates, record the cash account first via the Banks &amp; Deposits page, then come back to record the trade.
               </p>
             )}

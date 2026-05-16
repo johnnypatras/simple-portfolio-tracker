@@ -64,7 +64,7 @@ export function CashflowStatusIcon({ cashflowStatus, deltaStatus, onRetry }: Cas
       {onRetry && (
         <button
           onClick={handleRetry}
-          className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="p-0.5 rounded text-zinc-400 hover:text-zinc-300 transition-colors"
           title="Retry computation"
           aria-label="Retry computation"
         >
