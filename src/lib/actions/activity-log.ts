@@ -21,6 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, FlowStatus } from "@/lib/types";
 import type { Database } from "@/types/database";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
+import { pickJoinedRecord } from "@/lib/supabase/join-utils";
 
 type ActivityLogInsert = Database["public"]["Tables"]["activity_log"]["Insert"];
 
@@ -474,7 +475,7 @@ export async function getAdjustmentDeltas(
   // project today's value onto pre-purchase dates. Consistent-by-construction
   // with the augmentation gate in getSnapshots: both key off "asset has cached
   // historical prices".
-  const [stablecoinRes, manualStockPosRes, histPricesRes] = await Promise.all([
+  const [stablecoinRes, manualStockPosRes] = await Promise.all([
     supabase
       .from("crypto_positions")
       .select("id, crypto_assets!inner(subcategory)")
@@ -485,13 +486,9 @@ export async function getAdjustmentDeltas(
       .select("id, stock_assets!inner(kind, user_id)")
       .eq("stock_assets.user_id", resolvedUserId)
       .eq("stock_assets.kind", "manual"),
-    supabase
-      .from("historical_prices")
-      .select("asset_kind, asset_key"),
   ]);
   if (stablecoinRes.error) throw new Error(`Failed to load stablecoin positions: ${stablecoinRes.error.message}`);
   if (manualStockPosRes.error) throw new Error(`Failed to load manual stock positions: ${manualStockPosRes.error.message}`);
-  if (histPricesRes.error) throw new Error(`Failed to load historical price coverage: ${histPricesRes.error.message}`);
   const stablecoinPosIds = new Set(
     (stablecoinRes.data ?? []).map((p) => p.id as string)
   );
@@ -499,40 +496,66 @@ export async function getAdjustmentDeltas(
     (manualStockPosRes.data ?? []).map((p) => p.id as string)
   );
 
-  // asset_keys (coingecko_id / yahoo_ticker) that have any cached history.
-  const histCryptoKeys = new Set<string>();
-  const histStockKeys = new Set<string>();
-  for (const r of histPricesRes.data ?? []) {
-    if (r.asset_kind === "crypto") histCryptoKeys.add(r.asset_key as string);
-    else if (r.asset_kind === "stock") histStockKeys.add(r.asset_key as string);
-  }
-
-  // Resolve which of the user's positions map to those covered asset_keys.
-  // NOTE: NO deleted_at filter — a fully-sold (soft-deleted) backdated lot is
-  // reconstructed by synthesis and must also be excluded from the back-fill.
-  const historicallyPricedPosIds = new Set<string>();
-  if (histCryptoKeys.size > 0) {
-    const { data: cp } = await supabase
+  // Resolve the user's crypto/stock positions → asset_keys. NO deleted_at
+  // filter: a fully-sold (soft-deleted) backdated lot is reconstructed by
+  // synthesis and must also be excluded from the back-fill. Errors THROW — a
+  // silent empty set would double-count historically-priced lots.
+  const [cpRes, spRes] = await Promise.all([
+    supabase
       .from("crypto_positions")
       .select("id, crypto_assets!inner(coingecko_id, user_id)")
-      .eq("crypto_assets.user_id", resolvedUserId);
-    for (const row of cp ?? []) {
-      const cg = (Array.isArray(row.crypto_assets) ? row.crypto_assets[0] : row.crypto_assets) as { coingecko_id?: string } | null;
-      if (cg?.coingecko_id && histCryptoKeys.has(cg.coingecko_id)) {
-        historicallyPricedPosIds.add(row.id as string);
-      }
-    }
-  }
-  if (histStockKeys.size > 0) {
-    const { data: sp } = await supabase
+      .eq("crypto_assets.user_id", resolvedUserId),
+    supabase
       .from("stock_positions")
       .select("id, stock_assets!inner(yahoo_ticker, user_id)")
-      .eq("stock_assets.user_id", resolvedUserId);
-    for (const row of sp ?? []) {
-      const sa = (Array.isArray(row.stock_assets) ? row.stock_assets[0] : row.stock_assets) as { yahoo_ticker?: string | null } | null;
-      if (sa?.yahoo_ticker && histStockKeys.has(sa.yahoo_ticker)) {
-        historicallyPricedPosIds.add(row.id as string);
-      }
+      .eq("stock_assets.user_id", resolvedUserId),
+  ]);
+  if (cpRes.error) throw new Error(`Failed to load crypto positions for exclusion: ${cpRes.error.message}`);
+  if (spRes.error) throw new Error(`Failed to load stock positions for exclusion: ${spRes.error.message}`);
+
+  // asset_key → [position ids] (a key can map to multiple positions/wallets).
+  const cryptoPosByKey = new Map<string, string[]>();
+  for (const row of cpRes.data ?? []) {
+    const a = pickJoinedRecord<{ coingecko_id: string }>(row.crypto_assets);
+    if (a?.coingecko_id) {
+      const ids = cryptoPosByKey.get(a.coingecko_id) ?? [];
+      ids.push(row.id as string);
+      cryptoPosByKey.set(a.coingecko_id, ids);
+    }
+  }
+  const stockPosByKey = new Map<string, string[]>();
+  for (const row of spRes.data ?? []) {
+    const a = pickJoinedRecord<{ yahoo_ticker: string | null }>(row.stock_assets);
+    if (a?.yahoo_ticker) {
+      const ids = stockPosByKey.get(a.yahoo_ticker) ?? [];
+      ids.push(row.id as string);
+      stockPosByKey.set(a.yahoo_ticker, ids);
+    }
+  }
+
+  // Which of the USER'S asset_keys have ANY cached historical prices? Filter to
+  // the user's keys (bounded — avoids scanning the whole global cache and the
+  // PostgREST default-page truncation that would silently drop coverage keys).
+  const historicallyPricedPosIds = new Set<string>();
+  const userAssetKeys = [...new Set([...cryptoPosByKey.keys(), ...stockPosByKey.keys()])];
+  if (userAssetKeys.length > 0) {
+    const { data: hp, error: hpErr } = await supabase
+      .from("historical_prices")
+      .select("asset_kind, asset_key")
+      .in("asset_key", userAssetKeys)
+      .limit(MAX_QUERY_LIMIT);
+    if (hpErr) throw new Error(`Failed to load historical price coverage: ${hpErr.message}`);
+    const coveredCrypto = new Set<string>();
+    const coveredStock = new Set<string>();
+    for (const r of hp ?? []) {
+      if (r.asset_kind === "crypto") coveredCrypto.add(r.asset_key as string);
+      else if (r.asset_kind === "stock") coveredStock.add(r.asset_key as string);
+    }
+    for (const [key, ids] of cryptoPosByKey) {
+      if (coveredCrypto.has(key)) for (const id of ids) historicallyPricedPosIds.add(id);
+    }
+    for (const [key, ids] of stockPosByKey) {
+      if (coveredStock.has(key)) for (const id of ids) historicallyPricedPosIds.add(id);
     }
   }
 

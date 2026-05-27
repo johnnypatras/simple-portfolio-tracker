@@ -83,7 +83,7 @@ describe("getAdjustmentDeltas — historical-price back-fill exclusion (Task 7)"
     expect(walletErr).toBeNull();
     walletIds.push(wallet!.id);
 
-    const suffix = Date.now();
+    const suffix = crypto.randomUUID();
 
     // --- Asset A: ethereum-like — HAS cached historical_prices ---
     const cgIdA = `test-ethereum-excl-${suffix}`;
@@ -229,7 +229,7 @@ describe("getAdjustmentDeltas — historical-price back-fill exclusion (Task 7)"
     expect(walletErr).toBeNull();
     walletIds.push(wallet!.id);
 
-    const suffix = Date.now() + 1; // +1 to avoid same-millisecond collision with first test
+    const suffix = crypto.randomUUID();
     const cgIdSold = `test-sold-excl-${suffix}`;
 
     const { data: assetSold, error: assetSoldErr } = await admin

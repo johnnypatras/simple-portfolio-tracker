@@ -484,9 +484,17 @@ export async function ensureHistoricalPricesCached(
     });
   }
 
+  const relevantKeys = [
+    ...new Set([
+      ...[...assetSeries.keys()].map((k) => k.slice(k.indexOf(":") + 1)),
+      ...currencies,
+    ]),
+  ];
   const { data: existing } = await admin
     .from("historical_prices")
-    .select("asset_kind, asset_key");
+    .select("asset_kind, asset_key")
+    .in("asset_key", relevantKeys)
+    .limit(100_000);
   const cachedKeys = new Set(
     (existing ?? []).map((r) => `${r.asset_kind}:${r.asset_key}`),
   );
