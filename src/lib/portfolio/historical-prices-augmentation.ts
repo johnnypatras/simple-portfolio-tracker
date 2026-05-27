@@ -1,3 +1,5 @@
+import type { PortfolioSnapshot } from "@/lib/types";
+
 /**
  * One cached historical price. `asset_key` is canonical per kind:
  *   crypto = coingecko_id, stock = yahoo_ticker, fx = currency code
@@ -182,4 +184,156 @@ export function lotContributionAtDate(
   }
 
   return { usd, eur };
+}
+
+/** Iterate dates from `start` to `end` inclusive, daily, as YYYY-MM-DD. */
+function* eachDay(start: string, end: string): Generator<string> {
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const last = new Date(`${end}T00:00:00Z`);
+  while (cursor <= last) {
+    yield cursor.toISOString().slice(0, 10);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+}
+
+/** Add a USD+EUR contribution to the right asset-class columns + totals. */
+function addContribution(
+  snap: PortfolioSnapshot,
+  assetClass: "crypto" | "stocks",
+  usd: number,
+  eur: number,
+): PortfolioSnapshot {
+  if (assetClass === "crypto") {
+    return {
+      ...snap,
+      crypto_value_usd: (snap.crypto_value_usd ?? 0) + usd,
+      crypto_value_eur: (snap.crypto_value_eur ?? 0) + eur,
+      total_value_usd: (snap.total_value_usd ?? 0) + usd,
+      total_value_eur: (snap.total_value_eur ?? 0) + eur,
+    };
+  }
+  return {
+    ...snap,
+    stocks_value_usd: (snap.stocks_value_usd ?? 0) + usd,
+    stocks_value_eur: (snap.stocks_value_eur ?? 0) + eur,
+    total_value_usd: (snap.total_value_usd ?? 0) + usd,
+    total_value_eur: (snap.total_value_eur ?? 0) + eur,
+  };
+}
+
+/**
+ * Build a fresh synthesized snapshot for `date` from all lots active then.
+ * Synthetic rows are flagged with id `synthetic:<date>` and inherit user_id
+ * from `template` (the earliest real snapshot, or a stub if none exist).
+ */
+function synthesizeRow(
+  date: string,
+  lots: HistoricalLot[],
+  priceIndex: Map<string, HistoricalPriceRow[]>,
+  fxIndex: Map<string, HistoricalPriceRow[]>,
+  template: PortfolioSnapshot | null,
+): PortfolioSnapshot {
+  let row: PortfolioSnapshot = {
+    id: `synthetic:${date}`,
+    user_id: template?.user_id ?? "",
+    snapshot_date: date,
+    total_value_usd: 0,
+    total_value_eur: 0,
+    crypto_value_usd: 0,
+    stocks_value_usd: 0,
+    cash_value_usd: 0,
+    crypto_value_eur: 0,
+    stocks_value_eur: 0,
+    cash_value_eur: 0,
+    stocks_eur_denominated_value: 0,
+    cash_eur_denominated_value: 0,
+    created_at: `${date}T00:00:00Z`,
+  };
+  for (const lot of lots) {
+    const c = lotContributionAtDate(lot, date, priceIndex, fxIndex);
+    if (c === null) continue;
+    row = addContribution(row, lot.asset_class, c.usd, c.eur);
+  }
+  return row;
+}
+
+/**
+ * Extend and augment the snapshot series with exact historical-price
+ * contributions for backdated crypto/stock lots.
+ *
+ *   AUGMENT: for each existing snapshot whose date is in [effective, capture)
+ *     for a lot, add that lot's qty × historical-price contribution. (On/after
+ *     capture_date the cron already prices it — left untouched to avoid
+ *     double-counting.)
+ *   SYNTHESIZE: for every day in [earliest effective_date, first-snapshot-date)
+ *     create a new row summing all lots active that day.
+ *
+ * Returns a new array sorted ascending by snapshot_date. Pure. Caller must pass
+ * only lots that actually have cached prices (graceful degradation upstream).
+ *
+ * EUR completeness depends on FX coverage spanning the synthesized range: a
+ * date with no FX rate at-or-before it yields eur=0 (honest no-fabrication —
+ * never a 1:1 copy). The fetch layer pads the FX fetch backward so a prior
+ * rate always exists to forward-fill from. The no-real-snapshots branch reads
+ * the wall clock (the only impurity in this otherwise pure function).
+ */
+export function augmentAndExtendSnapshots(
+  snapshots: PortfolioSnapshot[],
+  lots: HistoricalLot[],
+  prices: HistoricalPriceRow[],
+): PortfolioSnapshot[] {
+  if (lots.length === 0) return snapshots;
+
+  const priceIndex = buildPriceIndex(prices);
+  const fxIndex = priceIndex; // fx rows live in the same index under "fx:<cur>"
+
+  // ── AUGMENT existing snapshots in [effective, capture) per lot ──────────
+  const augmented = snapshots.map((snap) => {
+    let row = snap;
+    for (const lot of lots) {
+      if (snap.snapshot_date >= lot.capture_date) continue; // cron already has it
+      const c = lotContributionAtDate(lot, snap.snapshot_date, priceIndex, fxIndex);
+      if (c === null) continue;
+      if (c.usd === 0 && c.eur === 0) continue; // before effective_date / sold out
+      row = addContribution(row, lot.asset_class, c.usd, c.eur);
+    }
+    return row;
+  });
+
+  // ── SYNTHESIZE pre-first-snapshot rows ──────────────────────────────────
+  const sortedReal = [...augmented].sort((a, b) =>
+    a.snapshot_date.localeCompare(b.snapshot_date),
+  );
+  const firstSnapshotDate = sortedReal.length > 0 ? sortedReal[0].snapshot_date : null;
+
+  let earliestEffective: string | null = null;
+  for (const lot of lots) {
+    for (const d of lot.deltas) {
+      if (earliestEffective === null || d.effective_date < earliestEffective) {
+        earliestEffective = d.effective_date;
+      }
+    }
+  }
+  if (earliestEffective === null) return sortedReal;
+
+  const synthEnd = firstSnapshotDate
+    ? isoDayBefore(firstSnapshotDate)
+    : new Date().toISOString().slice(0, 10);
+
+  const synthesized: PortfolioSnapshot[] = [];
+  if (earliestEffective <= synthEnd) {
+    const template = sortedReal[0] ?? null;
+    for (const date of eachDay(earliestEffective, synthEnd)) {
+      synthesized.push(synthesizeRow(date, lots, priceIndex, fxIndex, template));
+    }
+  }
+
+  return [...synthesized, ...sortedReal];
+}
+
+/** YYYY-MM-DD for the day before `date`. */
+function isoDayBefore(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }

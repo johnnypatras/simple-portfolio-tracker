@@ -5,10 +5,12 @@ import {
   cumulativeAtDate,
   lotContributionAtDate,
   usdPerUnit,
+  augmentAndExtendSnapshots,
   type HistoricalPriceRow,
   type HistoricalLot,
   type QtyDelta,
 } from "@/lib/portfolio/historical-prices-augmentation";
+import type { PortfolioSnapshot } from "@/lib/types";
 
 const px = (
   asset_kind: HistoricalPriceRow["asset_kind"],
@@ -221,5 +223,201 @@ describe("lotContributionAtDate", () => {
     expect(c!.usd).toBeCloseTo(650, 2);
     // eur = usd / (USD per EUR) = 650 / 1.1
     expect(c!.eur).toBeCloseTo(650 / 1.1, 2);
+  });
+});
+
+function snap(overrides: Partial<PortfolioSnapshot>): PortfolioSnapshot {
+  return {
+    id: "s",
+    user_id: "u",
+    snapshot_date: "2026-03-01",
+    total_value_usd: 0,
+    total_value_eur: 0,
+    crypto_value_usd: 0,
+    stocks_value_usd: 0,
+    cash_value_usd: 0,
+    crypto_value_eur: 0,
+    stocks_value_eur: 0,
+    cash_value_eur: 0,
+    stocks_eur_denominated_value: 0,
+    cash_eur_denominated_value: 0,
+    created_at: "2026-03-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+// 2 BTC bought 2021-01-01, captured by cron 2026-03-01. Prices: 30k @2021,
+// 60k @2026-02. FX 1.2 USD/EUR throughout.
+const btcLot: HistoricalLot = {
+  position_id: "btc-1",
+  asset_kind: "crypto",
+  asset_key: "bitcoin",
+  fetch_symbol: "BTC-USD",
+  native_currency: "USD",
+  asset_class: "crypto",
+  capture_date: "2026-03-01",
+  deltas: [{ effective_date: "2021-01-01", qty_delta: 2 }],
+};
+const priceRows: HistoricalPriceRow[] = [
+  px("crypto", "bitcoin", "2021-01-01", 30000),
+  px("crypto", "bitcoin", "2026-02-01", 60000),
+  px("fx", "EUR", "2021-01-01", 1.2),
+  px("fx", "EUR", "2026-02-01", 1.2),
+];
+
+describe("augmentAndExtendSnapshots", () => {
+  it("returns input unchanged when there are no lots", () => {
+    const snaps = [snap({ snapshot_date: "2026-03-01" })];
+    expect(augmentAndExtendSnapshots(snaps, [], [])).toEqual(snaps);
+  });
+
+  it("synthesizes pre-first-snapshot rows AND extends back to effective_date", () => {
+    const real = snap({
+      snapshot_date: "2026-03-01",
+      crypto_value_usd: 120000, // cron already priced 2 BTC @ 60k
+      total_value_usd: 120000,
+      crypto_value_eur: 100000,
+      total_value_eur: 100000,
+    });
+    const out = augmentAndExtendSnapshots([real], [btcLot], priceRows);
+
+    expect(out[0].snapshot_date).toBe("2021-01-01");
+    expect(out[0].crypto_value_usd).toBeCloseTo(60000, 2);
+    expect(out[0].total_value_usd).toBeCloseTo(60000, 2);
+    expect(out[0].crypto_value_eur).toBeCloseTo(60000 / 1.2, 2);
+
+    expect(out[out.length - 1].snapshot_date).toBe("2026-03-01");
+    for (let i = 1; i < out.length; i++) {
+      expect(out[i].snapshot_date >= out[i - 1].snapshot_date).toBe(true);
+    }
+  });
+
+  it("does NOT touch the real snapshot on/after capture_date (no double-count)", () => {
+    const real = snap({
+      snapshot_date: "2026-03-01", // == capture_date → already includes the lot
+      crypto_value_usd: 120000,
+      total_value_usd: 120000,
+    });
+    const out = augmentAndExtendSnapshots([real], [btcLot], priceRows);
+    const captured = out.find((s) => s.snapshot_date === "2026-03-01")!;
+    expect(captured.crypto_value_usd).toBe(120000); // unchanged
+  });
+
+  it("AUGMENTS an in-window snapshot before capture_date that is missing the lot", () => {
+    const before = snap({
+      snapshot_date: "2026-02-15",
+      crypto_value_usd: 0,
+      total_value_usd: 0,
+    });
+    const captured = snap({
+      snapshot_date: "2026-03-01",
+      crypto_value_usd: 120000,
+      total_value_usd: 120000,
+    });
+    const out = augmentAndExtendSnapshots([before, captured], [btcLot], priceRows);
+
+    const aug = out.find((s) => s.snapshot_date === "2026-02-15")!;
+    // 2 BTC × 60k (forward-filled from 2026-02-01) = 120000 added.
+    expect(aug.crypto_value_usd).toBeCloseTo(120000, 2);
+    expect(out.find((s) => s.snapshot_date === "2026-03-01")!.crypto_value_usd).toBe(120000);
+  });
+
+  it("never synthesizes before the earliest effective_date (far-back cap)", () => {
+    const real = snap({ snapshot_date: "2026-03-01", crypto_value_usd: 120000, total_value_usd: 120000 });
+    const out = augmentAndExtendSnapshots([real], [btcLot], priceRows);
+    expect(out.every((s) => s.snapshot_date >= "2021-01-01")).toBe(true);
+  });
+
+  it("is pure — does not mutate the input snapshots", () => {
+    const real = snap({ snapshot_date: "2026-03-01", crypto_value_usd: 120000, total_value_usd: 120000 });
+    const frozen = JSON.parse(JSON.stringify(real));
+    augmentAndExtendSnapshots([real], [btcLot], priceRows);
+    expect(real).toEqual(frozen);
+  });
+
+  it("handles the no-real-snapshots case (brand-new user, all history synthesized)", () => {
+    const out = augmentAndExtendSnapshots([], [btcLot], priceRows);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0].snapshot_date).toBe("2021-01-01");
+    expect(out[0].crypto_value_usd).toBeCloseTo(60000, 2);
+  });
+
+  it("synthesized EUR is 0 when no FX rate covers the date (fetch layer must guarantee FX coverage)", () => {
+    const real = snap({ snapshot_date: "2021-02-01", crypto_value_usd: 60000, total_value_usd: 60000 });
+    const pricesNoFx: HistoricalPriceRow[] = [
+      px("crypto", "bitcoin", "2021-01-01", 30000),
+      // intentionally NO fx:EUR rows → eur mirror cannot be computed
+    ];
+    const out = augmentAndExtendSnapshots(
+      [real],
+      [{ ...btcLot, capture_date: "2021-02-01" }],
+      pricesNoFx,
+    );
+    expect(out[0].snapshot_date).toBe("2021-01-01");
+    expect(out[0].crypto_value_usd).toBeCloseTo(60000, 2);
+    // Honest no-fabrication: eur stays 0 when FX is absent. The fetch layer
+    // pads FX backward to avoid this in practice.
+    expect(out[0].crypto_value_eur).toBe(0);
+  });
+
+  it("synthesizes zero rows when earliest effective_date is after the first snapshot (augment-only)", () => {
+    const real = snap({ snapshot_date: "2026-01-01", crypto_value_usd: 0, total_value_usd: 0 });
+    const recentLot: HistoricalLot = {
+      ...btcLot,
+      capture_date: "2026-05-01",
+      deltas: [{ effective_date: "2026-02-01", qty_delta: 2 }],
+    };
+    const prices: HistoricalPriceRow[] = [
+      px("crypto", "bitcoin", "2026-02-01", 60000),
+      px("fx", "EUR", "2026-02-01", 1.2),
+    ];
+    const out = augmentAndExtendSnapshots([real], [recentLot], prices);
+    // earliestEffective (2026-02-01) is after the first snapshot → no synthesis.
+    expect(out.length).toBe(1);
+    expect(out[0].snapshot_date).toBe("2026-01-01");
+    // At 2026-01-01 the lot doesn't exist yet (qty 0) → real row untouched.
+    expect(out[0].crypto_value_usd).toBe(0);
+  });
+
+  it("synthesizes a combined crypto + stock row (multi-lot)", () => {
+    const stockLot: HistoricalLot = {
+      position_id: "aapl-1",
+      asset_kind: "stock",
+      asset_key: "AAPL",
+      fetch_symbol: "AAPL",
+      native_currency: "USD",
+      asset_class: "stocks",
+      capture_date: "2026-03-01",
+      deltas: [{ effective_date: "2021-01-01", qty_delta: 10 }],
+    };
+    const prices: HistoricalPriceRow[] = [
+      px("crypto", "bitcoin", "2021-01-01", 30000),
+      px("stock", "AAPL", "2021-01-01", 130),
+      px("fx", "EUR", "2021-01-01", 1.2),
+    ];
+    const real = snap({ snapshot_date: "2021-02-01" });
+    const out = augmentAndExtendSnapshots(
+      [real],
+      [{ ...btcLot, capture_date: "2021-02-01" }, stockLot],
+      prices,
+    );
+    // out[0] = 2021-01-01: crypto 2×30000=60000, stocks 10×130=1300.
+    expect(out[0].crypto_value_usd).toBeCloseTo(60000, 2);
+    expect(out[0].stocks_value_usd).toBeCloseTo(1300, 2);
+    expect(out[0].total_value_usd).toBeCloseTo(61300, 2);
+  });
+
+  it("augment boundary: capture-1 augmented, capture and capture+1 untouched", () => {
+    const lot1 = { ...btcLot, capture_date: "2026-03-01" };
+    const snaps = [
+      snap({ snapshot_date: "2026-02-28", crypto_value_usd: 0, total_value_usd: 0 }),       // capture-1 → augment
+      snap({ snapshot_date: "2026-03-01", crypto_value_usd: 120000, total_value_usd: 120000 }), // capture → untouched
+      snap({ snapshot_date: "2026-03-02", crypto_value_usd: 120000, total_value_usd: 120000 }), // capture+1 → untouched
+    ];
+    const out = augmentAndExtendSnapshots(snaps, [lot1], priceRows);
+    const m = new Map(out.map((s) => [s.snapshot_date, s]));
+    expect(m.get("2026-02-28")!.crypto_value_usd).toBeCloseTo(120000, 2); // 2 × 60000 forward-filled
+    expect(m.get("2026-03-01")!.crypto_value_usd).toBe(120000); // untouched
+    expect(m.get("2026-03-02")!.crypto_value_usd).toBe(120000); // untouched
   });
 });
