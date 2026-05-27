@@ -1,6 +1,6 @@
 # Historical-Price Chart Augmentation (extend chart back to purchase dates)
 
-- **Status**: Design approved, ready for implementation planning
+- **Status**: Phase 1 (portfolio line) IMPLEMENTED on `feat/historical-prices-chart` (commits `c5df861`→`8e8bab7`; migration 020 + synthesis module + fetch layer + back-fill exclusion + threading; all green: 774 unit + 161 component + 153 integration). Phase 2 (S&P benchmark) PENDING. Plans: `docs/superpowers/plans/2026-05-27-historical-prices-phase{1,2}-*.md`
 - **Date**: 2026-05-27
 - **Author**: brainstorming session (John + Claude)
 - **Feature branch**: `feat/historical-prices-chart` (both phases land here; merge to `main` only when the coherent whole is ready — see Deployment)
