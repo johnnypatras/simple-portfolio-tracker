@@ -6,9 +6,11 @@ import {
   lotContributionAtDate,
   usdPerUnit,
   augmentAndExtendSnapshots,
+  buildHistoricalLots,
   type HistoricalPriceRow,
   type HistoricalLot,
   type QtyDelta,
+  type ActivityForLot,
 } from "@/lib/portfolio/historical-prices-augmentation";
 import type { PortfolioSnapshot } from "@/lib/types";
 
@@ -379,6 +381,22 @@ describe("augmentAndExtendSnapshots", () => {
     expect(out[0].crypto_value_usd).toBe(0);
   });
 
+  it("clamps synthesis to MAX_SYNTHESIS_DAYS for pathologically old effective dates", () => {
+    const ancient: HistoricalLot = {
+      ...btcLot,
+      capture_date: "2026-03-01",
+      deltas: [{ effective_date: "1996-01-01", qty_delta: 2 }],
+    };
+    const prices: HistoricalPriceRow[] = [
+      px("crypto", "bitcoin", "1996-01-01", 1),
+      px("fx", "EUR", "1996-01-01", 1.2),
+    ];
+    const real = snap({ snapshot_date: "2026-03-01", crypto_value_usd: 120000, total_value_usd: 120000 });
+    const out = augmentAndExtendSnapshots([real], [ancient], prices);
+    // Earliest synthesized date must be ~25y ago, far later than 1996.
+    expect(out[0].snapshot_date > "2000-01-01").toBe(true);
+  });
+
   it("synthesizes a combined crypto + stock row (multi-lot)", () => {
     const stockLot: HistoricalLot = {
       position_id: "aapl-1",
@@ -419,5 +437,77 @@ describe("augmentAndExtendSnapshots", () => {
     expect(m.get("2026-02-28")!.crypto_value_usd).toBeCloseTo(120000, 2); // 2 × 60000 forward-filled
     expect(m.get("2026-03-01")!.crypto_value_usd).toBe(120000); // untouched
     expect(m.get("2026-03-02")!.crypto_value_usd).toBe(120000); // untouched
+  });
+});
+
+describe("buildHistoricalLots", () => {
+  it("groups activity by position, derives capture_date (min created_at) + deltas, flags backdated", () => {
+    const rows: ActivityForLot[] = [
+      {
+        entity_id: "btc-1",
+        entity_type: "crypto_position",
+        action: "created",
+        effective_date: "2021-01-01",
+        created_at: "2026-05-20T10:00:00Z",
+        before_quantity: null,
+        after_quantity: 2,
+        asset_kind: "crypto",
+        asset_key: "bitcoin",
+        fetch_symbol: "BTC-USD",
+        native_currency: "USD",
+        asset_class: "crypto",
+      },
+    ];
+    const lots = buildHistoricalLots(rows);
+    expect(lots).toHaveLength(1);
+    expect(lots[0]).toMatchObject({
+      position_id: "btc-1",
+      capture_date: "2026-05-20",
+      asset_key: "bitcoin",
+      deltas: [{ effective_date: "2021-01-01", qty_delta: 2 }],
+    });
+  });
+
+  it("excludes non-backdated positions (effective_date == capture date → empty augment range)", () => {
+    const rows: ActivityForLot[] = [
+      {
+        entity_id: "btc-2",
+        entity_type: "crypto_position",
+        action: "created",
+        effective_date: "2026-05-20",
+        created_at: "2026-05-20T10:00:00Z",
+        before_quantity: null,
+        after_quantity: 1,
+        asset_kind: "crypto",
+        asset_key: "bitcoin",
+        fetch_symbol: "BTC-USD",
+        native_currency: "USD",
+        asset_class: "crypto",
+      },
+    ];
+    expect(buildHistoricalLots(rows)).toEqual([]);
+  });
+
+  it("reconstructs a split-child quantity from qty_delta_override (before/after snapshots are null)", () => {
+    const rows: ActivityForLot[] = [
+      {
+        entity_id: "btc-3",
+        entity_type: "crypto_position",
+        action: "created",
+        effective_date: "2021-01-01",
+        created_at: "2026-05-20T10:00:00Z",
+        before_quantity: null,
+        after_quantity: null,
+        qty_delta_override: 3, // from details.split_quantity
+        asset_kind: "crypto",
+        asset_key: "bitcoin",
+        fetch_symbol: "BTC-USD",
+        native_currency: "USD",
+        asset_class: "crypto",
+      },
+    ];
+    const lots = buildHistoricalLots(rows);
+    expect(lots).toHaveLength(1);
+    expect(lots[0].deltas).toEqual([{ effective_date: "2021-01-01", qty_delta: 3 }]);
   });
 });

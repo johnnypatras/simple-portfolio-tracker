@@ -1,3 +1,13 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import * as Sentry from "@sentry/nextjs";
+import type { Database } from "@/types/database";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { positionQtyDelta } from "@/lib/deltas";
+import { pickJoinedRecord } from "@/lib/supabase/join-utils";
+import {
+  fetchYahooDailyHistory,
+  fetchFxUsdPivotHistory,
+} from "@/lib/prices/historical";
 import type { PortfolioSnapshot } from "@/lib/types";
 
 /**
@@ -316,6 +326,9 @@ export function augmentAndExtendSnapshots(
   }
   if (earliestEffective === null) return sortedReal;
 
+  const synthFloor = isoDaysAgo(MAX_SYNTHESIS_DAYS);
+  if (earliestEffective < synthFloor) earliestEffective = synthFloor;
+
   const synthEnd = firstSnapshotDate
     ? isoDayBefore(firstSnapshotDate)
     : new Date().toISOString().slice(0, 10);
@@ -336,4 +349,390 @@ function isoDayBefore(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD for `days` days before today (UTC). */
+function isoDaysAgo(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Cap how far back synthesis runs. effective_date is only validated as
+ * past-or-today, so a typo (e.g. 1900) would otherwise fan out tens of
+ * thousands of synthesized rows per SSR render. 25 years covers any realistic
+ * crypto/stock holding while bounding pathological input.
+ */
+const MAX_SYNTHESIS_DAYS = 9131; // ~25 years
+
+// ─────────────────────────────────────────────────────────────────────────────
+// I/O layer (Task 6) — queries, cache fill, public orchestrator
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One activity-log row joined with its asset metadata, for lot building. */
+export type ActivityForLot = {
+  entity_id: string;
+  entity_type: string; // "crypto_position" | "stock_position"
+  action: string;
+  effective_date: string | null;
+  created_at: string;
+  before_quantity: number | null;
+  after_quantity: number | null;
+  /** Override for split-child rows where before/after snapshots are null. */
+  qty_delta_override?: number;
+  asset_kind: "crypto" | "stock";
+  asset_key: string;       // coingecko_id | yahoo_ticker
+  fetch_symbol: string;    // `${ticker}-USD` | yahoo_ticker
+  native_currency: string;
+  asset_class: "crypto" | "stocks";
+};
+
+/**
+ * Group activity rows into HistoricalLots. Pure.
+ *   - capture_date = date of the position's earliest created_at (when the cron
+ *     first captured it). crypto_positions/stock_positions have no created_at
+ *     column, so this comes from activity_log.
+ *   - deltas = positionQtyDelta(action, before, after) per row, dated by
+ *     COALESCE(effective_date, created_at-date).
+ *   - A lot is kept only if backdated: earliest effective_date < capture_date.
+ *     Otherwise its augment range [effective, capture) is empty (no work).
+ */
+export function buildHistoricalLots(rows: ActivityForLot[]): HistoricalLot[] {
+  const byPos = new Map<string, ActivityForLot[]>();
+  for (const r of rows) {
+    if (!byPos.has(r.entity_id)) byPos.set(r.entity_id, []);
+    byPos.get(r.entity_id)!.push(r);
+  }
+
+  const lots: HistoricalLot[] = [];
+  for (const [positionId, group] of byPos) {
+    const first = group[0];
+    let captureDate = group[0].created_at.slice(0, 10);
+    const deltas: QtyDelta[] = [];
+    for (const r of group) {
+      const day = r.created_at.slice(0, 10);
+      if (day < captureDate) captureDate = day;
+      const qtyDelta = r.qty_delta_override ?? positionQtyDelta(
+        r.action as "created" | "updated" | "removed" | "undone",
+        r.before_quantity ?? 0,
+        r.after_quantity ?? 0,
+      );
+      if (qtyDelta === 0) continue;
+      deltas.push({
+        effective_date: r.effective_date ?? day,
+        qty_delta: qtyDelta,
+      });
+    }
+    if (deltas.length === 0) continue;
+
+    const earliestEffective = deltas.reduce(
+      (min, d) => (d.effective_date < min ? d.effective_date : min),
+      deltas[0].effective_date,
+    );
+    if (earliestEffective >= captureDate) continue; // not backdated → skip
+
+    lots.push({
+      position_id: positionId,
+      asset_kind: first.asset_kind,
+      asset_key: first.asset_key,
+      fetch_symbol: first.fetch_symbol,
+      native_currency: first.native_currency,
+      asset_class: first.asset_class,
+      capture_date: captureDate,
+      deltas,
+    });
+  }
+  return lots;
+}
+
+/**
+ * Ensure the cache holds prices for every lot's asset over [earliestEffective,
+ * captureEnd], plus USD-pivot FX for every native currency + EUR. Fetches only
+ * MISSING (asset_key) series (coarse, idempotent — re-fetch is harmless thanks
+ * to the UNIQUE constraint), upserts via the service-role admin client (the
+ * only role allowed to write), and returns ALL relevant cached rows. Network
+ * failures degrade gracefully (the lot simply won't be in the returned set →
+ * caller leaves it on the back-fill).
+ *
+ * Cache invariant: exactly one currency per (asset_kind, asset_key) — crypto is
+ * USD (Yahoo {SYM}-USD), stock is its native currency, fx is USD-per-unit.
+ */
+export async function ensureHistoricalPricesCached(
+  lots: HistoricalLot[],
+): Promise<HistoricalPriceRow[]> {
+  if (lots.length === 0) return [];
+  const admin = createAdminClient();
+
+  let rangeStart = lots[0].deltas[0].effective_date;
+  let rangeEnd = lots[0].capture_date;
+  const currencies = new Set<string>(["EUR"]); // always need EUR for the mirror
+  const assetSeries = new Map<
+    string,
+    { kind: "crypto" | "stock"; symbol: string; currency: string }
+  >();
+  for (const lot of lots) {
+    for (const d of lot.deltas) {
+      if (d.effective_date < rangeStart) rangeStart = d.effective_date;
+    }
+    if (lot.capture_date > rangeEnd) rangeEnd = lot.capture_date;
+    if (lot.native_currency !== "USD") currencies.add(lot.native_currency);
+    assetSeries.set(`${lot.asset_kind}:${lot.asset_key}`, {
+      kind: lot.asset_kind,
+      symbol: lot.fetch_symbol,
+      currency: lot.native_currency,
+    });
+  }
+
+  const { data: existing } = await admin
+    .from("historical_prices")
+    .select("asset_kind, asset_key");
+  const cachedKeys = new Set(
+    (existing ?? []).map((r) => `${r.asset_kind}:${r.asset_key}`),
+  );
+
+  const toUpsert: Array<Database["public"]["Tables"]["historical_prices"]["Insert"]> = [];
+
+  for (const [key, meta] of assetSeries) {
+    // NOTE: coarse per-asset_key coverage gate. If an asset was previously
+    // cached for a later date range and a NEW lot needs earlier dates, the
+    // earlier range won't be re-fetched (those synthesized dates get no price
+    // → graceful no-contribution, not wrong data). Acceptable for Phase 1
+    // (single-user, rare); a future fix tracks MIN(price_date) per asset_key.
+    if (cachedKeys.has(key)) continue;
+    const assetKey = key.slice(key.indexOf(":") + 1);
+    const points = await fetchYahooDailyHistory(meta.symbol, rangeStart, rangeEnd);
+    for (const p of points) {
+      toUpsert.push({
+        asset_kind: meta.kind,
+        asset_key: assetKey,
+        price_date: p.date,
+        price: p.price,
+        currency: meta.currency,
+      });
+    }
+  }
+
+  for (const cur of currencies) {
+    if (cachedKeys.has(`fx:${cur}`)) continue;
+    const points = await fetchFxUsdPivotHistory(cur, rangeStart, rangeEnd);
+    for (const p of points) {
+      toUpsert.push({
+        asset_kind: "fx",
+        asset_key: cur,
+        price_date: p.date,
+        price: p.price,
+        currency: "USD",
+      });
+    }
+  }
+
+  if (toUpsert.length > 0) {
+    const { error } = await admin
+      .from("historical_prices")
+      .upsert(toUpsert, {
+        onConflict: "asset_kind,asset_key,price_date",
+        ignoreDuplicates: true,
+      });
+    if (error) {
+      console.error("[historical] cache upsert failed:", error.message);
+      Sentry.captureException(
+        new Error(`historical_prices upsert failed: ${error.message}`),
+      );
+    }
+  }
+
+  const assetKeys = [...assetSeries.keys()].map((k) => k.slice(k.indexOf(":") + 1));
+  const allKeys = [...new Set([...assetKeys, ...currencies])];
+  const { data: rows, error: readErr } = await admin
+    .from("historical_prices")
+    .select("asset_kind, asset_key, price_date, price, currency")
+    .in("asset_key", allKeys);
+  if (readErr) {
+    console.error("[historical] cache read failed:", readErr.message);
+    return [];
+  }
+  return (rows ?? []).map<HistoricalPriceRow>((r) => ({
+    asset_kind: r.asset_kind as HistoricalPriceRow["asset_kind"],
+    asset_key: r.asset_key,
+    price_date: r.price_date,
+    price: Number(r.price),
+    currency: r.currency,
+  }));
+}
+
+/**
+ * Gather a user's backdated crypto/stock lots from the activity log + asset
+ * joins, build HistoricalLots, ensure their prices are cached, and return both.
+ * Mirrors fetchManualNavInputsFor's client contract:
+ *   - Authenticated server client + resolved auth.uid() → RLS-scoped read.
+ *   - Admin client + explicit owner userId → cross-user (share/comparison).
+ * Cache WRITES always use the service-role admin client internally (the only
+ * role allowed to write historical_prices), regardless of the read client.
+ */
+export async function fetchHistoricalPriceInputsFor(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<{ lots: HistoricalLot[]; prices: HistoricalPriceRow[] }> {
+  const [cryptoRes, stockRes] = await Promise.all([
+    supabase
+      .from("activity_log")
+      .select(
+        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id",
+      )
+      .eq("user_id", userId)
+      .eq("entity_type", "crypto_position")
+      .is("undone_at", null)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("activity_log")
+      .select(
+        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id",
+      )
+      .eq("user_id", userId)
+      .eq("entity_type", "stock_position")
+      .is("undone_at", null)
+      .order("created_at", { ascending: true }),
+  ]);
+  if (cryptoRes.error) {
+    throw new Error(`Failed to load crypto activity: ${cryptoRes.error.message}`);
+  }
+  if (stockRes.error) {
+    throw new Error(`Failed to load stock activity: ${stockRes.error.message}`);
+  }
+
+  const cryptoMeta = await loadCryptoPositionMeta(supabase, userId);
+  const stockMeta = await loadStockPositionMeta(supabase, userId);
+
+  const activity: ActivityForLot[] = [];
+
+  for (const r of cryptoRes.data ?? []) {
+    const meta = cryptoMeta.get(r.entity_id as string);
+    if (!meta) continue;
+    const before = r.before_snapshot as { quantity?: number } | null;
+    const after = r.after_snapshot as { quantity?: number } | null;
+    const splitFromId = r.split_from_id as string | null;
+    const details = r.details as { split_quantity?: number } | null;
+    const qtyOverride =
+      splitFromId && details?.split_quantity != null
+        ? (r.action === "removed" ? -1 : 1) * Number(details.split_quantity)
+        : undefined;
+    activity.push({
+      entity_id: r.entity_id as string,
+      entity_type: "crypto_position",
+      action: r.action as string,
+      effective_date: (r.effective_date as string | null) ?? null,
+      created_at: r.created_at as string,
+      before_quantity: (before?.quantity ?? null) as number | null,
+      after_quantity: (after?.quantity ?? null) as number | null,
+      qty_delta_override: qtyOverride,
+      asset_kind: "crypto",
+      asset_key: meta.coingecko_id,
+      fetch_symbol: `${meta.ticker.toUpperCase()}-USD`,
+      native_currency: "USD",
+      asset_class: "crypto",
+    });
+  }
+
+  for (const r of stockRes.data ?? []) {
+    const meta = stockMeta.get(r.entity_id as string);
+    if (!meta || !meta.yahoo_ticker) continue; // kind='manual' has no ticker → skip
+    const before = r.before_snapshot as { quantity?: number } | null;
+    const after = r.after_snapshot as { quantity?: number } | null;
+    const splitFromId = r.split_from_id as string | null;
+    const details = r.details as { split_quantity?: number } | null;
+    const qtyOverride =
+      splitFromId && details?.split_quantity != null
+        ? (r.action === "removed" ? -1 : 1) * Number(details.split_quantity)
+        : undefined;
+    activity.push({
+      entity_id: r.entity_id as string,
+      entity_type: "stock_position",
+      action: r.action as string,
+      effective_date: (r.effective_date as string | null) ?? null,
+      created_at: r.created_at as string,
+      before_quantity: (before?.quantity ?? null) as number | null,
+      after_quantity: (after?.quantity ?? null) as number | null,
+      qty_delta_override: qtyOverride,
+      asset_kind: "stock",
+      asset_key: meta.yahoo_ticker,
+      fetch_symbol: meta.yahoo_ticker,
+      native_currency: meta.currency ?? "USD",
+      asset_class: "stocks",
+    });
+  }
+
+  const lots = buildHistoricalLots(activity);
+
+  Sentry.addBreadcrumb({
+    category: "historical-prices",
+    message: "Historical price inputs fetched",
+    data: { backdatedLots: lots.length },
+    level: lots.length > 0 ? "info" : "debug",
+  });
+
+  if (lots.length === 0) return { lots: [], prices: [] };
+  const prices = await ensureHistoricalPricesCached(lots);
+
+  const pricedKeys = new Set(prices.map((p) => `${p.asset_kind}:${p.asset_key}`));
+  const pricedLots = lots.filter((l) =>
+    pricedKeys.has(`${l.asset_kind}:${l.asset_key}`),
+  );
+  return { lots: pricedLots, prices };
+}
+
+/** position_id → { coingecko_id, ticker } for the user's crypto positions. */
+async function loadCryptoPositionMeta(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<string, { coingecko_id: string; ticker: string }>> {
+  const { data, error } = await supabase
+    .from("crypto_positions")
+    .select("id, crypto_assets!inner(coingecko_id, ticker, user_id)")
+    .eq("crypto_assets.user_id", userId);
+  // NOTE: intentionally no .is("deleted_at", null) — a full sell soft-deletes
+  // the position row but its activity_log entries remain. We need metadata for
+  // ALL positions that ever appeared in the log (including sold ones) so their
+  // buy+sell deltas can be replayed. Asset metadata (coingecko_id/ticker) is
+  // immutable, so including deleted positions is safe.
+  if (error) {
+    throw new Error(`Failed to load crypto position meta: ${error.message}`);
+  }
+  const map = new Map<string, { coingecko_id: string; ticker: string }>();
+  for (const row of data ?? []) {
+    const a = pickJoinedRecord<{ coingecko_id: string; ticker: string }>(
+      row.crypto_assets,
+    );
+    if (a) map.set(row.id, { coingecko_id: a.coingecko_id, ticker: a.ticker });
+  }
+  return map;
+}
+
+/** position_id → { yahoo_ticker, currency } for the user's stock positions. */
+async function loadStockPositionMeta(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<string, { yahoo_ticker: string | null; currency: string }>> {
+  const { data, error } = await supabase
+    .from("stock_positions")
+    .select("id, stock_assets!inner(yahoo_ticker, currency, user_id)")
+    .eq("stock_assets.user_id", userId);
+  // NOTE: intentionally no .is("deleted_at", null) — same rationale as
+  // loadCryptoPositionMeta: soft-deleted (sold) positions must remain in the
+  // meta map so their activity-log history is not silently dropped.
+  if (error) {
+    throw new Error(`Failed to load stock position meta: ${error.message}`);
+  }
+  const map = new Map<string, { yahoo_ticker: string | null; currency: string }>();
+  for (const row of data ?? []) {
+    const a = pickJoinedRecord<{ yahoo_ticker: string | null; currency: string }>(
+      row.stock_assets,
+    );
+    if (a)
+      map.set(row.id, {
+        yahoo_ticker: a.yahoo_ticker,
+        currency: a.currency,
+      });
+  }
+  return map;
 }
