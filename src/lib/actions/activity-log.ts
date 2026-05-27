@@ -466,7 +466,15 @@ export async function getAdjustmentDeltas(
   // `value + (finalCumDelta - cumDelta)` would (a) double-count value for
   // dates ≥ effective_date and (b) project today's value onto pre-purchase
   // dates — the user explicitly wants pre-purchase dates to show no asset.
-  const [stablecoinRes, manualStockPosRes] = await Promise.all([
+  //
+  // Also gather crypto/stock positions whose asset has cached historical
+  // prices. Those lots are now valued by augmentAndExtendSnapshots
+  // (qty × historical-price), so including their is_adjustment entries in the
+  // flat back-fill `value + (finalCumDelta - cumDelta)` would double-count and
+  // project today's value onto pre-purchase dates. Consistent-by-construction
+  // with the augmentation gate in getSnapshots: both key off "asset has cached
+  // historical prices".
+  const [stablecoinRes, manualStockPosRes, histPricesRes] = await Promise.all([
     supabase
       .from("crypto_positions")
       .select("id, crypto_assets!inner(subcategory)")
@@ -477,15 +485,56 @@ export async function getAdjustmentDeltas(
       .select("id, stock_assets!inner(kind, user_id)")
       .eq("stock_assets.user_id", resolvedUserId)
       .eq("stock_assets.kind", "manual"),
+    supabase
+      .from("historical_prices")
+      .select("asset_kind, asset_key"),
   ]);
   if (stablecoinRes.error) throw new Error(`Failed to load stablecoin positions: ${stablecoinRes.error.message}`);
   if (manualStockPosRes.error) throw new Error(`Failed to load manual stock positions: ${manualStockPosRes.error.message}`);
+  if (histPricesRes.error) throw new Error(`Failed to load historical price coverage: ${histPricesRes.error.message}`);
   const stablecoinPosIds = new Set(
     (stablecoinRes.data ?? []).map((p) => p.id as string)
   );
   const manualStockPosIds = new Set(
     (manualStockPosRes.data ?? []).map((p) => p.id as string)
   );
+
+  // asset_keys (coingecko_id / yahoo_ticker) that have any cached history.
+  const histCryptoKeys = new Set<string>();
+  const histStockKeys = new Set<string>();
+  for (const r of histPricesRes.data ?? []) {
+    if (r.asset_kind === "crypto") histCryptoKeys.add(r.asset_key as string);
+    else if (r.asset_kind === "stock") histStockKeys.add(r.asset_key as string);
+  }
+
+  // Resolve which of the user's positions map to those covered asset_keys.
+  // NOTE: NO deleted_at filter — a fully-sold (soft-deleted) backdated lot is
+  // reconstructed by synthesis and must also be excluded from the back-fill.
+  const historicallyPricedPosIds = new Set<string>();
+  if (histCryptoKeys.size > 0) {
+    const { data: cp } = await supabase
+      .from("crypto_positions")
+      .select("id, crypto_assets!inner(coingecko_id, user_id)")
+      .eq("crypto_assets.user_id", resolvedUserId);
+    for (const row of cp ?? []) {
+      const cg = (Array.isArray(row.crypto_assets) ? row.crypto_assets[0] : row.crypto_assets) as { coingecko_id?: string } | null;
+      if (cg?.coingecko_id && histCryptoKeys.has(cg.coingecko_id)) {
+        historicallyPricedPosIds.add(row.id as string);
+      }
+    }
+  }
+  if (histStockKeys.size > 0) {
+    const { data: sp } = await supabase
+      .from("stock_positions")
+      .select("id, stock_assets!inner(yahoo_ticker, user_id)")
+      .eq("stock_assets.user_id", resolvedUserId);
+    for (const row of sp ?? []) {
+      const sa = (Array.isArray(row.stock_assets) ? row.stock_assets[0] : row.stock_assets) as { yahoo_ticker?: string | null } | null;
+      if (sa?.yahoo_ticker && histStockKeys.has(sa.yahoo_ticker)) {
+        historicallyPricedPosIds.add(row.id as string);
+      }
+    }
+  }
 
   const query = supabase
     .from("activity_log")
@@ -546,6 +595,16 @@ export async function getAdjustmentDeltas(
       row.entity_type === "stock_position" &&
       typeof row.entity_id === "string" &&
       manualStockPosIds.has(row.entity_id)
+    ) {
+      continue;
+    }
+
+    // Skip crypto/stock positions valued by historical-price synthesis — they
+    // contribute to snapshots via augmentAndExtendSnapshots, not the back-fill.
+    if (
+      (row.entity_type === "crypto_position" || row.entity_type === "stock_position") &&
+      typeof row.entity_id === "string" &&
+      historicallyPricedPosIds.has(row.entity_id)
     ) {
       continue;
     }
