@@ -224,8 +224,13 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   // chart history for owners holding kind='manual' assets (ELTIFs, SICAVs).
   // The viewer is not the owner — admin client + explicit owner_id bypasses
   // RLS which would otherwise scope to auth.uid() and return zero rows.
-  const manualInputs = await fetchManualNavInputsFor(admin, userId);
-  const historicalInputs = await fetchHistoricalPriceInputsFor(admin, userId);
+  const [manualInputs, historicalInputs] = await Promise.all([
+    fetchManualNavInputsFor(admin, userId),
+    fetchHistoricalPriceInputsFor(admin, userId).catch((err) => {
+      console.error("[shared-portfolio] historical-price extension unavailable:", err instanceof Error ? err.message : err);
+      return { lots: [], prices: [] };
+    }),
+  ]);
   const withManual = manualInputs.positions.length > 0
     ? augmentSnapshotsWithManualNavs(snapshots, manualInputs.positions, manualInputs.navs)
     : snapshots;

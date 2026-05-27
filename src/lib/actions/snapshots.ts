@@ -159,7 +159,10 @@ export async function getSnapshots(
       .order("snapshot_date", { ascending: true })
       .limit(MAX_SNAPSHOTS_LIMIT),
     fetchManualNavInputsFor(supabase, user.id),
-    fetchHistoricalPriceInputsFor(supabase, user.id),
+    fetchHistoricalPriceInputsFor(supabase, user.id).catch((err) => {
+      console.error("[snapshots] historical-price extension unavailable:", err instanceof Error ? err.message : err);
+      return { lots: [], prices: [] };
+    }),
   ]);
 
   if (snapshotsRes.error) {

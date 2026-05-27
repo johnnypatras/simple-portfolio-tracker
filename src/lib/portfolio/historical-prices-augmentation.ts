@@ -555,7 +555,8 @@ export async function ensureHistoricalPricesCached(
   const { data: rows, error: readErr } = await admin
     .from("historical_prices")
     .select("asset_kind, asset_key, price_date, price, currency")
-    .in("asset_key", allKeys);
+    .in("asset_key", allKeys)
+    .limit(100_000);
   if (readErr) {
     console.error("[historical] cache read failed:", readErr.message);
     return [];
@@ -609,8 +610,10 @@ export async function fetchHistoricalPriceInputsFor(
     throw new Error(`Failed to load stock activity: ${stockRes.error.message}`);
   }
 
-  const cryptoMeta = await loadCryptoPositionMeta(supabase, userId);
-  const stockMeta = await loadStockPositionMeta(supabase, userId);
+  const [cryptoMeta, stockMeta] = await Promise.all([
+    loadCryptoPositionMeta(supabase, userId),
+    loadStockPositionMeta(supabase, userId),
+  ]);
 
   const activity: ActivityForLot[] = [];
 
