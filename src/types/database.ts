@@ -426,6 +426,36 @@ export type Database = {
           },
         ]
       }
+      historical_prices: {
+        Row: {
+          asset_key: string
+          asset_kind: string
+          created_at: string
+          currency: string
+          id: string
+          price: number
+          price_date: string
+        }
+        Insert: {
+          asset_key: string
+          asset_kind: string
+          created_at?: string
+          currency: string
+          id?: string
+          price: number
+          price_date: string
+        }
+        Update: {
+          asset_key?: string
+          asset_kind?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          price?: number
+          price_date?: string
+        }
+        Relationships: []
+      }
       institutions: {
         Row: {
           created_at: string
