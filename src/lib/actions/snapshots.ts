@@ -12,6 +12,10 @@ import {
   augmentSnapshotsWithManualNavs,
   fetchManualNavInputsFor,
 } from "@/lib/portfolio/manual-nav-augmentation";
+import {
+  fetchHistoricalPriceInputsFor,
+  augmentAndExtendSnapshots,
+} from "@/lib/portfolio/historical-prices-augmentation";
 
 /**
  * Save (upsert) today's portfolio snapshot.
@@ -146,7 +150,7 @@ export async function getSnapshots(
   // have them in stocks_value; without augmentation the chart shows an
   // artificial jump between the last cron snapshot and today's live value
   // (assemble.ts injection lives only for the live point).
-  const [snapshotsRes, manualInputs] = await Promise.all([
+  const [snapshotsRes, manualInputs, historicalInputs] = await Promise.all([
     supabase
       .from("portfolio_snapshots")
       .select("*")
@@ -155,6 +159,7 @@ export async function getSnapshots(
       .order("snapshot_date", { ascending: true })
       .limit(MAX_SNAPSHOTS_LIMIT),
     fetchManualNavInputsFor(supabase, user.id),
+    fetchHistoricalPriceInputsFor(supabase, user.id),
   ]);
 
   if (snapshotsRes.error) {
@@ -163,7 +168,8 @@ export async function getSnapshots(
   }
 
   const raw = (snapshotsRes.data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
-  return augmentSnapshotsWithManualNavs(raw, manualInputs.positions, manualInputs.navs);
+  const withManual = augmentSnapshotsWithManualNavs(raw, manualInputs.positions, manualInputs.navs);
+  return augmentAndExtendSnapshots(withManual, historicalInputs.lots, historicalInputs.prices);
 }
 
 type PortfolioSnapshotRow = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];

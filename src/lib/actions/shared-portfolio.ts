@@ -24,6 +24,10 @@ import {
   augmentSnapshotsWithManualNavs,
   fetchManualNavInputsFor,
 } from "@/lib/portfolio/manual-nav-augmentation";
+import {
+  fetchHistoricalPriceInputsFor,
+  augmentAndExtendSnapshots,
+} from "@/lib/portfolio/historical-prices-augmentation";
 
 // SharedPortfolioData and ValidatedShare are defined in @/lib/types — Turbopack
 // strips type re-exports from "use server" modules, so consumers (share pages,
@@ -221,9 +225,15 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   // The viewer is not the owner — admin client + explicit owner_id bypasses
   // RLS which would otherwise scope to auth.uid() and return zero rows.
   const manualInputs = await fetchManualNavInputsFor(admin, userId);
-  const augmentedSnapshots = manualInputs.positions.length > 0
+  const historicalInputs = await fetchHistoricalPriceInputsFor(admin, userId);
+  const withManual = manualInputs.positions.length > 0
     ? augmentSnapshotsWithManualNavs(snapshots, manualInputs.positions, manualInputs.navs)
     : snapshots;
+  const augmentedSnapshots = augmentAndExtendSnapshots(
+    withManual,
+    historicalInputs.lots,
+    historicalInputs.prices,
+  );
 
   // ── Snapshot lookups for change calculations ──────────
   // Snapshot lookups use `findSnapshotAt` (binary search, O(log n) per call).
