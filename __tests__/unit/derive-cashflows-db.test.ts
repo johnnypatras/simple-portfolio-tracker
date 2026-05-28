@@ -26,20 +26,24 @@ const hoisted = vi.hoisted(() => ({
 /**
  * Creates a fake Supabase query builder that returns preset results.
  *
- * The Supabase client chain looks like:
+ * The main cashflow query is now paginated via fetchAllPaginated, so its chain
+ * ends in `.range(from, to)` (the helper appends it):
  *   supabase.from("activity_log")
  *     .select(...)
  *     .eq(...)
  *     .is(...)
- *     .or(...)
  *     .order(...)
- *     .limit(...)  → Promise<{ data, error }>
+ *     .order(...)
+ *     .range(...)  → Promise<{ data, error }>
  *
  * For count queries the chain ends at .or(...) / .eq(...) and resolves to
  *   { count: number }.
  *
  * We model this as a single chainable object where all builder methods return
  * `this` and the object itself is thenable (`.then` / `await` resolves).
+ * Because the mock returns a SHORT page (data.length < pageSize=1000),
+ * fetchAllPaginated stops after a single `.range()` round-trip — so each
+ * `.from()` call still maps 1:1 to a queue entry as before.
  */
 function createQueryBuilder(resolveValue: unknown) {
   const builder: Record<string, unknown> & PromiseLike<unknown> = {
@@ -49,6 +53,7 @@ function createQueryBuilder(resolveValue: unknown) {
     or: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
+    range: vi.fn().mockReturnThis(),
     then<TResult1 = unknown, TResult2 = never>(
       onfulfilled?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,

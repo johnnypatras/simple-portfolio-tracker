@@ -1,8 +1,10 @@
 "use server";
 
 import { cache } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateShareToken } from "./shares";
+import { captureAction } from "./with-sentry";
 import type {
   AcquisitionType,
   Profile,
@@ -38,7 +40,23 @@ import {
  * Returns null if the token is invalid/expired/revoked.
  * Uses service-role client to bypass RLS.
  */
-export const getSharedPortfolio = cache(async function getSharedPortfolio(
+// captureAction routes any UNCAUGHT throw (e.g. createAdminClient failure, a
+// thrown helper) to Sentry with action="shared-portfolio.getSharedPortfolio".
+// Intentional `return null` paths (invalid/expired token) do NOT throw, so they
+// stay silent; the genuine backend-query failures below capture explicitly
+// before their `return null` so a valid token whose downstream query errors
+// still surfaces an operator signal instead of a silent 404.
+//
+// Wrapped in React `cache()` so a single request that reads the shared
+// portfolio multiple times (layout + page) hits the DB once.
+export const getSharedPortfolio = cache(
+  (token: string): Promise<SharedPortfolioData | null> =>
+    captureAction("shared-portfolio.getSharedPortfolio", () =>
+      getSharedPortfolioImpl(token),
+    ),
+);
+
+async function getSharedPortfolioImpl(
   token: string
 ): Promise<SharedPortfolioData | null> {
   const share = await validateShareToken(token);
@@ -74,6 +92,14 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
 
   if (profileRes.error || !profileRes.data) {
     console.error("[shared-portfolio] Profile fetch failed:", profileRes.error?.message);
+    // A valid token whose owner-profile query errors → silent 404 for the
+    // recipient. Capture so operators see the backend failure. (A genuinely
+    // missing profile with no .error is a data-integrity anomaly worth the
+    // same signal.)
+    Sentry.captureException(
+      profileRes.error ?? new Error("shared-portfolio: profile row missing without query error"),
+      { tags: { context: "shared-portfolio.profiles" } },
+    );
     return null;
   }
   for (const [label, res] of [
@@ -87,12 +113,17 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   ] as const) {
     if (res.error) {
       console.error(`[shared-portfolio] ${label} fetch failed:`, res.error.message);
+      // Backend query failure on a valid token — masking it as a 404 hides a
+      // real outage. Tag by table so operators can pinpoint the failing query.
+      Sentry.captureException(res.error, {
+        tags: { context: `shared-portfolio.${label}` },
+      });
       return null;
     }
   }
 
-  // profileRes.data is guaranteed non-null at this point by the earlier
-  // response-validation loop (lines 67-82) which returns null on missing data.
+  // profileRes.data is guaranteed non-null here by the `!profileRes.data`
+  // guard above, which returns null on missing data.
   const profile: Profile = {
     ...profileRes.data,
     role: profileRes.data.role as Profile["role"],
@@ -135,10 +166,16 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   ]);
   if (cryptoPositionsData.error) {
     console.error("[shared-portfolio] crypto_positions fetch failed:", cryptoPositionsData.error.message);
+    Sentry.captureException(cryptoPositionsData.error, {
+      tags: { context: "shared-portfolio.crypto_positions" },
+    });
     return null;
   }
   if (stockPositionsData.error) {
     console.error("[shared-portfolio] stock_positions fetch failed:", stockPositionsData.error.message);
+    Sentry.captureException(stockPositionsData.error, {
+      tags: { context: "shared-portfolio.stock_positions" },
+    });
     return null;
   }
 
@@ -228,6 +265,9 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     fetchManualNavInputsFor(admin, userId),
     fetchHistoricalPriceInputsFor(admin, userId).catch((err) => {
       console.error("[shared-portfolio] historical-price extension unavailable:", err instanceof Error ? err.message : err);
+      Sentry.captureException(err, {
+        tags: { context: "shared-portfolio.getSharedPortfolio.historicalAugmentation" },
+      });
       return { lots: [], prices: [] };
     }),
   ]);
@@ -261,4 +301,4 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     // "All" = earliest snapshot (snapshots array is now all-time)
     snapAll: augmentedSnapshots.length > 0 ? augmentedSnapshots[0] : null,
   };
-});
+}

@@ -11,7 +11,8 @@ import { getSnapshots } from "@/lib/actions/snapshots";
 import { getProfile } from "@/lib/actions/profile";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { toCsv } from "@/lib/csv";
-import { ALL_SNAPSHOTS_DAYS, MAX_QUERY_LIMIT, CURRENT_BACKUP_VERSION } from "@/lib/constants";
+import { ALL_SNAPSHOTS_DAYS, CURRENT_BACKUP_VERSION } from "@/lib/constants";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import { getMyShares } from "@/lib/actions/shares";
 import type {
   BankAccount,
@@ -22,6 +23,9 @@ import type {
   PortfolioBackup,
 } from "@/lib/types";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
+import type { Database } from "@/types/database";
+
+type ActivityLogRow = Database["public"]["Tables"]["activity_log"]["Row"];
 
 // ─── Full JSON backup ───────────────────────────────────
 // PortfolioBackup type lives in @/lib/types (Turbopack strips
@@ -45,7 +49,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     snapshots,
     shares,
     { data: diaryRows },
-    { data: activityRows },
+    activityRows,
   ] = await Promise.all([
     getProfile(),
     getInstitutionsWithRoles(),
@@ -63,12 +67,22 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
       .eq("user_id", uid)
       .is("deleted_at", null)
       .order("entry_date", { ascending: true }),
-    supabase
-      .from("activity_log")
-      .select("*")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: false })
-      .limit(MAX_QUERY_LIMIT),
+    // Full activity-log export for the JSON backup. Paginate past the
+    // PostgREST max_rows cap (default 1000): a heavy-DCA user can exceed 1000
+    // rows, and a silently-truncated read would produce an apparently-valid
+    // backup that's missing history (data loss). `.order(...)` precedes
+    // `.range(...)`; the `id` tiebreaker (UUID PK) keeps page boundaries
+    // deterministic. Descending order preserves the existing most-recent-first
+    // export shape.
+    fetchAllPaginated<ActivityLogRow>((from, to) =>
+      supabase
+        .from("activity_log")
+        .select("*")
+        .eq("user_id", uid)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    ),
   ]);
 
   // v5: manual_nav_updates for kind='manual' stock_assets. Owned by the user
@@ -182,7 +196,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
     // from the filter context.
     diaryEntries: (diaryRows ?? []).map((row) => ({ ...row, user_id: uid })),
     goalPrices,
-    activityLog: (activityRows ?? []).map(normalizeActivityLogRow),
+    activityLog: activityRows.map(normalizeActivityLogRow),
     portfolioShares: shares,
     profile: {
       display_name: profile.display_name,

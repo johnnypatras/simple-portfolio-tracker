@@ -161,6 +161,9 @@ export async function getSnapshots(
     fetchManualNavInputsFor(supabase, user.id),
     fetchHistoricalPriceInputsFor(supabase, user.id).catch((err) => {
       console.error("[snapshots] historical-price extension unavailable:", err instanceof Error ? err.message : err);
+      Sentry.captureException(err, {
+        tags: { context: "snapshots.getSnapshots.historicalAugmentation" },
+      });
       return { lots: [], prices: [] };
     }),
   ]);

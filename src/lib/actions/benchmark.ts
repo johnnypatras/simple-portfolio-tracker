@@ -4,7 +4,8 @@ import { cache } from "react";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateUUID } from "@/lib/validation";
-import { MAX_QUERY_LIMIT, ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
+import { ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 
 // ─── Cash Flow Event ─────────────────────────────────────
 
@@ -34,21 +35,45 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
   // Resolve user ID for explicit row-level filtering on non-admin path
   const resolvedUserId = userId ?? (await supabase.auth.getUser()).data.user?.id;
 
-  // Single DB query — all cashflows pre-computed at write time
-  let query = supabase
-    .from("activity_log")
-    .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_asset_class, entity_name, created_at, effective_date")
-    .eq("cashflow_status", "complete")
-    .is("undone_at", null)
-    .order("created_at", { ascending: true })
-    .limit(MAX_QUERY_LIMIT);
-  if (resolvedUserId) query = query.eq("user_id", resolvedUserId);
-  const { data, error } = await query;
-
-  if (error) {
-    console.error("[benchmark] deriveCashFlows query failed:", error.message);
+  // All cashflows pre-computed at write time. Paginate past the PostgREST
+  // max_rows cap (default 1000): post-Phase-4 the S&P benchmark depends
+  // ENTIRELY on this stream, so a heavy-DCA user with >1000 cashflow rows would
+  // otherwise get a silently-truncated benchmark on every page. A plain
+  // `.limit(10_000)` does NOT lift the server cap — only `.range()` paging does.
+  // `.order(...)` MUST precede `.range(...)`; the `id` tiebreaker (UUID PK)
+  // guarantees deterministic page boundaries when rows share a created_at.
+  type CashflowRow = {
+    cashflow_amount_usd: number | null;
+    cashflow_amount_eur: number | null;
+    cashflow_asset_class: string | null;
+    entity_name: string | null;
+    created_at: string;
+    effective_date: string | null;
+  };
+  let data: CashflowRow[];
+  try {
+    data = await fetchAllPaginated<CashflowRow>((from, to) => {
+      // Apply all filters BEFORE .order()/.range() (PostgREST deterministic-
+      // pagination idiom; mirrors historical-prices-augmentation.ts). The
+      // user_id scope is part of the filter set on the non-admin path.
+      const base = supabase
+        .from("activity_log")
+        .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_asset_class, entity_name, created_at, effective_date")
+        .eq("cashflow_status", "complete")
+        .is("undone_at", null);
+      const scoped = resolvedUserId ? base.eq("user_id", resolvedUserId) : base;
+      return scoped
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[benchmark] deriveCashFlows query failed:", message);
     const Sentry = await import("@sentry/nextjs");
-    Sentry.captureException(new Error(`deriveCashFlows query failed: ${error.message}`));
+    Sentry.captureException(
+      err instanceof Error ? err : new Error(`deriveCashFlows query failed: ${message}`),
+    );
     return { events: [], pendingCount: 0, failedCount: 0 };
   }
 
