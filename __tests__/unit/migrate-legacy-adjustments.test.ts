@@ -215,6 +215,7 @@ describe("migrateLegacyAdjustmentFlags", () => {
       details: [],
     });
     expect(hoisted.toggleActivityAdjustment).not.toHaveBeenCalled();
+    expect(hoisted.revalidateDashboard).not.toHaveBeenCalled();
   });
 
   it("calls toggleActivityAdjustment(id, false) per row", async () => {
@@ -245,6 +246,7 @@ describe("migrateLegacyAdjustmentFlags", () => {
       entity_name: "BTC pos",
       status: "migrated",
     });
+    expect(hoisted.revalidateDashboard).toHaveBeenCalledOnce();
   });
 
   it("per-row error does not abort loop — other rows still migrate", async () => {
