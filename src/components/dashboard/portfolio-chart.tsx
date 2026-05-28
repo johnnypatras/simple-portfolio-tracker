@@ -92,6 +92,22 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+/** X-axis tick format for multi-year spans — "Sep 2022" (month + year, drops
+ *  day-of-month since at multi-year scale ticks land on different months anyway).
+ *  Avoids the "Sep 22" ambiguity (Sept 22nd? 2022?) that surfaces once the chart
+ *  back-extends across calendar years. */
+function formatTickWithYear(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+/** Tooltip date — always includes the year so the on-hover readout is precise
+ *  regardless of the selected period. */
+function formatTooltipDate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function PortfolioChart({
   snapshots,
   liveValue,
@@ -295,6 +311,12 @@ export function PortfolioChart({
     };
   }, [chartData, yDomain, returnMode, hasDeltas, showBenchmark]);
 
+  // X-axis tick year handling: only inject the year when the visible range
+  // actually crosses calendar years (multi-year "All" view with backdating).
+  // Sub-year views (24H/30D/90D/1Y in-year) keep the compact "MMM D" format.
+  const crossesYears = chartData.length >= 2 &&
+    chartData[0].date.slice(0, 4) !== chartData[chartData.length - 1].date.slice(0, 4);
+
   // Are we showing stacked allocation areas? Only in total view with allocation ON, not in % return mode
   const showStackedAlloc = showAllocation && viewMode === "total" && !returnMode;
 
@@ -431,7 +453,7 @@ export function PortfolioChart({
             </defs>
             <XAxis
               dataKey="date"
-              tickFormatter={formatDate}
+              tickFormatter={crossesYears ? formatTickWithYear : formatDate}
               tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
               axisLine={false}
               tickLine={false}
@@ -474,7 +496,7 @@ export function PortfolioChart({
                 return (
                   <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 shadow-lg">
                     <p className="text-xs text-zinc-400">
-                      {formatDate(point.date)}
+                      {formatTooltipDate(point.date)}
                     </p>
                     <p className="text-sm font-medium text-zinc-100">
                       {viewMode !== "total" && (
