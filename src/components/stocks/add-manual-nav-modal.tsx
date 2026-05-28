@@ -549,7 +549,7 @@ export function AddManualNavModal({
             onChange={(e) => setEffectiveDate(e.target.value)}
             className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           />
-          <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-xs text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {navGapWarning && (
@@ -567,14 +567,16 @@ export function AddManualNavModal({
         <div>
           <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
             <input
+              id="is-adjustment-checkbox-manual-nav"
               type="checkbox"
               checked={isAdjustment}
               onChange={(e) => setIsAdjustment(e.target.checked)}
               className="accent-amber-500"
+              aria-describedby="is-adjustment-help-manual-nav"
             />
             Portfolio adjustment
           </label>
-          <p className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
+          <p id="is-adjustment-help-manual-nav" className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
         </div>
 
         <button

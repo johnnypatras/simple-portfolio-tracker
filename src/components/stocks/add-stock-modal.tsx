@@ -680,7 +680,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                 onChange={(e) => setEffectiveDate(e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
               />
-              <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
+              <p className="text-xs text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
             </div>
 
             {error && (
@@ -692,14 +692,16 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
             <div>
               <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                 <input
+                  id="is-adjustment-checkbox-stock"
                   type="checkbox"
                   checked={isAdjustment}
                   onChange={(e) => setIsAdjustment(e.target.checked)}
                   className="accent-amber-500"
+                  aria-describedby="is-adjustment-help-stock"
                 />
                 Portfolio adjustment
               </label>
-              <p className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
+              <p id="is-adjustment-help-stock" className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
             </div>
 
             <button

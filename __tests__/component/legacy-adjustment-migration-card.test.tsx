@@ -110,6 +110,43 @@ describe("LegacyAdjustmentMigrationCard", () => {
     expect(screen.getByText(/one-time migration/i)).toBeInTheDocument();
     expect(screen.getByText(/Migrate legacy adjustment flags/i)).toBeInTheDocument();
   });
+
+  it("renders an error state (not a throw) when previewLegacyAdjustmentMigration throws", async () => {
+    hoisted.previewLegacyAdjustmentMigration.mockRejectedValue(new Error("DB connection failed"));
+
+    // Must NOT throw — settings page must always render.
+    const element = await LegacyAdjustmentMigrationCard();
+    render(element);
+
+    expect(screen.getByText(/Could not check migration status/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Refresh page/i })).toBeInTheDocument();
+    // No migrate button in the error state.
+    expect(screen.queryByRole("button", { name: /Migrate/i })).not.toBeInTheDocument();
+    // Explanation heading still shows.
+    expect(screen.getByText(/Migrate legacy adjustment flags/i)).toBeInTheDocument();
+  });
+
+  it("sorts breakdown entries by count descending with alphabetical fallback", async () => {
+    hoisted.previewLegacyAdjustmentMigration.mockResolvedValue({
+      count: 20,
+      by_entity_type: {
+        cash_account: 5,
+        crypto_position: 12,
+        stock_position: 3,
+      },
+    });
+
+    const element = await LegacyAdjustmentMigrationCard();
+    render(element);
+
+    const rows = screen.getAllByRole("generic").filter((el) => el.className.includes("justify-between"));
+    // First row should be the highest count (Crypto positions: 12).
+    expect(rows[0]).toHaveTextContent("Crypto positions");
+    expect(rows[0]).toHaveTextContent("12");
+    // Second row: Cash accounts (5).
+    expect(rows[1]).toHaveTextContent("Cash accounts");
+    expect(rows[1]).toHaveTextContent("5");
+  });
 });
 
 // ─── Button (client component) ─────────────────────────────────────────
@@ -222,5 +259,44 @@ describe("LegacyAdjustmentMigrationButton", () => {
     });
     // Returns to idle (trigger button visible again).
     expect(screen.getByRole("button", { name: /Migrate 5 entries/i })).toBeInTheDocument();
+  });
+
+  it("rapid double-click on Yes migrate only calls the action once", async () => {
+    hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
+      total_candidates: 2,
+      migrated: 2,
+      errors: 0,
+      details: [],
+    });
+
+    render(<LegacyAdjustmentMigrationButton candidateCount={2} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 2 entries/i }));
+    const confirmBtn = screen.getByRole("button", { name: "Yes, migrate" });
+    // Simulate two rapid clicks in succession.
+    fireEvent.click(confirmBtn);
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(hoisted.migrateLegacyAdjustmentFlags).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("shows 'Nothing to migrate — already up to date' when migrated=0 and errors=0", async () => {
+    hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
+      total_candidates: 0,
+      migrated: 0,
+      errors: 0,
+      details: [],
+    });
+
+    render(<LegacyAdjustmentMigrationButton candidateCount={1} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 1 entry/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
+
+    await waitFor(() => {
+      expect(hoisted.toastSuccess).toHaveBeenCalledWith("Nothing to migrate — already up to date");
+    });
   });
 });

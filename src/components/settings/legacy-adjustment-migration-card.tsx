@@ -1,4 +1,4 @@
-import { SlidersHorizontal, CheckCircle2 } from "lucide-react";
+import { SlidersHorizontal, CheckCircle2, AlertCircle } from "lucide-react";
 import { previewLegacyAdjustmentMigration } from "@/lib/actions/migrate-legacy-adjustments";
 import { LegacyAdjustmentMigrationButton } from "@/components/settings/legacy-adjustment-migration-button";
 
@@ -33,7 +33,17 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
  * and per-row error result panel.
  */
 export async function LegacyAdjustmentMigrationCard() {
-  const preview = await previewLegacyAdjustmentMigration();
+  let preview: Awaited<ReturnType<typeof previewLegacyAdjustmentMigration>> | null = null;
+  let previewError = false;
+
+  try {
+    preview = await previewLegacyAdjustmentMigration();
+  } catch (err) {
+    // Transient DB hiccup, auth lapse, or RLS error — don't crash the settings page.
+    // Sentry captures the underlying throw inside the server action.
+    console.error("[LegacyAdjustmentMigrationCard] preview failed:", err);
+    previewError = true;
+  }
 
   return (
     <section
@@ -58,7 +68,18 @@ export async function LegacyAdjustmentMigrationCard() {
         adjustment&rdquo; on any row in the History timeline to put it back.
       </p>
 
-      {preview.count === 0 ? (
+      {previewError ? (
+        <div className="flex items-start gap-2 px-3 py-2 bg-zinc-800/50 border border-zinc-700/50 rounded-md">
+          <AlertCircle aria-hidden="true" className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-zinc-400">
+            Could not check migration status.{" "}
+            <a href="/settings" className="text-blue-400 hover:text-blue-300 underline">
+              Refresh page
+            </a>{" "}
+            to retry.
+          </p>
+        </div>
+      ) : preview!.count === 0 ? (
         <div className="flex items-center gap-2 px-3 py-2 bg-emerald-950/30 border border-emerald-900/30 rounded-md">
           <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-emerald-400 shrink-0" />
           <p className="text-xs text-emerald-300">
@@ -69,11 +90,11 @@ export async function LegacyAdjustmentMigrationCard() {
         <>
           <div>
             <p className="text-xs font-medium text-zinc-300 mb-2">
-              {preview.count} {preview.count === 1 ? "entry" : "entries"} to migrate
+              {preview!.count} {preview!.count === 1 ? "entry" : "entries"} to migrate
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              {Object.entries(preview.by_entity_type)
-                .sort(([a], [b]) => a.localeCompare(b))
+              {Object.entries(preview!.by_entity_type)
+                .sort(([keyA, countA], [keyB, countB]) => countB - countA || keyA.localeCompare(keyB))
                 .map(([entityType, count]) => (
                   <div
                     key={entityType}
@@ -87,7 +108,7 @@ export async function LegacyAdjustmentMigrationCard() {
                 ))}
             </div>
           </div>
-          <LegacyAdjustmentMigrationButton candidateCount={preview.count} />
+          <LegacyAdjustmentMigrationButton candidateCount={preview!.count} />
         </>
       )}
     </section>

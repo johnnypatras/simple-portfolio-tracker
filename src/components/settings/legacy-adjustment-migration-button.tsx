@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Loader2, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import {
   migrateLegacyAdjustmentFlags,
@@ -31,8 +31,11 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<LegacyAdjustmentMigrationResult | null>(null);
+  const isSubmittingRef = useRef<boolean>(false);
 
   async function handleConfirm() {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setStage("migrating");
     try {
       const migrationResult = await migrateLegacyAdjustmentFlags();
@@ -42,6 +45,8 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
         toast.error(
           `Migrated ${migrationResult.migrated} entries with ${migrationResult.errors} error${migrationResult.errors === 1 ? "" : "s"}`,
         );
+      } else if (migrationResult.migrated === 0 && migrationResult.errors === 0) {
+        toast.success("Nothing to migrate — already up to date");
       } else {
         toast.success(`Migrated ${migrationResult.migrated} ${migrationResult.migrated === 1 ? "entry" : "entries"}`);
       }
@@ -52,6 +57,8 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
       const message = err instanceof Error ? err.message : "Migration failed";
       toast.error(message);
       setStage("idle");
+    } finally {
+      isSubmittingRef.current = false;
     }
   }
 
@@ -77,7 +84,7 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
     return (
       <div className="bg-zinc-950/50 border border-blue-900/40 rounded-lg p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <AlertTriangle aria-hidden="true" className="w-4 h-4 text-blue-400" />
+          <Info aria-hidden="true" className="w-4 h-4 text-blue-400" />
           <p className="text-sm font-medium text-zinc-200">Confirm migration</p>
         </div>
         <p className="text-xs text-zinc-400">
@@ -97,7 +104,8 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
           <button
             type="button"
             onClick={handleConfirm}
-            className="flex-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
+            disabled={stage !== "confirming"}
+            className="flex-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
           >
             Yes, migrate
           </button>

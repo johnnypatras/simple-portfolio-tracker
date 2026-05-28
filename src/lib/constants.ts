@@ -128,3 +128,18 @@ export const IS_ADJUSTMENT_TOOLTIP_TEXT =
  */
 export const IS_ADJUSTMENT_HELP_TEXT =
   "Check this only if the entry doesn't represent real money flowing in or out (e.g., a transfer between your accounts, or a manual balance correction). For real buys, deposits, or imports, leave this unchecked — use the 'Effective date' field to set when the transaction actually happened.";
+
+/**
+ * Aria label/title for the adjustment toggle button when the entry IS already
+ * marked as an adjustment (is_adjustment=true). Clicking converts it back to a
+ * real cash flow so the S&P benchmark counts it as a deposit.
+ */
+export const IS_ADJUSTMENT_TOGGLE_ON_LABEL =
+  "Marked as adjustment — click to count as cash flow";
+
+/**
+ * Aria label/title for the adjustment toggle button when the entry is NOT
+ * marked as an adjustment (is_adjustment=false). Clicking flags it as an
+ * internal adjustment so the S&P benchmark ignores it.
+ */
+export const IS_ADJUSTMENT_TOGGLE_OFF_LABEL = "Mark as portfolio adjustment";

@@ -37,7 +37,7 @@ import { backdateActivityEntry, unsplitActivityEntry } from "@/lib/actions/split
 import { undoActivity } from "@/lib/actions/undo";
 import { backfillSingleRow } from "@/lib/actions/backfill";
 import { useSharedView } from "@/components/shared-view-context";
-import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT, IS_ADJUSTMENT_TOGGLE_ON_LABEL, IS_ADJUSTMENT_TOGGLE_OFF_LABEL } from "@/lib/constants";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -1049,8 +1049,8 @@ export function ActivityTimeline({
                                   ? "text-amber-400 bg-amber-500/10"
                                   : "md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
                               }`}
-                              aria-label={log.is_adjustment ? "Marked as adjustment — click to count as transaction" : "Mark as portfolio adjustment"}
-                              title={log.is_adjustment ? "Marked as adjustment — click to count as transaction" : "Mark as portfolio adjustment"}
+                              aria-label={log.is_adjustment ? IS_ADJUSTMENT_TOGGLE_ON_LABEL : IS_ADJUSTMENT_TOGGLE_OFF_LABEL}
+                              title={log.is_adjustment ? IS_ADJUSTMENT_TOGGLE_ON_LABEL : IS_ADJUSTMENT_TOGGLE_OFF_LABEL}
                             >
                               <SlidersHorizontal className="w-3.5 h-3.5" />
                             </button>
