@@ -510,6 +510,50 @@ describe("getDepositsForPeriod", () => {
     expect(result.total).toBeCloseTo(90, 0);
     expect(result.breakdown).toHaveLength(3);
   });
+
+  // ── M1: synthetic benchmark cash flows must be filtered ────────
+  // buildBenchmarkCashFlows emits CashFlowEvent rows tagged synthetic=true
+  // for is_adjustment backdated lots. They're seeds for the S&P benchmark and
+  // must NEVER appear in the deposit tooltip — otherwise an adjustment would
+  // surface as "Unknown" (no entity_name was attached). computeDeposits must
+  // strip them BEFORE class/date filtering.
+  it("filters synthetic flows out of deposit aggregation (M1)", () => {
+    const ctx = makeCtx({
+      primaryCurrency: "USD",
+      totalValueUsd: 100000,
+      cashFlows: [
+        // Real deposits — included.
+        { date: PINNED_TODAY, amount_usd: 1000, entity_name: "Alpha Bank" },
+        { date: PINNED_TODAY, amount_usd: 500, entity_name: "DEGIRO" },
+        // Synthetic benchmark flow — MUST be excluded (no entity_name; would
+        // surface as "Unknown" if leaked).
+        { date: PINNED_TODAY, amount_usd: 25000, asset_class: "crypto", synthetic: true },
+      ],
+    });
+    const result = getDepositsForPeriod("24h", ctx);
+    expect(result.total).toBeCloseTo(1500, 0); // 1000 + 500 — synthetic 25k excluded
+    expect(result.breakdown).toHaveLength(2);
+    expect(result.breakdown.map(b => b.name).sort()).toEqual(["Alpha Bank", "DEGIRO"]);
+    // Defensive: "Unknown" must never leak into the breakdown via a
+    // synthetic flow that lacked entity_name.
+    expect(result.breakdown.find(b => b.name === "Unknown")).toBeUndefined();
+  });
+
+  it("synthetic filter survives class filtering (synthetic crypto flow doesn't pollute crypto deposits)", () => {
+    const ctx = makeCtx({
+      primaryCurrency: "USD",
+      totalValueUsd: 100000,
+      cashFlows: [
+        { date: PINNED_TODAY, amount_usd: 800, asset_class: "crypto", entity_name: "Binance" },
+        // Synthetic crypto flow — same class as the filter, but MUST still drop.
+        { date: PINNED_TODAY, amount_usd: 50000, asset_class: "crypto", synthetic: true },
+      ],
+    });
+    const cryptoResult = getDepositsForPeriod("24h", ctx, "crypto");
+    expect(cryptoResult.total).toBeCloseTo(800, 0);
+    expect(cryptoResult.breakdown).toHaveLength(1);
+    expect(cryptoResult.breakdown[0].name).toBe("Binance");
+  });
 });
 
 // ── Delta helpers ──────────────────────────────────────────

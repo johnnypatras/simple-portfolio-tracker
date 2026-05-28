@@ -22,6 +22,7 @@ import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, 
 import type { Database } from "@/types/database";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 import { pickJoinedRecord } from "@/lib/supabase/join-utils";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import { readHistoricalCoverageKeys, readBackdatedPositionIds } from "@/lib/portfolio/historical-prices-augmentation";
 
 type ActivityLogInsert = Database["public"]["Tables"]["activity_log"]["Insert"];
@@ -501,35 +502,48 @@ export async function getAdjustmentDeltas(
   // filter: a fully-sold (soft-deleted) backdated lot is reconstructed by
   // synthesis and must also be excluded from the back-fill. Errors THROW — a
   // silent empty set would double-count historically-priced lots.
-  const [cpRes, spRes] = await Promise.all([
-    supabase
-      .from("crypto_positions")
-      .select("id, crypto_assets!inner(coingecko_id, user_id)")
-      .eq("crypto_assets.user_id", resolvedUserId),
-    supabase
-      .from("stock_positions")
-      .select("id, stock_assets!inner(yahoo_ticker, user_id)")
-      .eq("stock_assets.user_id", resolvedUserId),
+  // Paginated past the PostgREST max_rows cap (1000 by default): a user with
+  // >1000 positions would silently lose later positions from the exclusion
+  // set, causing their historically-priced lots to double-count on the chart.
+  const [cpRows, spRows] = await Promise.all([
+    fetchAllPaginated<{ id: string; crypto_assets: unknown }>((from, to) =>
+      supabase
+        .from("crypto_positions")
+        .select("id, crypto_assets!inner(coingecko_id, user_id)")
+        .eq("crypto_assets.user_id", resolvedUserId)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ).catch((e: unknown) => {
+      throw new Error(`Failed to load crypto positions for exclusion: ${e instanceof Error ? e.message : String(e)}`);
+    }),
+    fetchAllPaginated<{ id: string; stock_assets: unknown }>((from, to) =>
+      supabase
+        .from("stock_positions")
+        .select("id, stock_assets!inner(yahoo_ticker, user_id)")
+        .eq("stock_assets.user_id", resolvedUserId)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ).catch((e: unknown) => {
+      throw new Error(`Failed to load stock positions for exclusion: ${e instanceof Error ? e.message : String(e)}`);
+    }),
   ]);
-  if (cpRes.error) throw new Error(`Failed to load crypto positions for exclusion: ${cpRes.error.message}`);
-  if (spRes.error) throw new Error(`Failed to load stock positions for exclusion: ${spRes.error.message}`);
 
   // asset_key → [position ids] (a key can map to multiple positions/wallets).
   const cryptoPosByKey = new Map<string, string[]>();
-  for (const row of cpRes.data ?? []) {
+  for (const row of cpRows) {
     const a = pickJoinedRecord<{ coingecko_id: string }>(row.crypto_assets);
     if (a?.coingecko_id) {
       const ids = cryptoPosByKey.get(a.coingecko_id) ?? [];
-      ids.push(row.id as string);
+      ids.push(row.id);
       cryptoPosByKey.set(a.coingecko_id, ids);
     }
   }
   const stockPosByKey = new Map<string, string[]>();
-  for (const row of spRes.data ?? []) {
+  for (const row of spRows) {
     const a = pickJoinedRecord<{ yahoo_ticker: string | null }>(row.stock_assets);
     if (a?.yahoo_ticker) {
       const ids = stockPosByKey.get(a.yahoo_ticker) ?? [];
-      ids.push(row.id as string);
+      ids.push(row.id);
       stockPosByKey.set(a.yahoo_ticker, ids);
     }
   }
@@ -571,15 +585,20 @@ export async function getAdjustmentDeltas(
   // is augmented by augmentAndExtendSnapshots, so it must be excluded from the
   // back-fill (otherwise its delta_usd would double-count alongside the
   // augmented face value). Today-dated cash adjustments stay on the back-fill
-  // (same lot-level granularity as crypto/stock).
-  const { data: cashAccs, error: cashErr } = await supabase
-    .from("cash_accounts")
-    .select("id")
-    .eq("user_id", resolvedUserId);
-  if (cashErr) throw new Error(`Failed to load cash accounts for exclusion: ${cashErr.message}`);
-  for (const row of cashAccs ?? []) {
-    const id = row.id as string;
-    if (backdatedPosIds.has(id)) historicallyPricedPosIds.add(id);
+  // (same lot-level granularity as crypto/stock). Paginated past the
+  // PostgREST max_rows cap (1000 by default).
+  const cashAccs = await fetchAllPaginated<{ id: string }>((from, to) =>
+    supabase
+      .from("cash_accounts")
+      .select("id")
+      .eq("user_id", resolvedUserId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(`Failed to load cash accounts for exclusion: ${e instanceof Error ? e.message : String(e)}`);
+  });
+  for (const row of cashAccs) {
+    if (backdatedPosIds.has(row.id)) historicallyPricedPosIds.add(row.id);
   }
 
   const query = supabase

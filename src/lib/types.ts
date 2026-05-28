@@ -8,6 +8,15 @@ export interface CashFlowEvent {
   amount_eur?: number; // EUR amount via historical rate (avoids USD round-trip for EUR entities)
   asset_class?: AssetClass;
   entity_name?: string;
+  /**
+   * True for synthetic cash flows produced by buildBenchmarkCashFlows to seed
+   * the S&P benchmark for backdated is_adjustment lots. These are benchmark-only
+   * inputs and MUST be filtered out before consumers that surface deposit UX
+   * (e.g., computeDeposits in dashboard-changes.ts) — otherwise an adjustment
+   * lot would appear in the user's deposit tooltip as "Unknown" (no
+   * entity_name) when it was never a real cash flow.
+   */
+  synthetic?: boolean;
 }
 
 // ─── Database entity types ──────────────────────────────

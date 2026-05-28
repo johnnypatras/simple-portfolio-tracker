@@ -3,7 +3,9 @@ import * as Sentry from "@sentry/nextjs";
 import type { Database } from "@/types/database";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { positionQtyDelta, cashDelta } from "@/lib/deltas";
+import { isStablecoin } from "@/lib/cashflow";
 import { pickJoinedRecord } from "@/lib/supabase/join-utils";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import {
   fetchYahooDailyHistory,
   fetchFxUsdPivotHistory,
@@ -723,7 +725,14 @@ export async function fetchHistoricalPriceInputsFor(
   supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<{ lots: HistoricalLot[]; prices: HistoricalPriceRow[] }> {
-  const [cryptoRes, stockRes, cashRes] = await Promise.all([
+  // Paginate past the PostgREST max_rows cap (default 1000): heavy DCA users
+  // can exceed 1000 activity rows per asset class. A silently truncated read
+  // would drop the most-recent (= largest by created_at) rows, breaking lot
+  // delta reconstruction and the historical back-extension contract.
+  // Ordering MUST come before .range() for deterministic page integrity.
+  // Stable secondary key on `id` (UUID, UNIQUE) guarantees deterministic page
+  // boundaries even when two rows share the same created_at.
+  const cryptoActivityRange = (from: number, to: number) =>
     supabase
       .from("activity_log")
       .select(
@@ -732,7 +741,10 @@ export async function fetchHistoricalPriceInputsFor(
       .eq("user_id", userId)
       .eq("entity_type", "crypto_position")
       .is("undone_at", null)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to);
+  const stockActivityRange = (from: number, to: number) =>
     supabase
       .from("activity_log")
       .select(
@@ -741,7 +753,10 @@ export async function fetchHistoricalPriceInputsFor(
       .eq("user_id", userId)
       .eq("entity_type", "stock_position")
       .is("undone_at", null)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to);
+  const cashActivityRange = (from: number, to: number) =>
     supabase
       .from("activity_log")
       .select(
@@ -750,17 +765,22 @@ export async function fetchHistoricalPriceInputsFor(
       .eq("user_id", userId)
       .eq("entity_type", "cash_account")
       .is("undone_at", null)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to);
+  type CryptoOrStockActivityRow = Awaited<ReturnType<typeof cryptoActivityRange>>["data"] extends (infer R)[] | null ? R : never;
+  type CashActivityRow = Awaited<ReturnType<typeof cashActivityRange>>["data"] extends (infer R)[] | null ? R : never;
+  const [cryptoRows, stockRows, cashRows] = await Promise.all([
+    fetchAllPaginated<CryptoOrStockActivityRow>(cryptoActivityRange).catch((e: unknown) => {
+      throw new Error(`Failed to load crypto activity: ${e instanceof Error ? e.message : String(e)}`);
+    }),
+    fetchAllPaginated<CryptoOrStockActivityRow>(stockActivityRange).catch((e: unknown) => {
+      throw new Error(`Failed to load stock activity: ${e instanceof Error ? e.message : String(e)}`);
+    }),
+    fetchAllPaginated<CashActivityRow>(cashActivityRange).catch((e: unknown) => {
+      throw new Error(`Failed to load cash activity: ${e instanceof Error ? e.message : String(e)}`);
+    }),
   ]);
-  if (cryptoRes.error) {
-    throw new Error(`Failed to load crypto activity: ${cryptoRes.error.message}`);
-  }
-  if (stockRes.error) {
-    throw new Error(`Failed to load stock activity: ${stockRes.error.message}`);
-  }
-  if (cashRes.error) {
-    throw new Error(`Failed to load cash activity: ${cashRes.error.message}`);
-  }
 
   const [cryptoMeta, stockMeta, cashMeta] = await Promise.all([
     loadCryptoPositionMeta(supabase, userId),
@@ -770,7 +790,7 @@ export async function fetchHistoricalPriceInputsFor(
 
   const activity: ActivityForLot[] = [];
 
-  for (const r of cryptoRes.data ?? []) {
+  for (const r of cryptoRows) {
     const meta = cryptoMeta.get(r.entity_id as string);
     if (!meta) continue;
     const before = r.before_snapshot as { quantity?: number } | null;
@@ -781,6 +801,15 @@ export async function fetchHistoricalPriceInputsFor(
       splitFromId && details?.split_quantity != null
         ? (r.action === "removed" ? -1 : 1) * Number(details.split_quantity)
         : undefined;
+    // Mirror aggregate.ts:135 reclassification: stablecoin crypto_positions
+    // contribute to cash_value_* in snapshots, NOT crypto_value_*. Without
+    // this, a backdated USDC lot would route to crypto_value_usd in
+    // synthesized rows AND be excluded from cash back-fill (via
+    // getAdjustmentDeltas' historicallyPricedPosIds gate), so pre-snapshot
+    // dates would show the value in the wrong bucket. Total is correct;
+    // per-class breakdown is the part that breaks. asset_kind stays "crypto"
+    // (historical_prices keys stablecoins by coingecko_id).
+    const isStable = isStablecoin(meta.subcategory);
     activity.push({
       entity_id: r.entity_id as string,
       entity_type: "crypto_position",
@@ -795,11 +824,11 @@ export async function fetchHistoricalPriceInputsFor(
       asset_key: meta.coingecko_id,
       fetch_symbol: `${meta.ticker.toUpperCase()}-USD`,
       native_currency: "USD",
-      asset_class: "crypto",
+      asset_class: isStable ? "cash" : "crypto",
     });
   }
 
-  for (const r of stockRes.data ?? []) {
+  for (const r of stockRows) {
     const meta = stockMeta.get(r.entity_id as string);
     if (!meta || !meta.yahoo_ticker) continue; // kind='manual' has no ticker → skip
     const before = r.before_snapshot as { quantity?: number } | null;
@@ -828,7 +857,7 @@ export async function fetchHistoricalPriceInputsFor(
     });
   }
 
-  for (const r of cashRes.data ?? []) {
+  for (const r of cashRows) {
     const meta = cashMeta.get(r.entity_id as string);
     if (!meta) continue;
     const before = r.before_snapshot as { balance?: number } | null;
@@ -879,50 +908,81 @@ export async function fetchHistoricalPriceInputsFor(
   return { lots: pricedLots, prices };
 }
 
-/** position_id → { coingecko_id, ticker } for the user's crypto positions. */
+/**
+ * position_id → { coingecko_id, ticker, subcategory } for the user's crypto
+ * positions. `subcategory` is needed to mirror aggregate.ts:135's stablecoin
+ * reclassification — backdated USDC/USDT/etc. lots route to cash_value_* in
+ * synthesized snapshots so the per-class breakdown matches the rest of the
+ * system.
+ *
+ * Paginated past the server max_rows cap (1000 by default). A user with >1000
+ * crypto positions is improbable but the cost of pagination is trivial and the
+ * cost of silent truncation is wrong meta → wrong asset_class routing.
+ */
 async function loadCryptoPositionMeta(
   supabase: SupabaseClient<Database>,
   userId: string,
-): Promise<Map<string, { coingecko_id: string; ticker: string }>> {
-  const { data, error } = await supabase
-    .from("crypto_positions")
-    .select("id, crypto_assets!inner(coingecko_id, ticker, user_id)")
-    .eq("crypto_assets.user_id", userId);
+): Promise<Map<string, { coingecko_id: string; ticker: string; subcategory: string | null }>> {
   // NOTE: intentionally no .is("deleted_at", null) — a full sell soft-deletes
   // the position row but its activity_log entries remain. We need metadata for
   // ALL positions that ever appeared in the log (including sold ones) so their
   // buy+sell deltas can be replayed. Asset metadata (coingecko_id/ticker) is
   // immutable, so including deleted positions is safe.
-  if (error) {
-    throw new Error(`Failed to load crypto position meta: ${error.message}`);
-  }
-  const map = new Map<string, { coingecko_id: string; ticker: string }>();
-  for (const row of data ?? []) {
-    const a = pickJoinedRecord<{ coingecko_id: string; ticker: string }>(
-      row.crypto_assets,
-    );
-    if (a) map.set(row.id, { coingecko_id: a.coingecko_id, ticker: a.ticker });
+  const rows = await fetchAllPaginated<{
+    id: string;
+    crypto_assets: unknown;
+  }>((from, to) =>
+    supabase
+      .from("crypto_positions")
+      .select("id, crypto_assets!inner(coingecko_id, ticker, subcategory, user_id)")
+      .eq("crypto_assets.user_id", userId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(`Failed to load crypto position meta: ${e instanceof Error ? e.message : String(e)}`);
+  });
+  const map = new Map<string, { coingecko_id: string; ticker: string; subcategory: string | null }>();
+  for (const row of rows) {
+    const a = pickJoinedRecord<{
+      coingecko_id: string;
+      ticker: string;
+      subcategory: string | null;
+    }>(row.crypto_assets);
+    if (a) map.set(row.id, {
+      coingecko_id: a.coingecko_id,
+      ticker: a.ticker,
+      subcategory: a.subcategory ?? null,
+    });
   }
   return map;
 }
 
-/** position_id → { yahoo_ticker, currency } for the user's stock positions. */
+/**
+ * position_id → { yahoo_ticker, currency } for the user's stock positions.
+ * Paginated past the server max_rows cap (1000 by default).
+ */
 async function loadStockPositionMeta(
   supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<Map<string, { yahoo_ticker: string | null; currency: string }>> {
-  const { data, error } = await supabase
-    .from("stock_positions")
-    .select("id, stock_assets!inner(yahoo_ticker, currency, user_id)")
-    .eq("stock_assets.user_id", userId);
   // NOTE: intentionally no .is("deleted_at", null) — same rationale as
   // loadCryptoPositionMeta: soft-deleted (sold) positions must remain in the
   // meta map so their activity-log history is not silently dropped.
-  if (error) {
-    throw new Error(`Failed to load stock position meta: ${error.message}`);
-  }
+  const rows = await fetchAllPaginated<{
+    id: string;
+    stock_assets: unknown;
+  }>((from, to) =>
+    supabase
+      .from("stock_positions")
+      .select("id, stock_assets!inner(yahoo_ticker, currency, user_id)")
+      .eq("stock_assets.user_id", userId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(`Failed to load stock position meta: ${e instanceof Error ? e.message : String(e)}`);
+  });
   const map = new Map<string, { yahoo_ticker: string | null; currency: string }>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     const a = pickJoinedRecord<{ yahoo_ticker: string | null; currency: string }>(
       row.stock_assets,
     );
@@ -935,7 +995,10 @@ async function loadStockPositionMeta(
   return map;
 }
 
-/** cash_account.id → { currency } for the user's cash accounts. */
+/**
+ * cash_account.id → { currency } for the user's cash accounts.
+ * Paginated past the server max_rows cap (1000 by default).
+ */
 async function loadCashAccountMeta(
   supabase: SupabaseClient<Database>,
   userId: string,
@@ -944,15 +1007,18 @@ async function loadCashAccountMeta(
   // loadCryptoPositionMeta / loadStockPositionMeta: soft-deleted (closed) cash
   // accounts must remain in the meta map so their activity-log history can be
   // replayed via cumulativeAtDate.
-  const { data, error } = await supabase
-    .from("cash_accounts")
-    .select("id, currency")
-    .eq("user_id", userId);
-  if (error) {
-    throw new Error(`Failed to load cash account meta: ${error.message}`);
-  }
+  const rows = await fetchAllPaginated<{ id: string; currency: string }>((from, to) =>
+    supabase
+      .from("cash_accounts")
+      .select("id, currency")
+      .eq("user_id", userId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(`Failed to load cash account meta: ${e instanceof Error ? e.message : String(e)}`);
+  });
   const map = new Map<string, { currency: string }>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     map.set(row.id, { currency: row.currency });
   }
   return map;
@@ -1011,6 +1077,12 @@ export function buildBenchmarkCashFlows(
         amount_usd: amountUsd,
         amount_eur: amountEur,
         asset_class: lot.asset_class,
+        // Tag as synthetic so computeDeposits (dashboard-changes.ts) can filter
+        // these benchmark-only flows out of deposit-tooltip aggregation. Real
+        // is_adjustment rows are excluded from deriveCashFlows by design; their
+        // synthetic equivalents (used only to seed the S&P benchmark) must not
+        // leak into deposit UI as "Unknown" entries.
+        synthetic: true,
       });
     }
   }

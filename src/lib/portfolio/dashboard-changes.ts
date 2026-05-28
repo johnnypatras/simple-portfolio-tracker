@@ -335,7 +335,12 @@ export function computeDeposits(
   };
   const cutoff = new Date(now.getTime() - msMap[period]);
   cutoff.setUTCHours(0, 0, 0, 0);
-  const filtered = cashFlows.filter(
+  // Strip synthetic benchmark-only flows BEFORE date/class filtering. These are
+  // produced by buildBenchmarkCashFlows for is_adjustment backdated lots so the
+  // S&P benchmark line has cash flows to replay; they were never real deposits
+  // and would otherwise surface in the deposit tooltip as "Unknown" entries.
+  const realFlows = cashFlows.filter(f => !f.synthetic);
+  const filtered = realFlows.filter(
     f => new Date(f.date) >= cutoff && (!filterClass || f.asset_class === filterClass)
   );
   const amt = (f: CashFlowEvent): number =>

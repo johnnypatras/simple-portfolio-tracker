@@ -689,3 +689,78 @@ describe("augmentAndExtendSnapshots — CASH routing", () => {
     expect(synth.stocks_value_eur).toBe(0);
   });
 });
+
+// ── H1: stablecoin crypto_position routing ─────────────────────
+// fetchHistoricalPriceInputsFor reclassifies crypto_position rows whose asset
+// has subcategory='stablecoin' as asset_class='cash' (mirrors aggregate.ts:135
+// + getAssetClass in activity-log.ts). A backdated USDC lot must contribute
+// to cash_value_* in synthesized snapshots, not crypto_value_*. We can't
+// invoke fetchHistoricalPriceInputsFor without Supabase, so we verify the
+// downstream routing contract: a HistoricalLot with asset_kind='crypto' AND
+// asset_class='cash' (the shape the reclassified fetcher emits) routes to
+// cash_value_*. This is the contract the H1 fix relies on.
+describe("augmentAndExtendSnapshots — stablecoin (asset_kind=crypto, asset_class=cash) routing", () => {
+  it("routes a backdated stablecoin lot to cash_value_* (per-class bucket follows asset_class)", () => {
+    // Stablecoin: asset_kind stays 'crypto' (historical_prices still uses
+    // crypto coingecko_id keys for USDC), but asset_class is reclassified to
+    // 'cash' (matching aggregate.ts:135).
+    const usdcLot: HistoricalLot = {
+      position_id: "usdc-1",
+      asset_kind: "crypto",      // historical_prices key kind — unchanged
+      asset_key: "usd-coin",     // CoinGecko id for USDC
+      fetch_symbol: "USDC-USD",
+      native_currency: "USD",
+      asset_class: "cash",       // ← the H1 reclassification (was "crypto")
+      capture_date: "2026-05-01",
+      deltas: [{ effective_date: "2021-06-01", qty_delta: 30705, is_adjustment: false }],
+    };
+    // USDC ≈ $1 historically (stablecoin) — use a flat $1 price series.
+    const prices: HistoricalPriceRow[] = [
+      px("crypto", "usd-coin", "2021-06-01", 1.0),
+      px("fx", "EUR", "2021-06-01", 1.2), // 1.2 USD per EUR
+    ];
+    const real: PortfolioSnapshot = {
+      id: "s", user_id: "u", snapshot_date: "2026-05-01",
+      total_value_usd: 0, total_value_eur: 0,
+      crypto_value_usd: 0, stocks_value_usd: 0, cash_value_usd: 0,
+      crypto_value_eur: 0, stocks_value_eur: 0, cash_value_eur: 0,
+      stocks_eur_denominated_value: 0, cash_eur_denominated_value: 0,
+      created_at: "2026-05-01T00:00:00Z",
+    };
+    const out = augmentAndExtendSnapshots([real], [usdcLot], prices);
+    const synth = out[0]; // earliest synthesized day = 2021-06-01
+    expect(synth.snapshot_date).toBe("2021-06-01");
+    // 30,705 USDC × $1 = $30,705 → routed to cash_value_usd, NOT crypto_value_usd.
+    expect(synth.cash_value_usd).toBeCloseTo(30705, 2);
+    expect(synth.crypto_value_usd).toBe(0);   // ← H1 contract: NOT crypto
+    expect(synth.stocks_value_usd).toBe(0);
+    expect(synth.total_value_usd).toBeCloseTo(30705, 2);
+    // EUR mirror: $30,705 / 1.2 USD-per-EUR = €25,587.50
+    expect(synth.cash_value_eur).toBeCloseTo(30705 / 1.2, 2);
+    expect(synth.crypto_value_eur).toBe(0);
+  });
+});
+
+// ── M1: synthetic flag on benchmark cash flows ─────────────────
+// buildBenchmarkCashFlows seeds the S&P benchmark for is_adjustment backdated
+// lots. Those flows must NOT appear in deposit UI (they're benchmark-only).
+// The synthetic flag is the contract; computeDeposits filters on it.
+describe("buildBenchmarkCashFlows — synthetic flag (M1)", () => {
+  const benchPrices: HistoricalPriceRow[] = [
+    px("crypto", "bitcoin", "2021-01-01", 30000),
+    px("fx", "EUR", "2021-01-01", 1.2),
+  ];
+  it("marks every emitted flow with synthetic=true (benchmark-only contract)", () => {
+    const lots: HistoricalLot[] = [
+      {
+        position_id: "btc-1", asset_kind: "crypto", asset_key: "bitcoin",
+        fetch_symbol: "BTC-USD", native_currency: "USD", asset_class: "crypto",
+        capture_date: "2026-05-01",
+        deltas: [{ effective_date: "2021-01-01", qty_delta: 2, is_adjustment: true }],
+      },
+    ];
+    const flows = buildBenchmarkCashFlows(lots, benchPrices);
+    expect(flows).toHaveLength(1);
+    expect(flows[0].synthetic).toBe(true);
+  });
+});
