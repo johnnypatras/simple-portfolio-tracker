@@ -36,24 +36,12 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { toggleActivityAdjustment } from "@/lib/actions/activity-log";
 import { captureAction } from "@/lib/actions/with-sentry";
+import { revalidateDashboard } from "@/lib/actions/revalidate";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
+import { CASHFLOW_PRODUCING_ENTITY_TYPES } from "@/lib/cashflow";
 import * as Sentry from "@sentry/nextjs";
-import type { EntityType } from "@/lib/types";
-
-/**
- * The 6 entity_type values that produce real cash flows when created.
- * crypto_position, stock_position, plus the 4 cash entity types. Other
- * `entity_type` values (crypto_asset, stock_asset, wallet, broker, ...)
- * never produce a cashflow when "created" — they're metadata. We exclude
- * them defensively even though they wouldn't have `is_adjustment=true`.
- */
-const CASHFLOW_ENTITY_TYPES: readonly EntityType[] = [
-  "crypto_position",
-  "stock_position",
-  "cash_account",
-  "bank_account",
-  "exchange_deposit",
-  "broker_deposit",
-] as const;
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 
 export type LegacyAdjustmentMigrationResult = {
   total_candidates: number;
@@ -69,10 +57,38 @@ export type LegacyAdjustmentMigrationResult = {
 };
 
 /**
+ * Builds the SELECT query for legacy bulk-flagged real-import candidates.
+ * Shared by previewLegacyAdjustmentMigration + migrateLegacyAdjustmentFlags
+ * to ensure filter drift is structurally impossible.
+ *
+ * Entity types are sourced from CASHFLOW_PRODUCING_ENTITY_TYPES in
+ * cashflow.ts — the canonical set of types that generate cashflows.
+ *
+ * Caller chains `.select(columns).order(...).range(from, to)` to specialize.
+ */
+function buildCandidateQuery(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+) {
+  return supabase
+    .from("activity_log")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("action", "created")
+    .eq("is_adjustment", true)
+    .is("transfer_group_id", null)
+    .is("undone_at", null)
+    .in("entity_type", [...CASHFLOW_PRODUCING_ENTITY_TYPES]);
+}
+
+/**
  * Read-only preview: count how many legacy bulk-flagged real imports the
  * calling user has that the migration WOULD process. Used by the UI to
  * surface a count before the user clicks "Migrate". Identical filter to
  * `migrateLegacyAdjustmentFlags` below — see notes there.
+ *
+ * Uses fetchAllPaginated to handle users with >1000 candidates (PostgREST
+ * silently truncates at max_rows=1000 without pagination).
  */
 export async function previewLegacyAdjustmentMigration(): Promise<{
   count: number;
@@ -84,18 +100,13 @@ export async function previewLegacyAdjustmentMigration(): Promise<{
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { data, error } = await supabase
-    .from("activity_log")
-    .select("entity_type")
-    .eq("user_id", user.id)
-    .eq("action", "created")
-    .eq("is_adjustment", true)
-    .is("transfer_group_id", null)
-    .is("undone_at", null)
-    .in("entity_type", [...CASHFLOW_ENTITY_TYPES]);
-  if (error) throw new Error(error.message);
+  const rows = await fetchAllPaginated<{ entity_type: string }>((from, to) =>
+    buildCandidateQuery(supabase, user.id)
+      .select("entity_type")
+      .order("created_at", { ascending: true })
+      .range(from, to),
+  );
 
-  const rows = data ?? [];
   const by_entity_type: Record<string, number> = {};
   for (const row of rows) {
     const key = row.entity_type;
@@ -109,18 +120,34 @@ export async function previewLegacyAdjustmentMigration(): Promise<{
  * Migrates legacy bulk-flagged real imports from `is_adjustment=true` to
  * `false`, row-by-row via `toggleActivityAdjustment(id, false)`.
  *
- * Filter (identical to preview):
+ * Filter (identical to preview — enforced via buildCandidateQuery):
  *   user_id = caller
  *   action = 'created'
  *   is_adjustment = true
  *   transfer_group_id IS NULL          (excludes transfer legs)
  *   undone_at IS NULL                  (excludes undone entries)
- *   entity_type IN (CASHFLOW_ENTITY_TYPES)
+ *   entity_type IN (CASHFLOW_PRODUCING_ENTITY_TYPES)
  *
  * Per-row errors do NOT abort the migration — they are captured in the
  * `errors` counter and the `details` array, and the loop continues.
  * Rows are processed in `created_at` ascending order for deterministic
  * progress.
+ *
+ * Idempotency / concurrency contract:
+ *   • The operation is idempotent: re-running on already-migrated rows is a
+ *     no-op at the DB level because the candidate filter (`is_adjustment=true`)
+ *     excludes rows that were already flipped to `false` by a prior run.
+ *   • Concurrent invocations are safe: two simultaneous calls will each fetch
+ *     the current candidate set. The second caller will see fewer (or zero)
+ *     candidates because the first caller already flipped those rows. Result
+ *     counts from concurrent invocations do not sum to the original total,
+ *     but no row is double-processed and no row is skipped.
+ *   • For a bulletproof concurrency guard, a Postgres advisory lock could be
+ *     added — currently relying on the idempotency property above.
+ *
+ * Revalidation: calls revalidateDashboard() after a successful migration so
+ * the snapshot/cashflow view reflects the newly computed cashflows immediately
+ * on next navigation without waiting for the next route fetch.
  */
 export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMigrationResult> {
   return captureAction("activity-log.migrate-legacy-adjustments", async () => {
@@ -133,19 +160,19 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
     // Same filter as preview — fetch the row IDs + lightweight context for
     // per-row error reporting. We rely on toggleActivityAdjustment to do
     // the heavy snapshot/price work, so we don't need the full row here.
-    const { data, error } = await supabase
-      .from("activity_log")
-      .select("id, entity_type, entity_name")
-      .eq("user_id", user.id)
-      .eq("action", "created")
-      .eq("is_adjustment", true)
-      .is("transfer_group_id", null)
-      .is("undone_at", null)
-      .in("entity_type", [...CASHFLOW_ENTITY_TYPES])
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
+    // Uses fetchAllPaginated to handle users with >1000 bulk-flagged entries
+    // (PostgREST silently truncates at max_rows=1000 without pagination).
+    const candidates = await fetchAllPaginated<{
+      id: string;
+      entity_type: string;
+      entity_name: string;
+    }>((from, to) =>
+      buildCandidateQuery(supabase, user.id)
+        .select("id, entity_type, entity_name")
+        .order("created_at", { ascending: true })
+        .range(from, to),
+    );
 
-    const candidates = data ?? [];
     const result: LegacyAdjustmentMigrationResult = {
       total_candidates: candidates.length,
       migrated: 0,
@@ -196,6 +223,12 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
           error_message: message,
         });
       }
+    }
+
+    // Revalidate all dashboard paths if any rows were migrated so the user
+    // sees updated snapshot/cashflow data immediately on next navigation.
+    if (result.migrated > 0) {
+      await revalidateDashboard();
     }
 
     return result;

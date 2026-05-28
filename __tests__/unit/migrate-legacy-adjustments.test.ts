@@ -15,6 +15,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const hoisted = vi.hoisted(() => ({
   mockClient: null as ReturnType<typeof createMockClient> | null,
   toggleActivityAdjustment: vi.fn(),
+  revalidateDashboard: vi.fn(),
 }));
 
 // ─── Mock query builder that records filter calls ────────────────────────────
@@ -45,6 +46,7 @@ function createQueryBuilder(
       recorded.push({ method: "order", args });
       return builder;
     }),
+    range: vi.fn().mockReturnThis(),
     then<TResult1 = unknown, TResult2 = never>(
       onfulfilled?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -88,6 +90,10 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/actions/activity-log", () => ({
   toggleActivityAdjustment: hoisted.toggleActivityAdjustment,
+}));
+
+vi.mock("@/lib/actions/revalidate", () => ({
+  revalidateDashboard: hoisted.revalidateDashboard,
 }));
 
 // captureAction just invokes the wrapped fn — bypassing Sentry.

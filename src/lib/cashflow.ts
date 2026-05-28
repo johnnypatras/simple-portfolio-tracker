@@ -60,6 +60,20 @@ export function computeCashflowFromPrices(params: {
 }
 
 /**
+ * Entity types that produce cashflows when is_adjustment=false.
+ * Derived from classifyAssetClass — if you add a case there, add it here too
+ * (TypeScript exhaustiveness will help catch drift).
+ */
+export const CASHFLOW_PRODUCING_ENTITY_TYPES = [
+  "crypto_position",
+  "stock_position",
+  "cash_account",
+  "bank_account",
+  "exchange_deposit",
+  "broker_deposit",
+] as const satisfies readonly EntityType[];
+
+/**
  * Map entity_type to asset class for cashflow classification.
  * Returns null for entity types that don't produce cashflows.
  */
