@@ -8,6 +8,7 @@ import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { toast } from "sonner";
 import { upsertStockPosition, deleteStockPosition, updateStockAsset } from "@/lib/actions/stocks";
 import type { StockAssetWithPositions, Broker, AssetCategory, TransferMode } from "@/lib/types";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 
 const TYPES: { value: AssetCategory; label: string }[] = [
   { value: "individual_stock", label: "Individual Stock" },
@@ -525,12 +526,12 @@ export function StockPositionEditor({
                     </span>
                   )}
                   {!existingPosition?.last_was_transfer && (adjOverrides[brokerId] ?? existingPosition?.last_was_adjustment) && !justSaved && (
-                    <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">
+                    <span className="text-[10px] text-amber-400 font-medium" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                       Adj.
                     </span>
                   )}
                 </div>
-                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
+                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                   <input
                     type="checkbox"
                     checked={adjustmentFlags[brokerId] ?? false}

@@ -8,6 +8,7 @@ import {
   updateCashAccount,
 } from "@/lib/actions/cash-accounts";
 import type { CashAccount, CashAccountCreateInput, CashAccountUpdateInput } from "@/lib/types";
+import { IS_ADJUSTMENT_HELP_TEXT, IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 
 interface CashAccountModalProps {
   isOpen: boolean;
@@ -151,7 +152,7 @@ export function CashAccountModal({
         )}
         {!cashAccount?.last_was_transfer && cashAccount?.last_was_adjustment && (
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
-            <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">Adj.</span>
+            <span className="text-[10px] text-amber-400 font-medium" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>Adj.</span>
             <span className="text-[10px] text-zinc-400">Last saved as portfolio adjustment</span>
           </div>
         )}
@@ -246,9 +247,9 @@ export function CashAccountModal({
           </p>
         )}
 
-        {/* Footer: adjustment checkbox + buttons */}
-        <div className="flex items-center justify-between gap-2 pt-2">
-          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
+        {/* Adjustment checkbox + helper text */}
+        <div className="pt-2">
+          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
             <input
               type="checkbox"
               checked={isAdjustment}
@@ -257,29 +258,32 @@ export function CashAccountModal({
             />
             Portfolio adjustment
           </label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              aria-busy={loading}
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
-            >
-              {loading
-                ? "Saving..."
-                : isEditing
-                  ? "Save Changes"
-                  : isBankOrigin
-                    ? "Add Account"
-                    : "Add Deposit"}
-            </button>
-          </div>
+          <p className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
+        </div>
+
+        {/* Footer: action buttons */}
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            aria-busy={loading}
+            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+          >
+            {loading
+              ? "Saving..."
+              : isEditing
+                ? "Save Changes"
+                : isBankOrigin
+                  ? "Add Account"
+                  : "Add Deposit"}
+          </button>
         </div>
       </form>
     </Modal>

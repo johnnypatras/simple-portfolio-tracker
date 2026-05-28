@@ -37,6 +37,7 @@ import { backdateActivityEntry, unsplitActivityEntry } from "@/lib/actions/split
 import { undoActivity } from "@/lib/actions/undo";
 import { backfillSingleRow } from "@/lib/actions/backfill";
 import { useSharedView } from "@/components/shared-view-context";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -832,7 +833,7 @@ export function ActivityTimeline({
                                   Split
                                 </span>
                                 {parent.is_adjustment && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title="Not a real transaction — portfolio balance correction">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                                     Adj.
                                   </span>
                                 )}
@@ -957,7 +958,7 @@ export function ActivityTimeline({
                               </span>
                             )}
                             {!log.transfer_group_id && !log.compensates_for && log.is_adjustment && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title="Not a real transaction — portfolio balance correction">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                                 Adj.
                               </span>
                             )}

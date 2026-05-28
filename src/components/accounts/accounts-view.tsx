@@ -46,6 +46,7 @@ import type {
   TransferMode,
   BaseCurrency,
 } from "@/lib/types";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 import { useSharedView } from "@/components/shared-view-context";
 
 // ── Props ────────────────────────────────────────────────
@@ -1020,7 +1021,7 @@ export function AccountsView({
                 </p>
                 <label
                   className="flex items-center gap-1 text-[10px] text-amber-400 font-medium cursor-pointer"
-                  title="Not a real transaction — portfolio balance correction"
+                  title={IS_ADJUSTMENT_TOOLTIP_TEXT}
                 >
                   <input
                     type="checkbox"

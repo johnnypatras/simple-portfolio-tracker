@@ -25,7 +25,7 @@ import type {
   CoinGeckoPriceData,
 } from "@/lib/types";
 import { countryName } from "@/lib/types";
-import { HIDDEN_BELOW } from "@/lib/constants";
+import { HIDDEN_BELOW, IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 import { useSharedView } from "@/components/shared-view-context";
 
 // ═══════════════════════════════════════════════════════════════
@@ -452,7 +452,7 @@ export function CashTable({
                                     {acct.last_was_transfer ? (
                                       <span className="text-[10px] text-teal-400 font-medium ml-1.5" title="Last change was a sell/buy/move transfer">Xfer</span>
                                     ) : acct.last_was_adjustment ? (
-                                      <span className="text-[10px] text-amber-400 font-medium ml-1.5" title="Not a real transaction — portfolio balance correction">Adj.</span>
+                                      <span className="text-[10px] text-amber-400 font-medium ml-1.5" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>Adj.</span>
                                     ) : null}
                                   </div>
                                   <div className="flex items-center gap-2">
@@ -746,7 +746,7 @@ function ExpandedCashRow({
                 {account.last_was_transfer ? (
                   <span className="text-[10px] text-teal-400 font-medium ml-1.5" title="Last change was a sell/buy/move transfer">Xfer</span>
                 ) : account.last_was_adjustment ? (
-                  <span className="text-[10px] text-amber-400 font-medium ml-1.5" title="Not a real transaction — portfolio balance correction">Adj.</span>
+                  <span className="text-[10px] text-amber-400 font-medium ml-1.5" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>Adj.</span>
                 ) : null}
               </span>
             </td>

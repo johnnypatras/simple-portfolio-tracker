@@ -109,3 +109,22 @@ export const ACTIVITY_LOG_MAX_LIMIT = 500;
  * the comparison delta helper.
  */
 export const MIN_BREAKDOWN_DISPLAY_VALUE = 0.5;
+
+/**
+ * Tooltip text shown on the inline "Adj." badge + "Portfolio adjustment"
+ * checkbox label across all modals/editors. The semantic refresh
+ * (2026-05-28) clarifies that the flag means "not a real cash flow" —
+ * post-Phase-4 the S&P benchmark consumes the cashflow stream, so this
+ * flag controls whether the row contributes to the benchmark's deposits.
+ */
+export const IS_ADJUSTMENT_TOOLTIP_TEXT =
+  "Not a real cash flow — internal adjustment (transfer, balance correction, manual fix)";
+
+/**
+ * Helper text shown below the "Portfolio adjustment" checkbox in modal
+ * forms. Guides users to leave the box unchecked for real money flows
+ * (the post-Phase-4 default), and points them to the Effective date
+ * field for backdating real transactions.
+ */
+export const IS_ADJUSTMENT_HELP_TEXT =
+  "Check this only if the entry doesn't represent real money flowing in or out (e.g., a transfer between your accounts, or a manual balance correction). For real buys, deposits, or imports, leave this unchecked — use the 'Effective date' field to set when the transaction actually happened.";

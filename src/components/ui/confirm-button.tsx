@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Check, X } from "lucide-react";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 
 interface ConfirmButtonProps {
   onConfirm: (opts?: { isAdjustment: boolean }) => void;
@@ -67,7 +68,7 @@ export function ConfirmButton({
           {confirmLabel}
         </span>
         {showAdjustmentCheckbox && (
-          <label className="flex items-center gap-1 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
+          <label className="flex items-center gap-1 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
             <input
               type="checkbox"
               checked={adjChecked}

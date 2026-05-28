@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
 import type { CoinGeckoSearchResult, Wallet, AcquisitionType } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains, getWalletChainTokens } from "@/lib/types";
+import { IS_ADJUSTMENT_HELP_TEXT, IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 
 interface ExistingCryptoEntry {
   coingecko_id: string;
@@ -631,15 +632,18 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               </p>
             )}
 
-            <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
-              <input
-                type="checkbox"
-                checked={isAdjustment}
-                onChange={(e) => setIsAdjustment(e.target.checked)}
-                className="accent-amber-500"
-              />
-              Portfolio adjustment
-            </label>
+            <div>
+              <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
+                <input
+                  type="checkbox"
+                  checked={isAdjustment}
+                  onChange={(e) => setIsAdjustment(e.target.checked)}
+                  className="accent-amber-500"
+                />
+                Portfolio adjustment
+              </label>
+              <p className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
+            </div>
 
             <button
               type="submit"
