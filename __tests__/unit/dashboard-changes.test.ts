@@ -554,6 +554,34 @@ describe("getDepositsForPeriod", () => {
     expect(cryptoResult.breakdown).toHaveLength(1);
     expect(cryptoResult.breakdown[0].name).toBe("Binance");
   });
+
+  // L-A: explicit synthetic=false must behave identically to omitted flag.
+  // The filter strips ONLY synthetic===true; any other value (false or
+  // undefined) is a real cash flow and passes through. This pins the
+  // contract so a future "tri-state" refactor can't silently drop real
+  // deposits whose synthetic flag was set to false explicitly (e.g. by
+  // a future code path that defaults the field).
+  it("explicit synthetic: false flows pass through (parity with omitted flag)", () => {
+    const ctx = makeCtx({
+      primaryCurrency: "USD",
+      totalValueUsd: 100000,
+      cashFlows: [
+        // Explicit synthetic: false — MUST be included.
+        { date: PINNED_TODAY, amount_usd: 1000, asset_class: "cash", entity_name: "Real", synthetic: false },
+        // Omitted flag — MUST also be included (already covered by other tests,
+        // included here so the assertion shape mirrors the explicit case).
+        { date: PINNED_TODAY, amount_usd: 500, asset_class: "cash", entity_name: "Real2" },
+        // Synthetic: true — MUST be excluded (control).
+        { date: PINNED_TODAY, amount_usd: 25000, asset_class: "cash", synthetic: true },
+      ],
+    });
+    const result = getDepositsForPeriod("24h", ctx);
+    expect(result.total).toBeCloseTo(1500, 0); // 1000 + 500, synthetic 25k excluded
+    expect(result.breakdown).toHaveLength(2);
+    expect(result.breakdown.map((b) => b.name).sort()).toEqual(["Real", "Real2"]);
+    // Defensive: "Unknown" must never leak.
+    expect(result.breakdown.find((b) => b.name === "Unknown")).toBeUndefined();
+  });
 });
 
 // ── Delta helpers ──────────────────────────────────────────

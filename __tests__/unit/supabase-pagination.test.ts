@@ -60,6 +60,52 @@ describe("fetchAllPaginated — PostgREST max_rows handling (H2)", () => {
     await expect(fetchAllPaginated<number>(buildQuery, 1000)).rejects.toThrow("boom");
   });
 
+  it("preserves PostgREST diagnostics (code + hint) in the thrown message", async () => {
+    // L-B: PostgREST surfaces `code`, `details`, `hint` on the error object
+    // — they are critical for Sentry/dev triage (PG codes like 42501 →
+    // permission denied) but were previously dropped by the helper. Verify
+    // the full diagnostic context lands in the thrown message AND that the
+    // raw error is attached via Error.cause for upstream consumers.
+    const pgError = {
+      message: "permission denied for table activity_log",
+      code: "42501",
+      hint: "check RLS policy ownership",
+      details: null,
+    };
+    const buildQuery = vi.fn(async () => ({
+      data: null as number[] | null,
+      error: pgError,
+    }));
+    let caught: unknown;
+    try {
+      await fetchAllPaginated<number>(buildQuery, 1000);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const err = caught as Error;
+    expect(err.message).toContain("[42501]");
+    expect(err.message).toContain("permission denied for table activity_log");
+    expect(err.message).toContain("check RLS policy ownership");
+    // ES2022 cause chain: the original PostgREST error object must be
+    // preserved so consumers (Sentry, undo-handler, etc.) can introspect
+    // beyond the human-readable message.
+    expect((err as Error & { cause?: unknown }).cause).toBe(pgError);
+  });
+
+  it("omits diagnostic tags when only `message` is present (back-compat shape)", async () => {
+    // Callers passing a minimal { message } error (e.g. older tests or
+    // mocked PostgREST responses without code/hint) still get a clean
+    // single-line message — no stray `[]` or `(hint: )` brackets.
+    const buildQuery = vi.fn(async () => ({
+      data: null as number[] | null,
+      error: { message: "simple failure" },
+    }));
+    await expect(fetchAllPaginated<number>(buildQuery, 1000)).rejects.toThrow(
+      "Pagination query failed: simple failure",
+    );
+  });
+
   it("uses the default pageSize of 1000 when not specified", async () => {
     const buildQuery = vi.fn(async () => ({ data: [] as number[], error: null }));
     await fetchAllPaginated<number>(buildQuery);

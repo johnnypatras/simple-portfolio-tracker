@@ -29,10 +29,26 @@
  *       .range(from, to),
  *   );
  */
+
+/**
+ * Shape of a PostgREST error surfaced by `@supabase/postgrest-js`. We accept
+ * all four diagnostic fields (`message` is always present; `details`, `hint`,
+ * `code` are best-effort) so the thrown error preserves enough context for
+ * Sentry / dev-tools triage without forcing every caller to log the raw error
+ * object separately. The full original error is also attached via ES2022
+ * `Error.cause` for the upstream stack chain.
+ */
+export type PaginatedError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string | null;
+};
+
 export async function fetchAllPaginated<T>(
   buildQuery: (from: number, to: number) => PromiseLike<{
     data: T[] | null;
-    error: { message: string } | null;
+    error: PaginatedError | null;
   }>,
   pageSize: number = 1000,
 ): Promise<T[]> {
@@ -43,7 +59,19 @@ export async function fetchAllPaginated<T>(
   // extra empty round-trip then exits.
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await buildQuery(from, from + pageSize - 1);
-    if (error) throw new Error(error.message);
+    if (error) {
+      // Surface full PostgREST diagnostics (PG code + hint) in the thrown
+      // message — these are silently dropped if we only forwarded `.message`,
+      // and they're the difference between a debuggable Sentry report and
+      // hours of guessing in production. The raw error is also attached via
+      // `cause` so upstream catch sites get the original stack/object too.
+      const codeTag = error.code ? ` [${error.code}]` : "";
+      const hintTag = error.hint ? ` (hint: ${error.hint})` : "";
+      throw new Error(
+        `Pagination query failed${codeTag}: ${error.message}${hintTag}`,
+        { cause: error },
+      );
+    }
     const rows = data ?? [];
     all.push(...rows);
     if (rows.length < pageSize) break;

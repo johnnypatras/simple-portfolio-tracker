@@ -477,26 +477,45 @@ export async function getAdjustmentDeltas(
   // project today's value onto pre-purchase dates. Consistent-by-construction
   // with the augmentation gate in getSnapshots: both key off "asset has cached
   // historical prices".
-  const [stablecoinRes, manualStockPosRes] = await Promise.all([
-    supabase
-      .from("crypto_positions")
-      .select("id, crypto_assets!inner(subcategory)")
-      .ilike("crypto_assets.subcategory", "stablecoin")
-      .eq("crypto_assets.user_id", resolvedUserId),
-    supabase
-      .from("stock_positions")
-      .select("id, stock_assets!inner(kind, user_id)")
-      .eq("stock_assets.user_id", resolvedUserId)
-      .eq("stock_assets.kind", "manual"),
+  // Paginated past the PostgREST max_rows cap (1000 by default). A user with
+  // >1000 stablecoin positions or >1000 manual-NAV stock positions is highly
+  // unlikely, but a silently truncated read would corrupt the exclusion gates
+  // below (a missed stablecoin pos → its delta routes to the wrong asset
+  // class; a missed manual-NAV pos → its is_adjustment entries double-count
+  // via the back-fill formula). Consistency-first with the other paginated
+  // exclusion queries in this function.
+  const [stablecoinRows, manualStockPosRows] = await Promise.all([
+    fetchAllPaginated<{ id: string }>((from, to) =>
+      supabase
+        .from("crypto_positions")
+        .select("id, crypto_assets!inner(subcategory)")
+        .ilike("crypto_assets.subcategory", "stablecoin")
+        .eq("crypto_assets.user_id", resolvedUserId)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ).catch((e: unknown) => {
+      throw new Error(
+        `Failed to load stablecoin positions: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
+    }),
+    fetchAllPaginated<{ id: string }>((from, to) =>
+      supabase
+        .from("stock_positions")
+        .select("id, stock_assets!inner(kind, user_id)")
+        .eq("stock_assets.user_id", resolvedUserId)
+        .eq("stock_assets.kind", "manual")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ).catch((e: unknown) => {
+      throw new Error(
+        `Failed to load manual stock positions: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
+    }),
   ]);
-  if (stablecoinRes.error) throw new Error(`Failed to load stablecoin positions: ${stablecoinRes.error.message}`);
-  if (manualStockPosRes.error) throw new Error(`Failed to load manual stock positions: ${manualStockPosRes.error.message}`);
-  const stablecoinPosIds = new Set(
-    (stablecoinRes.data ?? []).map((p) => p.id as string)
-  );
-  const manualStockPosIds = new Set(
-    (manualStockPosRes.data ?? []).map((p) => p.id as string)
-  );
+  const stablecoinPosIds = new Set(stablecoinRows.map((p) => p.id));
+  const manualStockPosIds = new Set(manualStockPosRows.map((p) => p.id));
 
   // Resolve the user's crypto/stock positions → asset_keys. NO deleted_at
   // filter: a fully-sold (soft-deleted) backdated lot is reconstructed by
@@ -514,7 +533,10 @@ export async function getAdjustmentDeltas(
         .order("id", { ascending: true })
         .range(from, to),
     ).catch((e: unknown) => {
-      throw new Error(`Failed to load crypto positions for exclusion: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(
+        `Failed to load crypto positions for exclusion: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
     }),
     fetchAllPaginated<{ id: string; stock_assets: unknown }>((from, to) =>
       supabase
@@ -524,7 +546,10 @@ export async function getAdjustmentDeltas(
         .order("id", { ascending: true })
         .range(from, to),
     ).catch((e: unknown) => {
-      throw new Error(`Failed to load stock positions for exclusion: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(
+        `Failed to load stock positions for exclusion: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
     }),
   ]);
 
@@ -595,26 +620,50 @@ export async function getAdjustmentDeltas(
       .order("id", { ascending: true })
       .range(from, to),
   ).catch((e: unknown) => {
-    throw new Error(`Failed to load cash accounts for exclusion: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(
+      `Failed to load cash accounts for exclusion: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
   });
   for (const row of cashAccs) {
     if (backdatedPosIds.has(row.id)) historicallyPricedPosIds.add(row.id);
   }
 
-  const query = supabase
-    .from("activity_log")
-    .select("created_at, effective_date, delta_usd, delta_eur, entity_type, entity_id, entity_table")
-    .eq("is_adjustment", true)
-    .eq("user_id", resolvedUserId)
-    .is("undone_at", null)
-    .not("delta_usd", "is", null)
-    .order("created_at", { ascending: true })
-    .limit(MAX_QUERY_LIMIT);
+  // Paginated past the PostgREST max_rows cap (1000 by default). A heavy
+  // adjustment user (e.g. years of back-fill activity, manual NAV updates,
+  // transfers) can exceed 1000 rows; `.limit(MAX_QUERY_LIMIT)` is silently
+  // capped server-side. A truncated read drops the most-recent (largest
+  // created_at) deltas → the back-fill `value + (finalCumDelta - cumDelta)`
+  // collapses, flattening the chart and producing wrong period percentages.
+  // Stable secondary key on `id` (UUID, UNIQUE) guarantees deterministic page
+  // boundaries even when two rows share the same created_at.
+  const data = await fetchAllPaginated<{
+    created_at: string;
+    effective_date: string | null;
+    delta_usd: number | null;
+    delta_eur: number | null;
+    entity_type: string;
+    entity_id: string | null;
+    entity_table: string | null;
+  }>((from, to) =>
+    supabase
+      .from("activity_log")
+      .select("created_at, effective_date, delta_usd, delta_eur, entity_type, entity_id, entity_table, id")
+      .eq("is_adjustment", true)
+      .eq("user_id", resolvedUserId)
+      .is("undone_at", null)
+      .not("delta_usd", "is", null)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(
+      `Failed to load adjustment deltas: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-
-  if (!data?.length) return [];
+  if (data.length === 0) return [];
 
   // Post-sort by effective_date (falls back to created_at date portion)
   // so cumulative sums accumulate in correct chronological order

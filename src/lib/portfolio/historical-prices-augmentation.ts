@@ -117,11 +117,15 @@ export function buildPriceIndex(
 /**
  * Cumulative quantity at `date` = sum of every qty_delta whose effective_date
  * is on-or-before `date`. Returns 0 before the first delta — this is the
- * building block of the "$0 before purchase" invariant. Does not assume the
- * input is sorted — only the SET of qualifying deltas matters, not iteration
- * order (float accumulation is deterministic in practice for bounded quantity
- * values). Used for position quantity (Phase 1) and, in future,
- * cash/stablecoin balance.
+ * building block of the "$0 before purchase" invariant. Used for position
+ * quantity (Phase 1) and cash balance.
+ *
+ * Float accumulation order is iteration order; floating-point addition is
+ * not associative, so two callers iterating the same input in different
+ * orders may differ in the last few ULPs. For portfolio-scale quantities
+ * (typically <1e10 with <20 decimal places, per the NUMERIC(28, 18) column
+ * type) the cumulative error stays well below display precision (rendering
+ * already rounds to 6 decimal places for sub-$1 crypto, 2 otherwise).
  */
 export function cumulativeAtDate(deltas: QtyDelta[], date: string): number {
   let qty = 0;
@@ -399,8 +403,6 @@ const MAX_SYNTHESIS_DAYS = 9131; // ~25 years
 // I/O layer (Task 6) — queries, cache fill, public orchestrator
 // ─────────────────────────────────────────────────────────────────────────────
 
-const HISTORICAL_PRICE_PAGE = 1000; // page size; server caps single reads (Supabase max_rows default 1000)
-
 /**
  * Read ALL historical_prices rows for the given asset_keys, paging past the
  * server-side max_rows cap. A single multi-year asset exceeds 1000 rows; an
@@ -415,30 +417,39 @@ async function readAllHistoricalPrices(
   assetKeys: string[],
 ): Promise<HistoricalPriceRow[]> {
   if (assetKeys.length === 0) return [];
-  const out: HistoricalPriceRow[] = [];
-  for (let from = 0; ; from += HISTORICAL_PRICE_PAGE) {
-    const { data, error } = await client
+  // Single-source pagination via fetchAllPaginated: keeps the ".order(...)
+  // before .range(...)" invariant + the "stop-on-short-page" semantics in one
+  // tested place. Error wrapping preserves the original message and attaches
+  // the raw error via `cause` (ES2022) for upstream stack chains.
+  type Row = {
+    asset_kind: string;
+    asset_key: string;
+    price_date: string;
+    price: number | string;
+    currency: string;
+  };
+  const rows = await fetchAllPaginated<Row>((from, to) =>
+    client
       .from("historical_prices")
       .select("asset_kind, asset_key, price_date, price, currency")
       .in("asset_key", assetKeys)
       .order("asset_kind", { ascending: true })
       .order("asset_key", { ascending: true })
       .order("price_date", { ascending: true })
-      .range(from, from + HISTORICAL_PRICE_PAGE - 1);
-    if (error) throw new Error(`historical_prices read failed: ${error.message}`);
-    const rows = data ?? [];
-    for (const r of rows) {
-      out.push({
-        asset_kind: r.asset_kind as HistoricalPriceRow["asset_kind"],
-        asset_key: r.asset_key as string,
-        price_date: r.price_date as string,
-        price: Number(r.price),
-        currency: r.currency as string,
-      });
-    }
-    if (rows.length < HISTORICAL_PRICE_PAGE) break;
-  }
-  return out;
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(
+      `historical_prices read failed: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
+  return rows.map<HistoricalPriceRow>((r) => ({
+    asset_kind: r.asset_kind as HistoricalPriceRow["asset_kind"],
+    asset_key: r.asset_key,
+    price_date: r.price_date,
+    price: Number(r.price),
+    currency: r.currency,
+  }));
 }
 
 /**
@@ -458,11 +469,17 @@ export async function readBackdatedPositionIds(
   client: SupabaseClient<Database>,
   userId: string,
 ): Promise<Set<string>> {
-  const PAGE = 1000;
-  const minEff = new Map<string, string>(); // entity_id → MIN non-null effective_date
-  const minCap = new Map<string, string>(); // entity_id → MIN created_at::date
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await client
+  // Single-source pagination via fetchAllPaginated. Aggregation (entity_id →
+  // MIN effective_date / created_at) happens after the full read; safe
+  // because the in-memory fold is O(N) and N is bounded by the user's
+  // total activity_log rows for crypto/stock/cash entities.
+  type Row = {
+    entity_id: string | null;
+    effective_date: string | null;
+    created_at: string | null;
+  };
+  const rows = await fetchAllPaginated<Row>((from, to) =>
+    client
       .from("activity_log")
       .select("entity_id, effective_date, created_at")
       .eq("user_id", userId)
@@ -470,20 +487,24 @@ export async function readBackdatedPositionIds(
       .is("undone_at", null)
       .order("entity_id", { ascending: true })
       .order("created_at", { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(`Failed to load activity for backdated detection: ${error.message}`);
-    const rows = data ?? [];
-    for (const r of rows) {
-      const id = r.entity_id as string | null;
-      if (!id) continue;
-      const eff = (r.effective_date as string | null) ?? null;
-      const capRaw = (r.created_at as string | null) ?? null;
-      if (!capRaw) continue;
-      const cap = capRaw.slice(0, 10);
-      if (eff && (!minEff.has(id) || eff < minEff.get(id)!)) minEff.set(id, eff);
-      if (!minCap.has(id) || cap < minCap.get(id)!) minCap.set(id, cap);
-    }
-    if (rows.length < PAGE) break;
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(
+      `Failed to load activity for backdated detection: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
+  const minEff = new Map<string, string>(); // entity_id → MIN non-null effective_date
+  const minCap = new Map<string, string>(); // entity_id → MIN created_at::date
+  for (const r of rows) {
+    const id = r.entity_id;
+    if (!id) continue;
+    const eff = r.effective_date;
+    const capRaw = r.created_at;
+    if (!capRaw) continue;
+    const cap = capRaw.slice(0, 10);
+    if (eff && (!minEff.has(id) || eff < minEff.get(id)!)) minEff.set(id, eff);
+    if (!minCap.has(id) || cap < minCap.get(id)!) minCap.set(id, cap);
   }
   const backdated = new Set<string>();
   for (const [id, eff] of minEff) {
@@ -507,20 +528,25 @@ export async function readHistoricalCoverageKeys(
 ): Promise<Set<string>> {
   const covered = new Set<string>();
   if (candidateKeys.length === 0) return covered;
-  for (let from = 0; ; from += HISTORICAL_PRICE_PAGE) {
-    const { data, error } = await client
+  // Single-source pagination via fetchAllPaginated. The ordering matches
+  // readAllHistoricalPrices for parity (same table, same composite key).
+  type Row = { asset_kind: string; asset_key: string; price_date: string };
+  const rows = await fetchAllPaginated<Row>((from, to) =>
+    client
       .from("historical_prices")
       .select("asset_kind, asset_key, price_date")
       .in("asset_key", candidateKeys)
       .order("asset_kind", { ascending: true })
       .order("asset_key", { ascending: true })
       .order("price_date", { ascending: true })
-      .range(from, from + HISTORICAL_PRICE_PAGE - 1);
-    if (error) throw new Error(`historical_prices coverage read failed: ${error.message}`);
-    const rows = data ?? [];
-    for (const r of rows) covered.add(`${r.asset_kind}:${r.asset_key}`);
-    if (rows.length < HISTORICAL_PRICE_PAGE) break;
-  }
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(
+      `historical_prices coverage read failed: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
+  for (const r of rows) covered.add(`${r.asset_kind}:${r.asset_key}`);
   return covered;
 }
 
@@ -768,17 +794,53 @@ export async function fetchHistoricalPriceInputsFor(
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, to);
-  type CryptoOrStockActivityRow = Awaited<ReturnType<typeof cryptoActivityRange>>["data"] extends (infer R)[] | null ? R : never;
-  type CashActivityRow = Awaited<ReturnType<typeof cashActivityRange>>["data"] extends (infer R)[] | null ? R : never;
+  // Explicit row shapes for the three selects above. Mirrors the explicit-shape
+  // pattern used by loadCryptoPositionMeta/loadStockPositionMeta/loadCashAccountMeta
+  // below — at shape-divergence points the project convention is
+  // `fetchAllPaginated<{ ... }>` listing the exact columns selected, NOT
+  // `Awaited<ReturnType<...>>` inference (opaque to readers and easy to drift
+  // out of sync silently when the .select() list changes). Json-typed columns
+  // (before_snapshot / after_snapshot / details) stay `unknown` here and are
+  // narrowed at use-site with explicit `as { ... } | null` casts (the
+  // boundary-normalization pattern documented in CLAUDE.md).
+  type CryptoOrStockActivityRow = {
+    entity_id: string | null;
+    action: ActionType;
+    effective_date: string | null;
+    created_at: string;
+    before_snapshot: unknown;
+    after_snapshot: unknown;
+    details: unknown;
+    split_from_id: string | null;
+    is_adjustment: boolean;
+  };
+  type CashActivityRow = {
+    entity_id: string | null;
+    action: ActionType;
+    effective_date: string | null;
+    created_at: string;
+    before_snapshot: unknown;
+    after_snapshot: unknown;
+    is_adjustment: boolean;
+  };
   const [cryptoRows, stockRows, cashRows] = await Promise.all([
     fetchAllPaginated<CryptoOrStockActivityRow>(cryptoActivityRange).catch((e: unknown) => {
-      throw new Error(`Failed to load crypto activity: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(
+        `Failed to load crypto activity: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
     }),
     fetchAllPaginated<CryptoOrStockActivityRow>(stockActivityRange).catch((e: unknown) => {
-      throw new Error(`Failed to load stock activity: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(
+        `Failed to load stock activity: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
     }),
     fetchAllPaginated<CashActivityRow>(cashActivityRange).catch((e: unknown) => {
-      throw new Error(`Failed to load cash activity: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(
+        `Failed to load cash activity: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
     }),
   ]);
 
@@ -939,7 +1001,10 @@ async function loadCryptoPositionMeta(
       .order("id", { ascending: true })
       .range(from, to),
   ).catch((e: unknown) => {
-    throw new Error(`Failed to load crypto position meta: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(
+      `Failed to load crypto position meta: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
   });
   const map = new Map<string, { coingecko_id: string; ticker: string; subcategory: string | null }>();
   for (const row of rows) {
@@ -979,7 +1044,10 @@ async function loadStockPositionMeta(
       .order("id", { ascending: true })
       .range(from, to),
   ).catch((e: unknown) => {
-    throw new Error(`Failed to load stock position meta: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(
+      `Failed to load stock position meta: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
   });
   const map = new Map<string, { yahoo_ticker: string | null; currency: string }>();
   for (const row of rows) {
@@ -1015,7 +1083,10 @@ async function loadCashAccountMeta(
       .order("id", { ascending: true })
       .range(from, to),
   ).catch((e: unknown) => {
-    throw new Error(`Failed to load cash account meta: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(
+      `Failed to load cash account meta: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
   });
   const map = new Map<string, { currency: string }>();
   for (const row of rows) {
