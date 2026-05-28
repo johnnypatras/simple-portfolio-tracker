@@ -14,6 +14,7 @@ import {
   fetchHistoricalPriceInputsFor,
   buildBenchmarkCashFlows,
 } from "@/lib/portfolio/historical-prices-augmentation";
+import { getHistoricalPriceInputs } from "@/lib/actions/historical-inputs-cache";
 
 /**
  * Derive cash flow events from the activity log.
@@ -149,7 +150,15 @@ export async function getHistoricalBenchmarkExtension(
   const resolvedUserId = userId ?? (await supabase.auth.getUser()).data.user?.id;
   if (!resolvedUserId) return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS };
 
-  const { lots, prices } = await fetchHistoricalPriceInputsFor(supabase, resolvedUserId);
+  // Current-user (server-client) path: route through the request-cached wrapper
+  // so getSnapshots + getHistoricalBenchmarkExtension share ONE
+  // fetchHistoricalPriceInputsFor execution per render (React cache() keyed on
+  // userId). The cross-user share/comparison path (explicit userId → admin
+  // client) keeps calling the pure fetcher directly — the wrapper is
+  // server-client/current-user only.
+  const { lots, prices } = userId
+    ? await fetchHistoricalPriceInputsFor(supabase, resolvedUserId)
+    : await getHistoricalPriceInputs(resolvedUserId);
   if (lots.length === 0) return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS };
 
   let earliestDate: string | null = null;

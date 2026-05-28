@@ -19,8 +19,9 @@ import type {
   SharedPortfolioData,
 } from "@/lib/types";
 import { normalizeCategory } from "@/lib/stock-categories";
-import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import { pickJoinedName } from "@/lib/supabase/join-utils";
+import type { Database } from "@/types/database";
 import { findSnapshotAt } from "@/lib/portfolio/snapshot-utils";
 import {
   augmentSnapshotsWithManualNavs,
@@ -34,6 +35,10 @@ import {
 // SharedPortfolioData and ValidatedShare are defined in @/lib/types — Turbopack
 // strips type re-exports from "use server" modules, so consumers (share pages,
 // layouts) import those types directly from @/lib/types.
+
+// Module-local (NOT exported — Turbopack strips type re-exports from "use
+// server" modules). Generated Row shape for the paginated snapshot fetch.
+type SnapshotRow = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
 
 /**
  * Validate a share token and fetch the owner's full portfolio data.
@@ -83,11 +88,30 @@ async function getSharedPortfolioImpl(
     admin.from("wallets").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
     admin.from("brokers").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
     admin.from("institutions").select("*").eq("user_id", userId).is("deleted_at", null).order("name"),
-    // All snapshots — chart and panel all-time change share this data.
-    // Explicit .limit() overrides PostgREST's 1000-row default.
-    admin.from("portfolio_snapshots").select("*").eq("user_id", userId)
-      .order("snapshot_date", { ascending: true })
-      .limit(MAX_SNAPSHOTS_LIMIT),
+    // All snapshots — chart and panel all-time change share this data. Paginate
+    // past the PostgREST max_rows cap (default 1000): a share recipient of an
+    // owner with >1000 daily snapshots (~2.7 years) would otherwise get the
+    // OLDEST part of the chart silently dropped. `.limit()` does NOT lift the
+    // server cap — only `.range()` paging does. `.order(...)` MUST precede
+    // `.range(...)`; the `id` tiebreaker (UUID PK) guarantees deterministic page
+    // boundaries when two rows share a snapshot_date. Re-shaped to the
+    // { data, error } envelope so it flows through the shared error loop below
+    // (capture-then-404), matching the sibling parallel queries.
+    fetchAllPaginated<SnapshotRow>((from, to) =>
+      admin
+        .from("portfolio_snapshots")
+        .select("*")
+        .eq("user_id", userId)
+        .order("snapshot_date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ).then(
+      (data): { data: SnapshotRow[]; error: null } => ({ data, error: null }),
+      (error: unknown): { data: null; error: { message: string } } => ({
+        data: null,
+        error: { message: error instanceof Error ? error.message : String(error) },
+      }),
+    ),
   ]);
 
   if (profileRes.error || !profileRes.data) {

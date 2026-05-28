@@ -7,15 +7,13 @@ import type { Database } from "@/types/database";
 
 /** Round to 2 decimal places (matching Edge Function's round2) */
 import { round2 } from "@/lib/format";
-import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import {
   augmentSnapshotsWithManualNavs,
   fetchManualNavInputsFor,
 } from "@/lib/portfolio/manual-nav-augmentation";
-import {
-  fetchHistoricalPriceInputsFor,
-  augmentAndExtendSnapshots,
-} from "@/lib/portfolio/historical-prices-augmentation";
+import { augmentAndExtendSnapshots } from "@/lib/portfolio/historical-prices-augmentation";
+import { getHistoricalPriceInputs } from "@/lib/actions/historical-inputs-cache";
 
 /**
  * Save (upsert) today's portfolio snapshot.
@@ -150,30 +148,33 @@ export async function getSnapshots(
   // have them in stocks_value; without augmentation the chart shows an
   // artificial jump between the last cron snapshot and today's live value
   // (assemble.ts injection lives only for the live point).
-  const [snapshotsRes, manualInputs, historicalInputs] = await Promise.all([
-    supabase
-      .from("portfolio_snapshots")
-      .select("*")
-      .eq("user_id", user.id)
-      .gte("snapshot_date", sinceStr)
-      .order("snapshot_date", { ascending: true })
-      .limit(MAX_SNAPSHOTS_LIMIT),
-    fetchManualNavInputsFor(supabase, user.id),
-    fetchHistoricalPriceInputsFor(supabase, user.id).catch((err) => {
-      console.error("[snapshots] historical-price extension unavailable:", err instanceof Error ? err.message : err);
-      Sentry.captureException(err, {
-        tags: { context: "snapshots.getSnapshots.historicalAugmentation" },
-      });
-      return { lots: [], prices: [] };
+  //
+  // Paginate the snapshot read past the PostgREST max_rows cap (default 1000):
+  // a user with >1000 daily snapshots (~2.7 years) would otherwise get the
+  // OLDEST part of their own chart silently dropped. `.limit()` does NOT lift
+  // the server cap — only `.range()` paging does. `.order(...)` MUST precede
+  // `.range(...)`; the `id` tiebreaker (UUID PK) guarantees deterministic page
+  // boundaries when two rows share a snapshot_date.
+  const [snapshotRows, manualInputs, historicalInputs] = await Promise.all([
+    fetchAllPaginated<PortfolioSnapshotRow>((from, to) =>
+      supabase
+        .from("portfolio_snapshots")
+        .select("*")
+        .eq("user_id", user.id)
+        .gte("snapshot_date", sinceStr)
+        .order("snapshot_date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[snapshots] Failed to fetch snapshots:", message);
+      throw new Error(`Failed to load portfolio history: ${message}`, { cause: err });
     }),
+    fetchManualNavInputsFor(supabase, user.id),
+    getHistoricalPriceInputs(user.id),
   ]);
 
-  if (snapshotsRes.error) {
-    console.error("[snapshots] Failed to fetch snapshots:", snapshotsRes.error.message);
-    throw new Error(`Failed to load portfolio history: ${snapshotsRes.error.message}`);
-  }
-
-  const raw = (snapshotsRes.data ?? []).map<PortfolioSnapshot>(normalizeSnapshot);
+  const raw = snapshotRows.map<PortfolioSnapshot>(normalizeSnapshot);
   const withManual = augmentSnapshotsWithManualNavs(raw, manualInputs.positions, manualInputs.navs);
   return augmentAndExtendSnapshots(withManual, historicalInputs.lots, historicalInputs.prices);
 }
