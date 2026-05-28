@@ -26,7 +26,13 @@ export type HistoricalPriceRow = {
 };
 
 /** A single quantity change for a position, dated by effective_date. */
-export type QtyDelta = { effective_date: string; qty_delta: number };
+export type QtyDelta = {
+  effective_date: string;
+  qty_delta: number;
+  /** Phase 2: true when this delta came from an is_adjustment activity row
+   *  (excluded from deriveCashFlows → needs a synthetic benchmark cash flow). */
+  is_adjustment?: boolean;
+};
 
 /**
  * A backdated crypto/stock lot needing historical reconstruction.
@@ -454,6 +460,7 @@ export type ActivityForLot = {
   after_quantity: number | null;
   /** Override for split-child rows where before/after snapshots are null. */
   qty_delta_override?: number;
+  is_adjustment: boolean;
   asset_kind: "crypto" | "stock";
   asset_key: string;       // coingecko_id | yahoo_ticker
   fetch_symbol: string;    // `${ticker}-USD` | yahoo_ticker
@@ -495,6 +502,7 @@ export function buildHistoricalLots(rows: ActivityForLot[]): HistoricalLot[] {
       deltas.push({
         effective_date: r.effective_date ?? day,
         qty_delta: qtyDelta,
+        is_adjustment: r.is_adjustment,
       });
     }
     if (deltas.length === 0) continue;
@@ -643,7 +651,7 @@ export async function fetchHistoricalPriceInputsFor(
     supabase
       .from("activity_log")
       .select(
-        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id",
+        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id, is_adjustment",
       )
       .eq("user_id", userId)
       .eq("entity_type", "crypto_position")
@@ -652,7 +660,7 @@ export async function fetchHistoricalPriceInputsFor(
     supabase
       .from("activity_log")
       .select(
-        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id",
+        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id, is_adjustment",
       )
       .eq("user_id", userId)
       .eq("entity_type", "stock_position")
@@ -693,6 +701,7 @@ export async function fetchHistoricalPriceInputsFor(
       before_quantity: (before?.quantity ?? null) as number | null,
       after_quantity: (after?.quantity ?? null) as number | null,
       qty_delta_override: qtyOverride,
+      is_adjustment: (r.is_adjustment as boolean) ?? false,
       asset_kind: "crypto",
       asset_key: meta.coingecko_id,
       fetch_symbol: `${meta.ticker.toUpperCase()}-USD`,
@@ -721,6 +730,7 @@ export async function fetchHistoricalPriceInputsFor(
       before_quantity: (before?.quantity ?? null) as number | null,
       after_quantity: (after?.quantity ?? null) as number | null,
       qty_delta_override: qtyOverride,
+      is_adjustment: (r.is_adjustment as boolean) ?? false,
       asset_kind: "stock",
       asset_key: meta.yahoo_ticker,
       fetch_symbol: meta.yahoo_ticker,

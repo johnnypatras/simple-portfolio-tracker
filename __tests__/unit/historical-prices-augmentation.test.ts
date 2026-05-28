@@ -451,6 +451,7 @@ describe("buildHistoricalLots", () => {
         created_at: "2026-05-20T10:00:00Z",
         before_quantity: null,
         after_quantity: 2,
+        is_adjustment: false,
         asset_kind: "crypto",
         asset_key: "bitcoin",
         fetch_symbol: "BTC-USD",
@@ -478,6 +479,7 @@ describe("buildHistoricalLots", () => {
         created_at: "2026-05-20T10:00:00Z",
         before_quantity: null,
         after_quantity: 1,
+        is_adjustment: false,
         asset_kind: "crypto",
         asset_key: "bitcoin",
         fetch_symbol: "BTC-USD",
@@ -499,6 +501,7 @@ describe("buildHistoricalLots", () => {
         before_quantity: null,
         after_quantity: null,
         qty_delta_override: 3, // from details.split_quantity
+        is_adjustment: false,
         asset_kind: "crypto",
         asset_key: "bitcoin",
         fetch_symbol: "BTC-USD",
@@ -508,6 +511,30 @@ describe("buildHistoricalLots", () => {
     ];
     const lots = buildHistoricalLots(rows);
     expect(lots).toHaveLength(1);
-    expect(lots[0].deltas).toEqual([{ effective_date: "2021-01-01", qty_delta: 3 }]);
+    expect(lots[0].deltas).toEqual([{ effective_date: "2021-01-01", qty_delta: 3, is_adjustment: false }]);
+  });
+});
+
+describe("buildHistoricalLots — is_adjustment threading (Phase 2)", () => {
+  it("propagates is_adjustment from activity rows onto each delta", () => {
+    const rows: ActivityForLot[] = [
+      {
+        entity_id: "btc-1",
+        entity_type: "crypto_position",
+        action: "created",
+        effective_date: "2021-01-01",
+        created_at: "2026-05-20T10:00:00Z",
+        before_quantity: null,
+        after_quantity: 2,
+        is_adjustment: true,
+        asset_kind: "crypto",
+        asset_key: "bitcoin",
+        fetch_symbol: "BTC-USD",
+        native_currency: "USD",
+        asset_class: "crypto",
+      },
+    ];
+    const lots = buildHistoricalLots(rows);
+    expect(lots[0].deltas[0].is_adjustment).toBe(true);
   });
 });
