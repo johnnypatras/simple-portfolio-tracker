@@ -8,7 +8,7 @@ import {
   fetchYahooDailyHistory,
   fetchFxUsdPivotHistory,
 } from "@/lib/prices/historical";
-import type { PortfolioSnapshot, CashFlowEvent } from "@/lib/types";
+import type { ActionType, PortfolioSnapshot, CashFlowEvent } from "@/lib/types";
 
 /**
  * One cached historical price. `asset_key` is canonical per kind:
@@ -567,7 +567,7 @@ export function buildHistoricalLots(rows: ActivityForLot[]): HistoricalLot[] {
       const day = r.created_at.slice(0, 10);
       if (day < captureDate) captureDate = day;
       const qtyDelta = r.qty_delta_override ?? positionQtyDelta(
-        r.action as "created" | "updated" | "removed" | "undone",
+        r.action as ActionType,
         r.before_quantity ?? 0,
         r.after_quantity ?? 0,
       );
@@ -836,7 +836,7 @@ export async function fetchHistoricalPriceInputsFor(
     // Cash uses cashDelta (balance-based), pushed as qty_delta_override so
     // buildHistoricalLots picks it up via the same mechanism as split children.
     const qtyDelta = cashDelta(
-      r.action as "created" | "updated" | "removed" | "undone",
+      r.action as ActionType,
       before?.balance ?? 0,
       after?.balance ?? 0,
     );
