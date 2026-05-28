@@ -566,6 +566,22 @@ export async function getAdjustmentDeltas(
     }
   }
 
+  // Cash accounts: NO coverage check. Cash augmentation is exact face value —
+  // there is no historical_prices row to gate on. Any backdated cash_account
+  // is augmented by augmentAndExtendSnapshots, so it must be excluded from the
+  // back-fill (otherwise its delta_usd would double-count alongside the
+  // augmented face value). Today-dated cash adjustments stay on the back-fill
+  // (same lot-level granularity as crypto/stock).
+  const { data: cashAccs, error: cashErr } = await supabase
+    .from("cash_accounts")
+    .select("id")
+    .eq("user_id", resolvedUserId);
+  if (cashErr) throw new Error(`Failed to load cash accounts for exclusion: ${cashErr.message}`);
+  for (const row of cashAccs ?? []) {
+    const id = row.id as string;
+    if (backdatedPosIds.has(id)) historicallyPricedPosIds.add(id);
+  }
+
   const query = supabase
     .from("activity_log")
     .select("created_at, effective_date, delta_usd, delta_eur, entity_type, entity_id, entity_table")
@@ -629,15 +645,22 @@ export async function getAdjustmentDeltas(
       continue;
     }
 
-    // Skip crypto/stock positions valued by historical-price synthesis — they
-    // contribute to snapshots via augmentAndExtendSnapshots, not the back-fill.
-    // Lot-level granularity: historicallyPricedPosIds = (positions with cached
-    // asset_key) ∩ (positions that buildHistoricalLots actually emits as lots,
-    // via readBackdatedPositionIds) — matches the augmentation exactly. A
-    // position with cached prices but NO backdated activity (e.g. today-dated
-    // is_adjustment in a second wallet) stays on the back-fill as intended.
+    // Skip crypto/stock positions AND cash accounts valued by historical-price
+    // synthesis — they contribute to snapshots via augmentAndExtendSnapshots,
+    // not the back-fill. Lot-level granularity:
+    //   - crypto/stock: historicallyPricedPosIds = (positions with cached
+    //     asset_key) ∩ (positions that buildHistoricalLots actually emits as
+    //     lots, via readBackdatedPositionIds). A position with cached prices
+    //     but NO backdated activity (e.g. today-dated is_adjustment in a
+    //     second wallet) stays on the back-fill as intended.
+    //   - cash: no coverage gate (face-value augmentation is exact). Backdated
+    //     cash_account IDs are added to historicallyPricedPosIds unconditionally
+    //     so they're excluded once and only once. Today-dated cash entries
+    //     remain on the back-fill (lot-level granularity preserved).
     if (
-      (row.entity_type === "crypto_position" || row.entity_type === "stock_position") &&
+      (row.entity_type === "crypto_position" ||
+        row.entity_type === "stock_position" ||
+        row.entity_type === "cash_account") &&
       typeof row.entity_id === "string" &&
       historicallyPricedPosIds.has(row.entity_id)
     ) {

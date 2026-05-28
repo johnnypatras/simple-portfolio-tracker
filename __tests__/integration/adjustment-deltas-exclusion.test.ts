@@ -37,6 +37,7 @@ describe("getAdjustmentDeltas — historical-price back-fill exclusion (Task 7)"
   let assetIds: string[] = [];
   let walletIds: string[] = [];
   let histPriceKeys: string[] = [];
+  let cashAccountIds: string[] = [];
 
   afterEach(async () => {
     // Remove activity_log rows first (FK deps).
@@ -48,6 +49,11 @@ describe("getAdjustmentDeltas — historical-price back-fill exclusion (Task 7)"
     if (positionIds.length > 0) {
       await admin.from("crypto_positions").delete().in("id", positionIds);
       positionIds = [];
+    }
+    // Remove cash accounts.
+    if (cashAccountIds.length > 0) {
+      await admin.from("cash_accounts").delete().in("id", cashAccountIds);
+      cashAccountIds = [];
     }
     // Remove assets.
     if (assetIds.length > 0) {
@@ -443,5 +449,109 @@ describe("getAdjustmentDeltas — historical-price back-fill exclusion (Task 7)"
     const maxCumulativeUsd =
       deltas.length > 0 ? Math.max(...deltas.map((d) => d.cumulative_usd)) : 0;
     expect(maxCumulativeUsd).toBe(0);
+  });
+
+  it("CASH: excludes a backdated cash_account from back-fill (augmented by face value); retains today-dated", async () => {
+    // Cash augmentation (Phase 1 extension): a backdated is_adjustment cash
+    // entry is now contributed to past snapshots by augmentAndExtendSnapshots
+    // as face_value × FX. Including its delta_usd in the back-fill would
+    // double-count. A NON-backdated (today-dated) cash adjustment stays on
+    // the back-fill — same lot-level granularity as crypto/stock.
+    const { userId, cleanup } = await createTestUser();
+    cleanupFns.push(cleanup);
+
+    // Cash account A: BACKDATED adjustment (~2 years ago, created today).
+    // effective_date < created_at → backdated → excluded from back-fill.
+    const { data: cashA, error: cashAErr } = await admin
+      .from("cash_accounts")
+      .insert({
+        user_id: userId,
+        currency: "EUR",
+        balance: 1000,
+        name: `Backdated Cash ${crypto.randomUUID()}`,
+      })
+      .select("id")
+      .single();
+    expect(cashAErr).toBeNull();
+    cashAccountIds.push(cashA!.id);
+
+    const { data: logBackdated, error: logBackdatedErr } = await admin
+      .from("activity_log")
+      .insert({
+        user_id: userId,
+        action: "created",
+        entity_type: "cash_account",
+        entity_id: cashA!.id,
+        entity_table: "cash_accounts",
+        entity_name: "Backdated Cash",
+        description: "Backdated cash adjustment",
+        effective_date: "2024-01-15",
+        is_adjustment: true,
+        after_snapshot: { balance: 1000, currency: "EUR" },
+        delta_usd: 1080, // 1000 EUR × ~1.08 USD/EUR
+        delta_eur: 1000,
+      })
+      .select("id")
+      .single();
+    expect(logBackdatedErr).toBeNull();
+    activityIds.push(logBackdated!.id);
+
+    // Cash account B: TODAY-dated adjustment.
+    // effective_date == created_at::date → NOT backdated → stays on back-fill.
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: cashB, error: cashBErr } = await admin
+      .from("cash_accounts")
+      .insert({
+        user_id: userId,
+        currency: "EUR",
+        balance: 500,
+        name: `Today Cash ${crypto.randomUUID()}`,
+      })
+      .select("id")
+      .single();
+    expect(cashBErr).toBeNull();
+    cashAccountIds.push(cashB!.id);
+
+    const { data: logToday, error: logTodayErr } = await admin
+      .from("activity_log")
+      .insert({
+        user_id: userId,
+        action: "created",
+        entity_type: "cash_account",
+        entity_id: cashB!.id,
+        entity_table: "cash_accounts",
+        entity_name: "Today Cash",
+        description: "Today cash adjustment",
+        effective_date: today,
+        is_adjustment: true,
+        after_snapshot: { balance: 500, currency: "EUR" },
+        delta_usd: 540, // 500 EUR × ~1.08 USD/EUR
+        delta_eur: 500,
+      })
+      .select("id")
+      .single();
+    expect(logTodayErr).toBeNull();
+    activityIds.push(logToday!.id);
+
+    const deltas = await getAdjustmentDeltas(userId);
+
+    // Backdated cash A ($1080) is augmented → must NOT appear in back-fill.
+    // Today-dated cash B ($540) is NOT augmented → must STAY in back-fill.
+    // Final maxCumulativeUsd = 540 (only B contributes).
+    const maxCumulativeUsd =
+      deltas.length > 0 ? Math.max(...deltas.map((d) => d.cumulative_usd)) : 0;
+    expect(maxCumulativeUsd).toBe(540);
+
+    // Today's entry must be present with cash B's delta.
+    const todayEntry = deltas.find((d) => d.date === today);
+    expect(todayEntry).toBeDefined();
+    expect(todayEntry!.cumulative_usd).toBe(540);
+
+    // The backdated 2024-01-15 entry must either be absent (ideal — it was
+    // skipped entirely) or have cumulative_usd 0 (no contribution).
+    const backdatedEntry = deltas.find((d) => d.date === "2024-01-15");
+    if (backdatedEntry !== undefined) {
+      expect(backdatedEntry.cumulative_usd).toBe(0);
+    }
   });
 });

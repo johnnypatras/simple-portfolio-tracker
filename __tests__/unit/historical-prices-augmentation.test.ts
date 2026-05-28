@@ -582,3 +582,83 @@ describe("buildBenchmarkCashFlows", () => {
     expect(buildBenchmarkCashFlows(lots, benchPrices)).toEqual([]);
   });
 });
+
+describe("lotContributionAtDate — CASH absolute truth", () => {
+  const cashLot = (overrides: Partial<HistoricalLot> = {}): HistoricalLot => ({
+    position_id: "cash-1",
+    asset_kind: "cash",
+    asset_key: "cash-1",
+    fetch_symbol: "",
+    native_currency: "EUR",
+    asset_class: "cash",
+    capture_date: "2026-05-01",
+    deltas: [{ effective_date: "2021-06-01", qty_delta: 1000, is_adjustment: true }],
+    ...overrides,
+  });
+
+  it("returns $0 STRICTLY BEFORE the cash effective_date (absolute-truth invariant)", () => {
+    const prices = buildPriceIndex([px("fx", "EUR", "2021-06-01", 1.2)]);
+    expect(lotContributionAtDate(cashLot(), "2021-05-31", new Map(), prices))
+      .toEqual({ usd: 0, eur: 0 });
+  });
+
+  it("face value × FX from effective_date onward — NO price lookup", () => {
+    const fx = buildPriceIndex([px("fx", "EUR", "2021-06-01", 1.2)]); // 1.2 USD per EUR
+    const c = lotContributionAtDate(cashLot(), "2021-06-01", new Map(), fx);
+    expect(c!.eur).toBeCloseTo(1000, 2);   // face value in native EUR
+    expect(c!.usd).toBeCloseTo(1200, 2);   // 1000 EUR × 1.2 USD/EUR
+  });
+
+  it("USD-native cash skips FX (usdPerUnit('USD') = 1)", () => {
+    const usdCash = cashLot({ native_currency: "USD" });
+    const c = lotContributionAtDate(usdCash, "2021-06-01", new Map(), new Map());
+    expect(c!.usd).toBe(1000);
+    // No EUR rate available → eur stays 0 (no 1:1 fabrication — honest)
+    expect(c!.eur).toBe(0);
+  });
+
+  it("balance changes over time replay correctly (cumulativeAtDate primitive)", () => {
+    const grow = cashLot({
+      deltas: [
+        { effective_date: "2021-06-01", qty_delta: 1000, is_adjustment: true },
+        { effective_date: "2022-01-01", qty_delta: 500,  is_adjustment: true },
+        { effective_date: "2023-06-01", qty_delta: -200, is_adjustment: true },
+      ],
+    });
+    const fx = buildPriceIndex([
+      px("fx", "EUR", "2021-06-01", 1.2), px("fx", "EUR", "2022-01-01", 1.13),
+      px("fx", "EUR", "2023-06-01", 1.08),
+    ]);
+    expect(lotContributionAtDate(grow, "2021-05-31", new Map(), fx)).toEqual({ usd: 0, eur: 0 });
+    expect(lotContributionAtDate(grow, "2021-06-01", new Map(), fx)!.eur).toBeCloseTo(1000, 2);
+    expect(lotContributionAtDate(grow, "2022-01-01", new Map(), fx)!.eur).toBeCloseTo(1500, 2);
+    expect(lotContributionAtDate(grow, "2023-06-01", new Map(), fx)!.eur).toBeCloseTo(1300, 2);
+  });
+});
+
+describe("augmentAndExtendSnapshots — CASH routing", () => {
+  it("routes cash contribution to cash_value_* (NOT crypto/stocks)", () => {
+    const cashLot: HistoricalLot = {
+      position_id: "cash-1", asset_kind: "cash", asset_key: "cash-1", fetch_symbol: "",
+      native_currency: "EUR", asset_class: "cash", capture_date: "2026-05-01",
+      deltas: [{ effective_date: "2021-06-01", qty_delta: 1000, is_adjustment: true }],
+    };
+    const prices: HistoricalPriceRow[] = [
+      px("fx", "EUR", "2021-06-01", 1.2),
+    ];
+    const real: PortfolioSnapshot = {
+      id: "s", user_id: "u", snapshot_date: "2026-05-01",
+      total_value_usd: 0, total_value_eur: 0,
+      crypto_value_usd: 0, stocks_value_usd: 0, cash_value_usd: 0,
+      crypto_value_eur: 0, stocks_value_eur: 0, cash_value_eur: 0,
+      stocks_eur_denominated_value: 0, cash_eur_denominated_value: 0,
+      created_at: "2026-05-01T00:00:00Z",
+    };
+    const out = augmentAndExtendSnapshots([real], [cashLot], prices);
+    const synth = out[0]; // earliest synthesized day = 2021-06-01
+    expect(synth.snapshot_date).toBe("2021-06-01");
+    expect(synth.cash_value_eur).toBeCloseTo(1000, 2);
+    expect(synth.crypto_value_eur).toBe(0);   // routing: cash → cash_*, NOT crypto
+    expect(synth.stocks_value_eur).toBe(0);
+  });
+});

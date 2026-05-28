@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import * as Sentry from "@sentry/nextjs";
 import type { Database } from "@/types/database";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { positionQtyDelta } from "@/lib/deltas";
+import { positionQtyDelta, cashDelta } from "@/lib/deltas";
 import { pickJoinedRecord } from "@/lib/supabase/join-utils";
 import {
   fetchYahooDailyHistory,
@@ -35,25 +35,29 @@ export type QtyDelta = {
 };
 
 /**
- * A backdated crypto/stock lot needing historical reconstruction.
- *   - asset_key: storage/lookup key (coingecko_id | yahoo_ticker)
+ * A backdated crypto/stock/cash lot needing historical reconstruction.
+ *   - asset_key: storage/lookup key (coingecko_id | yahoo_ticker | cash_account.id)
  *   - fetch_symbol: Yahoo symbol used by the fetch layer
- *       (`${ticker}-USD` for crypto, yahoo_ticker for stock)
+ *       (`${ticker}-USD` for crypto, yahoo_ticker for stock, "" for cash — unused)
  *   - native_currency: "USD" for crypto (Yahoo {SYM}-USD is USD-denominated);
- *       the native trading currency for stock
+ *       the native trading currency for stock; the account's currency for cash
  *   - capture_date: the date the daily cron first included this lot in
  *       snapshots (= date of the position's earliest activity_log entry).
  *       Augment ONLY snapshot dates < capture_date — on/after it the cron
  *       already prices the lot, so augmenting would double-count.
- *   - deltas: quantity changes by effective_date (need not be pre-sorted).
+ *   - deltas: quantity (or balance, for cash) changes by effective_date
+ *       (need not be pre-sorted).
+ *
+ * Cash lots: face value (no Yahoo fetch). asset_key is synthetic (cash_account.id),
+ * fetch_symbol is "" (unused), cumulativeAtDate replays balance changes directly.
  */
 export type HistoricalLot = {
   position_id: string;
-  asset_kind: "crypto" | "stock";
+  asset_kind: "crypto" | "stock" | "cash";
   asset_key: string;
   fetch_symbol: string;
   native_currency: string;
-  asset_class: "crypto" | "stocks";
+  asset_class: "crypto" | "stocks" | "cash";
   capture_date: string;
   deltas: QtyDelta[];
 };
@@ -175,15 +179,22 @@ export function lotContributionAtDate(
   // would silently depress chart totals. Phase 1 produces only qty >= 0.
   if (qty < 0) return null;
 
-  const prices = priceIndex.get(priceKey(lot.asset_kind, lot.asset_key));
-  if (!prices) return null;
-  const priceNative = findPriceAtOrBefore(prices, date);
-  if (priceNative === null || !Number.isFinite(priceNative) || priceNative <= 0) {
-    return null;
+  let valueNative: number;
+  if (lot.asset_kind === "cash") {
+    // Cash: face value. No historical price lookup — cumulativeAtDate is the
+    // balance at `date` in the account's native currency. FX still applies
+    // below (same usdRate / EUR-mirror logic as crypto/stock).
+    valueNative = qty;
+  } else {
+    const prices = priceIndex.get(priceKey(lot.asset_kind, lot.asset_key));
+    if (!prices) return null;
+    const priceNative = findPriceAtOrBefore(prices, date);
+    if (priceNative === null || !Number.isFinite(priceNative) || priceNative <= 0) {
+      return null;
+    }
+    valueNative = qty * priceNative;
+    if (!Number.isFinite(valueNative)) return null;
   }
-
-  const valueNative = qty * priceNative;
-  if (!Number.isFinite(valueNative)) return null;
 
   // Native → USD.
   const usdRate = usdPerUnit(fxIndex, lot.native_currency, date);
@@ -215,7 +226,7 @@ function* eachDay(start: string, end: string): Generator<string> {
 /** Add a USD+EUR contribution to the right asset-class columns + totals. */
 function addContribution(
   snap: PortfolioSnapshot,
-  assetClass: "crypto" | "stocks",
+  assetClass: "crypto" | "stocks" | "cash",
   usd: number,
   eur: number,
 ): PortfolioSnapshot {
@@ -228,10 +239,20 @@ function addContribution(
       total_value_eur: (snap.total_value_eur ?? 0) + eur,
     };
   }
+  if (assetClass === "stocks") {
+    return {
+      ...snap,
+      stocks_value_usd: (snap.stocks_value_usd ?? 0) + usd,
+      stocks_value_eur: (snap.stocks_value_eur ?? 0) + eur,
+      total_value_usd: (snap.total_value_usd ?? 0) + usd,
+      total_value_eur: (snap.total_value_eur ?? 0) + eur,
+    };
+  }
+  // cash: route to cash_value_* + total (mirrors crypto/stocks routing).
   return {
     ...snap,
-    stocks_value_usd: (snap.stocks_value_usd ?? 0) + usd,
-    stocks_value_eur: (snap.stocks_value_eur ?? 0) + eur,
+    cash_value_usd: (snap.cash_value_usd ?? 0) + usd,
+    cash_value_eur: (snap.cash_value_eur ?? 0) + eur,
     total_value_usd: (snap.total_value_usd ?? 0) + usd,
     total_value_eur: (snap.total_value_eur ?? 0) + eur,
   };
@@ -419,16 +440,17 @@ async function readAllHistoricalPrices(
 }
 
 /**
- * Position IDs whose activity is BACKDATED — exactly the set of positions that
- * buildHistoricalLots would emit as lots (criterion: earliest non-null
- * effective_date < earliest created_at::date over the position's activity).
+ * Position/account IDs whose activity is BACKDATED — exactly the set of
+ * entities that buildHistoricalLots would emit as lots (criterion: earliest
+ * non-null effective_date < earliest created_at::date over the entity's
+ * activity).
  *
  * Used by getAdjustmentDeltas to refine the historically-priced exclusion from
  * asset_key granularity (coarse — same-asset cross-wallet positions get
  * over-excluded) to LOT granularity (matches what's actually augmented).
  *
  * Paginated past the server max_rows cap. Bounded to crypto_position +
- * stock_position activity for the user.
+ * stock_position + cash_account activity for the user.
  */
 export async function readBackdatedPositionIds(
   client: SupabaseClient<Database>,
@@ -442,7 +464,7 @@ export async function readBackdatedPositionIds(
       .from("activity_log")
       .select("entity_id, effective_date, created_at")
       .eq("user_id", userId)
-      .in("entity_type", ["crypto_position", "stock_position"])
+      .in("entity_type", ["crypto_position", "stock_position", "cash_account"])
       .is("undone_at", null)
       .order("entity_id", { ascending: true })
       .order("created_at", { ascending: true })
@@ -503,20 +525,20 @@ export async function readHistoricalCoverageKeys(
 /** One activity-log row joined with its asset metadata, for lot building. */
 export type ActivityForLot = {
   entity_id: string;
-  entity_type: string; // "crypto_position" | "stock_position"
+  entity_type: string; // "crypto_position" | "stock_position" | "cash_account"
   action: string;
   effective_date: string | null;
   created_at: string;
   before_quantity: number | null;
   after_quantity: number | null;
-  /** Override for split-child rows where before/after snapshots are null. */
+  /** Override for split-child rows + cash entries (cash uses balance via cashDelta). */
   qty_delta_override?: number;
   is_adjustment: boolean;
-  asset_kind: "crypto" | "stock";
-  asset_key: string;       // coingecko_id | yahoo_ticker
-  fetch_symbol: string;    // `${ticker}-USD` | yahoo_ticker
+  asset_kind: "crypto" | "stock" | "cash";
+  asset_key: string;       // coingecko_id | yahoo_ticker | cash_account.id
+  fetch_symbol: string;    // `${ticker}-USD` | yahoo_ticker | "" (unused for cash)
   native_currency: string;
-  asset_class: "crypto" | "stocks";
+  asset_class: "crypto" | "stocks" | "cash";
 };
 
 /**
@@ -608,7 +630,10 @@ export async function ensureHistoricalPricesCached(
       if (d.effective_date < rangeStart) rangeStart = d.effective_date;
     }
     if (lot.capture_date > rangeEnd) rangeEnd = lot.capture_date;
+    // Cash lots: face value — no Yahoo asset fetch — but their native currency
+    // still needs an FX series for the USD/EUR mirror at synthesized dates.
     if (lot.native_currency !== "USD") currencies.add(lot.native_currency);
+    if (lot.asset_kind === "cash") continue;
     assetSeries.set(`${lot.asset_kind}:${lot.asset_key}`, {
       kind: lot.asset_kind,
       symbol: lot.fetch_symbol,
@@ -686,7 +711,7 @@ export async function ensureHistoricalPricesCached(
 }
 
 /**
- * Gather a user's backdated crypto/stock lots from the activity log + asset
+ * Gather a user's backdated crypto/stock/cash lots from the activity log + asset
  * joins, build HistoricalLots, ensure their prices are cached, and return both.
  * Mirrors fetchManualNavInputsFor's client contract:
  *   - Authenticated server client + resolved auth.uid() → RLS-scoped read.
@@ -698,7 +723,7 @@ export async function fetchHistoricalPriceInputsFor(
   supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<{ lots: HistoricalLot[]; prices: HistoricalPriceRow[] }> {
-  const [cryptoRes, stockRes] = await Promise.all([
+  const [cryptoRes, stockRes, cashRes] = await Promise.all([
     supabase
       .from("activity_log")
       .select(
@@ -717,6 +742,15 @@ export async function fetchHistoricalPriceInputsFor(
       .eq("entity_type", "stock_position")
       .is("undone_at", null)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("activity_log")
+      .select(
+        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, is_adjustment",
+      )
+      .eq("user_id", userId)
+      .eq("entity_type", "cash_account")
+      .is("undone_at", null)
+      .order("created_at", { ascending: true }),
   ]);
   if (cryptoRes.error) {
     throw new Error(`Failed to load crypto activity: ${cryptoRes.error.message}`);
@@ -724,10 +758,14 @@ export async function fetchHistoricalPriceInputsFor(
   if (stockRes.error) {
     throw new Error(`Failed to load stock activity: ${stockRes.error.message}`);
   }
+  if (cashRes.error) {
+    throw new Error(`Failed to load cash activity: ${cashRes.error.message}`);
+  }
 
-  const [cryptoMeta, stockMeta] = await Promise.all([
+  const [cryptoMeta, stockMeta, cashMeta] = await Promise.all([
     loadCryptoPositionMeta(supabase, userId),
     loadStockPositionMeta(supabase, userId),
+    loadCashAccountMeta(supabase, userId),
   ]);
 
   const activity: ActivityForLot[] = [];
@@ -790,6 +828,36 @@ export async function fetchHistoricalPriceInputsFor(
     });
   }
 
+  for (const r of cashRes.data ?? []) {
+    const meta = cashMeta.get(r.entity_id as string);
+    if (!meta) continue;
+    const before = r.before_snapshot as { balance?: number } | null;
+    const after = r.after_snapshot as { balance?: number } | null;
+    // Cash uses cashDelta (balance-based), pushed as qty_delta_override so
+    // buildHistoricalLots picks it up via the same mechanism as split children.
+    const qtyDelta = cashDelta(
+      r.action as "created" | "updated" | "removed" | "undone",
+      before?.balance ?? 0,
+      after?.balance ?? 0,
+    );
+    activity.push({
+      entity_id: r.entity_id as string,
+      entity_type: "cash_account",
+      action: r.action as string,
+      effective_date: (r.effective_date as string | null) ?? null,
+      created_at: r.created_at as string,
+      before_quantity: null,            // unused — cash routes through qty_delta_override
+      after_quantity: null,
+      qty_delta_override: qtyDelta,
+      is_adjustment: (r.is_adjustment as boolean) ?? false,
+      asset_kind: "cash",
+      asset_key: r.entity_id as string, // synthetic; never stored in historical_prices
+      fetch_symbol: "",                 // unused — cash never goes to Yahoo
+      native_currency: meta.currency,
+      asset_class: "cash",
+    });
+  }
+
   const lots = buildHistoricalLots(activity);
 
   Sentry.addBreadcrumb({
@@ -802,9 +870,11 @@ export async function fetchHistoricalPriceInputsFor(
   if (lots.length === 0) return { lots: [], prices: [] };
   const prices = await ensureHistoricalPricesCached(lots);
 
+  // Cash lots have no Yahoo asset-price coverage (face value); they always pass.
+  // Crypto/stock lots stay gated by the cache-coverage check.
   const pricedKeys = new Set(prices.map((p) => `${p.asset_kind}:${p.asset_key}`));
   const pricedLots = lots.filter((l) =>
-    pricedKeys.has(`${l.asset_kind}:${l.asset_key}`),
+    l.asset_kind === "cash" || pricedKeys.has(`${l.asset_kind}:${l.asset_key}`),
   );
   return { lots: pricedLots, prices };
 }
@@ -861,6 +931,29 @@ async function loadStockPositionMeta(
         yahoo_ticker: a.yahoo_ticker,
         currency: a.currency,
       });
+  }
+  return map;
+}
+
+/** cash_account.id → { currency } for the user's cash accounts. */
+async function loadCashAccountMeta(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<string, { currency: string }>> {
+  // NOTE: intentionally no .is("deleted_at", null) — same rationale as
+  // loadCryptoPositionMeta / loadStockPositionMeta: soft-deleted (closed) cash
+  // accounts must remain in the meta map so their activity-log history can be
+  // replayed via cumulativeAtDate.
+  const { data, error } = await supabase
+    .from("cash_accounts")
+    .select("id, currency")
+    .eq("user_id", userId);
+  if (error) {
+    throw new Error(`Failed to load cash account meta: ${error.message}`);
+  }
+  const map = new Map<string, { currency: string }>();
+  for (const row of data ?? []) {
+    map.set(row.id as string, { currency: (row.currency as string) ?? "USD" });
   }
   return map;
 }
