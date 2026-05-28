@@ -8,8 +8,8 @@
  *   - FX:     Frankfurter timeseries (ECB), converted to USD-per-1-unit.
  *
  * Every call is fetchWithTimeout-guarded (8s) and returns [] on any failure
- * (graceful degradation — the lot stays on the flat back-fill until prices
- * land). Returns parsed { date: "YYYY-MM-DD", price } rows; the caller maps
+ * (graceful degradation — the lot contributes $0 for the missing date range).
+ * Returns parsed { date: "YYYY-MM-DD", price } rows; the caller maps
  * these into historical_prices rows + upserts via the admin client.
  *
  * Storage invariant (enforced by the caller): one currency per (asset_kind,
@@ -80,7 +80,7 @@ export async function fetchYahooDailyHistory(
     // period1/period2 (see fetchIndexHistory). This data is cached permanently
     // (append-only), so bad daily data would never self-heal. Refuse to return
     // (and therefore cache) anything that isn't true daily granularity — the
-    // lot degrades to the flat back-fill instead.
+    // lot contributes $0 for the uncached date range instead.
     const granularity = result.meta?.dataGranularity;
     if (granularity && granularity !== "1d") {
       const msg = `[historical] Unexpected dataGranularity "${granularity}" for ${symbol} (expected "1d") — refusing to cache downsampled history`;

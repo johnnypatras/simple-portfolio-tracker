@@ -453,75 +453,12 @@ async function readAllHistoricalPrices(
 }
 
 /**
- * Position/account IDs whose activity is BACKDATED — exactly the set of
- * entities that buildHistoricalLots would emit as lots (criterion: earliest
- * non-null effective_date < earliest created_at::date over the entity's
- * activity).
- *
- * Surfaces lot-level granularity for callers that need to reason about which
- * positions/accounts contribute backdated value (vs. today-dated only). The
- * augmentation pipeline derives the same set internally via buildHistoricalLots;
- * this helper exposes it for direct consumers.
- *
- * Paginated past the server max_rows cap. Bounded to crypto_position +
- * stock_position + cash_account activity for the user.
- */
-export async function readBackdatedPositionIds(
-  client: SupabaseClient<Database>,
-  userId: string,
-): Promise<Set<string>> {
-  // Single-source pagination via fetchAllPaginated. Aggregation (entity_id →
-  // MIN effective_date / created_at) happens after the full read; safe
-  // because the in-memory fold is O(N) and N is bounded by the user's
-  // total activity_log rows for crypto/stock/cash entities.
-  type Row = {
-    entity_id: string | null;
-    effective_date: string | null;
-    created_at: string | null;
-  };
-  const rows = await fetchAllPaginated<Row>((from, to) =>
-    client
-      .from("activity_log")
-      .select("entity_id, effective_date, created_at")
-      .eq("user_id", userId)
-      .in("entity_type", ["crypto_position", "stock_position", "cash_account"])
-      .is("undone_at", null)
-      .order("entity_id", { ascending: true })
-      .order("created_at", { ascending: true })
-      .range(from, to),
-  ).catch((e: unknown) => {
-    throw new Error(
-      `Failed to load activity for backdated detection: ${e instanceof Error ? e.message : String(e)}`,
-      { cause: e },
-    );
-  });
-  const minEff = new Map<string, string>(); // entity_id → MIN non-null effective_date
-  const minCap = new Map<string, string>(); // entity_id → MIN created_at::date
-  for (const r of rows) {
-    const id = r.entity_id;
-    if (!id) continue;
-    const eff = r.effective_date;
-    const capRaw = r.created_at;
-    if (!capRaw) continue;
-    const cap = capRaw.slice(0, 10);
-    if (eff && (!minEff.has(id) || eff < minEff.get(id)!)) minEff.set(id, eff);
-    if (!minCap.has(id) || cap < minCap.get(id)!) minCap.set(id, cap);
-  }
-  const backdated = new Set<string>();
-  for (const [id, eff] of minEff) {
-    const cap = minCap.get(id);
-    if (cap && eff < cap) backdated.add(id);
-  }
-  return backdated;
-}
-
-/**
  * Distinct cached `${asset_kind}:${asset_key}` keys among `candidateKeys`,
  * paging past the max_rows cap. Used by the cache-coverage skip-check and the
- * back-fill exclusion gate — both must NOT under-detect coverage (a missed key
- * → wasteful re-fetch, or worse, a lot not excluded from the back-fill →
- * double-count). Selecting only the two key columns keeps pages dense, but the
- * server still caps row COUNT (one row per date), so paging is required.
+ * augmentation eligibility gate — both must NOT under-detect coverage (a missed
+ * key → wasteful re-fetch, or worse, a lot incorrectly synthesized with $0
+ * prices). Selecting only the two key columns keeps pages dense, but the server
+ * still caps row COUNT (one row per date), so paging is required.
  */
 export async function readHistoricalCoverageKeys(
   client: SupabaseClient<Database>,
@@ -636,7 +573,7 @@ export function buildHistoricalLots(rows: ActivityForLot[]): HistoricalLot[] {
  * to the UNIQUE constraint), upserts via the service-role admin client (the
  * only role allowed to write), and returns ALL relevant cached rows. Network
  * failures degrade gracefully (the lot simply won't be in the returned set →
- * caller leaves it on the back-fill).
+ * caller treats it as ineligible for augmentation; it contributes $0).
  *
  * Cache invariant: exactly one currency per (asset_kind, asset_key) — crypto is
  * USD (Yahoo {SYM}-USD), stock is its native currency, fx is USD-per-unit.

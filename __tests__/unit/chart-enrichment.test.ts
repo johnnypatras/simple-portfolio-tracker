@@ -45,33 +45,6 @@ describe("enrichChartData — literal-truth contract (Phase 4)", () => {
    * snapshot (already augmented upstream by historical-price/manual-NAV).
    * The S&P benchmark seeds against that truth at chartStart and diverges.
    */
-  it("seeds S&P at the raw firstSliceVal (not at a back-filled value)", () => {
-    // Single-point chart with portfolio value $1000 at chartStart and a real
-    // cash flow on the same day. After seeding, the S&P benchmark must equal
-    // the portfolio value at chartStart so both lines start at $1000.
-    const points = [
-      makePoint({ date: "2026-01-01", value: 1000, valueUsd: 1000 }),
-    ];
-    const cashFlows: CashFlowEvent[] = [
-      { date: "2026-01-01", amount_usd: 1000, asset_class: "cash" },
-    ];
-    const result = enrichChartData(
-      makeInput({
-        points,
-        viewMode: "total",
-        primaryCurrency: "USD",
-        sp500History: [{ date: "2026-01-01", close: 5000 }],
-        cashFlows,
-      }),
-    );
-    // Seed: firstSliceVal=1000, fxRatio=1, seedUsd=1000, neededUnits=0.2.
-    // unitsAtChartStart already = 1000/5000 = 0.2 (cash flow on chartStart),
-    // so seedDelta = 0 and S&P value = 0.2 × 5000 = 1000.
-    expect(result[0].sp500Value).toBeCloseTo(1000, 0);
-    // Portfolio line is the literal raw value — `value` field IS the truth.
-    expect(result[0].value).toBe(1000);
-  });
-
   /**
    * No cash flows, no backdated data: the naive fallback seeds S&P at the
    * portfolio's first snapshot value. Both lines start equal and diverge by
@@ -109,7 +82,7 @@ describe("enrichChartData — literal-truth contract (Phase 4)", () => {
    * Seeding at firstSliceVal=0 keeps the S&P benchmark at zero too —
    * "if you'd invested NOTHING, you'd have NOTHING" is the correct answer.
    */
-  it("zero portfolio at chartStart keeps S&P at zero (correct benchmark)", () => {
+  it("zero portfolio at chartStart keeps S&P at zero or undefined (no FX anchor)", () => {
     const points = [
       makePoint({ date: "2026-01-01", value: 0, valueUsd: 0 }),
     ];
