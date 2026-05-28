@@ -370,6 +370,79 @@ const MAX_SYNTHESIS_DAYS = 9131; // ~25 years
 // I/O layer (Task 6) — queries, cache fill, public orchestrator
 // ─────────────────────────────────────────────────────────────────────────────
 
+const HISTORICAL_PRICE_PAGE = 1000; // page size; server caps single reads (Supabase max_rows default 1000)
+
+/**
+ * Read ALL historical_prices rows for the given asset_keys, paging past the
+ * server-side max_rows cap. A single multi-year asset exceeds 1000 rows; an
+ * unpaged read silently truncates — synthesis loses price dates and later keys
+ * (e.g. fx:EUR) fall off the first page entirely, collapsing the EUR mirror to
+ * 0 (zero-ramp). Verified via a real 2 BTC / 3-year smoke (1097 BTC + 770 EUR;
+ * a single .limit(100_000) read returned only 1000). Stable order over the
+ * UNIQUE(asset_kind, asset_key, price_date) columns guarantees page integrity.
+ */
+async function readAllHistoricalPrices(
+  client: SupabaseClient<Database>,
+  assetKeys: string[],
+): Promise<HistoricalPriceRow[]> {
+  if (assetKeys.length === 0) return [];
+  const out: HistoricalPriceRow[] = [];
+  for (let from = 0; ; from += HISTORICAL_PRICE_PAGE) {
+    const { data, error } = await client
+      .from("historical_prices")
+      .select("asset_kind, asset_key, price_date, price, currency")
+      .in("asset_key", assetKeys)
+      .order("asset_kind", { ascending: true })
+      .order("asset_key", { ascending: true })
+      .order("price_date", { ascending: true })
+      .range(from, from + HISTORICAL_PRICE_PAGE - 1);
+    if (error) throw new Error(`historical_prices read failed: ${error.message}`);
+    const rows = data ?? [];
+    for (const r of rows) {
+      out.push({
+        asset_kind: r.asset_kind as HistoricalPriceRow["asset_kind"],
+        asset_key: r.asset_key as string,
+        price_date: r.price_date as string,
+        price: Number(r.price),
+        currency: r.currency as string,
+      });
+    }
+    if (rows.length < HISTORICAL_PRICE_PAGE) break;
+  }
+  return out;
+}
+
+/**
+ * Distinct cached `${asset_kind}:${asset_key}` keys among `candidateKeys`,
+ * paging past the max_rows cap. Used by the cache-coverage skip-check and the
+ * back-fill exclusion gate — both must NOT under-detect coverage (a missed key
+ * → wasteful re-fetch, or worse, a lot not excluded from the back-fill →
+ * double-count). Selecting only the two key columns keeps pages dense, but the
+ * server still caps row COUNT (one row per date), so paging is required.
+ */
+export async function readHistoricalCoverageKeys(
+  client: SupabaseClient<Database>,
+  candidateKeys: string[],
+): Promise<Set<string>> {
+  const covered = new Set<string>();
+  if (candidateKeys.length === 0) return covered;
+  for (let from = 0; ; from += HISTORICAL_PRICE_PAGE) {
+    const { data, error } = await client
+      .from("historical_prices")
+      .select("asset_kind, asset_key, price_date")
+      .in("asset_key", candidateKeys)
+      .order("asset_kind", { ascending: true })
+      .order("asset_key", { ascending: true })
+      .order("price_date", { ascending: true })
+      .range(from, from + HISTORICAL_PRICE_PAGE - 1);
+    if (error) throw new Error(`historical_prices coverage read failed: ${error.message}`);
+    const rows = data ?? [];
+    for (const r of rows) covered.add(`${r.asset_kind}:${r.asset_key}`);
+    if (rows.length < HISTORICAL_PRICE_PAGE) break;
+  }
+  return covered;
+}
+
 /** One activity-log row joined with its asset metadata, for lot building. */
 export type ActivityForLot = {
   entity_id: string;
@@ -490,14 +563,7 @@ export async function ensureHistoricalPricesCached(
       ...currencies,
     ]),
   ];
-  const { data: existing } = await admin
-    .from("historical_prices")
-    .select("asset_kind, asset_key")
-    .in("asset_key", relevantKeys)
-    .limit(100_000);
-  const cachedKeys = new Set(
-    (existing ?? []).map((r) => `${r.asset_kind}:${r.asset_key}`),
-  );
+  const cachedKeys = await readHistoricalCoverageKeys(admin, relevantKeys);
 
   const toUpsert: Array<Database["public"]["Tables"]["historical_prices"]["Insert"]> = [];
 
@@ -552,22 +618,12 @@ export async function ensureHistoricalPricesCached(
 
   const assetKeys = [...assetSeries.keys()].map((k) => k.slice(k.indexOf(":") + 1));
   const allKeys = [...new Set([...assetKeys, ...currencies])];
-  const { data: rows, error: readErr } = await admin
-    .from("historical_prices")
-    .select("asset_kind, asset_key, price_date, price, currency")
-    .in("asset_key", allKeys)
-    .limit(100_000);
-  if (readErr) {
-    console.error("[historical] cache read failed:", readErr.message);
+  try {
+    return await readAllHistoricalPrices(admin, allKeys);
+  } catch (err) {
+    console.error("[historical] cache read failed:", err instanceof Error ? err.message : err);
     return [];
   }
-  return (rows ?? []).map<HistoricalPriceRow>((r) => ({
-    asset_kind: r.asset_kind as HistoricalPriceRow["asset_kind"],
-    asset_key: r.asset_key,
-    price_date: r.price_date,
-    price: Number(r.price),
-    currency: r.currency,
-  }));
 }
 
 /**

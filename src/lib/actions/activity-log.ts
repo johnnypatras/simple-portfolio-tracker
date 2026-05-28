@@ -22,6 +22,7 @@ import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, 
 import type { Database } from "@/types/database";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 import { pickJoinedRecord } from "@/lib/supabase/join-utils";
+import { readHistoricalCoverageKeys } from "@/lib/portfolio/historical-prices-augmentation";
 
 type ActivityLogInsert = Database["public"]["Tables"]["activity_log"]["Insert"];
 
@@ -534,28 +535,19 @@ export async function getAdjustmentDeltas(
   }
 
   // Which of the USER'S asset_keys have ANY cached historical prices? Filter to
-  // the user's keys (bounded — avoids scanning the whole global cache and the
-  // PostgREST default-page truncation that would silently drop coverage keys).
+  // the user's keys (bounded — avoids scanning the whole global cache). Pages
+  // past the server max_rows cap so a user with >1000 cached price rows doesn't
+  // silently lose coverage keys → which would fail to exclude their
+  // historically-priced lots from the back-fill → double-count.
   const historicallyPricedPosIds = new Set<string>();
   const userAssetKeys = [...new Set([...cryptoPosByKey.keys(), ...stockPosByKey.keys()])];
   if (userAssetKeys.length > 0) {
-    const { data: hp, error: hpErr } = await supabase
-      .from("historical_prices")
-      .select("asset_kind, asset_key")
-      .in("asset_key", userAssetKeys)
-      .limit(MAX_QUERY_LIMIT);
-    if (hpErr) throw new Error(`Failed to load historical price coverage: ${hpErr.message}`);
-    const coveredCrypto = new Set<string>();
-    const coveredStock = new Set<string>();
-    for (const r of hp ?? []) {
-      if (r.asset_kind === "crypto") coveredCrypto.add(r.asset_key as string);
-      else if (r.asset_kind === "stock") coveredStock.add(r.asset_key as string);
-    }
+    const covered = await readHistoricalCoverageKeys(supabase, userAssetKeys);
     for (const [key, ids] of cryptoPosByKey) {
-      if (coveredCrypto.has(key)) for (const id of ids) historicallyPricedPosIds.add(id);
+      if (covered.has(`crypto:${key}`)) for (const id of ids) historicallyPricedPosIds.add(id);
     }
     for (const [key, ids] of stockPosByKey) {
-      if (coveredStock.has(key)) for (const id of ids) historicallyPricedPosIds.add(id);
+      if (covered.has(`stock:${key}`)) for (const id of ids) historicallyPricedPosIds.add(id);
     }
   }
 
