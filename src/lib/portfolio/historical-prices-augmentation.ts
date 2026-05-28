@@ -458,9 +458,10 @@ async function readAllHistoricalPrices(
  * non-null effective_date < earliest created_at::date over the entity's
  * activity).
  *
- * Used by getAdjustmentDeltas to refine the historically-priced exclusion from
- * asset_key granularity (coarse — same-asset cross-wallet positions get
- * over-excluded) to LOT granularity (matches what's actually augmented).
+ * Surfaces lot-level granularity for callers that need to reason about which
+ * positions/accounts contribute backdated value (vs. today-dated only). The
+ * augmentation pipeline derives the same set internally via buildHistoricalLots;
+ * this helper exposes it for direct consumers.
  *
  * Paginated past the server max_rows cap. Bounded to crypto_position +
  * stock_position + cash_account activity for the user.
@@ -866,11 +867,10 @@ export async function fetchHistoricalPriceInputsFor(
     // Mirror aggregate.ts:135 reclassification: stablecoin crypto_positions
     // contribute to cash_value_* in snapshots, NOT crypto_value_*. Without
     // this, a backdated USDC lot would route to crypto_value_usd in
-    // synthesized rows AND be excluded from cash back-fill (via
-    // getAdjustmentDeltas' historicallyPricedPosIds gate), so pre-snapshot
-    // dates would show the value in the wrong bucket. Total is correct;
-    // per-class breakdown is the part that breaks. asset_kind stays "crypto"
-    // (historical_prices keys stablecoins by coingecko_id).
+    // synthesized rows, so pre-snapshot dates would show the value in the
+    // wrong bucket. Total is correct; per-class breakdown is the part that
+    // breaks. asset_kind stays "crypto" (historical_prices keys stablecoins
+    // by coingecko_id).
     const isStable = isStablecoin(meta.subcategory);
     activity.push({
       entity_id: r.entity_id as string,

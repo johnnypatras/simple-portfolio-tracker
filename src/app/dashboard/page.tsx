@@ -5,7 +5,6 @@ import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows, getHistoricalBenchmarkExtension } from "@/lib/actions/benchmark";
-import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { backfillCashflowsAndDeltas } from "@/lib/actions/backfill";
 import { assemblePortfolioView } from "@/lib/portfolio/assemble";
 import { saveSnapshot, getSnapshots } from "@/lib/actions/snapshots";
@@ -41,7 +40,6 @@ export default async function DashboardPage() {
     chartSnapshots,
     sp500TRHistory,
     cashFlowResult,
-    adjustmentDeltas,
   ] = await Promise.all([
     getProfile(),
     getCryptoAssetsWithPositions(),
@@ -58,7 +56,6 @@ export default async function DashboardPage() {
     // benchmark line matches the extended portfolio chart range.
     fetchIndexHistory("^SP500TR", sp500Days),
     deriveCashFlows(),
-    getAdjustmentDeltas(),
   ]);
 
   // Derive period snapshots in-memory — `chartSnapshots` is already
@@ -154,7 +151,6 @@ export default async function DashboardPage() {
         insights={insights}
         pastSnapshots={pastSnapshots}
         cashFlows={cashFlows}
-        adjustmentDeltas={adjustmentDeltas}
       />
 
       <div className="mt-6">
@@ -165,7 +161,6 @@ export default async function DashboardPage() {
           primaryCurrency={primaryCurrency}
           sp500History={sp500TRHistory}
           cashFlows={cashFlows}
-          adjustmentDeltas={adjustmentDeltas}
           liveSlicesUsd={{
             crypto: summary.cryptoValueUsd,
             stocks: summary.stocksValueUsd,

@@ -6,11 +6,9 @@ import {
   getStockChangeForPeriod,
   getCashChangeForPeriod,
   getDepositsForPeriod,
-  getCumDeltaAtDate,
-  getCumDeltaFinal,
 } from "@/lib/portfolio/dashboard-changes";
 import type { ChangeContext } from "@/lib/portfolio/dashboard-changes";
-import type { PortfolioSnapshot, AdjustmentDelta } from "@/lib/types";
+import type { PortfolioSnapshot } from "@/lib/types";
 
 // ── Test helpers ───────────────────────────────────────────
 
@@ -67,7 +65,6 @@ function makeCtx(overrides: Partial<ChangeContext> = {}): ChangeContext {
     cryptoChange24hPercent: 1.1,
     pastSnapshots: {},
     cashFlows: [],
-    adjustmentDeltas: [],
     ...overrides,
   };
 }
@@ -86,7 +83,6 @@ describe("deriveClassFx", () => {
     const result = deriveClassFx(45000, 53000, 45000, 50000, snap, "EUR");
     expect(result.pastClassEur).toBeCloseTo(42500, 0);
     expect(result.fxPct).toBeCloseTo(-0.118, 1);
-    // fxAbs should be small and negative
     expect(result.fxAbs).toBeLessThan(0);
   });
 
@@ -106,16 +102,9 @@ describe("deriveClassFx", () => {
   });
 
   it("scales fxAbs by FX-sensitive fraction when home currency data provided", () => {
-    // stocks_eur_denominated_value = 20000 (EUR stocks in past snapshot)
-    // pastClassEur = 50000 * 0.85 = 42500
-    // pastFxFraction = 1 - 20000/42500 ≈ 0.529
-    // currentHomeCurrencyEur = 15000, currentClassEur = 45000
-    // currentFxFraction = 1 - 15000/45000 ≈ 0.667
-    // avgFxFraction = (0.667 + 0.529) / 2 ≈ 0.598
     const snap = makeSnapshot({ stocks_eur_denominated_value: 20000 });
     const noHome = deriveClassFx(45000, 53000, 45000, 50000, snap, "EUR");
     const withHome = deriveClassFx(45000, 53000, 45000, 50000, snap, "EUR", 15000, 20000);
-    // With home currency, fxAbs should be scaled down (multiplied by ~0.598)
     expect(Math.abs(withHome.fxAbs)).toBeLessThan(Math.abs(noHome.fxAbs));
     expect(Math.abs(withHome.fxAbs)).toBeGreaterThan(0);
   });
@@ -124,7 +113,6 @@ describe("deriveClassFx", () => {
     const snap = makeSnapshot();
     const eurResult = deriveClassFx(45000, 53000, 45000, 50000, snap, "EUR");
     const usdResult = deriveClassFx(53000, 53000, 45000, 50000, snap, "USD");
-    // FX direction should be opposite
     expect(Math.sign(eurResult.fxPct)).not.toBe(Math.sign(usdResult.fxPct));
   });
 });
@@ -165,77 +153,21 @@ describe("getChangeForPeriod", () => {
     const result = getChangeForPeriod("7d", ctx);
     expect(result.available).toBe(false);
   });
-});
 
-// ── getChangeForPeriod with adjustment deltas ──────────────
-
-describe("getChangeForPeriod with adjustment deltas", () => {
-  it("adjusts past value when delta exists before snapshot date", () => {
-    const deltas = [makeDelta("2026-01-10", 78824, 67000)];
-    const snap = makeSnapshot({ total_value_eur: 23000, total_value_usd: 27060 });
-    const ctx = makeCtx({
-      totalValue: 90000,
-      pastSnapshots: { "30d": snap },
-      adjustmentDeltas: deltas,
+  // Phase 4 contract: a snapshot with total_value_eur=0 (backdated lot before
+  // any positions existed, no augmentation yet) returns { available: false }
+  // — clean truth, no back-filled fakery.
+  it("Phase 4: zero past value returns 'available: false' (clean truth, no back-fill)", () => {
+    const snap = makeSnapshot({
+      total_value_eur: 0,
+      total_value_usd: 0,
+      snapshot_date: "2021-01-14",
     });
-    const result = getChangeForPeriod("30d", ctx);
-    expect(result.available).toBe(true);
-    // adjustedPast = 23000 + (67000 - 0) = 90000
-    // (90000 - 90000) / 90000 = 0%
-    expect(result.percent).toBeCloseTo(0, 0);
-  });
-
-  it("no adjustment when deltas are empty", () => {
-    const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 95000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: [] });
-    const result = getChangeForPeriod("30d", ctx);
-    expect(result.percent).toBeCloseTo(12.5, 1);
-  });
-
-  it("no adjustment when adjustmentDeltas is empty", () => {
-    const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 95000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: [] });
-    const result = getChangeForPeriod("30d", ctx);
-    expect(result.percent).toBeCloseTo(12.5, 1);
-  });
-
-  it("adjusts when all deltas are after snapshot date", () => {
-    const deltas = [makeDelta("2026-06-01", 10000, 8500)];
-    const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 95000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
-    const result = getChangeForPeriod("30d", ctx);
-    // cumAtSnapshot = 0, final = 8500
-    // adjustedPast = 80000 + (8500 - 0) = 88500
-    // (90000 - 88500) / 88500 ≈ 1.69%
-    expect(result.percent).toBeCloseTo(1.69, 0);
-  });
-
-  it("returns unavailable when adjusted past value <= 0", () => {
-    const snap = makeSnapshot({ total_value_eur: 0 });
-    const ctx = makeCtx({ pastSnapshots: { "7d": snap }, adjustmentDeltas: [] });
-    const result = getChangeForPeriod("7d", ctx);
+    const ctx = makeCtx({ pastSnapshots: { "all": snap } });
+    const result = getChangeForPeriod("all", ctx);
     expect(result.available).toBe(false);
-  });
-
-  it("24h period unaffected by deltas", () => {
-    const deltas = [makeDelta("2026-01-01", 50000, 42500)];
-    const ctx = makeCtx({ adjustmentDeltas: deltas });
-    const result = getChangeForPeriod("24h", ctx);
-    expect(result.percent).toBe(0.56);
-  });
-
-  it("adjusts FX decomposition too", () => {
-    // With a large delta, both EUR and USD past values should be adjusted
-    // so FX % isn't distorted
-    const deltas = [makeDelta("2026-01-10", 50000, 42500)];
-    const snap = makeSnapshot({ total_value_eur: 40000, total_value_usd: 47000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
-    const result = getChangeForPeriod("30d", ctx);
-    expect(result.available).toBe(true);
-    // Compare with unadjusted: the FX % should differ when deltas are applied
-    const noAdj = getChangeForPeriod("30d", makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: [] }));
-    // Both should have FX values, but they should differ due to adjustment
-    expect(result.fxPercent).not.toBe(noAdj.fxPercent);
+    expect(result.percent).toBe(0);
+    expect(result.valueChange).toBe(0);
   });
 });
 
@@ -257,6 +189,13 @@ describe("getCryptoChangeForPeriod", () => {
     expect(result.available).toBe(true);
     expect(result.valueChange).not.toBe(0);
   });
+
+  it("returns 'available: false' when snapshot crypto value is zero", () => {
+    const snap = makeSnapshot({ crypto_value_usd: 0 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap } });
+    const result = getCryptoChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(false);
+  });
 });
 
 describe("getStockChangeForPeriod", () => {
@@ -275,8 +214,14 @@ describe("getStockChangeForPeriod", () => {
     const ctx = makeCtx({ pastSnapshots: { "30d": snap } });
     const result = getStockChangeForPeriod("30d", ctx);
     expect(result.available).toBe(true);
-    // FX should be scaled by home currency fraction
     expect(typeof result.fxPercent).toBe("number");
+  });
+
+  it("returns 'available: false' when snapshot stocks value is zero", () => {
+    const snap = makeSnapshot({ stocks_value_usd: 0 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap } });
+    const result = getStockChangeForPeriod("30d", ctx);
+    expect(result.available).toBe(false);
   });
 });
 
@@ -293,78 +238,12 @@ describe("getCashChangeForPeriod", () => {
     const result = getCashChangeForPeriod("7d", ctx);
     expect(result.available).toBe(false);
   });
-});
 
-// ── Per-class adjustment delta tests ───────────────────────
-
-function makeClassDelta(date: string, opts: {
-  cryptoUsd?: number; cryptoEur?: number;
-  stocksUsd?: number; stocksEur?: number;
-  cashUsd?: number; cashEur?: number;
-}): AdjustmentDelta {
-  return {
-    date,
-    cumulative_usd: (opts.cryptoUsd ?? 0) + (opts.stocksUsd ?? 0) + (opts.cashUsd ?? 0),
-    cumulative_eur: (opts.cryptoEur ?? 0) + (opts.stocksEur ?? 0) + (opts.cashEur ?? 0),
-    crypto_cumulative_usd: opts.cryptoUsd ?? 0,
-    crypto_cumulative_eur: opts.cryptoEur ?? 0,
-    stocks_cumulative_usd: opts.stocksUsd ?? 0,
-    stocks_cumulative_eur: opts.stocksEur ?? 0,
-    cash_cumulative_usd: opts.cashUsd ?? 0,
-    cash_cumulative_eur: opts.cashEur ?? 0,
-  };
-}
-
-describe("getCryptoChangeForPeriod with adjustment deltas", () => {
-  it("adjusts past USD before deriveClassFx", () => {
-    const deltas = [makeClassDelta("2026-01-10", { cryptoUsd: 20000, cryptoEur: 17000 })];
-    const snap = makeSnapshot({ crypto_value_usd: 10000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
-    const result = getCryptoChangeForPeriod("30d", ctx);
-    expect(result.available).toBe(true);
-    // adjustedPastUsd = 10000 + (20000 - 0) = 30000 (close to current 31800)
-    // Raw would be 10000 → 27000 = huge %. Adjusted should be small.
-    expect(Math.abs(result.percent)).toBeLessThan(20);
-  });
-
-  it("no adjustment when deltas are empty", () => {
-    const snap = makeSnapshot({ crypto_value_usd: 28000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: [] });
-    const result = getCryptoChangeForPeriod("30d", ctx);
-    expect(result.available).toBe(true);
-    // Should match raw behavior
-    expect(result.valueChange).not.toBe(0);
-  });
-
-  it("24h unaffected by deltas", () => {
-    const deltas = [makeClassDelta("2026-01-01", { cryptoUsd: 50000, cryptoEur: 42500 })];
-    const ctx = makeCtx({ adjustmentDeltas: deltas });
-    const result = getCryptoChangeForPeriod("24h", ctx);
-    expect(result.percent).toBe(1.1);
-  });
-});
-
-describe("getStockChangeForPeriod with adjustment deltas", () => {
-  it("adjusts past USD before deriveClassFx", () => {
-    const deltas = [makeClassDelta("2026-01-10", { stocksUsd: 30000, stocksEur: 25500 })];
-    const snap = makeSnapshot({ stocks_value_usd: 20000, stocks_eur_denominated_value: 8000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
-    const result = getStockChangeForPeriod("30d", ctx);
-    expect(result.available).toBe(true);
-    // adjustedPastUsd = 20000 + (30000 - 0) = 50000 (close to current 53000)
-    expect(Math.abs(result.percent)).toBeLessThan(20);
-  });
-});
-
-describe("getCashChangeForPeriod with adjustment deltas", () => {
-  it("adjusts past USD before deriveClassFx", () => {
-    const deltas = [makeClassDelta("2026-01-10", { cashUsd: 15000, cashEur: 12750 })];
-    const snap = makeSnapshot({ cash_value_usd: 5000 });
-    const ctx = makeCtx({ pastSnapshots: { "30d": snap }, adjustmentDeltas: deltas });
+  it("returns 'available: false' when snapshot cash value is zero", () => {
+    const snap = makeSnapshot({ cash_value_usd: 0 });
+    const ctx = makeCtx({ pastSnapshots: { "30d": snap } });
     const result = getCashChangeForPeriod("30d", ctx);
-    expect(result.available).toBe(true);
-    // adjustedPastUsd = 5000 + (15000 - 0) = 20000 (close to current 21200)
-    expect(Math.abs(result.percent)).toBeLessThan(20);
+    expect(result.available).toBe(false);
   });
 });
 
@@ -392,10 +271,8 @@ describe("getDepositsForPeriod", () => {
       ],
     });
     const result = getDepositsForPeriod("24h", ctx);
-    // EUR user: uses fxMul = 90000/106000 ≈ 0.849
     expect(result.breakdown).toHaveLength(2);
     expect(result.total).toBeGreaterThan(0);
-    // Old deposit should be excluded
     expect(result.breakdown.find(b => b.name === "Old")).toBeUndefined();
   });
 
@@ -407,7 +284,6 @@ describe("getDepositsForPeriod", () => {
       ],
     });
     const result = getDepositsForPeriod("24h", ctx);
-    // Should use amount_eur=1000 directly, not amount_usd * fxMul
     expect(result.total).toBeCloseTo(1000, 0);
   });
 
@@ -439,7 +315,6 @@ describe("getDepositsForPeriod", () => {
     const result = getDepositsForPeriod("24h", ctx);
     expect(result.total).toBeCloseTo(600, 0);
     expect(result.breakdown).toHaveLength(2);
-    // Sorted by absolute value descending
     expect(result.breakdown[0].name).toBe("Bank A");
     expect(result.breakdown[0].value).toBeCloseTo(500, 0);
   });
@@ -465,14 +340,13 @@ describe("getDepositsForPeriod", () => {
     expect(result.breakdown).toHaveLength(0);
   });
 
-  // ── Newly added ChangePeriod values: 3d, 90d, all ───────────
   it("3d period includes flows in the last 3 days, excludes older", () => {
     const ctx = makeCtx({
       primaryCurrency: "USD",
       totalValueUsd: 100000,
       cashFlows: [
-        { date: "2026-06-13", amount_usd: 100, entity_name: "Recent" }, // within 3d
-        { date: "2026-06-10", amount_usd: 999, entity_name: "Older" }, // 5 days ago — outside
+        { date: "2026-06-13", amount_usd: 100, entity_name: "Recent" },
+        { date: "2026-06-10", amount_usd: 999, entity_name: "Older" },
       ],
     });
     const result = getDepositsForPeriod("3d", ctx);
@@ -486,8 +360,8 @@ describe("getDepositsForPeriod", () => {
       primaryCurrency: "USD",
       totalValueUsd: 100000,
       cashFlows: [
-        { date: "2026-04-01", amount_usd: 200, entity_name: "Within90d" }, // ~75 days ago
-        { date: "2025-12-01", amount_usd: 999, entity_name: "Outside90d" }, // ~196 days ago
+        { date: "2026-04-01", amount_usd: 200, entity_name: "Within90d" },
+        { date: "2025-12-01", amount_usd: 999, entity_name: "Outside90d" },
       ],
     });
     const result = getDepositsForPeriod("90d", ctx);
@@ -511,31 +385,23 @@ describe("getDepositsForPeriod", () => {
     expect(result.breakdown).toHaveLength(3);
   });
 
-  // ── M1: synthetic benchmark cash flows must be filtered ────────
-  // buildBenchmarkCashFlows emits CashFlowEvent rows tagged synthetic=true
-  // for is_adjustment backdated lots. They're seeds for the S&P benchmark and
-  // must NEVER appear in the deposit tooltip — otherwise an adjustment would
-  // surface as "Unknown" (no entity_name was attached). computeDeposits must
-  // strip them BEFORE class/date filtering.
+  // M1: synthetic benchmark cash flows must be filtered before aggregation
+  // (buildBenchmarkCashFlows emits synthetic=true rows as S&P seeds — they
+  // must never surface in the deposit tooltip as "Unknown" entries).
   it("filters synthetic flows out of deposit aggregation (M1)", () => {
     const ctx = makeCtx({
       primaryCurrency: "USD",
       totalValueUsd: 100000,
       cashFlows: [
-        // Real deposits — included.
         { date: PINNED_TODAY, amount_usd: 1000, entity_name: "Alpha Bank" },
         { date: PINNED_TODAY, amount_usd: 500, entity_name: "DEGIRO" },
-        // Synthetic benchmark flow — MUST be excluded (no entity_name; would
-        // surface as "Unknown" if leaked).
         { date: PINNED_TODAY, amount_usd: 25000, asset_class: "crypto", synthetic: true },
       ],
     });
     const result = getDepositsForPeriod("24h", ctx);
-    expect(result.total).toBeCloseTo(1500, 0); // 1000 + 500 — synthetic 25k excluded
+    expect(result.total).toBeCloseTo(1500, 0);
     expect(result.breakdown).toHaveLength(2);
     expect(result.breakdown.map(b => b.name).sort()).toEqual(["Alpha Bank", "DEGIRO"]);
-    // Defensive: "Unknown" must never leak into the breakdown via a
-    // synthetic flow that lacked entity_name.
     expect(result.breakdown.find(b => b.name === "Unknown")).toBeUndefined();
   });
 
@@ -545,7 +411,6 @@ describe("getDepositsForPeriod", () => {
       totalValueUsd: 100000,
       cashFlows: [
         { date: PINNED_TODAY, amount_usd: 800, asset_class: "crypto", entity_name: "Binance" },
-        // Synthetic crypto flow — same class as the filter, but MUST still drop.
         { date: PINNED_TODAY, amount_usd: 50000, asset_class: "crypto", synthetic: true },
       ],
     });
@@ -555,111 +420,21 @@ describe("getDepositsForPeriod", () => {
     expect(cryptoResult.breakdown[0].name).toBe("Binance");
   });
 
-  // L-A: explicit synthetic=false must behave identically to omitted flag.
-  // The filter strips ONLY synthetic===true; any other value (false or
-  // undefined) is a real cash flow and passes through. This pins the
-  // contract so a future "tri-state" refactor can't silently drop real
-  // deposits whose synthetic flag was set to false explicitly (e.g. by
-  // a future code path that defaults the field).
   it("explicit synthetic: false flows pass through (parity with omitted flag)", () => {
     const ctx = makeCtx({
       primaryCurrency: "USD",
       totalValueUsd: 100000,
       cashFlows: [
-        // Explicit synthetic: false — MUST be included.
         { date: PINNED_TODAY, amount_usd: 1000, asset_class: "cash", entity_name: "Real", synthetic: false },
-        // Omitted flag — MUST also be included (already covered by other tests,
-        // included here so the assertion shape mirrors the explicit case).
         { date: PINNED_TODAY, amount_usd: 500, asset_class: "cash", entity_name: "Real2" },
-        // Synthetic: true — MUST be excluded (control).
         { date: PINNED_TODAY, amount_usd: 25000, asset_class: "cash", synthetic: true },
       ],
     });
     const result = getDepositsForPeriod("24h", ctx);
-    expect(result.total).toBeCloseTo(1500, 0); // 1000 + 500, synthetic 25k excluded
+    expect(result.total).toBeCloseTo(1500, 0);
     expect(result.breakdown).toHaveLength(2);
     expect(result.breakdown.map((b) => b.name).sort()).toEqual(["Real", "Real2"]);
-    // Defensive: "Unknown" must never leak.
     expect(result.breakdown.find((b) => b.name === "Unknown")).toBeUndefined();
-  });
-});
-
-// ── Delta helpers ──────────────────────────────────────────
-
-function makeDelta(date: string, cumUsd: number, cumEur: number): AdjustmentDelta {
-  return {
-    date, cumulative_usd: cumUsd, cumulative_eur: cumEur,
-    crypto_cumulative_usd: 0, crypto_cumulative_eur: 0,
-    stocks_cumulative_usd: 0, stocks_cumulative_eur: 0,
-    cash_cumulative_usd: 0, cash_cumulative_eur: 0,
-  };
-}
-
-describe("getCumDeltaAtDate", () => {
-  it("returns 0 for empty deltas", () => {
-    expect(getCumDeltaAtDate("2026-01-15", [], "EUR")).toBe(0);
-  });
-
-  it("returns cumulative delta at exact date", () => {
-    const deltas = [makeDelta("2026-01-10", 1000, 850)];
-    expect(getCumDeltaAtDate("2026-01-10", deltas, "EUR")).toBe(850);
-  });
-
-  it("forward-fills to last delta before date", () => {
-    const deltas = [
-      makeDelta("2026-01-05", 500, 425),
-      makeDelta("2026-01-15", 1500, 1275),
-    ];
-    expect(getCumDeltaAtDate("2026-01-10", deltas, "EUR")).toBe(425);
-  });
-
-  it("returns 0 when date is before all deltas", () => {
-    const deltas = [makeDelta("2026-02-01", 1000, 850)];
-    expect(getCumDeltaAtDate("2026-01-01", deltas, "EUR")).toBe(0);
-  });
-
-  it("returns final delta when date is after all deltas", () => {
-    const deltas = [makeDelta("2026-01-01", 1000, 850)];
-    expect(getCumDeltaAtDate("2026-12-31", deltas, "EUR")).toBe(850);
-  });
-
-  it("returns class-specific delta when assetClass provided", () => {
-    const deltas: AdjustmentDelta[] = [{
-      date: "2026-01-10",
-      cumulative_usd: 3000, cumulative_eur: 2550,
-      crypto_cumulative_usd: 1000, crypto_cumulative_eur: 850,
-      stocks_cumulative_usd: 2000, stocks_cumulative_eur: 1700,
-      cash_cumulative_usd: 0, cash_cumulative_eur: 0,
-    }];
-    expect(getCumDeltaAtDate("2026-01-10", deltas, "EUR", "crypto")).toBe(850);
-    expect(getCumDeltaAtDate("2026-01-10", deltas, "USD", "stocks")).toBe(2000);
-  });
-
-  it("uses USD currency correctly", () => {
-    const deltas = [makeDelta("2026-01-10", 1000, 850)];
-    expect(getCumDeltaAtDate("2026-01-10", deltas, "USD")).toBe(1000);
-  });
-});
-
-// ── Edge case: negative adjusted past value ─────────────
-
-describe("getChangeForPeriod — negative adjusted past value", () => {
-  it("returns unavailable when adjustment makes past value negative", () => {
-    // snapshot total_value_eur: 80000, adjustment cumDelta = -100000
-    // pastValue = 80000 + (-100000 - 0) = -20000 → guard returns available: false
-    const deltas = [makeDelta("2026-06-01", -117647, -100000)];
-    const snap = makeSnapshot({ total_value_eur: 80000, total_value_usd: 94000 });
-    const ctx = makeCtx({
-      totalValue: 90000,
-      pastSnapshots: { "30d": snap },
-      adjustmentDeltas: deltas,
-    });
-    const result = getChangeForPeriod("30d", ctx);
-    // pastValue = 80000 + (-100000 - 0) = -20000 → <= 0 → unavailable
-    expect(result.available).toBe(false);
-    expect(result.percent).toBe(0);
-    expect(result.valueChange).toBe(0);
-    expect(Number.isNaN(result.percent)).toBe(false);
   });
 });
 
@@ -667,18 +442,15 @@ describe("getChangeForPeriod — negative adjusted past value", () => {
 
 describe("getChangeForPeriod — sub-0.01% change", () => {
   it("computes tiny percentage without rounding to zero", () => {
-    // ~1,000,000 EUR → 1,000,050 EUR = +0.005%
     const snap = makeSnapshot({ total_value_eur: 1000000, total_value_usd: 1180000 });
     const ctx = makeCtx({
       totalValue: 1000050,
       totalValueUsd: 1180059,
       totalValueEur: 1000050,
       pastSnapshots: { "30d": snap },
-      adjustmentDeltas: [],
     });
     const result = getChangeForPeriod("30d", ctx);
     expect(result.available).toBe(true);
-    // (1000050 - 1000000) / 1000000 × 100 = 0.005%
     expect(result.percent).toBeCloseTo(0.005, 3);
     expect(result.valueChange).toBeCloseTo(50, 0);
     expect(result.percent).not.toBe(0);
@@ -689,8 +461,6 @@ describe("getChangeForPeriod — sub-0.01% change", () => {
 
 describe("getChangeForPeriod — null EUR in snapshot", () => {
   it("returns unavailable when primary currency value is null", () => {
-    // EUR user, but snapshot has total_value_eur: null (old snapshot)
-    // rawPastValue = snapshot[valueKey] ?? 0 = 0 → pastValue = 0 → unavailable
     const snap = makeSnapshot({
       total_value_usd: 100000,
       total_value_eur: null as unknown as number,
@@ -698,7 +468,6 @@ describe("getChangeForPeriod — null EUR in snapshot", () => {
     const ctx = makeCtx({
       primaryCurrency: "EUR",
       pastSnapshots: { "7d": snap },
-      adjustmentDeltas: [],
     });
     const result = getChangeForPeriod("7d", ctx);
     expect(result.available).toBe(false);
@@ -707,7 +476,6 @@ describe("getChangeForPeriod — null EUR in snapshot", () => {
   });
 
   it("FX decomposition handles null other-currency snapshot gracefully", () => {
-    // USD user, but snapshot has total_value_eur: null → FX decomposition gets pastOther=0
     const snap = makeSnapshot({
       total_value_usd: 80000,
       total_value_eur: null as unknown as number,
@@ -718,40 +486,11 @@ describe("getChangeForPeriod — null EUR in snapshot", () => {
       totalValueUsd: 90000,
       totalValueEur: 76500,
       pastSnapshots: { "30d": snap },
-      adjustmentDeltas: [],
     });
     const result = getChangeForPeriod("30d", ctx);
     expect(result.available).toBe(true);
-    // Primary return works: (90000 - 80000) / 80000 = 12.5%
     expect(result.percent).toBeCloseTo(12.5, 1);
-    // FX: pastOther = (null ?? 0) + 0 = 0 → fxPct stays 0
     expect(result.fxPercent).toBe(0);
     expect(Number.isNaN(result.fxValueChange)).toBe(false);
-  });
-});
-
-describe("getCumDeltaFinal", () => {
-  it("returns 0 for empty deltas", () => {
-    expect(getCumDeltaFinal([], "EUR")).toBe(0);
-  });
-
-  it("returns last delta value", () => {
-    const deltas = [
-      makeDelta("2026-01-01", 500, 425),
-      makeDelta("2026-01-15", 1500, 1275),
-    ];
-    expect(getCumDeltaFinal(deltas, "EUR")).toBe(1275);
-    expect(getCumDeltaFinal(deltas, "USD")).toBe(1500);
-  });
-
-  it("returns class-specific final delta", () => {
-    const deltas: AdjustmentDelta[] = [{
-      date: "2026-01-10",
-      cumulative_usd: 3000, cumulative_eur: 2550,
-      crypto_cumulative_usd: 1000, crypto_cumulative_eur: 850,
-      stocks_cumulative_usd: 2000, stocks_cumulative_eur: 1700,
-      cash_cumulative_usd: 0, cash_cumulative_eur: 0,
-    }];
-    expect(getCumDeltaFinal(deltas, "EUR", "crypto")).toBe(850);
   });
 });

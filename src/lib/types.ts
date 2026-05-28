@@ -671,20 +671,6 @@ export type TransferResult =
   | { success: true; transferGroupId: string; partialFailure?: boolean }
   | { success: false; error: string; transferGroupId?: string; partialFailure?: boolean };
 
-// ─── Adjustment Deltas (chart enrichment) ───────────────
-
-export interface AdjustmentDelta {
-  date: string;
-  cumulative_usd: number;
-  cumulative_eur: number;
-  crypto_cumulative_usd: number;
-  crypto_cumulative_eur: number;
-  stocks_cumulative_usd: number;
-  stocks_cumulative_eur: number;
-  cash_cumulative_usd: number;
-  cash_cumulative_eur: number;
-}
-
 // ─── Command Palette ─────────────────────────────────────
 
 /** Flat portfolio item for command palette search. */

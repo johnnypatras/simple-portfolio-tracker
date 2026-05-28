@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
 import { deriveCashFlows, getHistoricalBenchmarkExtension } from "@/lib/actions/benchmark";
-import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { assemblePortfolioView } from "@/lib/portfolio/assemble";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { RegisterHoldings } from "@/components/ui/command-palette-provider";
@@ -33,7 +32,7 @@ export default async function SharedOverviewPage({
   const { sp500Days } = benchmarkExtension;
 
   // Prices, aggregation, insights + benchmark data (parallelized)
-  const [assembled, sp500TRHistory, cashFlowResult, adjustmentDeltas] = await Promise.all([
+  const [assembled, sp500TRHistory, cashFlowResult] = await Promise.all([
     assemblePortfolioView(
       { cryptoAssets, stockAssets, cashAccounts, primaryCurrency },
       `/share/${token}`,
@@ -42,7 +41,6 @@ export default async function SharedOverviewPage({
     // Fetch S&P 500 TR with owner-aware history extent
     fetchIndexHistory("^SP500TR", sp500Days),
     deriveCashFlows(data.share.owner_id),
-    getAdjustmentDeltas(data.share.owner_id),
   ]);
 
   const cashFlows = [...cashFlowResult.events, ...benchmarkExtension.syntheticCashFlows].sort(
@@ -72,7 +70,6 @@ export default async function SharedOverviewPage({
         insights={insights}
         pastSnapshots={pastSnapshots}
         cashFlows={cashFlows}
-        adjustmentDeltas={adjustmentDeltas}
       />
       <div className="mt-6">
         <PortfolioChart
@@ -82,7 +79,6 @@ export default async function SharedOverviewPage({
           primaryCurrency={primaryCurrency}
           sp500History={sp500TRHistory}
           cashFlows={cashFlows}
-          adjustmentDeltas={adjustmentDeltas}
           liveSlicesUsd={{
             crypto: summary.cryptoValueUsd,
             stocks: summary.stocksValueUsd,
