@@ -4,7 +4,7 @@ import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { getStockAssetsWithPositions } from "@/lib/actions/stocks";
 import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
-import { deriveCashFlows } from "@/lib/actions/benchmark";
+import { deriveCashFlows, getHistoricalBenchmarkExtension } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { backfillCashflowsAndDeltas } from "@/lib/actions/backfill";
 import { assemblePortfolioView } from "@/lib/portfolio/assemble";
@@ -23,6 +23,16 @@ const PortfolioChart = dynamic(
 );
 
 export default async function DashboardPage() {
+  // ── Resolve benchmark extension first (warms historical_prices cache) ──
+  // This runs before the main Promise.all so that the expensive Yahoo fetch
+  // happens once; the subsequent getSnapshots hits a warm cache. There is a
+  // minor duplicate DB read across the two calls — that is acceptable and bounded.
+  const benchmarkExtension = await getHistoricalBenchmarkExtension();
+
+  // sp500Days is computed inside getHistoricalBenchmarkExtension (server action)
+  // to keep Date.now() out of the component body (react-hooks/purity rule).
+  const { sp500Days } = benchmarkExtension;
+
   // ── Round 1: Portfolio data + independent fetches in parallel ──
   // Snapshots and benchmark history don't depend on asset data,
   // so they run alongside DB queries.
@@ -44,9 +54,9 @@ export default async function DashboardPage() {
     // augmentation (10 redundant DB queries) for data already returned here.
     // The share-page pipeline (shared-portfolio.ts) uses the same pattern.
     getSnapshots(ALL_SNAPSHOTS_DAYS),
-    // S&P 500 Total Return — fetch max history so the benchmark line
-    // matches the chart's "All" extent (Yahoo maps days > 365 to range="max")
-    fetchIndexHistory("^SP500TR", ALL_SNAPSHOTS_DAYS),
+    // S&P 500 Total Return — sized to reach the earliest backdated lot so the
+    // benchmark line matches the extended portfolio chart range.
+    fetchIndexHistory("^SP500TR", sp500Days),
     deriveCashFlows(),
     getAdjustmentDeltas(),
   ]);
@@ -63,7 +73,10 @@ export default async function DashboardPage() {
   // Earliest snapshot for all-time change — reuse data already loaded for the chart
   const snapAll = chartSnapshots.length > 0 ? chartSnapshots[0] : null;
 
-  const { events: cashFlows, pendingCount: cfPendingCount, failedCount: cfFailedCount } = cashFlowResult;
+  const { events: realCashFlows, pendingCount: cfPendingCount, failedCount: cfFailedCount } = cashFlowResult;
+  const cashFlows = [...realCashFlows, ...benchmarkExtension.syntheticCashFlows].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
 
   const primaryCurrency = profile.primary_currency;
 

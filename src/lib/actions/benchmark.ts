@@ -4,7 +4,7 @@ import { cache } from "react";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateUUID } from "@/lib/validation";
-import { MAX_QUERY_LIMIT } from "@/lib/constants";
+import { MAX_QUERY_LIMIT, ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
 
 // ─── Cash Flow Event ─────────────────────────────────────
 
@@ -118,14 +118,14 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
  */
 export async function getHistoricalBenchmarkExtension(
   userId?: string,
-): Promise<{ earliestDate: string | null; syntheticCashFlows: CashFlowEvent[] }> {
+): Promise<{ earliestDate: string | null; syntheticCashFlows: CashFlowEvent[]; sp500Days: number }> {
   if (userId) validateUUID(userId, "User ID");
   const supabase = userId ? createAdminClient() : await createServerSupabaseClient();
   const resolvedUserId = userId ?? (await supabase.auth.getUser()).data.user?.id;
-  if (!resolvedUserId) return { earliestDate: null, syntheticCashFlows: [] };
+  if (!resolvedUserId) return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS };
 
   const { lots, prices } = await fetchHistoricalPriceInputsFor(supabase, resolvedUserId);
-  if (lots.length === 0) return { earliestDate: null, syntheticCashFlows: [] };
+  if (lots.length === 0) return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS };
 
   let earliestDate: string | null = null;
   for (const lot of lots) {
@@ -136,8 +136,20 @@ export async function getHistoricalBenchmarkExtension(
     }
   }
 
+  // Size the S&P history so fetchIndexHistory reaches the earliest backdated
+  // date. Fall back to ALL_SNAPSHOTS_DAYS when there are no backdated lots.
+  const sp500Days = earliestDate
+    ? Math.max(
+        ALL_SNAPSHOTS_DAYS,
+        Math.ceil(
+          (Date.now() - new Date(`${earliestDate}T00:00:00Z`).getTime()) / 86_400_000,
+        ),
+      )
+    : ALL_SNAPSHOTS_DAYS;
+
   return {
     earliestDate,
     syntheticCashFlows: buildBenchmarkCashFlows(lots, prices),
+    sp500Days,
   };
 }
