@@ -8,7 +8,7 @@ import {
   fetchYahooDailyHistory,
   fetchFxUsdPivotHistory,
 } from "@/lib/prices/historical";
-import type { PortfolioSnapshot } from "@/lib/types";
+import type { PortfolioSnapshot, CashFlowEvent } from "@/lib/types";
 
 /**
  * One cached historical price. `asset_key` is canonical per kind:
@@ -812,4 +812,59 @@ async function loadStockPositionMeta(
       });
   }
   return map;
+}
+
+/**
+ * Synthetic benchmark cash flows for is_adjustment backdated lots — the lots
+ * deriveCashFlows excludes. One event per is_adjustment delta, at its
+ * effective_date, valued qty_delta × historical_price(date) × usdRate.
+ *
+ * Valuing at the same historical price Phase 1 puts on the portfolio line makes
+ * the S&P-units seed (chart-enrichment.ts) reconcile to ~0 delta. Buys (+qty)
+ * are positive (money deployed), sells (−qty) negative (money withdrawn) — the
+ * same sign convention as deriveCashFlows.
+ *
+ * Pure. Non-adjustment deltas are skipped (already present in deriveCashFlows).
+ * A delta with no price at-or-before its date is skipped (never fabricated).
+ */
+export function buildBenchmarkCashFlows(
+  lots: HistoricalLot[],
+  prices: HistoricalPriceRow[],
+): CashFlowEvent[] {
+  if (lots.length === 0) return [];
+  const priceIndex = buildPriceIndex(prices);
+  const fxIndex = priceIndex;
+  const events: CashFlowEvent[] = [];
+
+  for (const lot of lots) {
+    const series = priceIndex.get(`${lot.asset_kind}:${lot.asset_key}`);
+    if (!series) continue;
+    for (const d of lot.deltas) {
+      if (d.is_adjustment !== true) continue;
+      if (!Number.isFinite(d.qty_delta) || d.qty_delta === 0) continue;
+
+      const priceNative = findPriceAtOrBefore(series, d.effective_date);
+      if (priceNative === null || !Number.isFinite(priceNative) || priceNative <= 0) continue;
+
+      const usdRate = usdPerUnit(fxIndex, lot.native_currency, d.effective_date);
+      if (usdRate === null || !Number.isFinite(usdRate) || usdRate <= 0) continue;
+
+      const amountUsd = d.qty_delta * priceNative * usdRate;
+      if (!Number.isFinite(amountUsd)) continue;
+
+      const usdPerEur = usdPerUnit(fxIndex, "EUR", d.effective_date);
+      const amountEur =
+        usdPerEur !== null && Number.isFinite(usdPerEur) && usdPerEur > 0
+          ? amountUsd / usdPerEur
+          : undefined;
+
+      events.push({
+        date: d.effective_date,
+        amount_usd: amountUsd,
+        amount_eur: amountEur,
+        asset_class: lot.asset_class,
+      });
+    }
+  }
+  return events;
 }

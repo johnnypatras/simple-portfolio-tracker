@@ -7,6 +7,7 @@ import {
   usdPerUnit,
   augmentAndExtendSnapshots,
   buildHistoricalLots,
+  buildBenchmarkCashFlows,
   type HistoricalPriceRow,
   type HistoricalLot,
   type QtyDelta,
@@ -536,5 +537,48 @@ describe("buildHistoricalLots — is_adjustment threading (Phase 2)", () => {
     ];
     const lots = buildHistoricalLots(rows);
     expect(lots[0].deltas[0].is_adjustment).toBe(true);
+  });
+});
+
+describe("buildBenchmarkCashFlows", () => {
+  const benchPrices: HistoricalPriceRow[] = [
+    px("crypto", "bitcoin", "2021-01-01", 30000),
+    px("crypto", "bitcoin", "2023-06-01", 27000),
+    px("fx", "EUR", "2021-01-01", 1.2),
+    px("fx", "EUR", "2023-06-01", 1.08),
+  ];
+
+  it("emits a positive flow for an is_adjustment buy, valued qty × price × usdRate", () => {
+    const lots: HistoricalLot[] = [
+      { position_id: "btc-1", asset_kind: "crypto", asset_key: "bitcoin", fetch_symbol: "BTC-USD", native_currency: "USD", asset_class: "crypto", capture_date: "2026-05-01", deltas: [{ effective_date: "2021-01-01", qty_delta: 2, is_adjustment: true }] },
+    ];
+    const flows = buildBenchmarkCashFlows(lots, benchPrices);
+    expect(flows).toHaveLength(1);
+    expect(flows[0].date).toBe("2021-01-01");
+    expect(flows[0].amount_usd).toBeCloseTo(2 * 30000, 2);
+    expect(flows[0].amount_eur).toBeCloseTo((2 * 30000) / 1.2, 2);
+    expect(flows[0].asset_class).toBe("crypto");
+  });
+
+  it("emits a negative flow for an is_adjustment sell", () => {
+    const lots: HistoricalLot[] = [
+      { position_id: "btc-1", asset_kind: "crypto", asset_key: "bitcoin", fetch_symbol: "BTC-USD", native_currency: "USD", asset_class: "crypto", capture_date: "2026-05-01", deltas: [ { effective_date: "2021-01-01", qty_delta: 2, is_adjustment: true }, { effective_date: "2023-06-01", qty_delta: -1, is_adjustment: true } ] },
+    ];
+    const flows = buildBenchmarkCashFlows(lots, benchPrices).sort((a, b) => a.date.localeCompare(b.date));
+    expect(flows[1].amount_usd).toBeCloseTo(-1 * 27000, 2);
+  });
+
+  it("ignores non-adjustment deltas (already in deriveCashFlows — no double-count)", () => {
+    const lots: HistoricalLot[] = [
+      { position_id: "btc-1", asset_kind: "crypto", asset_key: "bitcoin", fetch_symbol: "BTC-USD", native_currency: "USD", asset_class: "crypto", capture_date: "2026-05-01", deltas: [{ effective_date: "2021-01-01", qty_delta: 2, is_adjustment: false }] },
+    ];
+    expect(buildBenchmarkCashFlows(lots, benchPrices)).toEqual([]);
+  });
+
+  it("skips a delta when no historical price exists at-or-before its date", () => {
+    const lots: HistoricalLot[] = [
+      { position_id: "btc-1", asset_kind: "crypto", asset_key: "bitcoin", fetch_symbol: "BTC-USD", native_currency: "USD", asset_class: "crypto", capture_date: "2026-05-01", deltas: [{ effective_date: "2020-01-01", qty_delta: 2, is_adjustment: true }] },
+    ];
+    expect(buildBenchmarkCashFlows(lots, benchPrices)).toEqual([]);
   });
 });
