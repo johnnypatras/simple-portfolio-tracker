@@ -280,10 +280,21 @@ function enrichCashFlowAdjusted(
     if (fxRatioUsdPerDisp !== null && fxRatioUsdPerDisp > 0) {
       const adjustedFirstUsd = adjustedFirstDisp * fxRatioUsdPerDisp;
       const neededUnits = adjustedFirstUsd / sp500StartPrice;
-      if (neededUnits !== preChartUnits) {
-        const seedDelta = neededUnits - preChartUnits;
+      // Baseline against the units actually present at chartStart. A cash flow
+      // dated exactly at chartStart lands in unitsByDate (the partition uses
+      // cf.date < chartStart for preChartUnits), so the chartStart flow's units
+      // are NOT in preChartUnits. Seeding against preChartUnits alone would then
+      // ADD a duplicate seedDelta on top of that flow (double-counting the
+      // benchmark at chartStart — the Phase 2 back-extension case, where the
+      // earliest synthetic flow sits on chartStart). Comparing to the actual
+      // chartStart units makes seedDelta 0 when the flow already provides them.
+      const unitsAtChartStart = unitsByDate.has(chartStart)
+        ? unitsByDate.get(chartStart)!
+        : preChartUnits;
+      if (neededUnits !== unitsAtChartStart) {
+        const seedDelta = neededUnits - unitsAtChartStart;
         sp500Units += seedDelta;
-        preChartUnits = neededUnits;
+        preChartUnits += seedDelta;
         for (const [date, units] of unitsByDate) {
           unitsByDate.set(date, units + seedDelta);
         }

@@ -4,7 +4,7 @@ import type {
   ChartPoint,
   EnrichChartDataInput,
 } from "@/lib/portfolio/chart-enrichment";
-import type { AdjustmentDelta } from "@/lib/types";
+import type { AdjustmentDelta, CashFlowEvent } from "@/lib/types";
 
 // ── Test helpers ───────────────────────────────────────────
 
@@ -383,6 +383,86 @@ describe("enrichChartData — weekend chart start", () => {
       expect(pt.sp500Value).toBeDefined();
       expect(Number.isFinite(pt.sp500Value)).toBe(true);
     }
+  });
+});
+
+// ── Extended range: synthesized benchmark cash flow ───────
+
+describe("enrichChartData — extended range with synthetic benchmark cash flow", () => {
+  it("seeds the S&P to the portfolio value at chartStart (seedDelta ≈ 0)", () => {
+    // Scenario: Phase 1/2 back-extension feeds a synthesized point at 2021-01-01
+    // (portfolio value = $60k) plus a matching synthetic cash flow.
+    // The seed reconciliation must make sp500Value[0] ≈ 60000 (benchmark equals
+    // portfolio at chartStart), and sp500Value[1] must double because the S&P
+    // price doubled (3000 → 6000).
+    const points = [
+      makePoint({ date: "2021-01-01", value: 60000, valueUsd: 60000, cryptoUsd: 60000 }),
+      makePoint({ date: "2026-01-01", value: 120000, valueUsd: 120000, cryptoUsd: 120000 }),
+    ];
+    const cashFlows: CashFlowEvent[] = [
+      { date: "2021-01-01", amount_usd: 60000, asset_class: "crypto" },
+    ];
+    const sp500History = [
+      { date: "2021-01-01", close: 3000 },
+      { date: "2026-01-01", close: 6000 },
+    ];
+    const out = enrichChartData(
+      makeInput({
+        points,
+        viewMode: "total",
+        primaryCurrency: "USD",
+        sp500History,
+        cashFlows,
+        adjustmentDeltas: [],
+        snapshotRatios: null,
+      }),
+    );
+    // Seed: preChartUnits = 0 (no pre-chart flows), units at 2021-01-01 = 60000/3000 = 20.
+    // Seeding: adjustedFirstUsd = 60000, neededUnits = 60000/3000 = 20.
+    // Since neededUnits === unitsByDate.get("2021-01-01") = 20 (already set), seedDelta = 0.
+    // sp500Value[0] = 20 * 3000 = 60000.
+    // sp500Value[1]: no new units, currentUnits stays 20. 20 * 6000 = 120000.
+    expect(out[0].sp500Value).toBeCloseTo(60000, 0);   // seed reconciles to portfolio value
+    expect(out[1].sp500Value).toBeCloseTo(120000, 0);  // S&P doubled → 60k × 6000/3000
+  });
+
+  it("adds S&P units for a second backdated lot at its later date", () => {
+    // Two synthetic cash flows: one at chartStart (60k) and one mid-range (20k).
+    // After seed reconciliation, the total S&P value at the end must reflect
+    // all accumulated units: seed(20) + second lot(5) = 25 units × 6000 = 150000.
+    const points = [
+      makePoint({ date: "2021-01-01", value: 60000, valueUsd: 60000, cryptoUsd: 60000 }),
+      makePoint({ date: "2022-01-01", value: 90000, valueUsd: 90000, cryptoUsd: 70000, stocksUsd: 20000 }),
+      makePoint({ date: "2026-01-01", value: 200000, valueUsd: 200000, cryptoUsd: 150000, stocksUsd: 50000 }),
+    ];
+    const cashFlows: CashFlowEvent[] = [
+      { date: "2021-01-01", amount_usd: 60000, asset_class: "crypto" },
+      { date: "2022-01-01", amount_usd: 20000, asset_class: "stocks" },
+    ];
+    const sp500History = [
+      { date: "2021-01-01", close: 3000 },
+      { date: "2022-01-01", close: 4000 },
+      { date: "2026-01-01", close: 6000 },
+    ];
+    const out = enrichChartData(
+      makeInput({
+        points,
+        viewMode: "total",
+        primaryCurrency: "USD",
+        sp500History,
+        cashFlows,
+        adjustmentDeltas: [],
+        snapshotRatios: null,
+      }),
+    );
+    // 2021-01-01: 60000/3000 = 20 units (in unitsByDate).
+    // 2022-01-01: 20000/4000 = 5 more → unitsByDate["2022-01-01"] = 25.
+    // Seed: adjustedFirstUsd = 60000, neededUnits = 60000/3000 = 20.
+    //   seedDelta = 20 - preChartUnits(0) = 20, but unitsByDate["2021-01-01"]
+    //   already = 20 so neededUnits === unitsByDate → seedDelta = 0, sp500Units = 20.
+    // currentUnits at 2022-01-01 → 25. At 2026-01-01 → still 25.
+    // sp500Value[2] = 25 * 6000 = 150000.
+    expect(out[2].sp500Value).toBeCloseTo(150000, 0);
   });
 });
 
