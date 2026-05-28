@@ -36,7 +36,21 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(),
 }));
 
-// CoinGecko historical: return a constant USD price for the date being looked up.
+// Yahoo daily history (PRIMARY crypto source via {TICKER}-USD): return a
+// constant USD price covering the backdate window so the walk-on-or-before in
+// computeDeltaFromSnapshots always lands on 30000. fetchYahooDailyHistory is
+// called with (symbol, startDate, endDate) = ("BTC-USD", date, date).
+vi.mock("@/lib/prices/historical", () => ({
+  fetchYahooDailyHistory: vi.fn(async () => {
+    return [
+      { date: "2020-01-01", price: 30000 },
+      { date: "2026-01-01", price: 30000 },
+    ];
+  }),
+}));
+
+// CoinGecko historical: obscure-coin FALLBACK only (Yahoo returns []). Kept
+// mocked so any fallback path stays deterministic and offline.
 vi.mock("@/lib/prices/coingecko", () => ({
   fetchCoinHistory: vi.fn(async () => {
     // Cover the entire backdate window with a single price level so the

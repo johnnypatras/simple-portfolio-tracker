@@ -572,7 +572,7 @@ export function ActivityTimeline({
     try {
       await toggleActivityAdjustment(logId, isAdjustment);
       startTransition(() => { router.refresh(); });
-      toast.success(isAdjustment ? "Marked as adjustment" : "Marked as transaction");
+      toast.success(isAdjustment ? "Marked as adjustment" : "Marked as cash flow");
     } catch {
       toast.error("Failed to update");
     }
@@ -1041,9 +1041,13 @@ export function ActivityTimeline({
                               <GitBranch className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {!isReadOnly && !log.undone_at && CASH_FLOW_ENTITIES.includes(log.entity_type) && (
+                          {/* Transfer legs are excluded (H4-UI): they must stay
+                              is_adjustment=true, and the server action now throws
+                              if toggled — never offer a UI action that would error. */}
+                          {!isReadOnly && !log.undone_at && !log.transfer_group_id && CASH_FLOW_ENTITIES.includes(log.entity_type) && (
                             <button
                               onClick={() => handleToggleAdjustment(log.id, !log.is_adjustment)}
+                              aria-pressed={log.is_adjustment}
                               className={`p-1 rounded transition-all ${
                                 log.is_adjustment
                                   ? "text-amber-400 bg-amber-500/10"

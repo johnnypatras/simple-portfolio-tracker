@@ -14,7 +14,8 @@ import {
 import { toCsv } from "@/lib/csv";
 import { round2 } from "@/lib/format";
 import { validateUUID } from "@/lib/validation";
-import { MAX_QUERY_LIMIT, ACTIVITY_LOG_DEFAULT_LIMIT, ACTIVITY_LOG_MAX_LIMIT } from "@/lib/constants";
+import { ACTIVITY_LOG_DEFAULT_LIMIT, ACTIVITY_LOG_MAX_LIMIT } from "@/lib/constants";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionType, ActivityLog, AssetClass, EntityType, FlowStatus } from "@/lib/types";
 import type { Database } from "@/types/database";
@@ -222,7 +223,9 @@ export async function computeDeltaFromSnapshots(
     if (Math.abs(qtyDelta) < 1e-12) return { usd: 0, eur: 0 };
 
     if (entityType === "crypto_position") {
-      // Look up crypto asset for coingecko_id
+      // Look up crypto asset for coingecko_id + ticker. The ticker drives the
+      // Yahoo `{TICKER}-USD` symbol (e.g. BTC-USD); coingecko_id is the
+      // obscure-coin fallback source.
       const assetId =
         (after?.crypto_asset_id as string) ??
         (before?.crypto_asset_id as string);
@@ -231,33 +234,56 @@ export async function computeDeltaFromSnapshots(
       const supabase = supabaseOverride ?? (await createServerSupabaseClient());
       const { data: asset } = await supabase
         .from("crypto_assets")
-        .select("coingecko_id")
+        .select("coingecko_id, ticker")
         .eq("id", assetId)
         .single();
       if (!asset?.coingecko_id) throw new Error(`Crypto asset ${assetId} not found or missing coingecko_id`);
 
-      // Fetch historical price for the date
-      const { fetchCoinHistory } = await import("@/lib/prices/coingecko");
       const txDate = date.split("T")[0];
-      const daysSince = Math.ceil(
-        (Date.now() - new Date(txDate).getTime()) / 86_400_000
-      );
-      const history = await fetchCoinHistory(
-        asset.coingecko_id,
-        Math.max(daysSince + 5, 30)
-      );
 
-      if (history.length === 0) {
-        throw new Error(`CoinGecko returned no price history for ${asset.coingecko_id} (${daysSince} days)`);
-      }
-
-      // Find closest price on or before the date
+      // PRIMARY: Yahoo `{TICKER}-USD` daily history. Unlike CoinGecko's
+      // market_chart (Demo plan caps at ~365 days), Yahoo serves multi-year
+      // history, so backdated lots older than a year reconstruct correctly.
+      // This matches historical-prices-augmentation.ts, which prices the same
+      // backdated crypto lot on the chart via `${ticker.toUpperCase()}-USD`.
+      // Both paths MUST agree so the benchmark seed reconciles.
       let priceUsd = 0;
-      for (const h of history) {
-        if (h.date <= txDate) priceUsd = h.price;
-        else break;
+      if (asset.ticker) {
+        const { fetchYahooDailyHistory } = await import("@/lib/prices/historical");
+        const yahooSymbol = `${asset.ticker.toUpperCase()}-USD`;
+        const yahooHistory = await fetchYahooDailyHistory(yahooSymbol, txDate, txDate);
+        // fetchYahooDailyHistory already pads the start edge (RANGE_PAD_DAYS) so
+        // a prior trading day exists to forward-fill from. Walk on-or-before.
+        for (const h of yahooHistory) {
+          if (h.date <= txDate) priceUsd = h.price;
+          else break;
+        }
+        if (priceUsd === 0 && yahooHistory.length > 0) priceUsd = yahooHistory[0].price;
       }
-      if (priceUsd === 0) priceUsd = history[0].price;
+
+      // FALLBACK: CoinGecko market_chart for obscure coins not on Yahoo (Yahoo
+      // returned []). Subject to the ~365-day Demo-plan cap — best-effort only.
+      if (priceUsd === 0) {
+        const { fetchCoinHistory } = await import("@/lib/prices/coingecko");
+        const daysSince = Math.ceil(
+          (Date.now() - new Date(txDate).getTime()) / 86_400_000
+        );
+        const history = await fetchCoinHistory(
+          asset.coingecko_id,
+          Math.max(daysSince + 5, 30)
+        );
+        for (const h of history) {
+          if (h.date <= txDate) priceUsd = h.price;
+          else break;
+        }
+        if (priceUsd === 0 && history.length > 0) priceUsd = history[0].price;
+      }
+
+      if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
+        throw new Error(
+          `No positive historical price for crypto asset ${assetId} (ticker=${asset.ticker ?? "?"}, coingecko_id=${asset.coingecko_id}) at ${txDate} from Yahoo or CoinGecko. Refusing to write zero-valued delta.`,
+        );
+      }
 
       const deltaUsd = qtyDelta * priceUsd;
       // Convert to EUR
@@ -344,6 +370,20 @@ export async function toggleActivityAdjustment(
   if (fetchErr) throw new Error(fetchErr.message);
   if (!row) throw new Error("Activity log entry not found");
 
+  // Defense-in-depth (H4): transfer legs MUST stay is_adjustment=true so the
+  // S&P benchmark ignores them — flipping one to false recreates the phantom
+  // bulk-deposit bug. Undone rows are tombstones; toggling them is meaningless
+  // and would re-derive cashflow for a reversed action. The migration's
+  // candidate filter already excludes both, but the UI toggle and any future
+  // caller don't — guard at the primitive.
+  if (row.transfer_group_id !== null) throw new Error("Cannot toggle adjustment on transfer legs");
+  if (row.undone_at !== null) throw new Error("Cannot toggle adjustment on undone entries");
+
+  // Idempotency (M1): already at the requested value → no-op. Avoids a
+  // redundant 1–8s historical-price fetch + a no-op UPDATE when a concurrent
+  // migration already flipped this row.
+  if (row.is_adjustment === isAdjustment) return;
+
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
   let deltaStatus: FlowStatus | null = null;
@@ -428,7 +468,12 @@ export async function toggleActivityAdjustment(
       cashflow_status: cashflowStatus,
     })
     .eq("id", logId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    // TOCTOU guard (M2): we read the row, then spent ~1–8s fetching external
+    // prices. If a concurrent undo set undone_at in that window, this UPDATE
+    // matches 0 rows and the now-undone row is correctly left alone (no need
+    // to throw on 0-match — the undo's state wins).
+    .is("undone_at", null);
   if (error) throw new Error(error.message);
   });
 }
@@ -439,16 +484,23 @@ export async function exportActivityLogsCsv(): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
-  const { data, error } = await supabase
-    .from("activity_log")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(MAX_QUERY_LIMIT);
 
-  if (error) throw new Error(error.message);
+  // Paginate past the PostgREST max_rows cap (1000): a `.limit()` is silently
+  // capped, so a heavy user's CSV export would be truncated mid-history (data
+  // loss in THEIR export). Stable order — created_at desc + id tiebreaker —
+  // guarantees page integrity even when two rows share the same created_at.
+  const rawRows = await fetchAllPaginated<Database["public"]["Tables"]["activity_log"]["Row"]>(
+    (from, to) =>
+      supabase
+        .from("activity_log")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+  );
 
-  const rows = (data ?? []).map(normalizeActivityLogRow);
+  const rows = rawRows.map(normalizeActivityLogRow);
 
   const headers = [
     "Date", "Effective Date", "Action", "Type", "Name", "Description",
