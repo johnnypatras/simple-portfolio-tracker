@@ -953,7 +953,7 @@ async function loadCashAccountMeta(
   }
   const map = new Map<string, { currency: string }>();
   for (const row of data ?? []) {
-    map.set(row.id as string, { currency: (row.currency as string) ?? "USD" });
+    map.set(row.id, { currency: row.currency });
   }
   return map;
 }
@@ -981,6 +981,10 @@ export function buildBenchmarkCashFlows(
   const events: CashFlowEvent[] = [];
 
   for (const lot of lots) {
+    // Cash lots: balance adjustments aren't market cash flows for the S&P
+    // benchmark. Skip explicitly — relying on the absence of a "cash:<id>"
+    // entry in priceIndex would be an invisible contract.
+    if (lot.asset_kind === "cash") continue;
     const series = priceIndex.get(`${lot.asset_kind}:${lot.asset_key}`);
     if (!series) continue;
     for (const d of lot.deltas) {

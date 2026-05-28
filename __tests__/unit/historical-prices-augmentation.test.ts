@@ -634,6 +634,33 @@ describe("lotContributionAtDate — CASH absolute truth", () => {
     expect(lotContributionAtDate(grow, "2022-01-01", new Map(), fx)!.eur).toBeCloseTo(1500, 2);
     expect(lotContributionAtDate(grow, "2023-06-01", new Map(), fx)!.eur).toBeCloseTo(1300, 2);
   });
+
+  it("net-zero balance after full withdrawal returns {usd:0, eur:0} (early-exit applies to cash)", () => {
+    const fx = buildPriceIndex([
+      px("fx", "EUR", "2021-06-01", 1.2),
+      px("fx", "EUR", "2022-01-01", 1.13),
+    ]);
+    const drained = cashLot({
+      deltas: [
+        { effective_date: "2021-06-01", qty_delta: 1000, is_adjustment: true },
+        { effective_date: "2022-01-01", qty_delta: -1000, is_adjustment: true },
+      ],
+    });
+    expect(lotContributionAtDate(drained, "2022-01-01", new Map(), fx))
+      .toEqual({ usd: 0, eur: 0 });
+  });
+
+  it("negative cumulative qty (data corruption) returns null — qty<0 early-exit applies to cash", () => {
+    const fx = buildPriceIndex([px("fx", "EUR", "2021-06-01", 1.2)]);
+    const corrupt = cashLot({
+      deltas: [
+        { effective_date: "2021-06-01", qty_delta: 1000, is_adjustment: true },
+        { effective_date: "2022-01-01", qty_delta: -2000, is_adjustment: true },
+      ],
+    });
+    expect(lotContributionAtDate(corrupt, "2022-01-01", new Map(), fx))
+      .toBeNull();
+  });
 });
 
 describe("augmentAndExtendSnapshots — CASH routing", () => {
