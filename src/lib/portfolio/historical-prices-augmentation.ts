@@ -419,6 +419,57 @@ async function readAllHistoricalPrices(
 }
 
 /**
+ * Position IDs whose activity is BACKDATED — exactly the set of positions that
+ * buildHistoricalLots would emit as lots (criterion: earliest non-null
+ * effective_date < earliest created_at::date over the position's activity).
+ *
+ * Used by getAdjustmentDeltas to refine the historically-priced exclusion from
+ * asset_key granularity (coarse — same-asset cross-wallet positions get
+ * over-excluded) to LOT granularity (matches what's actually augmented).
+ *
+ * Paginated past the server max_rows cap. Bounded to crypto_position +
+ * stock_position activity for the user.
+ */
+export async function readBackdatedPositionIds(
+  client: SupabaseClient<Database>,
+  userId: string,
+): Promise<Set<string>> {
+  const PAGE = 1000;
+  const minEff = new Map<string, string>(); // entity_id → MIN non-null effective_date
+  const minCap = new Map<string, string>(); // entity_id → MIN created_at::date
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client
+      .from("activity_log")
+      .select("entity_id, effective_date, created_at")
+      .eq("user_id", userId)
+      .in("entity_type", ["crypto_position", "stock_position"])
+      .is("undone_at", null)
+      .order("entity_id", { ascending: true })
+      .order("created_at", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`Failed to load activity for backdated detection: ${error.message}`);
+    const rows = data ?? [];
+    for (const r of rows) {
+      const id = r.entity_id as string | null;
+      if (!id) continue;
+      const eff = (r.effective_date as string | null) ?? null;
+      const capRaw = (r.created_at as string | null) ?? null;
+      if (!capRaw) continue;
+      const cap = capRaw.slice(0, 10);
+      if (eff && (!minEff.has(id) || eff < minEff.get(id)!)) minEff.set(id, eff);
+      if (!minCap.has(id) || cap < minCap.get(id)!) minCap.set(id, cap);
+    }
+    if (rows.length < PAGE) break;
+  }
+  const backdated = new Set<string>();
+  for (const [id, eff] of minEff) {
+    const cap = minCap.get(id);
+    if (cap && eff < cap) backdated.add(id);
+  }
+  return backdated;
+}
+
+/**
  * Distinct cached `${asset_kind}:${asset_key}` keys among `candidateKeys`,
  * paging past the max_rows cap. Used by the cache-coverage skip-check and the
  * back-fill exclusion gate — both must NOT under-detect coverage (a missed key

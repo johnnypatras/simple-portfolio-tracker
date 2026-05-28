@@ -22,7 +22,7 @@ import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, 
 import type { Database } from "@/types/database";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 import { pickJoinedRecord } from "@/lib/supabase/join-utils";
-import { readHistoricalCoverageKeys } from "@/lib/portfolio/historical-prices-augmentation";
+import { readHistoricalCoverageKeys, readBackdatedPositionIds } from "@/lib/portfolio/historical-prices-augmentation";
 
 type ActivityLogInsert = Database["public"]["Tables"]["activity_log"]["Insert"];
 
@@ -534,6 +534,13 @@ export async function getAdjustmentDeltas(
     }
   }
 
+  // LOT-level granularity: only positions that buildHistoricalLots would emit
+  // as lots (= actually augmented) belong in the exclusion. Without this, a
+  // position with a cached asset_key but no backdated activity (e.g. a
+  // today-dated is_adjustment in a second wallet sharing the same asset) would
+  // be over-excluded → its value would vanish from the back-extension.
+  const backdatedPosIds = await readBackdatedPositionIds(supabase, resolvedUserId);
+
   // Which of the USER'S asset_keys have ANY cached historical prices? Filter to
   // the user's keys (bounded — avoids scanning the whole global cache). Pages
   // past the server max_rows cap so a user with >1000 cached price rows doesn't
@@ -544,10 +551,18 @@ export async function getAdjustmentDeltas(
   if (userAssetKeys.length > 0) {
     const covered = await readHistoricalCoverageKeys(supabase, userAssetKeys);
     for (const [key, ids] of cryptoPosByKey) {
-      if (covered.has(`crypto:${key}`)) for (const id of ids) historicallyPricedPosIds.add(id);
+      if (covered.has(`crypto:${key}`)) {
+        for (const id of ids) {
+          if (backdatedPosIds.has(id)) historicallyPricedPosIds.add(id);
+        }
+      }
     }
     for (const [key, ids] of stockPosByKey) {
-      if (covered.has(`stock:${key}`)) for (const id of ids) historicallyPricedPosIds.add(id);
+      if (covered.has(`stock:${key}`)) {
+        for (const id of ids) {
+          if (backdatedPosIds.has(id)) historicallyPricedPosIds.add(id);
+        }
+      }
     }
   }
 
@@ -616,24 +631,11 @@ export async function getAdjustmentDeltas(
 
     // Skip crypto/stock positions valued by historical-price synthesis — they
     // contribute to snapshots via augmentAndExtendSnapshots, not the back-fill.
-    //
-    // KNOWN GRANULARITY ASYMMETRY (niche, not yet fixed — final holistic review
-    // 2026-05-28): this gate keys on ASSET_KEY (any position with cached prices
-    // for its coingecko_id/yahoo_ticker is in historicallyPricedPosIds). The
-    // AUGMENT gate (in getSnapshots → buildHistoricalLots) keys on LOT — a
-    // position is only augmented if its activity is backdated (earliest
-    // effective_date < earliest created_at). Reachable edge case: user holds
-    // backdated BTC in wallet A (asset cached) AND opens a today-dated
-    // is_adjustment position in wallet B (same asset_key, NOT backdated).
-    // Wallet B is dropped by buildHistoricalLots so NOT augmented, but is in
-    // historicallyPricedPosIds so IS excluded from the back-fill → wallet B's
-    // value goes missing from the back-extension (under-count, not double-count).
-    // For the dominant single-backdated-lot use case this does NOT fire.
-    //
-    // Future fix path: refine historicallyPricedPosIds to the actual backdated
-    // lot set (e.g., a paginated query of activity_log distinct entity_id where
-    // effective_date < created_at::date, intersected with cached-asset positions
-    // — matching buildHistoricalLots' criterion).
+    // Lot-level granularity: historicallyPricedPosIds = (positions with cached
+    // asset_key) ∩ (positions that buildHistoricalLots actually emits as lots,
+    // via readBackdatedPositionIds) — matches the augmentation exactly. A
+    // position with cached prices but NO backdated activity (e.g. today-dated
+    // is_adjustment in a second wallet) stays on the back-fill as intended.
     if (
       (row.entity_type === "crypto_position" || row.entity_type === "stock_position") &&
       typeof row.entity_id === "string" &&

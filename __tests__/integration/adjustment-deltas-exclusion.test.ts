@@ -215,6 +215,145 @@ describe("getAdjustmentDeltas — historical-price back-fill exclusion (Task 7)"
     }
   });
 
+  it("cross-wallet same-asset: excludes backdated wallet but retains today-dated wallet", async () => {
+    // Reviewer's edge case: same crypto_asset in two wallets.
+    //   Wallet A, position A: BACKDATED is_adjustment → asset cached → excluded.
+    //   Wallet B, position B: TODAY-dated is_adjustment → same asset_key cached,
+    //     but NOT backdated → NOT augmented by buildHistoricalLots → must NOT be
+    //     excluded from back-fill (old coarse gate would exclude it; lot-level
+    //     gate correctly retains it).
+    const { userId, cleanup } = await createTestUser();
+    cleanupFns.push(cleanup);
+
+    const suffix = crypto.randomUUID();
+
+    // Two wallets for the same user.
+    const { data: walletA, error: walletAErr } = await admin
+      .from("wallets")
+      .insert({ user_id: userId, name: "Wallet A", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    expect(walletAErr).toBeNull();
+    walletIds.push(walletA!.id);
+
+    const { data: walletB, error: walletBErr } = await admin
+      .from("wallets")
+      .insert({ user_id: userId, name: "Wallet B", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    expect(walletBErr).toBeNull();
+    walletIds.push(walletB!.id);
+
+    // One shared crypto_asset for both wallets.
+    const cgIdShared = `test-cross-${suffix}`;
+    const { data: sharedAsset, error: sharedAssetErr } = await admin
+      .from("crypto_assets")
+      .insert({
+        user_id: userId,
+        name: "Test Cross Wallet",
+        coingecko_id: cgIdShared,
+        ticker: `XW${suffix}`,
+      })
+      .select("id")
+      .single();
+    expect(sharedAssetErr).toBeNull();
+    assetIds.push(sharedAsset!.id);
+
+    // Position A in wallet A.
+    const { data: posA, error: posAErr } = await admin
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: sharedAsset!.id, wallet_id: walletA!.id, quantity: 1 })
+      .select("id")
+      .single();
+    expect(posAErr).toBeNull();
+    positionIds.push(posA!.id);
+
+    // Position B in wallet B.
+    const { data: posB, error: posBErr } = await admin
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: sharedAsset!.id, wallet_id: walletB!.id, quantity: 1 })
+      .select("id")
+      .single();
+    expect(posBErr).toBeNull();
+    positionIds.push(posB!.id);
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Position A: BACKDATED activity (effective ~2 years ago, created today).
+    // effective_date (2024-01-15) < created_at (today) → backdated → excluded.
+    const { data: logA, error: logAErr } = await admin
+      .from("activity_log")
+      .insert({
+        user_id: userId,
+        action: "created",
+        entity_type: "crypto_position",
+        entity_id: posA!.id,
+        entity_name: "Test Cross Wallet",
+        description: "Backdated adjustment wallet A",
+        effective_date: "2024-01-15",
+        is_adjustment: true,
+        delta_usd: 500,
+        delta_eur: 460,
+      })
+      .select("id")
+      .single();
+    expect(logAErr).toBeNull();
+    activityIds.push(logA!.id);
+
+    // Position B: TODAY-dated activity (effective = today, created today).
+    // effective_date (today) >= created_at (today) → NOT backdated → NOT excluded.
+    const { data: logB, error: logBErr } = await admin
+      .from("activity_log")
+      .insert({
+        user_id: userId,
+        action: "created",
+        entity_type: "crypto_position",
+        entity_id: posB!.id,
+        entity_name: "Test Cross Wallet",
+        description: "Today adjustment wallet B",
+        effective_date: today,
+        is_adjustment: true,
+        delta_usd: 700,
+        delta_eur: 640,
+      })
+      .select("id")
+      .single();
+    expect(logBErr).toBeNull();
+    activityIds.push(logB!.id);
+
+    // Seed historical_prices for the shared coingecko_id → marks the asset as covered.
+    histPriceKeys.push(cgIdShared);
+    const { error: priceErr } = await admin
+      .from("historical_prices")
+      .upsert(
+        [
+          {
+            asset_kind: "crypto",
+            asset_key: cgIdShared,
+            price_date: "2024-01-15",
+            price: 42000,
+            currency: "USD",
+          },
+        ],
+        { onConflict: "asset_kind,asset_key,price_date", ignoreDuplicates: true },
+      );
+    expect(priceErr).toBeNull();
+
+    const deltas = await getAdjustmentDeltas(userId);
+
+    // Position A (backdated, $500) must be EXCLUDED (handled by augmentation).
+    // Position B (today-dated, $700) must be RETAINED in the back-fill.
+    // Final maxCumulativeUsd = 700 (only position B contributes).
+    const maxCumulativeUsd =
+      deltas.length > 0 ? Math.max(...deltas.map((d) => d.cumulative_usd)) : 0;
+    expect(maxCumulativeUsd).toBe(700);
+
+    // Position B entry must appear on today's date.
+    const todayEntry = deltas.find((d) => d.date === today);
+    expect(todayEntry).toBeDefined();
+    expect(todayEntry!.cumulative_usd).toBe(700);
+  });
+
   it("excludes a soft-deleted (sold) crypto position if its asset has cached prices", async () => {
     // A position with deleted_at set (fully sold) whose asset has historical_prices
     // is still reconstructed by synthesis — it must also be excluded from back-fill.
