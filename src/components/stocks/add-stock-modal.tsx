@@ -10,7 +10,7 @@ import type {
   YahooSearchResult,
   Broker,
 } from "@/lib/types";
-import { IS_ADJUSTMENT_HELP_TEXT, IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
 interface AddStockModalProps {
   open: boolean;
@@ -689,20 +689,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
               </p>
             )}
 
-            <div>
-              <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
-                <input
-                  id="is-adjustment-checkbox-stock"
-                  type="checkbox"
-                  checked={isAdjustment}
-                  onChange={(e) => setIsAdjustment(e.target.checked)}
-                  className="accent-amber-500"
-                  aria-describedby="is-adjustment-help-stock"
-                />
-                Portfolio adjustment
-              </label>
-              <p id="is-adjustment-help-stock" className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
-            </div>
+            <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="stock" />
 
             <button
               type="submit"

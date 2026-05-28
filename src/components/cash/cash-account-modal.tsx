@@ -8,7 +8,8 @@ import {
   updateCashAccount,
 } from "@/lib/actions/cash-accounts";
 import type { CashAccount, CashAccountCreateInput, CashAccountUpdateInput } from "@/lib/types";
-import { IS_ADJUSTMENT_HELP_TEXT, IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
 interface CashAccountModalProps {
   isOpen: boolean;
@@ -249,18 +250,7 @@ export function CashAccountModal({
 
         {/* Adjustment checkbox + helper text */}
         <div className="pt-2">
-          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
-            <input
-              id="is-adjustment-checkbox-cash"
-              type="checkbox"
-              checked={isAdjustment}
-              onChange={(e) => setIsAdjustment(e.target.checked)}
-              className="accent-amber-500"
-              aria-describedby="is-adjustment-help-cash"
-            />
-            Portfolio adjustment
-          </label>
-          <p id="is-adjustment-help-cash" className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
+          <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="cash" />
         </div>
 
         {/* Footer: action buttons */}

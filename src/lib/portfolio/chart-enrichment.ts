@@ -159,9 +159,44 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
     );
   }
 
+  // The naive scaling fallback is legitimate for a brand-new user with no
+  // recorded activity (empty cashFlows AND empty portfolio). But if the
+  // portfolio has real value while cashFlows is empty, that points to a
+  // deriveCashFlows regression — the cash-flow-replay benchmark is silently
+  // degraded to a naive line. Leave a breadcrumb (not a captureMessage, to
+  // avoid alert noise) so any later Sentry event carries the signal. Guarded
+  // on a non-zero portfolio so legitimately-empty new accounts stay quiet.
+  if (points.some((p) => p.value > 0)) {
+    recordNaiveFallbackBreadcrumb(points.length);
+  }
+
   return enrichNaiveFallback(
     points, viewMode, primaryCurrency, sp500Map, chartStart,
   );
+}
+
+/**
+ * Fire-and-forget Sentry breadcrumb for the suspicious naive-fallback case.
+ *
+ * This module is pure and bundled into the client portfolio chart, so it
+ * avoids a top-level `@sentry/nextjs` import. The dynamic import keeps the
+ * enrichment functions synchronous (the `.catch` swallows any failure so a
+ * missing/unconfigured Sentry never throws into the render path). `addBreadcrumb`
+ * is a no-op when no Sentry client is active, which is the case in unit tests.
+ */
+function recordNaiveFallbackBreadcrumb(pointCount: number): void {
+  void import("@sentry/nextjs")
+    .then((Sentry) => {
+      Sentry.addBreadcrumb({
+        category: "chart-enrichment",
+        message: "S&P naive fallback: no cashflows despite non-zero portfolio",
+        level: "warning",
+        data: { pointCount },
+      });
+    })
+    .catch(() => {
+      // Sentry unavailable (e.g. test env or import failure) — non-fatal.
+    });
 }
 
 // ── Cash-flow-driven S&P benchmark path ────────────────────

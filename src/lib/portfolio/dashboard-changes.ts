@@ -133,10 +133,12 @@ export function getChangeForPeriod(
   const otherKey = ctx.primaryCurrency === "EUR" ? "total_value_usd" : "total_value_eur";
   const currentValueOther = ctx.primaryCurrency === "EUR" ? ctx.totalValueUsd : ctx.totalValueEur;
 
-  // Literal-truth comparison: pastValue is what the snapshot says, no back-fill.
-  // A backdated lot before this period's snapshot date legitimately shows zero
-  // past value (no position existed yet) — the guard returns "—" instead of
-  // surfacing a +∞% delta.
+  // pastValue is the AUGMENTED snapshot value: post-Phase-4 the period
+  // snapshots come from getSnapshots → augmentAndExtendSnapshots, so backdated
+  // crypto/stock/cash lots already contribute their reconstructed value at this
+  // date. The `<= 0` guard therefore does NOT mean "no back-fill" — it catches a
+  // genuinely-empty past portfolio (brand-new account, or no holdings yet as of
+  // N days ago), returning "—" instead of a meaningless +∞% from a zero base.
   const pastValue = snapshot[valueKey] ?? 0;
 
   if (pastValue <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
@@ -180,7 +182,8 @@ export function getCryptoChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  // Literal-truth comparison: snapshot crypto USD is the past value, no back-fill.
+  // pastUsd is the augmented snapshot crypto value; `<= 0` means no crypto
+  // existed at this date (new account / no holdings yet), not "no back-fill".
   const pastUsd = snapshot.crypto_value_usd ?? 0;
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
@@ -207,7 +210,8 @@ export function getStockChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  // Literal-truth comparison: snapshot stocks USD is the past value, no back-fill.
+  // pastUsd is the augmented snapshot stocks value; `<= 0` means no stocks
+  // existed at this date (new account / no holdings yet), not "no back-fill".
   const pastUsd = snapshot.stocks_value_usd ?? 0;
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
@@ -235,7 +239,8 @@ export function getCashChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  // Literal-truth comparison: snapshot cash USD is the past value, no back-fill.
+  // pastUsd is the augmented snapshot cash value; `<= 0` means no cash existed
+  // at this date (new account / no holdings yet), not "no back-fill".
   const pastUsd = snapshot.cash_value_usd ?? 0;
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(

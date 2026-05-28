@@ -6,8 +6,9 @@ import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { addManualNavAsset } from "@/lib/actions/manual-nav";
 import { upsertStockPosition } from "@/lib/actions/stocks";
-import { MAX_NAV_NOTE_LENGTH, IS_ADJUSTMENT_HELP_TEXT, IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { MAX_NAV_NOTE_LENGTH } from "@/lib/constants";
 import type { AssetCategory, Broker } from "@/lib/types";
+import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
 interface AddManualNavModalProps {
   open: boolean;
@@ -564,20 +565,7 @@ export function AddManualNavModal({
           </p>
         )}
 
-        <div>
-          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
-            <input
-              id="is-adjustment-checkbox-manual-nav"
-              type="checkbox"
-              checked={isAdjustment}
-              onChange={(e) => setIsAdjustment(e.target.checked)}
-              className="accent-amber-500"
-              aria-describedby="is-adjustment-help-manual-nav"
-            />
-            Portfolio adjustment
-          </label>
-          <p id="is-adjustment-help-manual-nav" className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
-        </div>
+        <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="manual-nav" />
 
         <button
           type="submit"

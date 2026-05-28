@@ -26,9 +26,6 @@ export const MAX_SHARE_EXPIRY_DAYS = 3650;
 /** Upper bound for paginated Supabase queries (prevents unbounded scans) */
 export const MAX_QUERY_LIMIT = 10_000;
 
-/** Upper bound for full snapshot history queries (dashboards, share, export) */
-export const MAX_SNAPSHOTS_LIMIT = 100_000;
-
 /** Snapshot comparison period labels for portfolio cards */
 export const PERIOD_LABELS = {
   "24h": "vs yesterday",

@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
 import type { CoinGeckoSearchResult, Wallet, AcquisitionType } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains, getWalletChainTokens } from "@/lib/types";
-import { IS_ADJUSTMENT_HELP_TEXT, IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
 interface ExistingCryptoEntry {
   coingecko_id: string;
@@ -632,20 +632,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               </p>
             )}
 
-            <div>
-              <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
-                <input
-                  id="is-adjustment-checkbox-crypto"
-                  type="checkbox"
-                  checked={isAdjustment}
-                  onChange={(e) => setIsAdjustment(e.target.checked)}
-                  className="accent-amber-500"
-                  aria-describedby="is-adjustment-help-crypto"
-                />
-                Portfolio adjustment
-              </label>
-              <p id="is-adjustment-help-crypto" className="text-xs text-zinc-400 mt-1">{IS_ADJUSTMENT_HELP_TEXT}</p>
-            </div>
+            <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="crypto" />
 
             <button
               type="submit"

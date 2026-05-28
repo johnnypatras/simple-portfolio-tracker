@@ -212,7 +212,7 @@ export function PortfolioChart({
   // Use the active dataKey for y-axis domain.
   // Note: uses a reduce loop instead of `Math.min(...arr)` spread to avoid
   // V8 call-stack overflow if `data` grows to tens of thousands of points
-  // (MAX_SNAPSHOTS_LIMIT = 100_000 caps fetch size).
+  // (snapshots are fetched via full pagination, so the series is unbounded).
   const yDomain = useMemo(() => {
     if (data.length === 0) return [0, 100] as const;
     let minValue = Infinity;
