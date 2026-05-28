@@ -2,6 +2,7 @@ import { execFileSync } from "child_process";
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { createTestUser, getAdminClient } from "./setup";
 import { getHistoricalBenchmarkExtension } from "@/lib/actions/benchmark";
+import { ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
 
 /**
  * Integration tests for getHistoricalBenchmarkExtension (Phase 2, Task 3).
@@ -188,6 +189,9 @@ describe("getHistoricalBenchmarkExtension (Phase 2 Task 3)", () => {
     expect(flow.amount_usd).toBeCloseTo(54000, 0);
     expect(flow.amount_usd).toBeGreaterThan(0);
     expect(flow.asset_class).toBe("crypto");
+
+    // sp500Days must cover at least the full default history extent.
+    expect(result.sp500Days).toBeGreaterThanOrEqual(ALL_SNAPSHOTS_DAYS);
   });
 
   it("returns { earliestDate: null, syntheticCashFlows: [] } when user has no positions", async () => {
@@ -198,5 +202,6 @@ describe("getHistoricalBenchmarkExtension (Phase 2 Task 3)", () => {
 
     expect(result.earliestDate).toBeNull();
     expect(result.syntheticCashFlows).toEqual([]);
+    expect(result.sp500Days).toBe(ALL_SNAPSHOTS_DAYS);
   });
 });

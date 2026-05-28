@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { getSharedPortfolio } from "@/lib/actions/shared-portfolio";
 import { fetchIndexHistory } from "@/lib/prices/yahoo";
-import { ALL_SNAPSHOTS_DAYS } from "@/lib/constants";
-import { deriveCashFlows } from "@/lib/actions/benchmark";
+import { deriveCashFlows, getHistoricalBenchmarkExtension } from "@/lib/actions/benchmark";
 import { getAdjustmentDeltas } from "@/lib/actions/activity-log";
 import { assemblePortfolioView } from "@/lib/portfolio/assemble";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
@@ -29,6 +28,10 @@ export default async function SharedOverviewPage({
   } = data;
   const primaryCurrency = profile.primary_currency;
 
+  // Resolve benchmark extension first (owner-scoped) to get sp500Days before parallelising
+  const benchmarkExtension = await getHistoricalBenchmarkExtension(data.share.owner_id);
+  const { sp500Days } = benchmarkExtension;
+
   // Prices, aggregation, insights + benchmark data (parallelized)
   const [assembled, sp500TRHistory, cashFlowResult, adjustmentDeltas] = await Promise.all([
     assemblePortfolioView(
@@ -36,13 +39,15 @@ export default async function SharedOverviewPage({
       `/share/${token}`,
       { ownerUserId: data.share.owner_id },
     ),
-    // Fetch S&P 500 TR with max history — matches the chart's "All" extent
-    fetchIndexHistory("^SP500TR", ALL_SNAPSHOTS_DAYS),
+    // Fetch S&P 500 TR with owner-aware history extent
+    fetchIndexHistory("^SP500TR", sp500Days),
     deriveCashFlows(data.share.owner_id),
     getAdjustmentDeltas(data.share.owner_id),
   ]);
 
-  const cashFlows = cashFlowResult.events;
+  const cashFlows = [...cashFlowResult.events, ...benchmarkExtension.syntheticCashFlows].sort(
+    (a, b) => a.date.localeCompare(b.date),
+  );
 
   const { summary, insights, paletteHoldings } = assembled;
 
