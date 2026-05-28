@@ -10,7 +10,13 @@ import {
   fetchYahooDailyHistory,
   fetchFxUsdPivotHistory,
 } from "@/lib/prices/historical";
-import type { ActionType, PortfolioSnapshot, CashFlowEvent } from "@/lib/types";
+import type {
+  ActionType,
+  AssetClass,
+  EntityType,
+  PortfolioSnapshot,
+  CashFlowEvent,
+} from "@/lib/types";
 
 /**
  * One cached historical price. `asset_key` is canonical per kind:
@@ -59,7 +65,7 @@ export type HistoricalLot = {
   asset_key: string;
   fetch_symbol: string;
   native_currency: string;
-  asset_class: "crypto" | "stocks" | "cash";
+  asset_class: AssetClass;
   capture_date: string;
   deltas: QtyDelta[];
 };
@@ -229,39 +235,40 @@ function* eachDay(start: string, end: string): Generator<string> {
   }
 }
 
-/** Add a USD+EUR contribution to the right asset-class columns + totals. */
-function addContribution(
+/**
+ * Add a USD+EUR contribution to the right asset-class columns + totals,
+ * MUTATING `snap` in place (no spread). Arithmetic is identical to the prior
+ * immutable spread version — `(snap.x ?? 0) + delta` per touched column.
+ *
+ * Caller contract: `snap` MUST be a freshly-allocated, caller-owned object
+ * (synthesizeRow's fresh row, or a lazy `{ ...inputSnap }` clone in the augment
+ * loop). Never pass a snapshot that originates from a shared/input array
+ * without cloning first — this function does not copy.
+ *
+ * The asset-class dispatch is exhaustive: adding a new AssetClass member without
+ * a matching branch fails to compile (the `never` assignment in the else).
+ */
+function addContributionInPlace(
   snap: PortfolioSnapshot,
-  assetClass: "crypto" | "stocks" | "cash",
+  assetClass: AssetClass,
   usd: number,
   eur: number,
-): PortfolioSnapshot {
+): void {
   if (assetClass === "crypto") {
-    return {
-      ...snap,
-      crypto_value_usd: (snap.crypto_value_usd ?? 0) + usd,
-      crypto_value_eur: (snap.crypto_value_eur ?? 0) + eur,
-      total_value_usd: (snap.total_value_usd ?? 0) + usd,
-      total_value_eur: (snap.total_value_eur ?? 0) + eur,
-    };
+    snap.crypto_value_usd = (snap.crypto_value_usd ?? 0) + usd;
+    snap.crypto_value_eur = (snap.crypto_value_eur ?? 0) + eur;
+  } else if (assetClass === "stocks") {
+    snap.stocks_value_usd = (snap.stocks_value_usd ?? 0) + usd;
+    snap.stocks_value_eur = (snap.stocks_value_eur ?? 0) + eur;
+  } else if (assetClass === "cash") {
+    snap.cash_value_usd = (snap.cash_value_usd ?? 0) + usd;
+    snap.cash_value_eur = (snap.cash_value_eur ?? 0) + eur;
+  } else {
+    const _exhaustive: never = assetClass;
+    throw new Error(`Unhandled asset class: ${String(_exhaustive)}`);
   }
-  if (assetClass === "stocks") {
-    return {
-      ...snap,
-      stocks_value_usd: (snap.stocks_value_usd ?? 0) + usd,
-      stocks_value_eur: (snap.stocks_value_eur ?? 0) + eur,
-      total_value_usd: (snap.total_value_usd ?? 0) + usd,
-      total_value_eur: (snap.total_value_eur ?? 0) + eur,
-    };
-  }
-  // cash: route to cash_value_* + total (mirrors crypto/stocks routing).
-  return {
-    ...snap,
-    cash_value_usd: (snap.cash_value_usd ?? 0) + usd,
-    cash_value_eur: (snap.cash_value_eur ?? 0) + eur,
-    total_value_usd: (snap.total_value_usd ?? 0) + usd,
-    total_value_eur: (snap.total_value_eur ?? 0) + eur,
-  };
+  snap.total_value_usd = (snap.total_value_usd ?? 0) + usd;
+  snap.total_value_eur = (snap.total_value_eur ?? 0) + eur;
 }
 
 /**
@@ -276,7 +283,7 @@ function synthesizeRow(
   fxIndex: Map<string, HistoricalPriceRow[]>,
   template: PortfolioSnapshot | null,
 ): PortfolioSnapshot {
-  let row: PortfolioSnapshot = {
+  const row: PortfolioSnapshot = {
     id: `synthetic:${date}`,
     user_id: template?.user_id ?? "",
     snapshot_date: date,
@@ -292,10 +299,11 @@ function synthesizeRow(
     cash_eur_denominated_value: 0,
     created_at: `${date}T00:00:00Z`,
   };
+  // `row` is freshly allocated and owned here — mutate in place (no spread).
   for (const lot of lots) {
     const c = lotContributionAtDate(lot, date, priceIndex, fxIndex);
     if (c === null) continue;
-    row = addContribution(row, lot.asset_class, c.usd, c.eur);
+    addContributionInPlace(row, lot.asset_class, c.usd, c.eur);
   }
   return row;
 }
@@ -331,16 +339,21 @@ export function augmentAndExtendSnapshots(
   const fxIndex = priceIndex; // fx rows live in the same index under "fx:<cur>"
 
   // ── AUGMENT existing snapshots in [effective, capture) per lot ──────────
+  // `snap` comes from the INPUT array and must NOT be mutated. Clone lazily on
+  // the first applied contribution (`{ ...snap }`); snapshots with no
+  // contribution return their original reference unchanged (preserves the
+  // function's immutability contract toward the caller's input).
   const augmented = snapshots.map((snap) => {
-    let row = snap;
+    let row: PortfolioSnapshot | null = null;
     for (const lot of lots) {
       if (snap.snapshot_date >= lot.capture_date) continue; // cron already has it
       const c = lotContributionAtDate(lot, snap.snapshot_date, priceIndex, fxIndex);
       if (c === null) continue;
       if (c.usd === 0 && c.eur === 0) continue; // before effective_date / sold out
-      row = addContribution(row, lot.asset_class, c.usd, c.eur);
+      if (row === null) row = { ...snap }; // clone once, only when a contribution applies
+      addContributionInPlace(row, lot.asset_class, c.usd, c.eur);
     }
-    return row;
+    return row ?? snap;
   });
 
   // ── SYNTHESIZE pre-first-snapshot rows ──────────────────────────────────
@@ -360,7 +373,18 @@ export function augmentAndExtendSnapshots(
   if (earliestEffective === null) return sortedReal;
 
   const synthFloor = isoDaysAgo(MAX_SYNTHESIS_DAYS);
-  if (earliestEffective < synthFloor) earliestEffective = synthFloor;
+  if (earliestEffective < synthFloor) {
+    // A lot's effective_date predates the synthesis floor (~25 years) — a
+    // data-integrity smell (e.g. a mistyped year). Signal before clamping so
+    // the truncated synthesis range is observable rather than silent. This is
+    // the only Sentry side-effect in this otherwise-pure function; it sits at
+    // the same wall-clock boundary already documented as an impurity above.
+    Sentry.captureMessage("Historical synthesis clamped by MAX_SYNTHESIS_DAYS", {
+      level: "warning",
+      extra: { earliestEffective, synthFloor, lotsCount: lots.length },
+    });
+    earliestEffective = synthFloor;
+  }
 
   const synthEnd = firstSnapshotDate
     ? isoDayBefore(firstSnapshotDate)
@@ -398,6 +422,30 @@ function isoDaysAgo(days: number): string {
  * crypto/stock holding while bounding pathological input.
  */
 const MAX_SYNTHESIS_DAYS = 9131; // ~25 years
+
+/**
+ * Max simultaneous upstream price fetches in ensureHistoricalPricesCached.
+ * Caps Yahoo + Frankfurter concurrency to respect their rate limits while
+ * collapsing what was (N assets + M currencies) sequential 8s-timeout fetches
+ * into parallel batches on the dashboard render path.
+ */
+const FETCH_CONCURRENCY = 5;
+
+/**
+ * Run `tasks` with bounded concurrency (`limit` in flight at a time). Uses
+ * Promise.allSettled per batch so one fetch failure never aborts the batch —
+ * the fetchers already return [] on failure (soft degradation), and the
+ * per-task callbacks own their own result handling, so resolution values are
+ * intentionally discarded here.
+ */
+async function runBounded(
+  tasks: Array<() => Promise<void>>,
+  limit: number,
+): Promise<void> {
+  for (let i = 0; i < tasks.length; i += limit) {
+    await Promise.allSettled(tasks.slice(i, i + limit).map((t) => t()));
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // I/O layer (Task 6) — queries, cache fill, public orchestrator
@@ -491,8 +539,8 @@ export async function readHistoricalCoverageKeys(
 /** One activity-log row joined with its asset metadata, for lot building. */
 export type ActivityForLot = {
   entity_id: string;
-  entity_type: string; // "crypto_position" | "stock_position" | "cash_account"
-  action: string;
+  entity_type: EntityType; // crypto_position | stock_position | cash_account
+  action: ActionType;
   effective_date: string | null;
   created_at: string;
   before_quantity: number | null;
@@ -504,7 +552,7 @@ export type ActivityForLot = {
   asset_key: string;       // coingecko_id | yahoo_ticker | cash_account.id
   fetch_symbol: string;    // `${ticker}-USD` | yahoo_ticker | "" (unused for cash)
   native_currency: string;
-  asset_class: "crypto" | "stocks" | "cash";
+  asset_class: AssetClass;
 };
 
 /**
@@ -533,7 +581,7 @@ export function buildHistoricalLots(rows: ActivityForLot[]): HistoricalLot[] {
       const day = r.created_at.slice(0, 10);
       if (day < captureDate) captureDate = day;
       const qtyDelta = r.qty_delta_override ?? positionQtyDelta(
-        r.action as ActionType,
+        r.action,
         r.before_quantity ?? 0,
         r.after_quantity ?? 0,
       );
@@ -617,6 +665,12 @@ export async function ensureHistoricalPricesCached(
 
   const toUpsert: Array<Database["public"]["Tables"]["historical_prices"]["Insert"]> = [];
 
+  // Collect every missing-series fetch as a task, then run them with bounded
+  // concurrency. Pushing to the shared `toUpsert` array from concurrent task
+  // callbacks is safe — JS is single-threaded, so the synchronous push runs
+  // atomically between awaits.
+  const fetchTasks: Array<() => Promise<void>> = [];
+
   for (const [key, meta] of assetSeries) {
     // NOTE: coarse per-asset_key coverage gate. If an asset was previously
     // cached for a later date range and a NEW lot needs earlier dates, the
@@ -625,31 +679,37 @@ export async function ensureHistoricalPricesCached(
     // (single-user, rare); a future fix tracks MIN(price_date) per asset_key.
     if (cachedKeys.has(key)) continue;
     const assetKey = key.slice(key.indexOf(":") + 1);
-    const points = await fetchYahooDailyHistory(meta.symbol, rangeStart, rangeEnd);
-    for (const p of points) {
-      toUpsert.push({
-        asset_kind: meta.kind,
-        asset_key: assetKey,
-        price_date: p.date,
-        price: p.price,
-        currency: meta.currency,
-      });
-    }
+    fetchTasks.push(async () => {
+      const points = await fetchYahooDailyHistory(meta.symbol, rangeStart, rangeEnd);
+      for (const p of points) {
+        toUpsert.push({
+          asset_kind: meta.kind,
+          asset_key: assetKey,
+          price_date: p.date,
+          price: p.price,
+          currency: meta.currency,
+        });
+      }
+    });
   }
 
   for (const cur of currencies) {
     if (cachedKeys.has(`fx:${cur}`)) continue;
-    const points = await fetchFxUsdPivotHistory(cur, rangeStart, rangeEnd);
-    for (const p of points) {
-      toUpsert.push({
-        asset_kind: "fx",
-        asset_key: cur,
-        price_date: p.date,
-        price: p.price,
-        currency: "USD",
-      });
-    }
+    fetchTasks.push(async () => {
+      const points = await fetchFxUsdPivotHistory(cur, rangeStart, rangeEnd);
+      for (const p of points) {
+        toUpsert.push({
+          asset_kind: "fx",
+          asset_key: cur,
+          price_date: p.date,
+          price: p.price,
+          currency: "USD",
+        });
+      }
+    });
   }
+
+  await runBounded(fetchTasks, FETCH_CONCURRENCY);
 
   if (toUpsert.length > 0) {
     const { error } = await admin
@@ -791,11 +851,12 @@ export async function fetchHistoricalPriceInputsFor(
   const activity: ActivityForLot[] = [];
 
   for (const r of cryptoRows) {
-    const meta = cryptoMeta.get(r.entity_id as string);
+    if (!r.entity_id) continue;
+    const meta = cryptoMeta.get(r.entity_id);
     if (!meta) continue;
     const before = r.before_snapshot as { quantity?: number } | null;
     const after = r.after_snapshot as { quantity?: number } | null;
-    const splitFromId = r.split_from_id as string | null;
+    const splitFromId = r.split_from_id;
     const details = r.details as { split_quantity?: number } | null;
     const qtyOverride =
       splitFromId && details?.split_quantity != null
@@ -810,15 +871,15 @@ export async function fetchHistoricalPriceInputsFor(
     // by coingecko_id).
     const isStable = isStablecoin(meta.subcategory);
     activity.push({
-      entity_id: r.entity_id as string,
+      entity_id: r.entity_id,
       entity_type: "crypto_position",
-      action: r.action as string,
-      effective_date: (r.effective_date as string | null) ?? null,
-      created_at: r.created_at as string,
-      before_quantity: (before?.quantity ?? null) as number | null,
-      after_quantity: (after?.quantity ?? null) as number | null,
+      action: r.action,
+      effective_date: r.effective_date,
+      created_at: r.created_at,
+      before_quantity: before?.quantity ?? null,
+      after_quantity: after?.quantity ?? null,
       qty_delta_override: qtyOverride,
-      is_adjustment: (r.is_adjustment as boolean) ?? false,
+      is_adjustment: r.is_adjustment,
       asset_kind: "crypto",
       asset_key: meta.coingecko_id,
       fetch_symbol: `${meta.ticker.toUpperCase()}-USD`,
@@ -828,26 +889,27 @@ export async function fetchHistoricalPriceInputsFor(
   }
 
   for (const r of stockRows) {
-    const meta = stockMeta.get(r.entity_id as string);
+    if (!r.entity_id) continue;
+    const meta = stockMeta.get(r.entity_id);
     if (!meta || !meta.yahoo_ticker) continue; // kind='manual' has no ticker → skip
     const before = r.before_snapshot as { quantity?: number } | null;
     const after = r.after_snapshot as { quantity?: number } | null;
-    const splitFromId = r.split_from_id as string | null;
+    const splitFromId = r.split_from_id;
     const details = r.details as { split_quantity?: number } | null;
     const qtyOverride =
       splitFromId && details?.split_quantity != null
         ? (r.action === "removed" ? -1 : 1) * Number(details.split_quantity)
         : undefined;
     activity.push({
-      entity_id: r.entity_id as string,
+      entity_id: r.entity_id,
       entity_type: "stock_position",
-      action: r.action as string,
-      effective_date: (r.effective_date as string | null) ?? null,
-      created_at: r.created_at as string,
-      before_quantity: (before?.quantity ?? null) as number | null,
-      after_quantity: (after?.quantity ?? null) as number | null,
+      action: r.action,
+      effective_date: r.effective_date,
+      created_at: r.created_at,
+      before_quantity: before?.quantity ?? null,
+      after_quantity: after?.quantity ?? null,
       qty_delta_override: qtyOverride,
-      is_adjustment: (r.is_adjustment as boolean) ?? false,
+      is_adjustment: r.is_adjustment,
       asset_kind: "stock",
       asset_key: meta.yahoo_ticker,
       fetch_symbol: meta.yahoo_ticker,
@@ -857,29 +919,30 @@ export async function fetchHistoricalPriceInputsFor(
   }
 
   for (const r of cashRows) {
-    const meta = cashMeta.get(r.entity_id as string);
+    if (!r.entity_id) continue;
+    const meta = cashMeta.get(r.entity_id);
     if (!meta) continue;
     const before = r.before_snapshot as { balance?: number } | null;
     const after = r.after_snapshot as { balance?: number } | null;
     // Cash uses cashDelta (balance-based), pushed as qty_delta_override so
     // buildHistoricalLots picks it up via the same mechanism as split children.
     const qtyDelta = cashDelta(
-      r.action as ActionType,
+      r.action,
       before?.balance ?? 0,
       after?.balance ?? 0,
     );
     activity.push({
-      entity_id: r.entity_id as string,
+      entity_id: r.entity_id,
       entity_type: "cash_account",
-      action: r.action as string,
-      effective_date: (r.effective_date as string | null) ?? null,
-      created_at: r.created_at as string,
+      action: r.action,
+      effective_date: r.effective_date,
+      created_at: r.created_at,
       before_quantity: null,            // unused — cash routes through qty_delta_override
       after_quantity: null,
       qty_delta_override: qtyDelta,
-      is_adjustment: (r.is_adjustment as boolean) ?? false,
+      is_adjustment: r.is_adjustment,
       asset_kind: "cash",
-      asset_key: r.entity_id as string, // synthetic; never stored in historical_prices
+      asset_key: r.entity_id,           // synthetic; never stored in historical_prices
       fetch_symbol: "",                 // unused — cash never goes to Yahoo
       native_currency: meta.currency,
       asset_class: "cash",
