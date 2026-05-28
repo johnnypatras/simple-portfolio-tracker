@@ -94,10 +94,17 @@ export async function fetchCoinHistory(
 ): Promise<{ date: string; price: number }[]> {
   try {
     const url = `${BASE_URL}/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
-    const res = await fetchWithTimeout(url, {
+    const fetchOptions = {
       headers: headers(),
       next: { revalidate: 21600 }, // 6 hours
-    });
+    };
+    let res = await fetchWithTimeout(url, fetchOptions);
+
+    if (res.status === 429) {
+      console.warn(`[coingecko] History rate limited (429) for ${coinId}, retrying in ${COINGECKO_429_RETRY_MS}ms…`);
+      await new Promise((r) => setTimeout(r, COINGECKO_429_RETRY_MS));
+      res = await fetchWithTimeout(url, fetchOptions);
+    }
 
     if (!res.ok) {
       console.error(`[coingecko] History fetch failed for ${coinId}:`, res.status);

@@ -367,11 +367,35 @@ describe("fetchCoinHistory", () => {
   });
 
   it("returns empty array on HTTP error", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
 
     const result = await fetchCoinHistory("bitcoin", 30);
     expect(result).toEqual([]);
     expect(console.error).toHaveBeenCalled();
+  });
+
+  it("retries on 429 then returns prices on success", async () => {
+    const ts = new Date("2024-01-15T00:00:00Z").getTime();
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ prices: [[ts, 42000]] }),
+      });
+
+    const result = await fetchCoinHistory("bitcoin", 7);
+    expect(result).toEqual([{ date: "2024-01-15", price: 42000 }]);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns empty array when both attempts return 429", async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: false, status: 429 });
+
+    const result = await fetchCoinHistory("bitcoin", 30);
+    expect(result).toEqual([]);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it("returns empty array when fetch throws", async () => {

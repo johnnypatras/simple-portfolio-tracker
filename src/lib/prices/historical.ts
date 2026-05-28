@@ -32,6 +32,13 @@ const RANGE_PAD_DAYS = 5;
  * zero-ramp. 10 days clears weekends + long holiday closures (e.g. year-end).
  */
 const FX_LEAD_PAD_DAYS = 10;
+/**
+ * Delay before retrying a single 429 rate-limit response. Mirrors
+ * COINGECKO_429_RETRY_MS in coingecko.ts — a brief pause lets the upstream
+ * rate-limit window clear without a second miss. Applies to both the Yahoo
+ * chart and Frankfurter timeseries fetchers below.
+ */
+const RATE_LIMIT_RETRY_MS = 500;
 
 function toUnixDayStart(date: string): number {
   return Math.floor(new Date(`${date}T00:00:00Z`).getTime() / 1000);
@@ -59,17 +66,47 @@ export async function fetchYahooDailyHistory(
   const period2 = toUnixDayStart(endDate) + SECONDS_PER_DAY; // include endDate
   try {
     const url = `${YAHOO_CHART_URL}/${encodeURIComponent(symbol)}?interval=1d&period1=${period1}&period2=${period2}`;
-    const res = await fetchWithTimeout(url, {
+    const fetchOptions = {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 3600 },
-    });
+    };
+    let res = await fetchWithTimeout(url, fetchOptions);
+
+    if (res.status === 429) {
+      console.warn(`[historical] Yahoo rate limited (429) for ${symbol}, retrying in ${RATE_LIMIT_RETRY_MS}ms…`);
+      await new Promise((r) => setTimeout(r, RATE_LIMIT_RETRY_MS));
+      res = await fetchWithTimeout(url, fetchOptions);
+    }
+
     if (!res.ok) {
-      console.warn(`[historical] Yahoo history failed for ${symbol}: ${res.status}`);
+      const msg = `[historical] Yahoo history failed for ${symbol}: ${res.status}`;
+      console.warn(msg);
+      try {
+        const Sentry = await import("@sentry/nextjs");
+        Sentry.captureMessage(msg, {
+          level: "warning",
+          tags: { phase: "yahoo_history" },
+          extra: { symbol, status: res.status },
+        });
+      } catch {
+        // Sentry unavailable in tests / non-prod — log already happened
+      }
       return [];
     }
     const contentType = res.headers.get("content-type") ?? "";
     if (!contentType.includes("application/json")) {
-      console.warn(`[historical] Yahoo non-JSON for ${symbol} (captcha?): ${contentType}`);
+      const msg = `[historical] Yahoo non-JSON for ${symbol} (captcha?): ${contentType}`;
+      console.warn(msg);
+      try {
+        const Sentry = await import("@sentry/nextjs");
+        Sentry.captureMessage(msg, {
+          level: "warning",
+          tags: { phase: "yahoo_history" },
+          extra: { symbol, contentType },
+        });
+      } catch {
+        // Sentry unavailable in tests / non-prod — log already happened
+      }
       return [];
     }
     const json = await res.json();
@@ -105,6 +142,15 @@ export async function fetchYahooDailyHistory(
     return out;
   } catch (err) {
     console.error(`[historical] Yahoo history error for ${symbol}:`, err);
+    try {
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureException(err, {
+        tags: { phase: "yahoo_history" },
+        extra: { symbol },
+      });
+    } catch {
+      // Sentry unavailable in tests / non-prod — log already happened
+    }
     return [];
   }
 }
@@ -127,9 +173,28 @@ export async function fetchFxUsdPivotHistory(
   const paddedStart = isoShift(startDate, -FX_LEAD_PAD_DAYS);
   try {
     const url = `${FRANKFURTER_BASE}/${paddedStart}..${endDate}?base=USD&symbols=${currency}`;
-    const res = await fetchWithTimeout(url, { cache: "force-cache" });
+    const fetchOptions = { cache: "force-cache" as const };
+    let res = await fetchWithTimeout(url, fetchOptions);
+
+    if (res.status === 429) {
+      console.warn(`[historical] Frankfurter rate limited (429) for ${currency}, retrying in ${RATE_LIMIT_RETRY_MS}ms…`);
+      await new Promise((r) => setTimeout(r, RATE_LIMIT_RETRY_MS));
+      res = await fetchWithTimeout(url, fetchOptions);
+    }
+
     if (!res.ok) {
-      console.warn(`[historical] Frankfurter timeseries failed for ${currency}: ${res.status}`);
+      const msg = `[historical] Frankfurter timeseries failed for ${currency}: ${res.status}`;
+      console.warn(msg);
+      try {
+        const Sentry = await import("@sentry/nextjs");
+        Sentry.captureMessage(msg, {
+          level: "warning",
+          tags: { phase: "frankfurter_history" },
+          extra: { currency, status: res.status },
+        });
+      } catch {
+        // Sentry unavailable in tests / non-prod — log already happened
+      }
       return [];
     }
     const json: { rates?: Record<string, Record<string, number>> } = await res.json();
@@ -144,6 +209,15 @@ export async function fetchFxUsdPivotHistory(
     return out;
   } catch (err) {
     console.error(`[historical] Frankfurter timeseries error for ${currency}:`, err);
+    try {
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureException(err, {
+        tags: { phase: "frankfurter_history" },
+        extra: { currency },
+      });
+    } catch {
+      // Sentry unavailable in tests / non-prod — log already happened
+    }
     return [];
   }
 }

@@ -15,6 +15,16 @@ function mockFetchOnce(body: unknown, ok = true, contentType = "application/json
   } as unknown as Response);
 }
 
+/** Mock a single fetch with an explicit status code (e.g. 429 for rate-limit). */
+function mockStatusOnce(status: number, body: unknown = {}, contentType = "application/json") {
+  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => contentType },
+    json: async () => body,
+  } as unknown as Response);
+}
+
 describe("fetchYahooDailyHistory", () => {
   it("parses timestamps + closes into {date, price} rows, dropping nulls", async () => {
     mockFetchOnce({
@@ -73,6 +83,33 @@ describe("fetchYahooDailyHistory", () => {
     expect(await fetchYahooDailyHistory("BTC-USD", "2021-01-01", "2021-06-01")).toEqual([]);
   });
 
+  it("retries once on 429 then parses the successful retry", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    mockStatusOnce(429);
+    mockFetchOnce({
+      chart: {
+        result: [
+          {
+            meta: { dataGranularity: "1d" },
+            timestamp: [1609459200],
+            indicators: { quote: [{ close: [29000] }] },
+          },
+        ],
+      },
+    });
+    const rows = await fetchYahooDailyHistory("BTC-USD", "2021-01-01", "2021-01-02");
+    expect(rows).toEqual([{ date: "2021-01-01", price: 29000 }]);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns [] when both 429 attempts fail", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    mockStatusOnce(429);
+    mockStatusOnce(429);
+    expect(await fetchYahooDailyHistory("BTC-USD", "2021-01-01", "2021-01-02")).toEqual([]);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
   it("passes through rows before startDate (the lookback pad is not filtered out)", async () => {
     mockFetchOnce({
       chart: {
@@ -114,6 +151,23 @@ describe("fetchFxUsdPivotHistory", () => {
   it("returns [] on HTTP error", async () => {
     mockFetchOnce({}, false);
     expect(await fetchFxUsdPivotHistory("EUR", "2021-01-01", "2021-01-02")).toEqual([]);
+  });
+
+  it("retries once on 429 then parses the successful retry", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    mockStatusOnce(429);
+    mockFetchOnce({ base: "USD", rates: { "2021-01-01": { EUR: 0.8 } } });
+    const rows = await fetchFxUsdPivotHistory("EUR", "2021-01-01", "2021-01-02");
+    expect(rows[0]).toEqual({ date: "2021-01-01", price: expect.closeTo(1.25, 4) });
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns [] when both 429 attempts fail", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    mockStatusOnce(429);
+    mockStatusOnce(429);
+    expect(await fetchFxUsdPivotHistory("EUR", "2021-01-01", "2021-01-02")).toEqual([]);
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it("returns [] for USD (the pivot is never stored/fetched)", async () => {
