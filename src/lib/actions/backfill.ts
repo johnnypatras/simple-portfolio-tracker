@@ -1,7 +1,7 @@
 "use server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { classifyAssetClass, isStablecoin } from "@/lib/cashflow";
+import { classifyAssetClass, isStablecoin, CASHFLOW_PRODUCING_ENTITY_TYPES } from "@/lib/cashflow";
 import { cashAmountField, cashDelta, CASH_ENTITY_TYPES } from "@/lib/deltas";
 import type { CashEntityType } from "@/lib/deltas";
 import type { ActionType, EntityType } from "@/lib/types";
@@ -42,14 +42,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
     .eq("user_id", user.id)
     .eq("is_adjustment", false)
     .is("undone_at", null)
-    .in("entity_type", [
-      "crypto_position",
-      "stock_position",
-      "exchange_deposit",
-      "broker_deposit",
-      "bank_account",
-      "cash_account",
-    ])
+    .in("entity_type", [...CASHFLOW_PRODUCING_ENTITY_TYPES])
     .or(
       `cashflow_status.is.null,and(cashflow_status.eq.pending,or(cashflow_attempted_at.is.null,cashflow_attempted_at.lt.${throttleDate}))`
     )

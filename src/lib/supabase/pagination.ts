@@ -31,18 +31,21 @@
  */
 
 /**
- * Shape of a PostgREST error surfaced by `@supabase/postgrest-js`. We accept
- * all four diagnostic fields (`message` is always present; `details`, `hint`,
- * `code` are best-effort) so the thrown error preserves enough context for
+ * Shape of a PostgREST error surfaced by `@supabase/postgrest-js`. Mirrors that
+ * library's `PostgrestError` contract: `message` is always present and
+ * `details`/`hint`/`code` are always present but nullable (`string | null`,
+ * never `undefined`). Modeling them as required-nullable — rather than optional
+ * — matches the real wire shape and avoids a spurious third "missing" state.
+ * All four fields are preserved so the thrown error carries enough context for
  * Sentry / dev-tools triage without forcing every caller to log the raw error
  * object separately. The full original error is also attached via ES2022
  * `Error.cause` for the upstream stack chain.
  */
 export type PaginatedError = {
   message: string;
-  details?: string | null;
-  hint?: string | null;
-  code?: string | null;
+  details: string | null;
+  hint: string | null;
+  code: string | null;
 };
 
 export async function fetchAllPaginated<T>(

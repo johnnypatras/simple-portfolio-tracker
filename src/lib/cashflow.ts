@@ -61,8 +61,15 @@ export function computeCashflowFromPrices(params: {
 
 /**
  * Entity types that produce cashflows when is_adjustment=false.
- * Derived from classifyAssetClass — if you add a case there, add it here too
- * (TypeScript exhaustiveness will help catch drift).
+ * Must stay in lockstep with classifyAssetClass: every member here returns a
+ * non-null asset class, and every entity_type that classifyAssetClass maps to
+ * a non-null class must appear here.
+ *
+ * Agreement is enforced by the "CASHFLOW_PRODUCING_ENTITY_TYPES ↔
+ * classifyAssetClass agreement" unit test in __tests__/unit/cashflow.test.ts,
+ * which iterates the full runtime entity_type enum list and fails the build on
+ * drift in either direction. That test is the guard — add a case to
+ * classifyAssetClass without adding it here (or vice versa) and the test breaks.
  */
 export const CASHFLOW_PRODUCING_ENTITY_TYPES = [
   "crypto_position",
@@ -79,10 +86,10 @@ export const CASHFLOW_PRODUCING_ENTITY_TYPES = [
  */
 export function classifyAssetClass(
   entityType: EntityType,
-  isStablecoin?: boolean
+  isStable?: boolean
 ): AssetClass | null {
   if (entityType === "crypto_position") {
-    return isStablecoin ? "cash" : "crypto";
+    return isStable ? "cash" : "crypto";
   }
   if (entityType === "stock_position") return "stocks";
   if (

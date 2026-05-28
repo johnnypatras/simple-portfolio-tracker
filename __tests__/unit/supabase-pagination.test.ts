@@ -55,7 +55,7 @@ describe("fetchAllPaginated — PostgREST max_rows handling (H2)", () => {
   it("throws (Error with message) when the builder returns an error", async () => {
     const buildQuery = vi.fn(async () => ({
       data: null as number[] | null,
-      error: { message: "boom" },
+      error: { message: "boom", details: null, hint: null, code: null },
     }));
     await expect(fetchAllPaginated<number>(buildQuery, 1000)).rejects.toThrow("boom");
   });
@@ -99,7 +99,7 @@ describe("fetchAllPaginated — PostgREST max_rows handling (H2)", () => {
     // single-line message — no stray `[]` or `(hint: )` brackets.
     const buildQuery = vi.fn(async () => ({
       data: null as number[] | null,
-      error: { message: "simple failure" },
+      error: { message: "simple failure", details: null, hint: null, code: null },
     }));
     await expect(fetchAllPaginated<number>(buildQuery, 1000)).rejects.toThrow(
       "Pagination query failed: simple failure",

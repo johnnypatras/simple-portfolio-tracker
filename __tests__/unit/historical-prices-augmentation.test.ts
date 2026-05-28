@@ -748,7 +748,9 @@ describe("augmentAndExtendSnapshots — stablecoin (asset_kind=crypto, asset_cla
 describe("buildBenchmarkCashFlows — synthetic flag (M1)", () => {
   const benchPrices: HistoricalPriceRow[] = [
     px("crypto", "bitcoin", "2021-01-01", 30000),
+    px("crypto", "bitcoin", "2023-06-01", 27000),
     px("fx", "EUR", "2021-01-01", 1.2),
+    px("fx", "EUR", "2023-06-01", 1.08),
   ];
   it("marks every emitted flow with synthetic=true (benchmark-only contract)", () => {
     const lots: HistoricalLot[] = [
@@ -762,5 +764,31 @@ describe("buildBenchmarkCashFlows — synthetic flag (M1)", () => {
     const flows = buildBenchmarkCashFlows(lots, benchPrices);
     expect(flows).toHaveLength(1);
     expect(flows[0].synthetic).toBe(true);
+  });
+
+  // M19: executable form of the CashFlowEvent.synthetic invariant. Every event
+  // buildBenchmarkCashFlows emits must be synthetic=true AND carry NO entity_name
+  // — these are S&P-benchmark-only inputs filtered out before any deposit/UI
+  // surface. An entity_name leak here would surface an is_adjustment lot in the
+  // deposit tooltip as "Unknown". (The full discriminated-union refactor of
+  // CashFlowEvent was intentionally deferred as a higher-risk follow-up.)
+  it("every emitted flow is synthetic=true with NO entity_name (invariant, multi-delta)", () => {
+    const lots: HistoricalLot[] = [
+      {
+        position_id: "btc-1", asset_kind: "crypto", asset_key: "bitcoin",
+        fetch_symbol: "BTC-USD", native_currency: "USD", asset_class: "crypto",
+        capture_date: "2026-05-01",
+        deltas: [
+          { effective_date: "2021-01-01", qty_delta: 2, is_adjustment: true },
+          { effective_date: "2023-06-01", qty_delta: -1, is_adjustment: true },
+        ],
+      },
+    ];
+    const flows = buildBenchmarkCashFlows(lots, benchPrices);
+    expect(flows.length).toBeGreaterThan(1);
+    for (const flow of flows) {
+      expect(flow.synthetic).toBe(true);
+      expect(flow.entity_name).toBeUndefined();
+    }
   });
 });

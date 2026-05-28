@@ -15,6 +15,14 @@ export interface CashFlowEvent {
    * (e.g., computeDeposits in dashboard-changes.ts) — otherwise an adjustment
    * lot would appear in the user's deposit tooltip as "Unknown" (no
    * entity_name) when it was never a real cash flow.
+   *
+   * INVARIANT: when `synthetic === true`, `entity_name` is ALWAYS absent
+   * (undefined). Synthetic flows carry no entity identity because they are
+   * never user-facing — they exist only to drive the S&P-units seed and are
+   * filtered out before any deposit/UI surface. The sole producer
+   * (buildBenchmarkCashFlows) upholds this; it is asserted by the
+   * "buildBenchmarkCashFlows — synthetic flag" test in
+   * __tests__/unit/historical-prices-augmentation.test.ts.
    */
   synthetic?: boolean;
 }
