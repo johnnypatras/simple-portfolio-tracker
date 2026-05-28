@@ -17,6 +17,7 @@ const hoisted = vi.hoisted(() => ({
   routerRefresh: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  toastMessage: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/migrate-legacy-adjustments", () => ({
@@ -39,6 +40,7 @@ vi.mock("sonner", () => ({
   toast: {
     success: hoisted.toastSuccess,
     error: hoisted.toastError,
+    message: hoisted.toastMessage,
   },
 }));
 
@@ -180,11 +182,9 @@ describe("LegacyAdjustmentMigrationButton", () => {
       total_candidates: 3,
       migrated: 3,
       errors: 0,
-      details: [
-        { id: "id-1", entity_type: "crypto_position", entity_name: "BTC", status: "migrated" },
-        { id: "id-2", entity_type: "stock_position", entity_name: "VWCE", status: "migrated" },
-        { id: "id-3", entity_type: "cash_account", entity_name: "Revolut EUR", status: "migrated" },
-      ],
+      remaining: 0,
+      // Successful migrations are counted, not enumerated → details is empty.
+      details: [],
     });
 
     render(<LegacyAdjustmentMigrationButton candidateCount={3} />);
@@ -203,28 +203,17 @@ describe("LegacyAdjustmentMigrationButton", () => {
     expect(hoisted.routerRefresh).toHaveBeenCalled();
   });
 
-  it("displays per-row errors when the action reports errors > 0", async () => {
+  it("displays per-row errors (entity context + generic line, never raw error text) when errors > 0", async () => {
     hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
       total_candidates: 4,
       migrated: 2,
       errors: 2,
+      remaining: 0,
+      // details now carries ERROR rows only, with no raw error_message —
+      // the underlying error goes to Sentry, not the DOM.
       details: [
-        { id: "id-1", entity_type: "crypto_position", entity_name: "BTC", status: "migrated" },
-        { id: "id-2", entity_type: "stock_position", entity_name: "VWCE", status: "migrated" },
-        {
-          id: "id-3",
-          entity_type: "cash_account",
-          entity_name: "Broken Account",
-          status: "error",
-          error_message: "Snapshot lookup failed",
-        },
-        {
-          id: "id-4",
-          entity_type: "stock_position",
-          entity_name: "MYSTERY",
-          status: "error",
-          error_message: "Unknown ticker",
-        },
+        { id: "id-3", entity_type: "cash_account", entity_name: "Broken Account" },
+        { id: "id-4", entity_type: "stock_position", entity_name: "MYSTERY" },
       ],
     });
 
@@ -237,11 +226,16 @@ describe("LegacyAdjustmentMigrationButton", () => {
       expect(screen.getByText(/Migrated 2 of 4/i)).toBeInTheDocument();
     });
 
-    // Both error entries' names + messages surface.
+    // Both error entries' names + types surface.
     expect(screen.getByText("Broken Account")).toBeInTheDocument();
-    expect(screen.getByText("Snapshot lookup failed")).toBeInTheDocument();
+    expect(screen.getByText("(cash_account)")).toBeInTheDocument();
     expect(screen.getByText("MYSTERY")).toBeInTheDocument();
-    expect(screen.getByText("Unknown ticker")).toBeInTheDocument();
+    expect(screen.getByText("(stock_position)")).toBeInTheDocument();
+
+    // Generic, non-leaking explanation appears once per error row.
+    expect(
+      screen.getAllByText(/Couldn’t migrate this entry — details logged for review\./i),
+    ).toHaveLength(2);
 
     expect(hoisted.toastError).toHaveBeenCalledWith("Migrated 2 entries with 2 errors");
   });
@@ -266,6 +260,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
       total_candidates: 2,
       migrated: 2,
       errors: 0,
+      remaining: 0,
       details: [],
     });
 
@@ -287,6 +282,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
       total_candidates: 0,
       migrated: 0,
       errors: 0,
+      remaining: 0,
       details: [],
     });
 
@@ -298,5 +294,62 @@ describe("LegacyAdjustmentMigrationButton", () => {
     await waitFor(() => {
       expect(hoisted.toastSuccess).toHaveBeenCalledWith("Nothing to migrate — already up to date");
     });
+  });
+
+  it("budget-limited run surfaces remaining count + a Continue button that re-invokes the action", async () => {
+    // First run: budget fired → 2 migrated, 3 still to go.
+    hoisted.migrateLegacyAdjustmentFlags.mockResolvedValueOnce({
+      total_candidates: 5,
+      migrated: 2,
+      errors: 0,
+      remaining: 3,
+      details: [],
+    });
+    // Continue run: finishes the rest.
+    hoisted.migrateLegacyAdjustmentFlags.mockResolvedValueOnce({
+      total_candidates: 3,
+      migrated: 3,
+      errors: 0,
+      remaining: 0,
+      details: [],
+    });
+
+    render(<LegacyAdjustmentMigrationButton candidateCount={5} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 5 entries/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
+
+    // Partial state: "Migrated 2 of 5" + remaining line + Continue button.
+    await waitFor(() => {
+      expect(screen.getByText(/Migrated 2 of 5/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/3 entries still need migrating\./i)).toBeInTheDocument();
+    expect(hoisted.toastMessage).toHaveBeenCalledWith(
+      "Migrated 2 — 3 still to go. Click Continue.",
+    );
+
+    // Continue re-invokes the action directly (no second confirm step).
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(hoisted.migrateLegacyAdjustmentFlags).toHaveBeenCalledTimes(2);
+    });
+    // Result replaced (not accumulated) → clean done state, no remaining line.
+    await waitFor(() => {
+      expect(screen.getByText(/Migrated 3 entries/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+  });
+
+  it("confirm panel moves focus to the primary action", async () => {
+    render(<LegacyAdjustmentMigrationButton candidateCount={5} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 5 entries/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Yes, migrate" })).toHaveFocus();
+    });
+    // Confirm panel is an accessible group.
+    expect(screen.getByRole("group", { name: "Confirm migration" })).toBeInTheDocument();
   });
 });

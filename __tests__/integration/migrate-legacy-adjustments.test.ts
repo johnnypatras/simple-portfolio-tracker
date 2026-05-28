@@ -286,12 +286,14 @@ describe("migrate-legacy-adjustments (integration)", () => {
       result = await migrateLegacyAdjustmentFlags();
     });
 
-    it("returns total_candidates=3, migrated=3, errors=0", () => {
+    it("returns total_candidates=3, migrated=3, errors=0, remaining=0, details empty", () => {
       expect(result.total_candidates).toBe(3);
       expect(result.migrated).toBe(3);
       expect(result.errors).toBe(0);
-      expect(result.details).toHaveLength(3);
-      expect(result.details.every((d) => d.status === "migrated")).toBe(true);
+      // All attempted, none errored → no un-attempted rows.
+      expect(result.remaining).toBe(0);
+      // Successful migrations are counted, not enumerated.
+      expect(result.details).toHaveLength(0);
     });
 
     it("migrated crypto_position: is_adjustment=false, cashflow populated, delta cleared", async () => {

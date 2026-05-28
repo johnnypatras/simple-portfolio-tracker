@@ -69,11 +69,17 @@ export async function LegacyAdjustmentMigrationCard() {
       </p>
 
       {previewError ? (
-        <div className="flex items-start gap-2 px-3 py-2 bg-zinc-800/50 border border-zinc-700/50 rounded-md">
-          <AlertCircle aria-hidden="true" className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-zinc-400">
+        <div
+          role="status"
+          className="flex items-start gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-md"
+        >
+          <AlertCircle aria-hidden="true" className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-300">
             Could not check migration status.{" "}
-            <a href="/settings" className="text-blue-400 hover:text-blue-300 underline">
+            <a
+              href="/dashboard/settings"
+              className="text-amber-200 hover:text-amber-100 underline"
+            >
               Refresh page
             </a>{" "}
             to retry.

@@ -212,13 +212,14 @@ describe("migrateLegacyAdjustmentFlags", () => {
       total_candidates: 0,
       migrated: 0,
       errors: 0,
+      remaining: 0,
       details: [],
     });
     expect(hoisted.toggleActivityAdjustment).not.toHaveBeenCalled();
     expect(hoisted.revalidateDashboard).not.toHaveBeenCalled();
   });
 
-  it("calls toggleActivityAdjustment(id, false) per row", async () => {
+  it("calls toggleActivityAdjustment(id, false) per row; successes are counted (not enumerated) and remaining=0", async () => {
     hoisted.mockClient = createMockClient([
       {
         data: [
@@ -239,13 +240,10 @@ describe("migrateLegacyAdjustmentFlags", () => {
     expect(result.total_candidates).toBe(3);
     expect(result.migrated).toBe(3);
     expect(result.errors).toBe(0);
-    expect(result.details).toHaveLength(3);
-    expect(result.details[0]).toEqual({
-      id: "id-1",
-      entity_type: "crypto_position",
-      entity_name: "BTC pos",
-      status: "migrated",
-    });
+    // Budget was never hit (loop ran to completion) → no un-attempted rows.
+    expect(result.remaining).toBe(0);
+    // details holds ERROR rows only — successful migrations are counted, not listed.
+    expect(result.details).toHaveLength(0);
     expect(hoisted.revalidateDashboard).toHaveBeenCalledOnce();
   });
 
@@ -272,19 +270,18 @@ describe("migrateLegacyAdjustmentFlags", () => {
     expect(result.total_candidates).toBe(3);
     expect(result.migrated).toBe(2);
     expect(result.errors).toBe(1);
-    expect(result.details).toHaveLength(3);
-    expect(result.details[0].status).toBe("migrated");
-    expect(result.details[1]).toEqual({
+    // All 3 attempted → no un-attempted rows, even though one errored.
+    expect(result.remaining).toBe(0);
+    // details holds the single ERROR row only — entity context, no raw error.
+    expect(result.details).toHaveLength(1);
+    expect(result.details[0]).toEqual({
       id: "id-2",
       entity_type: "stock_position",
       entity_name: "AAPL pos",
-      status: "error",
-      error_message: "Yahoo no price history",
     });
-    expect(result.details[2].status).toBe("migrated");
   });
 
-  it("captures non-Error thrown values as string error_message", async () => {
+  it("does NOT leak raw error text into details for non-Error throws (raw error → Sentry only)", async () => {
     hoisted.mockClient = createMockClient([
       {
         data: [{ id: "id-1", entity_type: "crypto_position", entity_name: "BTC pos" }],
@@ -295,7 +292,13 @@ describe("migrateLegacyAdjustmentFlags", () => {
     hoisted.toggleActivityAdjustment.mockRejectedValueOnce("string error");
     const result = await migrateLegacyAdjustmentFlags();
     expect(result.errors).toBe(1);
-    expect(result.details[0].error_message).toBe("string error");
+    expect(result.details).toHaveLength(1);
+    // Only entity context is exposed — no error_message / status field.
+    expect(result.details[0]).toEqual({
+      id: "id-1",
+      entity_type: "crypto_position",
+      entity_name: "BTC pos",
+    });
   });
 
   it("applies the EXACT filter (user, action=created, is_adjustment=true, transfer_group_id NULL, undone_at NULL, 6 entity types) + .order by created_at asc", async () => {
@@ -336,5 +339,45 @@ describe("migrateLegacyAdjustmentFlags", () => {
       { data: null, error: { message: "DB unavailable" } },
     ]);
     await expect(migrateLegacyAdjustmentFlags()).rejects.toThrow("DB unavailable");
+  });
+
+  it("stops attempting rows once the time budget fires and reports un-attempted rows via `remaining`", async () => {
+    hoisted.mockClient = createMockClient([
+      {
+        data: [
+          { id: "id-1", entity_type: "crypto_position", entity_name: "BTC pos" },
+          { id: "id-2", entity_type: "stock_position", entity_name: "AAPL pos" },
+          { id: "id-3", entity_type: "cash_account", entity_name: "EUR cash" },
+        ],
+        error: null,
+      },
+    ]);
+
+    // Drive the wall-clock deterministically. Call sequence inside the action:
+    //   1) startedAt              → 0
+    //   2) iter-1 budget check    → 10        (under 50_000 → row 1 runs)
+    //   3) iter-2 budget check    → 60_000    (over budget → break before row 2)
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(10)
+      .mockReturnValueOnce(60_000);
+
+    try {
+      const result = await migrateLegacyAdjustmentFlags();
+
+      // Only the first row was attempted before the budget fired.
+      expect(hoisted.toggleActivityAdjustment).toHaveBeenCalledTimes(1);
+      expect(hoisted.toggleActivityAdjustment).toHaveBeenCalledWith("id-1", false);
+      expect(result.total_candidates).toBe(3);
+      expect(result.migrated).toBe(1);
+      expect(result.errors).toBe(0);
+      // 2 rows were never attempted → reported for manual Continue.
+      expect(result.remaining).toBe(2);
+      // 1 migrated → revalidation still fires.
+      expect(hoisted.revalidateDashboard).toHaveBeenCalledOnce();
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });

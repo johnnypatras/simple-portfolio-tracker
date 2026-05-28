@@ -42,19 +42,16 @@ import { CASHFLOW_PRODUCING_ENTITY_TYPES } from "@/lib/cashflow";
 import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
+import type { LegacyAdjustmentMigrationResult } from "@/lib/types";
 
-export type LegacyAdjustmentMigrationResult = {
-  total_candidates: number;
-  migrated: number;
-  errors: number;
-  details: Array<{
-    id: string;
-    entity_type: string;
-    entity_name: string;
-    status: "migrated" | "error";
-    error_message?: string;
-  }>;
-};
+/**
+ * Wall-clock budget for the per-row migration loop, in milliseconds. Kept
+ * below the route's `maxDuration` (60s on settings/page.tsx) so the action
+ * returns a clean partial result instead of being killed mid-row by the
+ * platform. When the budget fires, un-attempted rows are reported via
+ * `result.remaining` and the UI offers a manual "Continue".
+ */
+const MIGRATION_TIME_BUDGET_MS = 50_000;
 
 /**
  * Builds the SELECT query for legacy bulk-flagged real-import candidates.
@@ -94,26 +91,28 @@ export async function previewLegacyAdjustmentMigration(): Promise<{
   count: number;
   by_entity_type: Record<string, number>;
 }> {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  return captureAction("activity-log.preview-legacy-adjustments", async () => {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
 
-  const rows = await fetchAllPaginated<{ entity_type: string }>((from, to) =>
-    buildCandidateQuery(supabase, user.id)
-      .select("entity_type")
-      .order("created_at", { ascending: true })
-      .range(from, to),
-  );
+    const rows = await fetchAllPaginated<{ entity_type: string }>((from, to) =>
+      buildCandidateQuery(supabase, user.id)
+        .select("entity_type")
+        .order("created_at", { ascending: true })
+        .range(from, to),
+    );
 
-  const by_entity_type: Record<string, number> = {};
-  for (const row of rows) {
-    const key = row.entity_type;
-    by_entity_type[key] = (by_entity_type[key] ?? 0) + 1;
-  }
+    const by_entity_type: Record<string, number> = {};
+    for (const row of rows) {
+      const key = row.entity_type;
+      by_entity_type[key] = (by_entity_type[key] ?? 0) + 1;
+    }
 
-  return { count: rows.length, by_entity_type };
+    return { count: rows.length, by_entity_type };
+  });
 }
 
 /**
@@ -129,9 +128,16 @@ export async function previewLegacyAdjustmentMigration(): Promise<{
  *   entity_type IN (CASHFLOW_PRODUCING_ENTITY_TYPES)
  *
  * Per-row errors do NOT abort the migration — they are captured in the
- * `errors` counter and the `details` array, and the loop continues.
- * Rows are processed in `created_at` ascending order for deterministic
- * progress.
+ * `errors` counter (and, for the UI, as entity-only entries in `details`;
+ * the raw error goes to Sentry only), and the loop continues. Rows are
+ * processed in `created_at` ascending order for deterministic progress.
+ *
+ * Timeout safety: the loop runs under a wall-clock budget
+ * (`MIGRATION_TIME_BUDGET_MS`, below the route `maxDuration`). When the
+ * budget fires the loop stops attempting new rows and reports the
+ * un-attempted tail via `result.remaining`. The UI surfaces a manual
+ * "Continue" — there is no auto-retry, so persistent-error rows cannot loop
+ * forever (errored rows stay candidates but are never auto-re-attempted).
  *
  * Idempotency / concurrency contract:
  *   • The operation is idempotent: re-running on already-migrated rows is a
@@ -177,6 +183,7 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
       total_candidates: candidates.length,
       migrated: 0,
       errors: 0,
+      remaining: 0,
       details: [],
     };
 
@@ -192,21 +199,22 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
       level: "info",
     });
 
+    // Each toggle does external-API work (historical price + FX) per row, so
+    // a large cold-cache migration can exceed the platform function timeout.
+    // We chunk by wall-clock: stop attempting new rows once the budget fires
+    // and report the un-attempted tail via `result.remaining`. The UI offers a
+    // manual "Continue" — this is intentionally NOT auto-retry.
+    const startedAt = Date.now();
+
     for (const row of candidates) {
+      if (Date.now() - startedAt > MIGRATION_TIME_BUDGET_MS) break;
       try {
         await toggleActivityAdjustment(row.id, false);
         result.migrated++;
-        result.details.push({
-          id: row.id,
-          entity_type: row.entity_type,
-          entity_name: row.entity_name,
-          status: "migrated",
-        });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
         // Per-row failures must not abort the migration. Capture each one
-        // individually so operators can see the failed IDs without losing
-        // the rest of the run.
+        // individually (with the raw error) so operators can see the failed
+        // IDs in Sentry. The UI never sees raw PG text — only entity context.
         Sentry.captureException(err, {
           tags: {
             action: "activity-log.migrate-legacy-adjustments.row",
@@ -219,11 +227,16 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
           id: row.id,
           entity_type: row.entity_type,
           entity_name: row.entity_name,
-          status: "error",
-          error_message: message,
         });
       }
     }
+
+    // Rows the budget prevented us from attempting at all. Migrated rows have
+    // flipped to is_adjustment=false (out of the candidate filter); errored
+    // rows stay is_adjustment=true and re-appear on the next fetch. So
+    // `remaining` counts ONLY un-attempted rows and is 0 on a full pass — even
+    // if some rows errored. A manual Continue re-scopes from the DB.
+    result.remaining = candidates.length - result.migrated - result.errors;
 
     // Revalidate all dashboard paths if any rows were migrated so the user
     // sees updated snapshot/cashflow data immediately on next navigation.

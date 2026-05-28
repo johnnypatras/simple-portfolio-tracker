@@ -863,6 +863,30 @@ export interface ImportError {
   backup?: PortfolioBackup;
 }
 
+/**
+ * Result of the one-time legacy-adjustment migration server action.
+ *
+ * `migrated` rows are counted, not enumerated. `details` carries ERROR rows
+ * only (no raw PG text — that goes to Sentry). `remaining` counts candidates
+ * the run never attempted because the time budget fired; 0 when the loop ran
+ * to completion. The UI offers a manual "Continue" when `remaining > 0`.
+ *
+ * Declared here (not in the `"use server"` action module) so Turbopack does
+ * not strip the re-export — see the types convention in CLAUDE.md.
+ */
+export type LegacyAdjustmentMigrationResult = {
+  total_candidates: number;
+  migrated: number;
+  errors: number;
+  remaining: number;
+  /** Per-row ERROR details only — successful migrations are counted, not enumerated. */
+  details: Array<{
+    id: string;
+    entity_type: string;
+    entity_name: string;
+  }>;
+};
+
 /** Options for cash-account mutations that produce activity-log entries. */
 export interface CashAccountOpts {
   isAdjustment?: boolean;
