@@ -616,6 +616,24 @@ export async function getAdjustmentDeltas(
 
     // Skip crypto/stock positions valued by historical-price synthesis — they
     // contribute to snapshots via augmentAndExtendSnapshots, not the back-fill.
+    //
+    // KNOWN GRANULARITY ASYMMETRY (niche, not yet fixed — final holistic review
+    // 2026-05-28): this gate keys on ASSET_KEY (any position with cached prices
+    // for its coingecko_id/yahoo_ticker is in historicallyPricedPosIds). The
+    // AUGMENT gate (in getSnapshots → buildHistoricalLots) keys on LOT — a
+    // position is only augmented if its activity is backdated (earliest
+    // effective_date < earliest created_at). Reachable edge case: user holds
+    // backdated BTC in wallet A (asset cached) AND opens a today-dated
+    // is_adjustment position in wallet B (same asset_key, NOT backdated).
+    // Wallet B is dropped by buildHistoricalLots so NOT augmented, but is in
+    // historicallyPricedPosIds so IS excluded from the back-fill → wallet B's
+    // value goes missing from the back-extension (under-count, not double-count).
+    // For the dominant single-backdated-lot use case this does NOT fire.
+    //
+    // Future fix path: refine historicallyPricedPosIds to the actual backdated
+    // lot set (e.g., a paginated query of activity_log distinct entity_id where
+    // effective_date < created_at::date, intersected with cached-asset positions
+    // — matching buildHistoricalLots' criterion).
     if (
       (row.entity_type === "crypto_position" || row.entity_type === "stock_position") &&
       typeof row.entity_id === "string" &&

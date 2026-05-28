@@ -349,8 +349,8 @@ describe("fetchHistoricalPriceInputsFor — sold/deleted position not dropped (F
     expect(soldLot!.deltas).toHaveLength(2);
     const buyDelta = soldLot!.deltas.find((d) => d.effective_date === buyEffectiveDate);
     const sellDelta = soldLot!.deltas.find((d) => d.effective_date === sellEffectiveDate);
-    expect(buyDelta).toEqual({ effective_date: buyEffectiveDate, qty_delta: 2 });
-    expect(sellDelta).toEqual({ effective_date: sellEffectiveDate, qty_delta: -2 });
+    expect(buyDelta).toEqual({ effective_date: buyEffectiveDate, qty_delta: 2, is_adjustment: false });
+    expect(sellDelta).toEqual({ effective_date: sellEffectiveDate, qty_delta: -2, is_adjustment: false });
 
     // Sanity: the fetch_symbol must be derived from the ticker.
     expect(soldLot!.fetch_symbol).toBe(fetchSymbol);
