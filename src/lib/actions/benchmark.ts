@@ -9,6 +9,10 @@ import { MAX_QUERY_LIMIT } from "@/lib/constants";
 // ─── Cash Flow Event ─────────────────────────────────────
 
 import type { AssetClass, CashFlowEvent } from "@/lib/types";
+import {
+  fetchHistoricalPriceInputsFor,
+  buildBenchmarkCashFlows,
+} from "@/lib/portfolio/historical-prices-augmentation";
 
 /**
  * Derive cash flow events from the activity log.
@@ -98,3 +102,42 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
     failedCount: failedResult.count ?? 0,
   };
 });
+
+/**
+ * Phase 2: inputs for extending the S&P benchmark back over Phase 1's
+ * synthesized range.
+ *   - earliestDate: the earliest backdated effective_date (null if none) — the
+ *     caller sizes the ^SP500TR history fetch to reach it.
+ *   - syntheticCashFlows: benchmark-only cash flows for is_adjustment backdated
+ *     lots (absent from deriveCashFlows). Merge into the chart's cashFlows.
+ *
+ * Client selection mirrors deriveCashFlows: explicit userId → admin client
+ * (cross-user share/comparison); omitted → authenticated server client (RLS).
+ * Prices are already cached by Phase 1's getSnapshots on the same render, so
+ * this is a cheap cache read in the common case.
+ */
+export async function getHistoricalBenchmarkExtension(
+  userId?: string,
+): Promise<{ earliestDate: string | null; syntheticCashFlows: CashFlowEvent[] }> {
+  if (userId) validateUUID(userId, "User ID");
+  const supabase = userId ? createAdminClient() : await createServerSupabaseClient();
+  const resolvedUserId = userId ?? (await supabase.auth.getUser()).data.user?.id;
+  if (!resolvedUserId) return { earliestDate: null, syntheticCashFlows: [] };
+
+  const { lots, prices } = await fetchHistoricalPriceInputsFor(supabase, resolvedUserId);
+  if (lots.length === 0) return { earliestDate: null, syntheticCashFlows: [] };
+
+  let earliestDate: string | null = null;
+  for (const lot of lots) {
+    for (const d of lot.deltas) {
+      if (earliestDate === null || d.effective_date < earliestDate) {
+        earliestDate = d.effective_date;
+      }
+    }
+  }
+
+  return {
+    earliestDate,
+    syntheticCashFlows: buildBenchmarkCashFlows(lots, prices),
+  };
+}
