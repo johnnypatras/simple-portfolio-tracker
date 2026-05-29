@@ -17,7 +17,7 @@ import { validateUUID } from "@/lib/validation";
 import { ACTIVITY_LOG_DEFAULT_LIMIT, ACTIVITY_LOG_MAX_LIMIT } from "@/lib/constants";
 import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ActionType, ActivityLog, AssetClass, EntityType, FlowStatus } from "@/lib/types";
+import type { ActionType, ActivityLog, AssetClass, EntityType, FlowStatus, ToggleAdjustmentResult } from "@/lib/types";
 import type { Database } from "@/types/database";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 
@@ -350,13 +350,16 @@ export async function computeDeltaFromSnapshots(
 // When toggling ON (becomes adjustment): compute delta, clear cashflow.
 // When toggling OFF (becomes non-adjustment): compute cashflow, clear delta.
 //
-// Returns the FlowStatus of the side this call computed (R2-4): when toggling
-// OFF that's `cashflow_status`, when toggling ON it's `delta_status`. The
-// status is 'complete' on a successful price fetch and 'pending' when the
-// fetch failed (the row's flag still flips, but the cashflow/delta is
-// unresolved and will self-heal via the backfill cron). The migration loop
-// uses this to count `pending` rows honestly. The M1 idempotency no-op returns
-// the row's CURRENT status for the requested direction (the already-fetched
+// Returns `{ status, changed }` (ToggleAdjustmentResult). `status` is the
+// FlowStatus of the side this call computed (R2-4): when toggling OFF that's
+// `cashflow_status`, when toggling ON it's `delta_status`. It is 'complete' on
+// a successful price fetch and 'pending' when the fetch failed (the row's flag
+// still flips, but the cashflow/delta is unresolved and self-heals via the
+// backfill cron). `changed` is true on a real flip and false on the M1
+// idempotency no-op (row already in the requested state); the migration loop
+// counts only real flips so concurrent runs can't double-claim a row (F3), and
+// uses `status` to tally `pending` rows honestly. The no-op echoes the row's
+// CURRENT status for the requested direction (the already-fetched
 // `row.cashflow_status` / `row.delta_status` — no extra query). The UI caller
 // (activity-timeline.tsx) ignores the return value.
 //
@@ -377,7 +380,7 @@ function toFlowStatus(value: string | null): FlowStatus {
 export async function toggleActivityAdjustment(
   logId: string,
   isAdjustment: boolean
-): Promise<FlowStatus> {
+): Promise<ToggleAdjustmentResult> {
   return captureAction("activity-log.toggleActivityAdjustment", async () => {
   validateUUID(logId, "Activity log ID");
   const supabase = await createServerSupabaseClient();
@@ -410,7 +413,10 @@ export async function toggleActivityAdjustment(
   // so the migration counter stays honest without re-querying (the full row,
   // incl. both status columns, is already in hand).
   if (row.is_adjustment === isAdjustment) {
-    return toFlowStatus(isAdjustment ? row.delta_status : row.cashflow_status);
+    return {
+      status: toFlowStatus(isAdjustment ? row.delta_status : row.cashflow_status),
+      changed: false,
+    };
   }
 
   let deltaUsd: number | null = null;
@@ -531,8 +537,9 @@ export async function toggleActivityAdjustment(
   // Return the status of the side this call computed (R2-4): cashflow when
   // toggling OFF, delta when toggling ON. 'pending' here means the row's flag
   // flipped but the cashflow/delta couldn't be priced — the migration counts
-  // these so the success message stays honest.
-  return isAdjustment ? deltaStatus : cashflowStatus;
+  // these so the success message stays honest. `changed: true` because we
+  // reached this point past the idempotency guard, so the UPDATE ran.
+  return { status: isAdjustment ? deltaStatus : cashflowStatus, changed: true };
   });
 }
 

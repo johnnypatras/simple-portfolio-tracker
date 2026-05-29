@@ -895,6 +895,30 @@ export interface ImportError {
 }
 
 /**
+ * Result of `toggleActivityAdjustment`.
+ *
+ * `changed` distinguishes a real flip from the M1 idempotency no-op: when the
+ * row is already in the requested `is_adjustment` state (e.g. a concurrent
+ * migration run flipped it first) the action returns early WITHOUT mutating,
+ * and `changed` is false. The migration loop counts only real flips, so two
+ * concurrent runs can never both claim the same row as `migrated` — closing the
+ * F3 count-inflation race. The UI toggle ignores this result.
+ *
+ * `status` is the FlowStatus of the side this call computed (R2-4): cashflow
+ * when toggling OFF, delta when toggling ON; 'pending' when the price fetch
+ * failed but the flag still flipped. On the no-op, it echoes the row's current
+ * status for the requested direction.
+ *
+ * Declared here (not in the `"use server"` action module) so Turbopack does
+ * not strip the re-export — see the types convention in CLAUDE.md.
+ */
+export type ToggleAdjustmentResult = {
+  status: FlowStatus;
+  /** True iff this call actually mutated the row; false on the M1 idempotency no-op. */
+  changed: boolean;
+};
+
+/**
  * Result of the one-time legacy-adjustment migration server action.
  *
  * `migrated` rows are counted, not enumerated. `details` carries ERROR rows
@@ -909,6 +933,13 @@ export interface ImportError {
  * cron resolves them, so the UI must report them honestly instead of claiming
  * full success (R2-4).
  *
+ * `skipped` counts rows that were already in the target state when this run
+ * reached them — a concurrent migration (or a prior partial run) flipped them
+ * first, so `toggleActivityAdjustment` returned its no-op (`changed: false`).
+ * They are migrated, just not BY THIS RUN, so they are tracked separately to
+ * avoid double-claiming across concurrent runs (F3). The counts partition the
+ * candidate set exactly: migrated + skipped + errors + remaining === total.
+ *
  * Declared here (not in the `"use server"` action module) so Turbopack does
  * not strip the re-export — see the types convention in CLAUDE.md.
  */
@@ -920,6 +951,11 @@ export type LegacyAdjustmentMigrationResult = {
    * The flag flipped, but the cashflow isn't yet reflected in the benchmark.
    */
   pending: number;
+  /**
+   * Rows already migrated by a concurrent run when this run reached them
+   * (toggle no-op). Not an error, not `remaining` — see the type doc above.
+   */
+  skipped: number;
   errors: number;
   remaining: number;
   /** Per-row ERROR details only — successful migrations are counted, not enumerated. */

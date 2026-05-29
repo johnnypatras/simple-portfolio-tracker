@@ -469,8 +469,11 @@ describe("toggleActivityAdjustment — idempotency no-op (M1)", () => {
     ]);
     hoisted.mockClient = client;
 
-    // Toggle to the SAME value it already has → returns the CURRENT delta_status.
-    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toBe("complete");
+    // Toggle to the SAME value it already has → no-op: CURRENT delta_status, changed:false.
+    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toEqual({
+      status: "complete",
+      changed: false,
+    });
 
     // Exactly one `from()` (the row fetch). No UPDATE, no historical-price fetch.
     expect(client._fromCalls).toHaveLength(1);
@@ -506,7 +509,10 @@ describe("toggleActivityAdjustment — idempotency no-op (M1)", () => {
     ]);
     hoisted.mockClient = client;
 
-    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toBe("pending");
+    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toEqual({
+      status: "pending",
+      changed: false,
+    });
     expect(client._fromCalls).toHaveLength(1);
     expect(client._fromCalls[0].isUpdate).toBe(false);
   });
@@ -543,8 +549,11 @@ describe("toggleActivityAdjustment — TOCTOU guard on UPDATE (M2)", () => {
     hoisted.mockClient = client;
 
     // Returns the computed delta side's status (R2-4): a clean price fetch on a
-    // toggle-ON resolves 'complete'.
-    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toBe("complete");
+    // toggle-ON resolves 'complete'; a real flip → changed:true.
+    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toEqual({
+      status: "complete",
+      changed: true,
+    });
 
     const updateCall = client._fromCalls.find((c) => c.isUpdate);
     expect(updateCall).toBeDefined();
@@ -595,7 +604,10 @@ describe("toggleActivityAdjustment — return status + Sentry on price-fetch fai
     ]);
     hoisted.mockClient = client;
 
-    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toBe("complete");
+    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toEqual({
+      status: "complete",
+      changed: true,
+    });
 
     const updateCall = client._fromCalls.find((c) => c.isUpdate);
     expect(updateCall).toBeDefined();
@@ -638,7 +650,10 @@ describe("toggleActivityAdjustment — return status + Sentry on price-fetch fai
     ]);
     hoisted.mockClient = client;
 
-    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toBe("pending");
+    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toEqual({
+      status: "pending",
+      changed: true,
+    });
 
     // The flag still flips (row IS migrated) but the cashflow is unresolved.
     const updateCall = client._fromCalls.find((c) => c.isUpdate);
@@ -688,7 +703,10 @@ describe("toggleActivityAdjustment — return status + Sentry on price-fetch fai
     ]);
     hoisted.mockClient = client;
 
-    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toBe("pending");
+    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toEqual({
+      status: "pending",
+      changed: true,
+    });
 
     const updateCall = client._fromCalls.find((c) => c.isUpdate);
     expect(updateCall).toBeDefined();

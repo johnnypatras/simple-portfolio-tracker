@@ -197,9 +197,9 @@ describe("previewLegacyAdjustmentMigration", () => {
 describe("migrateLegacyAdjustmentFlags", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // toggleActivityAdjustment now returns the resulting FlowStatus (R2-4).
-    // A successful toggle-OFF lands 'complete'; default to that.
-    hoisted.toggleActivityAdjustment.mockResolvedValue("complete");
+    // toggleActivityAdjustment returns { status, changed } (R2-4/F3).
+    // A successful real toggle-OFF lands status 'complete', changed true.
+    hoisted.toggleActivityAdjustment.mockResolvedValue({ status: "complete", changed: true });
   });
 
   it("throws when no authenticated user", async () => {
@@ -214,6 +214,7 @@ describe("migrateLegacyAdjustmentFlags", () => {
       total_candidates: 0,
       migrated: 0,
       pending: 0,
+      skipped: 0,
       errors: 0,
       remaining: 0,
       details: [],
@@ -244,6 +245,8 @@ describe("migrateLegacyAdjustmentFlags", () => {
     expect(result.migrated).toBe(3);
     // All three priced cleanly ('complete') → none pending.
     expect(result.pending).toBe(0);
+    // All three were real flips by this run → none skipped.
+    expect(result.skipped).toBe(0);
     expect(result.errors).toBe(0);
     // Budget was never hit (loop ran to completion) → no un-attempted rows.
     expect(result.remaining).toBe(0);
@@ -267,9 +270,9 @@ describe("migrateLegacyAdjustmentFlags", () => {
     // flipped (no throw) but cashflow_status landed 'pending'. The other two
     // priced cleanly ('complete').
     hoisted.toggleActivityAdjustment
-      .mockResolvedValueOnce("complete")
-      .mockResolvedValueOnce("pending")
-      .mockResolvedValueOnce("complete");
+      .mockResolvedValueOnce({ status: "complete", changed: true })
+      .mockResolvedValueOnce({ status: "pending", changed: true })
+      .mockResolvedValueOnce({ status: "complete", changed: true });
 
     const result = await migrateLegacyAdjustmentFlags();
 
@@ -279,6 +282,8 @@ describe("migrateLegacyAdjustmentFlags", () => {
     // a separate bucket — the row IS migrated, just not yet benchmark-visible).
     expect(result.migrated).toBe(3);
     expect(result.pending).toBe(1);
+    // All three were real flips → none skipped.
+    expect(result.skipped).toBe(0);
     expect(result.errors).toBe(0);
     expect(result.remaining).toBe(0);
     // Pending is NOT an error — no details, no error tally.
@@ -287,21 +292,28 @@ describe("migrateLegacyAdjustmentFlags", () => {
     expect(hoisted.revalidateDashboard).toHaveBeenCalledOnce();
   });
 
-  it("treats a no-op idempotent return ('complete' from M1 early-return) as a normal migration, not pending", async () => {
+  it("counts a no-op idempotent return (changed:false) as skipped, NOT migrated (F3 inflation guard)", async () => {
     hoisted.mockClient = createMockClient([
       {
         data: [{ id: "id-1", entity_type: "cash_account", entity_name: "EUR cash" }],
         error: null,
       },
     ]);
-    // A concurrent run already flipped this row; toggleActivityAdjustment's M1
-    // early-return reports the row's current cashflow_status ('complete').
-    hoisted.toggleActivityAdjustment.mockResolvedValueOnce("complete");
+    // A concurrent run already flipped this row → toggleActivityAdjustment's M1
+    // early-return reports the row's current status with changed:false. This run
+    // did NOT perform the flip, so it must land in `skipped`, never `migrated` —
+    // otherwise two concurrent runs would both claim it and the counts inflate
+    // beyond total_candidates (the F3 count-inflation race).
+    hoisted.toggleActivityAdjustment.mockResolvedValueOnce({ status: "complete", changed: false });
 
     const result = await migrateLegacyAdjustmentFlags();
-    expect(result.migrated).toBe(1);
+    expect(result.migrated).toBe(0);
+    expect(result.skipped).toBe(1);
     expect(result.pending).toBe(0);
     expect(result.errors).toBe(0);
+    // The four counts still partition the candidate set exactly.
+    expect(result.remaining).toBe(0);
+    expect(result.total_candidates).toBe(1);
   });
 
   it("per-row error does not abort loop — other rows still migrate", async () => {
@@ -317,9 +329,9 @@ describe("migrateLegacyAdjustmentFlags", () => {
     ]);
     // Middle row fails — the loop must not abort.
     hoisted.toggleActivityAdjustment
-      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ status: "complete", changed: true })
       .mockRejectedValueOnce(new Error("Yahoo no price history"))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce({ status: "complete", changed: true });
 
     const result = await migrateLegacyAdjustmentFlags();
 
@@ -329,6 +341,8 @@ describe("migrateLegacyAdjustmentFlags", () => {
     // A thrown row is an error, NOT a pending (pending = flag flipped but
     // unpriced; error = flag never flipped).
     expect(result.pending).toBe(0);
+    // No idempotency no-ops in this run → none skipped.
+    expect(result.skipped).toBe(0);
     expect(result.errors).toBe(1);
     // All 3 attempted → no un-attempted rows, even though one errored.
     expect(result.remaining).toBe(0);
@@ -437,6 +451,8 @@ describe("migrateLegacyAdjustmentFlags", () => {
       expect(result.total_candidates).toBe(3);
       expect(result.migrated).toBe(1);
       expect(result.pending).toBe(0);
+      // The one attempted row was a real flip → none skipped.
+      expect(result.skipped).toBe(0);
       expect(result.errors).toBe(0);
       // 2 rows were never attempted → reported for manual Continue.
       expect(result.remaining).toBe(2);

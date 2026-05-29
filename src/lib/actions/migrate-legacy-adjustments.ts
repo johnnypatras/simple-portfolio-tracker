@@ -147,13 +147,14 @@ export async function previewLegacyAdjustmentMigration(): Promise<{
  * processed in `created_at` ascending order (with an `id` tiebreaker) for
  * deterministic progress.
  *
- * Pending accounting (R2-4): `toggleActivityAdjustment` returns the resulting
- * cashflow status. A row whose flag flipped but whose cashflow couldn't be
- * priced returns 'pending' — it counts in `migrated` (the flag DID flip, so
- * it's out of the candidate set) but is ALSO tallied in `result.pending`, the
- * subset that isn't yet reflected in the S&P benchmark. The UI surfaces this
- * so the success message stays honest; pending rows self-heal via the backfill
- * cron.
+ * Pending / skipped accounting (R2-4, F3): `toggleActivityAdjustment` returns
+ * `{ status, changed }`. On a real flip (`changed: true`) a row whose cashflow
+ * couldn't be priced returns status 'pending' — it counts in `migrated` (the
+ * flag DID flip, so it's out of the candidate set) but is ALSO tallied in
+ * `result.pending`, the subset not yet reflected in the S&P benchmark. A
+ * `changed: false` no-op (a concurrent run already flipped the row) counts in
+ * `result.skipped`, never `migrated`. The UI surfaces these so the success
+ * message stays honest; pending rows self-heal via the backfill cron.
  *
  * Timeout safety: the loop runs under a wall-clock budget
  * (`MIGRATION_TIME_BUDGET_MS`, below the route `maxDuration`). When the
@@ -166,13 +167,16 @@ export async function previewLegacyAdjustmentMigration(): Promise<{
  *   • The operation is idempotent: re-running on already-migrated rows is a
  *     no-op at the DB level because the candidate filter (`is_adjustment=true`)
  *     excludes rows that were already flipped to `false` by a prior run.
- *   • Concurrent invocations are safe: two simultaneous calls will each fetch
- *     the current candidate set. The second caller will see fewer (or zero)
- *     candidates because the first caller already flipped those rows. Result
- *     counts from concurrent invocations do not sum to the original total,
- *     but no row is double-processed and no row is skipped.
- *   • For a bulletproof concurrency guard, a Postgres advisory lock could be
- *     added — currently relying on the idempotency property above.
+ *   • Concurrent invocations are safe AND honestly counted: two simultaneous
+ *     calls fetch overlapping candidate sets, but for any row a prior caller
+ *     already flipped, `toggleActivityAdjustment` returns `changed: false`. The
+ *     migration counts such rows in `skipped`, never `migrated`, so the two
+ *     runs never both claim the same row. `migrated` reflects only the flips
+ *     THIS run performed, and the counts always partition the candidate set
+ *     (migrated + skipped + errors + remaining === total_candidates). This
+ *     closes the F3 count-inflation race without an advisory lock (which is
+ *     impractical under PostgREST connection pooling anyway — a session lock
+ *     may not span the migration's many separate round-trips).
  *
  * Revalidation: calls revalidateDashboard() after a successful migration so
  * the snapshot/cashflow view reflects the newly computed cashflows immediately
@@ -211,6 +215,7 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
       total_candidates: candidates.length,
       migrated: 0,
       pending: 0,
+      skipped: 0,
       errors: 0,
       remaining: 0,
       details: [],
@@ -234,18 +239,29 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
     // and report the un-attempted tail via `result.remaining`. The UI offers a
     // manual "Continue" — this is intentionally NOT auto-retry.
     const startedAt = Date.now();
+    let attempted = 0;
 
     for (const row of candidates) {
       if (Date.now() - startedAt > MIGRATION_TIME_BUDGET_MS) break;
+      attempted++;
       try {
-        // The flag flips regardless of whether the cashflow could be priced.
-        // A 'pending' return means the row IS migrated (out of the candidate
-        // filter) but its cashflow is unresolved — count it in `migrated` AND
+        // `changed: false` is the M1 idempotency no-op — a concurrent run (or a
+        // prior partial run) already flipped this row. It IS migrated, just not
+        // by THIS run, so count it as `skipped`; two concurrent runs then never
+        // both claim it as `migrated` (F3 count-inflation fix).
+        //
+        // On a real flip (`changed: true`): the flag flips regardless of whether
+        // the cashflow could be priced. A 'pending' status means the row is
+        // migrated but its cashflow is unresolved — count it in `migrated` AND
         // track it in the `pending` subset so the UI doesn't overstate success
         // (R2-4). Pending rows self-heal later via the backfill cron.
-        const status = await toggleActivityAdjustment(row.id, false);
-        result.migrated++;
-        if (status === "pending") result.pending++;
+        const { status, changed } = await toggleActivityAdjustment(row.id, false);
+        if (changed) {
+          result.migrated++;
+          if (status === "pending") result.pending++;
+        } else {
+          result.skipped++;
+        }
       } catch (err) {
         // Per-row failures must not abort the migration. Capture each one
         // individually (with the raw error) so operators can see the failed
@@ -266,12 +282,15 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
       }
     }
 
-    // Rows the budget prevented us from attempting at all. Migrated rows have
-    // flipped to is_adjustment=false (out of the candidate filter); errored
-    // rows stay is_adjustment=true and re-appear on the next fetch. So
-    // `remaining` counts ONLY un-attempted rows and is 0 on a full pass — even
-    // if some rows errored. A manual Continue re-scopes from the DB.
-    result.remaining = candidates.length - result.migrated - result.errors;
+    // `remaining` is the un-attempted tail the budget cut off — computed
+    // directly from how many rows we reached (`attempted`), independent of how
+    // the attempted rows partitioned into migrated/skipped/errors. It is 0 on a
+    // full pass. The four counts partition the candidate set exactly:
+    //   migrated + skipped + errors + remaining === total_candidates.
+    // Migrated/skipped rows are out of the candidate filter; errored rows stay
+    // is_adjustment=true and re-appear on the next fetch. A manual Continue
+    // re-scopes the surviving candidates from the DB.
+    result.remaining = candidates.length - attempted;
 
     // Revalidate all dashboard paths if any rows were migrated so the user
     // sees updated snapshot/cashflow data immediately on next navigation.

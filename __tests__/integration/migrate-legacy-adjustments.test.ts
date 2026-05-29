@@ -300,12 +300,14 @@ describe("migrate-legacy-adjustments (integration)", () => {
       result = await migrateLegacyAdjustmentFlags();
     });
 
-    it("returns total_candidates=3, migrated=3, pending=0, errors=0, remaining=0, details empty", () => {
+    it("returns total_candidates=3, migrated=3, pending=0, skipped=0, errors=0, remaining=0, details empty", () => {
       expect(result.total_candidates).toBe(3);
       expect(result.migrated).toBe(3);
       // Price fetchers are mocked to return positive prices → all cashflows
       // land 'complete', so none are pending.
       expect(result.pending).toBe(0);
+      // Single, uncontended run → every row was a real flip, none skipped.
+      expect(result.skipped).toBe(0);
       expect(result.errors).toBe(0);
       // All attempted, none errored → no un-attempted rows.
       expect(result.remaining).toBe(0);
@@ -451,6 +453,7 @@ describe("migrate-legacy-adjustments — empty case (integration)", () => {
     expect(result.total_candidates).toBe(0);
     expect(result.migrated).toBe(0);
     expect(result.pending).toBe(0);
+    expect(result.skipped).toBe(0);
     expect(result.errors).toBe(0);
     expect(result.details).toHaveLength(0);
 

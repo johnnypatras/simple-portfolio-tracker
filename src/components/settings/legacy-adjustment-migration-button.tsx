@@ -59,6 +59,11 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
       // backfill cron resolves them — surface that honestly in the toast.
       const pendingSuffix =
         migrationResult.pending > 0 ? ` (${migrationResult.pending} awaiting price data)` : "";
+      // Rows a concurrent run already flipped (toggle no-op) — they're migrated,
+      // just not by this run. Surface so the bare `migrated` count isn't read as
+      // the whole story (F3).
+      const skippedSuffix =
+        migrationResult.skipped > 0 ? ` (${migrationResult.skipped} already migrated)` : "";
       if (migrationResult.errors > 0) {
         toast.error(
           `Migrated ${migrationResult.migrated} ${migrationResult.migrated === 1 ? "entry" : "entries"} with ${migrationResult.errors} error${migrationResult.errors === 1 ? "" : "s"}`,
@@ -71,7 +76,7 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
         toast.success("Nothing to migrate — already up to date");
       } else {
         toast.success(
-          `Migrated ${migrationResult.migrated} ${migrationResult.migrated === 1 ? "entry" : "entries"}${pendingSuffix}`,
+          `Migrated ${migrationResult.migrated} ${migrationResult.migrated === 1 ? "entry" : "entries"}${pendingSuffix}${skippedSuffix}`,
         );
       }
       // Refresh the parent server component so the preview count reflects
@@ -106,7 +111,10 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
   if (stage === "migrating") {
     liveMessage = "Migrating entries…";
   } else if (stage === "done" && result) {
-    const incomplete = result.errors > 0 || result.remaining > 0;
+    // `skipped > 0` also forces the "of total" headline so the spoken count
+    // always carries its denominator (migrated alone would understate it).
+    const incomplete =
+      result.errors > 0 || result.remaining > 0 || result.skipped > 0;
     const headline = incomplete
       ? `Migrated ${result.migrated} of ${result.total_candidates}`
       : `Migrated ${result.migrated} ${result.migrated === 1 ? "entry" : "entries"}`;
@@ -114,7 +122,9 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
       result.pending > 0
         ? ` ${result.pending} ${result.pending === 1 ? "entry" : "entries"} awaiting price data.`
         : "";
-    liveMessage = `${headline}.${pendingNote}`;
+    const skippedNote =
+      result.skipped > 0 ? ` ${result.skipped} already migrated.` : "";
+    liveMessage = `${headline}.${pendingNote}${skippedNote}`;
   }
 
   return (
@@ -190,7 +200,8 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
                 result.errors > 0 || result.remaining > 0 ? "text-amber-300" : "text-emerald-300"
               }`}
             >
-              {result.errors > 0 || result.remaining > 0
+              {/* skipped also shows the denominator so the count isn't read as the whole story (F3) */}
+              {result.errors > 0 || result.remaining > 0 || result.skipped > 0
                 ? `Migrated ${result.migrated} of ${result.total_candidates}`
                 : `Migrated ${result.migrated} ${result.migrated === 1 ? "entry" : "entries"}`}
             </p>
@@ -199,6 +210,12 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
             <p className="text-xs text-zinc-400">
               {result.pending} {result.pending === 1 ? "entry" : "entries"} awaiting price data — they&rsquo;ll
               resolve automatically.
+            </p>
+          )}
+          {result.skipped > 0 && (
+            <p className="text-xs text-zinc-400">
+              {result.skipped} {result.skipped === 1 ? "entry was" : "entries were"} already migrated by a
+              concurrent run.
             </p>
           )}
           {result.errors > 0 && (
