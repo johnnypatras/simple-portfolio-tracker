@@ -23,10 +23,15 @@ export default async function SharedCryptoPage({
   const { cryptoAssets, wallets, profile, share } = data;
   const cur = profile.primary_currency;
 
+  // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
+  // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
   const coinIds = cryptoAssets.map((a) => a.coingecko_id);
-  const [prices, fxRates, eurUsdBatch, cashFlowResult] = await Promise.all([
+  const allCurrencies = ["USD", "EUR"];
+  const [prices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch, cashFlowResult] = await Promise.all([
     getPrices(coinIds),
-    getFXRatesSafe(cur, ["USD", "EUR"]),
+    getFXRatesSafe(cur, allCurrencies),
+    getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
+    getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
     getStockPrices(["EURUSD=X"]),
     deriveCashFlows(share.owner_id),
   ]);
@@ -42,6 +47,8 @@ export default async function SharedCryptoPage({
     cashAccounts: [],
     primaryCurrency: cur,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 

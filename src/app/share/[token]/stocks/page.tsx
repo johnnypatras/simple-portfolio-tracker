@@ -39,10 +39,14 @@ export default async function SharedStocksPage({
   const admin = createAdminClient();
   const today = new Date().toISOString().slice(0, 10);
 
+  // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
+  // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
   const uniqueCurrencies = [...new Set(["USD", "EUR", ...stockAssets.map((a) => a.currency)])];
-  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, cashFlowResult, manualNavs] = await Promise.all([
+  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, cashFlowResult, manualNavs] = await Promise.all([
     getStockAndIndexPrices(yahooTickers),
     getFXRatesSafe(cur, uniqueCurrencies),
+    getFXRatesSafe("USD", uniqueCurrencies.filter((c) => c !== "USD")),
+    getFXRatesSafe("EUR", uniqueCurrencies.filter((c) => c !== "EUR")),
     deriveCashFlows(share.owner_id),
     manualStockAssets.length > 0
       ? getLatestManualNavsAt(admin, today, share.owner_id)
@@ -61,6 +65,8 @@ export default async function SharedStocksPage({
     cashAccounts: [],
     primaryCurrency: cur,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 
