@@ -27,10 +27,8 @@ import {
   augmentSnapshotsWithManualNavs,
   fetchManualNavInputsFor,
 } from "@/lib/portfolio/manual-nav-augmentation";
-import {
-  fetchHistoricalPriceInputsFor,
-  augmentAndExtendSnapshots,
-} from "@/lib/portfolio/historical-prices-augmentation";
+import { augmentAndExtendSnapshots } from "@/lib/portfolio/historical-prices-augmentation";
+import { getHistoricalPriceInputsForOwner } from "@/lib/actions/historical-inputs-cache";
 
 // SharedPortfolioData and ValidatedShare are defined in @/lib/types — Turbopack
 // strips type re-exports from "use server" modules, so consumers (share pages,
@@ -285,15 +283,15 @@ async function getSharedPortfolioImpl(
   // chart history for owners holding kind='manual' assets (ELTIFs, SICAVs).
   // The viewer is not the owner — admin client + explicit owner_id bypasses
   // RLS which would otherwise scope to auth.uid() and return zero rows.
+  // The token is already validated above (validateShareToken → return null on
+  // failure), so the userId passed to getHistoricalPriceInputsForOwner is a
+  // verified owner_id. The wrapper owns graceful degradation (catch → empty
+  // inputs + Sentry) AND React-cache()-dedups with the identical call inside
+  // getHistoricalBenchmarkExtension(owner_id) in the same share render — one
+  // fetchHistoricalPriceInputsFor execution instead of two.
   const [manualInputs, historicalInputs] = await Promise.all([
     fetchManualNavInputsFor(admin, userId),
-    fetchHistoricalPriceInputsFor(admin, userId).catch((err) => {
-      console.error("[shared-portfolio] historical-price extension unavailable:", err instanceof Error ? err.message : err);
-      Sentry.captureException(err, {
-        tags: { context: "shared-portfolio.getSharedPortfolio.historicalAugmentation" },
-      });
-      return { lots: [], prices: [] };
-    }),
+    getHistoricalPriceInputsForOwner(userId),
   ]);
   const withManual = manualInputs.positions.length > 0
     ? augmentSnapshotsWithManualNavs(snapshots, manualInputs.positions, manualInputs.navs)

@@ -10,11 +10,11 @@ import { fetchAllPaginated } from "@/lib/supabase/pagination";
 // ─── Cash Flow Event ─────────────────────────────────────
 
 import type { AssetClass, CashFlowEvent } from "@/lib/types";
+import { buildBenchmarkCashFlows } from "@/lib/portfolio/historical-prices-augmentation";
 import {
-  fetchHistoricalPriceInputsFor,
-  buildBenchmarkCashFlows,
-} from "@/lib/portfolio/historical-prices-augmentation";
-import { getHistoricalPriceInputs } from "@/lib/actions/historical-inputs-cache";
+  getHistoricalPriceInputs,
+  getHistoricalPriceInputsForOwner,
+} from "@/lib/actions/historical-inputs-cache";
 
 /**
  * Derive cash flow events from the activity log.
@@ -146,18 +146,27 @@ export async function getHistoricalBenchmarkExtension(
   userId?: string,
 ): Promise<{ earliestDate: string | null; syntheticCashFlows: CashFlowEvent[]; sp500Days: number }> {
   if (userId) validateUUID(userId, "User ID");
-  const supabase = userId ? createAdminClient() : await createServerSupabaseClient();
-  const resolvedUserId = userId ?? (await supabase.auth.getUser()).data.user?.id;
+  // Resolve the user. On the current-user path we read the session via the
+  // server client; on the share/comparison path the caller-supplied userId is
+  // authoritative and the historical inputs are fetched through the admin-
+  // backed wrapper below (which owns its own admin client), so no client is
+  // constructed here.
+  const resolvedUserId =
+    userId ?? (await (await createServerSupabaseClient()).auth.getUser()).data.user?.id;
   if (!resolvedUserId) return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS };
 
-  // Current-user (server-client) path: route through the request-cached wrapper
-  // so getSnapshots + getHistoricalBenchmarkExtension share ONE
-  // fetchHistoricalPriceInputsFor execution per render (React cache() keyed on
-  // userId). The cross-user share/comparison path (explicit userId → admin
-  // client) keeps calling the pure fetcher directly — the wrapper is
-  // server-client/current-user only.
+  // Route both paths through request-cached + graceful wrappers so a single
+  // render shares ONE fetchHistoricalPriceInputsFor execution per user (React
+  // cache() keyed on the userId string), and a transient price/FX/DB failure
+  // degrades to empty inputs instead of throwing:
+  //   • current-user (server-client / RLS): getHistoricalPriceInputs dedups
+  //     with getSnapshots in the same dashboard render.
+  //   • cross-user share/comparison (explicit userId → admin client):
+  //     getHistoricalPriceInputsForOwner dedups with getSharedPortfolio's own
+  //     augmentation fetch in the same share render — and, critically, never
+  //     throws, so a price/FX hiccup can't error-pin the PUBLIC share link.
   const { lots, prices } = userId
-    ? await fetchHistoricalPriceInputsFor(supabase, resolvedUserId)
+    ? await getHistoricalPriceInputsForOwner(resolvedUserId)
     : await getHistoricalPriceInputs(resolvedUserId);
   if (lots.length === 0) return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS };
 

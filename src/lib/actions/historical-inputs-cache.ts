@@ -5,6 +5,7 @@
 import { cache } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   fetchHistoricalPriceInputsFor,
   type HistoricalLot,
@@ -21,9 +22,9 @@ import {
  * Owns graceful degradation + single Sentry capture: never throws. On any
  * failure returns empty inputs so the chart degrades to literal snapshots.
  *
- * Admin / cross-user (share, comparison) callers must keep calling
- * fetchHistoricalPriceInputsFor(adminClient, ownerId) directly — this wrapper
- * is server-client/current-user only.
+ * Admin / cross-user (share, comparison) callers must use the sibling
+ * getHistoricalPriceInputsForOwner(ownerId) below — this wrapper is
+ * server-client/current-user only.
  */
 export const getHistoricalPriceInputs = cache(
   async (
@@ -35,6 +36,38 @@ export const getHistoricalPriceInputs = cache(
     } catch (err) {
       Sentry.captureException(err, {
         tags: { context: "historical-inputs-cache.getHistoricalPriceInputs" },
+      });
+      return { lots: [], prices: [] };
+    }
+  },
+);
+
+/**
+ * Admin-client variant of getHistoricalPriceInputs for the share / cross-user
+ * (owner_id) path. React cache() dedups across getSharedPortfolio +
+ * getHistoricalBenchmarkExtension within one share render. Keyed on ownerId
+ * (string) — the admin client is a fresh object per call, so keying on it would
+ * defeat dedup. Owns graceful degradation: never throws; on any failure returns
+ * empty inputs so the share chart degrades to literal snapshots instead of
+ * error-pinning the public link.
+ *
+ * SECURITY: callers MUST pass a server-validated ownerId (from a verified share
+ * token). This wrapper does NOT validate the token — that's the caller's job
+ * (shared-portfolio validates via validateShareToken before calling). The admin
+ * client bypasses RLS by design for the share read, scoped by the ownerId arg.
+ */
+export const getHistoricalPriceInputsForOwner = cache(
+  async (
+    ownerId: string,
+  ): Promise<{ lots: HistoricalLot[]; prices: HistoricalPriceRow[] }> => {
+    try {
+      const admin = createAdminClient();
+      return await fetchHistoricalPriceInputsFor(admin, ownerId);
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: {
+          context: "historical-inputs-cache.getHistoricalPriceInputsForOwner",
+        },
       });
       return { lots: [], prices: [] };
     }
