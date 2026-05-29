@@ -806,8 +806,10 @@ describe("buildBenchmarkCashFlows — synthetic flag (M1)", () => {
   // buildBenchmarkCashFlows emits must be synthetic=true AND carry NO entity_name
   // — these are S&P-benchmark-only inputs filtered out before any deposit/UI
   // surface. An entity_name leak here would surface an is_adjustment lot in the
-  // deposit tooltip as "Unknown". (The full discriminated-union refactor of
-  // CashFlowEvent was intentionally deferred as a higher-risk follow-up.)
+  // deposit tooltip as "Unknown". The invariant is now also TYPE-enforced:
+  // SyntheticCashFlowEvent has no entity_name property, so `"entity_name" in
+  // flow` is the runtime complement to the compile-time guarantee (this test
+  // guards against the producer accidentally spreading one in at runtime).
   it("every emitted flow is synthetic=true with NO entity_name (invariant, multi-delta)", () => {
     const lots: HistoricalLot[] = [
       {
@@ -824,7 +826,7 @@ describe("buildBenchmarkCashFlows — synthetic flag (M1)", () => {
     expect(flows.length).toBeGreaterThan(1);
     for (const flow of flows) {
       expect(flow.synthetic).toBe(true);
-      expect(flow.entity_name).toBeUndefined();
+      expect("entity_name" in flow).toBe(false);
     }
   });
 });

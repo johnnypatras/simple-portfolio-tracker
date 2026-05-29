@@ -2,30 +2,53 @@
 
 export type AssetClass = "crypto" | "stocks" | "cash";
 
-export interface CashFlowEvent {
+/**
+ * A real cash flow (deposit/buy/sell/withdraw) derived from the activity log by
+ * `deriveCashFlows`. Carries entity attribution (`entity_name`) so it can be
+ * surfaced in the deposit tooltip. `synthetic` is `false`/absent on this variant
+ * — the discriminant that distinguishes it from benchmark-only synthetic flows.
+ */
+export interface RealCashFlowEvent {
   date: string;       // YYYY-MM-DD
   amount_usd: number; // positive = deposit, negative = withdrawal
   amount_eur?: number; // EUR amount via historical rate (avoids USD round-trip for EUR entities)
   asset_class?: AssetClass;
+  /** Real flows may carry entity attribution for the deposit-tooltip breakdown. */
   entity_name?: string;
-  /**
-   * True for synthetic cash flows produced by buildBenchmarkCashFlows to seed
-   * the S&P benchmark for backdated is_adjustment lots. These are benchmark-only
-   * inputs and MUST be filtered out before consumers that surface deposit UX
-   * (e.g., computeDeposits in dashboard-changes.ts) — otherwise an adjustment
-   * lot would appear in the user's deposit tooltip as "Unknown" (no
-   * entity_name) when it was never a real cash flow.
-   *
-   * INVARIANT: when `synthetic === true`, `entity_name` is ALWAYS absent
-   * (undefined). Synthetic flows carry no entity identity because they are
-   * never user-facing — they exist only to drive the S&P-units seed and are
-   * filtered out before any deposit/UI surface. The sole producer
-   * (buildBenchmarkCashFlows) upholds this; it is asserted by the
-   * "buildBenchmarkCashFlows — synthetic flag" test in
-   * __tests__/unit/historical-prices-augmentation.test.ts.
-   */
-  synthetic?: boolean;
+  synthetic?: false;
 }
+
+/**
+ * A synthetic S&P-benchmark-only cash flow produced by `buildBenchmarkCashFlows`
+ * to seed the S&P benchmark for backdated is_adjustment lots. These are
+ * benchmark-only inputs and MUST be filtered out before consumers that surface
+ * deposit UX (e.g., `computeDeposits` in dashboard-changes.ts).
+ *
+ * INVARIANT (type-enforced): synthetic flows carry NO `entity_name`. They have
+ * no entity identity because they are never user-facing — they exist only to
+ * drive the S&P-units seed and are filtered out before any deposit/UI surface.
+ * Omitting `entity_name` from this variant makes `{ synthetic: true,
+ * entity_name: "x" }` a compile error; the runtime producer invariant is also
+ * asserted by the multi-delta test in
+ * __tests__/unit/historical-prices-augmentation.test.ts.
+ */
+export interface SyntheticCashFlowEvent {
+  date: string;       // YYYY-MM-DD
+  amount_usd: number; // positive = deposit, negative = withdrawal
+  amount_eur?: number; // EUR amount via historical rate (avoids USD round-trip for EUR entities)
+  asset_class?: AssetClass;
+  synthetic: true;
+  // NO entity_name — benchmark-only flows are never surfaced in deposit UI.
+}
+
+/**
+ * Discriminated union of cash flow events. The `synthetic` discriminant
+ * type-enforces the invariant that benchmark-only flows never carry an
+ * `entity_name`. Narrow via `!f.synthetic` (→ {@link RealCashFlowEvent}) or
+ * `f.synthetic` (→ {@link SyntheticCashFlowEvent}); see `computeDeposits` for
+ * the `f is RealCashFlowEvent` filter guard the union requires.
+ */
+export type CashFlowEvent = RealCashFlowEvent | SyntheticCashFlowEvent;
 
 // ─── Database entity types ──────────────────────────────
 

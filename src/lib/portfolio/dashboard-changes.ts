@@ -5,7 +5,7 @@
  * FX decomposition, and deposit sums from snapshots and cash flows.
  */
 
-import type { PortfolioSnapshot, AssetClass, CashFlowEvent, BaseCurrency } from "@/lib/types";
+import type { PortfolioSnapshot, AssetClass, CashFlowEvent, RealCashFlowEvent, BaseCurrency } from "@/lib/types";
 import { MIN_BREAKDOWN_DISPLAY_VALUE } from "@/lib/constants";
 
 // ── Types ──────────────────────────────────────────────────
@@ -286,7 +286,11 @@ export function computeDeposits(
   // produced by buildBenchmarkCashFlows for is_adjustment backdated lots so the
   // S&P benchmark line has cash flows to replay; they were never real deposits
   // and would otherwise surface in the deposit tooltip as "Unknown" entries.
-  const realFlows = cashFlows.filter(f => !f.synthetic);
+  // Typed guard (not a plain predicate): TS narrows the union through
+  // `f is RealCashFlowEvent`, so `f.entity_name` below is accessible without a
+  // cast. A plain `f => !f.synthetic` predicate would leave the result typed
+  // as CashFlowEvent[] and make the entity_name read a compile error.
+  const realFlows = cashFlows.filter((f): f is RealCashFlowEvent => !f.synthetic);
   const filtered = realFlows.filter(
     f => new Date(f.date) >= cutoff && (!filterClass || f.asset_class === filterClass)
   );

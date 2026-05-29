@@ -259,7 +259,13 @@ describe("deriveCashFlows (DB-only)", () => {
 
       const result = await deriveCashFlows();
 
-      expect(result.events[0].entity_name).toBe("Revolut EUR");
+      // deriveCashFlows only emits real (non-synthetic) flows; narrow the union
+      // via the discriminant so entity_name is accessible (synthetic flows
+      // have no entity_name by type).
+      const event = result.events[0];
+      expect(event.synthetic).toBeFalsy();
+      if (event.synthetic) throw new Error("expected a real cash flow");
+      expect(event.entity_name).toBe("Revolut EUR");
     });
 
     it("sets asset_class to undefined when null in DB", async () => {
@@ -282,8 +288,12 @@ describe("deriveCashFlows (DB-only)", () => {
 
       const result = await deriveCashFlows();
 
-      expect(result.events[0].asset_class).toBeUndefined();
-      expect(result.events[0].entity_name).toBeUndefined();
+      const event = result.events[0];
+      expect(event.asset_class).toBeUndefined();
+      // Narrow off the discriminant before reading entity_name (real-only field).
+      expect(event.synthetic).toBeFalsy();
+      if (event.synthetic) throw new Error("expected a real cash flow");
+      expect(event.entity_name).toBeUndefined();
     });
 
     it("maps multiple rows preserving order", async () => {
