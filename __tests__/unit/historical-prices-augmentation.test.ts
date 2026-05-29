@@ -338,6 +338,42 @@ describe("augmentAndExtendSnapshots", () => {
     expect(real).toEqual(frozen);
   });
 
+  it("clone-on-mutate: an IN-WINDOW augmented snapshot is cloned, never mutating the input (C3 perf contract)", () => {
+    // The previous purity test uses a snapshot AT capture_date, which the
+    // augment loop SKIPS (snapshot_date >= capture_date → continue) — so it
+    // never reaches the `row = { ...snap }` clone-then-mutate path. This case
+    // forces that path: snapshot_date (2026-02-15) is STRICTLY BEFORE
+    // capture_date (2026-03-01), so 2 BTC × 60k forward-filled DOES apply and
+    // the clone runs. We prove the clone-once protects the caller's input.
+    const input = snap({
+      snapshot_date: "2026-02-15",
+      crypto_value_usd: 0,
+      total_value_usd: 0,
+      crypto_value_eur: 0,
+      total_value_eur: 0,
+    });
+    // Snapshot the input's values BEFORE the call (deep copy) and deep-freeze
+    // the live object so any in-place write would throw in strict mode.
+    const before = JSON.parse(JSON.stringify(input));
+    Object.freeze(input);
+
+    const out = augmentAndExtendSnapshots([input], [btcLot], priceRows);
+
+    // 1) The frozen input object is byte-for-byte unchanged (no in-place write).
+    expect(input).toEqual(before);
+    expect(input.crypto_value_usd).toBe(0);
+    expect(input.total_value_usd).toBe(0);
+
+    // 2) The OUTPUT row is a distinct (cloned) object carrying the augmented,
+    //    higher values — 2 BTC × 60k = 120000 added to the zero starting point.
+    const augmented = out.find((s) => s.snapshot_date === "2026-02-15")!;
+    expect(augmented).not.toBe(input); // distinct reference → clone happened
+    expect(augmented.crypto_value_usd).toBeCloseTo(120000, 2);
+    expect(augmented.total_value_usd).toBeCloseTo(120000, 2);
+    // EUR mirror: 120000 / 1.2 USD-per-EUR = 100000.
+    expect(augmented.crypto_value_eur).toBeCloseTo(120000 / 1.2, 2);
+  });
+
   it("handles the no-real-snapshots case (brand-new user, all history synthesized)", () => {
     const out = augmentAndExtendSnapshots([], [btcLot], priceRows);
     expect(out.length).toBeGreaterThan(0);

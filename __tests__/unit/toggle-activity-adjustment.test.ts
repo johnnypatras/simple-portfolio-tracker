@@ -17,6 +17,7 @@ const hoisted = vi.hoisted(() => ({
   mockClient: null as ReturnType<typeof createMockClient> | null,
   fetchYahooDailyHistory: vi.fn(),
   fetchCoinHistory: vi.fn(),
+  fetchIndexHistory: vi.fn(),
   getFXRates: vi.fn(),
   captureException: vi.fn(),
 }));
@@ -101,6 +102,10 @@ vi.mock("@/lib/prices/historical", () => ({
 
 vi.mock("@/lib/prices/coingecko", () => ({
   fetchCoinHistory: hoisted.fetchCoinHistory,
+}));
+
+vi.mock("@/lib/prices/yahoo", () => ({
+  fetchIndexHistory: hoisted.fetchIndexHistory,
 }));
 
 vi.mock("@/lib/prices/fx", () => ({
@@ -206,6 +211,168 @@ describe("computeDeltaFromSnapshots — crypto uses Yahoo as primary source (H2)
         { crypto_asset_id: "asset-1", quantity: 1 },
       ),
     ).rejects.toThrow(/Refusing to write zero-valued delta/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeDeltaFromSnapshots — STOCK branch (R2-T2)
+//
+// The stock branch uses `fetchIndexHistory` (Yahoo v8 chart, returns
+// { date, close }) — a DIFFERENT fetcher than the crypto branch's
+// `fetchYahooDailyHistory`. These tests cover its walk-on-or-before close
+// selection, throw-on-empty-history, and the non-positive-price guard (the
+// exact Audit-R1-Phase-5 regression — previously asserted only for crypto).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("computeDeltaFromSnapshots — stock branch uses fetchIndexHistory (R2-T2)", () => {
+  it("(a) USD-native: walks to the close on-or-before the date → qty × close, EUR via getFXRates", async () => {
+    // Two daily closes; the walk-on-or-before must land on the 2021-06-15 bar
+    // (140 on Jan 1 is overwritten as the loop advances to the later date).
+    hoisted.fetchIndexHistory.mockResolvedValue([
+      { date: "2021-01-01", close: 140 },
+      { date: "2021-06-15", close: 150 },
+    ]);
+    hoisted.mockClient = createMockClient([
+      { table: "stock_assets", result: { data: { yahoo_ticker: "AAPL", currency: "USD" }, error: null } },
+    ]);
+
+    const result = await computeDeltaFromSnapshots(
+      "stock_position",
+      "created",
+      "2021-06-15",
+      null,
+      { stock_asset_id: "asset-1", quantity: 2 },
+    );
+
+    // fetchIndexHistory called with the yahoo_ticker + a positive day count.
+    expect(hoisted.fetchIndexHistory).toHaveBeenCalledWith("AAPL", expect.any(Number));
+    // The crypto-only fetchers must NOT be touched by the stock branch.
+    expect(hoisted.fetchYahooDailyHistory).not.toHaveBeenCalled();
+    expect(hoisted.fetchCoinHistory).not.toHaveBeenCalled();
+    // 2 qty × 150 close = 300 USD (native currency is USD → 1:1 to USD).
+    expect(result.usd).toBeCloseTo(300, 2);
+    // EUR mirror via mocked USD→EUR rate 0.9 → 270.
+    expect(result.eur).toBeCloseTo(270, 2);
+  });
+
+  it("(a') native-currency conversion: EUR-denominated stock converts deltaNative via getFXRates(EUR→USD)", async () => {
+    // EUR rate must carry a USD key for toUsdAndEur's EUR branch
+    // (getFXRates("EUR", ["USD"]) → { usd: amount × rates.USD, eur: amount }).
+    hoisted.getFXRates.mockResolvedValue({ USD: 1.1 });
+    hoisted.fetchIndexHistory.mockResolvedValue([
+      { date: "2022-01-01", close: 100 },
+    ]);
+    hoisted.mockClient = createMockClient([
+      { table: "stock_assets", result: { data: { yahoo_ticker: "SAP.DE", currency: "EUR" }, error: null } },
+    ]);
+
+    const result = await computeDeltaFromSnapshots(
+      "stock_position",
+      "created",
+      "2022-01-01",
+      null,
+      { stock_asset_id: "asset-1", quantity: 10 },
+    );
+
+    // 10 qty × 100 = 1000 EUR native. EUR stays as-is; USD = 1000 × 1.1.
+    expect(hoisted.getFXRates).toHaveBeenCalledWith("EUR", ["USD"], "2022-01-01");
+    expect(result.eur).toBeCloseTo(1000, 2);
+    expect(result.usd).toBeCloseTo(1100, 2);
+  });
+
+  it("(b) throws when fetchIndexHistory returns [] (no history at all)", async () => {
+    hoisted.fetchIndexHistory.mockResolvedValue([]);
+    hoisted.mockClient = createMockClient([
+      { table: "stock_assets", result: { data: { yahoo_ticker: "GHOST", currency: "USD" }, error: null } },
+    ]);
+
+    await expect(
+      computeDeltaFromSnapshots(
+        "stock_position",
+        "created",
+        "2022-01-01",
+        null,
+        { stock_asset_id: "asset-1", quantity: 5 },
+      ),
+    ).rejects.toThrow(/no price history/);
+  });
+
+  it("(c) throws on a non-positive close (Audit-R1-Phase-5 guard fires for stocks too)", async () => {
+    // History has rows, but the close on-or-before the date is 0 → the guard
+    // must throw rather than silently write deltaNative = 0.
+    hoisted.fetchIndexHistory.mockResolvedValue([
+      { date: "2022-01-01", close: 0 },
+    ]);
+    hoisted.mockClient = createMockClient([
+      { table: "stock_assets", result: { data: { yahoo_ticker: "ZERO", currency: "USD" }, error: null } },
+    ]);
+
+    await expect(
+      computeDeltaFromSnapshots(
+        "stock_position",
+        "created",
+        "2022-01-01",
+        null,
+        { stock_asset_id: "asset-1", quantity: 5 },
+      ),
+    ).rejects.toThrow(/Refusing to write zero-valued delta/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeDeltaFromSnapshots — CASH branch (R2-T3)
+//
+// The cash branch reads the amount from `cashAmountField` (balance vs amount,
+// per entity type), runs `cashDelta`, then converts via toUsdAndEur. These
+// tests pin the field-selection + currency-fallback composition (the underlying
+// cashDelta/toUsdAndEur primitives are tested elsewhere). No price fetch is
+// involved — cash uses face value.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("computeDeltaFromSnapshots — cash branch field selection + FX (R2-T3)", () => {
+  it("bank_account reads the `balance` field; EUR converts via getFXRates(EUR→USD)", async () => {
+    // EUR → needs a USD key (toUsdAndEur EUR branch).
+    hoisted.getFXRates.mockResolvedValue({ USD: 1.1 });
+    // No DB lookup, no price fetch for cash — supply no responses.
+    hoisted.mockClient = createMockClient([]);
+
+    const result = await computeDeltaFromSnapshots(
+      "bank_account",
+      "created",
+      "2022-03-10",
+      null,
+      // `balance` is the field for bank_account; `amount` is deliberately a
+      // decoy that MUST be ignored by cashAmountField.
+      { balance: 500, amount: 99999, currency: "EUR" },
+    );
+
+    // cashDelta(created) = afterAmt = 500 EUR (from `balance`, NOT `amount`).
+    // No Yahoo/CoinGecko fetch on the cash path.
+    expect(hoisted.fetchIndexHistory).not.toHaveBeenCalled();
+    expect(hoisted.fetchYahooDailyHistory).not.toHaveBeenCalled();
+    // EUR stays as the face amount; USD = 500 × 1.1.
+    expect(hoisted.getFXRates).toHaveBeenCalledWith("EUR", ["USD"], "2022-03-10");
+    expect(result.eur).toBeCloseTo(500, 2);
+    expect(result.usd).toBeCloseTo(550, 2);
+  });
+
+  it("exchange_deposit reads the `amount` field (not `balance`); USD-native skips conversion", async () => {
+    // USD → toUsdAndEur USD branch calls getFXRates("USD", ["EUR"]) for the
+    // EUR mirror; default beforeEach rate { EUR: 0.9 } applies.
+    hoisted.mockClient = createMockClient([]);
+
+    const result = await computeDeltaFromSnapshots(
+      "exchange_deposit",
+      "created",
+      "2022-03-10",
+      null,
+      // `amount` is the field for exchange_deposit; `balance` is the decoy.
+      { amount: 800, balance: 12345, currency: "USD" },
+    );
+
+    // cashDelta(created) = afterAmt = 800 USD (from `amount`, NOT `balance`).
+    expect(hoisted.getFXRates).toHaveBeenCalledWith("USD", ["EUR"], "2022-03-10");
+    expect(result.usd).toBeCloseTo(800, 2);
+    // EUR mirror via 0.9 → 720.
+    expect(result.eur).toBeCloseTo(720, 2);
   });
 });
 
