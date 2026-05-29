@@ -122,6 +122,8 @@ describe("LegacyAdjustmentMigrationCard", () => {
 
     expect(screen.getByText(/Could not check migration status/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Refresh page/i })).toBeInTheDocument();
+    // An error condition must use role="alert", not role="status".
+    expect(screen.getByRole("alert")).toHaveTextContent(/Could not check migration status/i);
     // No migrate button in the error state.
     expect(screen.queryByRole("button", { name: /Migrate/i })).not.toBeInTheDocument();
     // Explanation heading still shows.
@@ -181,6 +183,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
       total_candidates: 3,
       migrated: 3,
+      pending: 0,
       errors: 0,
       remaining: 0,
       // Successful migrations are counted, not enumerated → details is empty.
@@ -197,7 +200,9 @@ describe("LegacyAdjustmentMigrationButton", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Migrated 3 entries/i)).toBeInTheDocument();
+      // Scope to the visible panel — the persistent sr-only live region also
+      // carries the result summary.
+      expect(screen.getByText(/Migrated 3 entries/i, { ignore: ".sr-only" })).toBeInTheDocument();
     });
     expect(hoisted.toastSuccess).toHaveBeenCalledWith("Migrated 3 entries");
     expect(hoisted.routerRefresh).toHaveBeenCalled();
@@ -207,6 +212,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
       total_candidates: 4,
       migrated: 2,
+      pending: 0,
       errors: 2,
       remaining: 0,
       // details now carries ERROR rows only, with no raw error_message —
@@ -223,7 +229,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Migrated 2 of 4/i)).toBeInTheDocument();
+      expect(screen.getByText(/Migrated 2 of 4/i, { ignore: ".sr-only" })).toBeInTheDocument();
     });
 
     // Both error entries' names + types surface.
@@ -240,7 +246,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     expect(hoisted.toastError).toHaveBeenCalledWith("Migrated 2 entries with 2 errors");
   });
 
-  it("handles thrown server action errors with a toast and returns to idle", async () => {
+  it("handles thrown server action errors with a non-fatal toast, refresh, and return to idle", async () => {
     hoisted.migrateLegacyAdjustmentFlags.mockRejectedValue(new Error("Network down"));
 
     render(<LegacyAdjustmentMigrationButton candidateCount={5} />);
@@ -249,8 +255,14 @@ describe("LegacyAdjustmentMigrationButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
 
     await waitFor(() => {
-      expect(hoisted.toastError).toHaveBeenCalledWith("Network down");
+      // Copy must NOT imply total failure — a platform timeout may have made
+      // durable per-row progress.
+      expect(hoisted.toastError).toHaveBeenCalledWith(
+        "Migration interrupted — some entries may have been migrated; refreshing…",
+      );
     });
+    // Refresh re-scopes the (reduced) candidate count so the user can resume.
+    expect(hoisted.routerRefresh).toHaveBeenCalled();
     // Returns to idle (trigger button visible again).
     expect(screen.getByRole("button", { name: /Migrate 5 entries/i })).toBeInTheDocument();
   });
@@ -259,6 +271,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
       total_candidates: 2,
       migrated: 2,
+      pending: 0,
       errors: 0,
       remaining: 0,
       details: [],
@@ -281,6 +294,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
       total_candidates: 0,
       migrated: 0,
+      pending: 0,
       errors: 0,
       remaining: 0,
       details: [],
@@ -301,6 +315,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     hoisted.migrateLegacyAdjustmentFlags.mockResolvedValueOnce({
       total_candidates: 5,
       migrated: 2,
+      pending: 0,
       errors: 0,
       remaining: 3,
       details: [],
@@ -309,6 +324,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     hoisted.migrateLegacyAdjustmentFlags.mockResolvedValueOnce({
       total_candidates: 3,
       migrated: 3,
+      pending: 0,
       errors: 0,
       remaining: 0,
       details: [],
@@ -321,7 +337,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
 
     // Partial state: "Migrated 2 of 5" + remaining line + Continue button.
     await waitFor(() => {
-      expect(screen.getByText(/Migrated 2 of 5/i)).toBeInTheDocument();
+      expect(screen.getByText(/Migrated 2 of 5/i, { ignore: ".sr-only" })).toBeInTheDocument();
     });
     expect(screen.getByText(/3 entries still need migrating\./i)).toBeInTheDocument();
     expect(hoisted.toastMessage).toHaveBeenCalledWith(
@@ -336,7 +352,7 @@ describe("LegacyAdjustmentMigrationButton", () => {
     });
     // Result replaced (not accumulated) → clean done state, no remaining line.
     await waitFor(() => {
-      expect(screen.getByText(/Migrated 3 entries/i)).toBeInTheDocument();
+      expect(screen.getByText(/Migrated 3 entries/i, { ignore: ".sr-only" })).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
   });
@@ -351,5 +367,148 @@ describe("LegacyAdjustmentMigrationButton", () => {
     });
     // Confirm panel is an accessible group.
     expect(screen.getByRole("group", { name: "Confirm migration" })).toBeInTheDocument();
+  });
+
+  it("surfaces a pending count in the done panel and toast when some rows await price data", async () => {
+    hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
+      total_candidates: 5,
+      migrated: 5,
+      // 2 of the 5 flipped but their cashflow landed `pending` (no price yet).
+      pending: 2,
+      errors: 0,
+      remaining: 0,
+      details: [],
+    });
+
+    render(<LegacyAdjustmentMigrationButton candidateCount={5} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 5 entries/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
+
+    // Done panel still reports full migration success in the headline…
+    await waitFor(() => {
+      expect(screen.getByText(/Migrated 5 entries/i, { ignore: ".sr-only" })).toBeInTheDocument();
+    });
+    // …plus an honest info line about the rows that aren't benchmark-visible yet.
+    expect(
+      screen.getByText(/2 entries awaiting price data — they’ll resolve automatically\./i),
+    ).toBeInTheDocument();
+    // Toast must not falsely claim full success — it appends the pending count.
+    expect(hoisted.toastSuccess).toHaveBeenCalledWith("Migrated 5 entries (2 awaiting price data)");
+  });
+
+  it("uses singular copy for a single pending entry", async () => {
+    hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
+      total_candidates: 3,
+      migrated: 3,
+      pending: 1,
+      errors: 0,
+      remaining: 0,
+      details: [],
+    });
+
+    render(<LegacyAdjustmentMigrationButton candidateCount={3} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 3 entries/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/1 entry awaiting price data — they’ll resolve automatically\./i),
+      ).toBeInTheDocument();
+    });
+    expect(hoisted.toastSuccess).toHaveBeenCalledWith("Migrated 3 entries (1 awaiting price data)");
+  });
+
+  it("renders a persistent sr-only live region whose text tracks the stage", async () => {
+    // Hold the action open so we can observe the "migrating" message.
+    let resolveMigration!: (value: unknown) => void;
+    hoisted.migrateLegacyAdjustmentFlags.mockReturnValue(
+      new Promise((resolve) => {
+        resolveMigration = resolve;
+      }),
+    );
+
+    const { container } = render(<LegacyAdjustmentMigrationButton candidateCount={4} />);
+
+    // The polite live region exists and is empty in the idle stage (so it
+    // pre-exists in the DOM before any message lands — the NVDA/JAWS contract).
+    const liveRegion = container.querySelector('[role="status"][aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion).toHaveClass("sr-only");
+    expect(liveRegion).toHaveTextContent("");
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 4 entries/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
+
+    // Migrating stage: same node, updated text.
+    await waitFor(() => {
+      expect(liveRegion).toHaveTextContent("Migrating entries…");
+    });
+    // The visual migrating panel itself must NOT carry a redundant live role:
+    // there is exactly ONE element with role="status" (the persistent region).
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toBe(liveRegion);
+    // The visible panel still shows the text (scoped past the sr-only region).
+    expect(screen.getByText("Migrating entries…", { ignore: ".sr-only" })).toBeInTheDocument();
+
+    resolveMigration({
+      total_candidates: 4,
+      migrated: 4,
+      pending: 1,
+      errors: 0,
+      remaining: 0,
+      details: [],
+    });
+
+    // Done stage: same node again, now carrying the result summary + pending note.
+    await waitFor(() => {
+      expect(liveRegion).toHaveTextContent(
+        "Migrated 4 entries. 1 entry awaiting price data.",
+      );
+    });
+  });
+
+  it("moves focus to the done-stage Done button when nothing remains", async () => {
+    hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
+      total_candidates: 2,
+      migrated: 2,
+      pending: 0,
+      errors: 0,
+      remaining: 0,
+      details: [],
+    });
+
+    render(<LegacyAdjustmentMigrationButton candidateCount={2} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 2 entries/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
+
+    // After the spinner unmounts the confirm button, focus must land on the
+    // done panel's primary action (Done) — not fall to <body>.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Done" })).toHaveFocus();
+    });
+  });
+
+  it("moves focus to the Continue button when a budget-limited run leaves work", async () => {
+    hoisted.migrateLegacyAdjustmentFlags.mockResolvedValue({
+      total_candidates: 5,
+      migrated: 2,
+      pending: 0,
+      errors: 0,
+      remaining: 3,
+      details: [],
+    });
+
+    render(<LegacyAdjustmentMigrationButton candidateCount={5} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Migrate 5 entries/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, migrate" }));
+
+    // Continue is the primary action when there's more to migrate.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Continue" })).toHaveFocus();
+    });
   });
 });

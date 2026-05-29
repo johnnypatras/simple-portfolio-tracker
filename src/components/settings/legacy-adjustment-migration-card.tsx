@@ -70,7 +70,7 @@ export async function LegacyAdjustmentMigrationCard() {
 
       {previewError ? (
         <div
-          role="status"
+          role="alert"
           className="flex items-start gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-md"
         >
           <AlertCircle aria-hidden="true" className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
