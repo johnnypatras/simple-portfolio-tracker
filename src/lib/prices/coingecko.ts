@@ -65,6 +65,7 @@ export async function getPrices(
 
     if (res.status === 429) {
       console.warn(`[coingecko] Rate limited (429), retrying in ${COINGECKO_429_RETRY_MS}ms…`);
+      void import("@sentry/nextjs").then((S) => S.addBreadcrumb({ category: "rate-limit", message: "coingecko 429 — retrying", level: "warning", data: { coinIds } })).catch(() => {});
       await new Promise((r) => setTimeout(r, COINGECKO_429_RETRY_MS));
       res = await fetchWithTimeout(url, { headers: headers(), next: { revalidate: 60 } });
     }
@@ -102,6 +103,7 @@ export async function fetchCoinHistory(
 
     if (res.status === 429) {
       console.warn(`[coingecko] History rate limited (429) for ${coinId}, retrying in ${COINGECKO_429_RETRY_MS}ms…`);
+      void import("@sentry/nextjs").then((S) => S.addBreadcrumb({ category: "rate-limit", message: "coingecko 429 — retrying", level: "warning", data: { coinId } })).catch(() => {});
       await new Promise((r) => setTimeout(r, COINGECKO_429_RETRY_MS));
       res = await fetchWithTimeout(url, fetchOptions);
     }

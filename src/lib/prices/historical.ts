@@ -74,6 +74,7 @@ export async function fetchYahooDailyHistory(
 
     if (res.status === 429) {
       console.warn(`[historical] Yahoo rate limited (429) for ${symbol}, retrying in ${RATE_LIMIT_RETRY_MS}ms…`);
+      void import("@sentry/nextjs").then((S) => S.addBreadcrumb({ category: "rate-limit", message: "yahoo 429 — retrying", level: "warning", data: { symbol } })).catch(() => {});
       await new Promise((r) => setTimeout(r, RATE_LIMIT_RETRY_MS));
       res = await fetchWithTimeout(url, fetchOptions);
     }
@@ -178,6 +179,7 @@ export async function fetchFxUsdPivotHistory(
 
     if (res.status === 429) {
       console.warn(`[historical] Frankfurter rate limited (429) for ${currency}, retrying in ${RATE_LIMIT_RETRY_MS}ms…`);
+      void import("@sentry/nextjs").then((S) => S.addBreadcrumb({ category: "rate-limit", message: "frankfurter 429 — retrying", level: "warning", data: { currency } })).catch(() => {});
       await new Promise((r) => setTimeout(r, RATE_LIMIT_RETRY_MS));
       res = await fetchWithTimeout(url, fetchOptions);
     }
