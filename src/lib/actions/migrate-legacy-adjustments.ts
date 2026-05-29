@@ -46,12 +46,21 @@ import type { LegacyAdjustmentMigrationResult } from "@/lib/types";
 
 /**
  * Wall-clock budget for the per-row migration loop, in milliseconds. Kept
- * below the route's `maxDuration` (60s on settings/page.tsx) so the action
- * returns a clean partial result instead of being killed mid-row by the
- * platform. When the budget fires, un-attempted rows are reported via
+ * well below the route's `maxDuration` (60s on settings/page.tsx) so the
+ * action returns a clean partial result instead of being killed mid-row by
+ * the platform. When the budget fires, un-attempted rows are reported via
  * `result.remaining` and the UI offers a manual "Continue".
+ *
+ * Headroom rationale (R2-5): the budget is checked at the TOP of each loop
+ * iteration, so a row admitted at ~budget-1ms still runs to completion. A
+ * single in-flight `toggleActivityAdjustment` can take up to ~16s in the
+ * worst case (Yahoo 8s timeout + a 429 retry + an FX retry), so the budget
+ * must leave at least that much slack under `maxDuration`. 40s leaves 20s of
+ * headroom — enough to absorb one worst-case in-flight row without crossing
+ * 60s. The cost is purely one extra "Continue" click on huge cold-cache
+ * migrations; the Continue flow already re-scopes the remaining rows.
  */
-const MIGRATION_TIME_BUDGET_MS = 50_000;
+const MIGRATION_TIME_BUDGET_MS = 40_000;
 
 /**
  * Builds the SELECT query for legacy bulk-flagged real-import candidates.
@@ -102,6 +111,11 @@ export async function previewLegacyAdjustmentMigration(): Promise<{
       buildCandidateQuery(supabase, user.id)
         .select("entity_type")
         .order("created_at", { ascending: true })
+        // Stable `id` tiebreaker (R2-6): bulk CSV imports share an identical
+        // created_at across many rows. Without a deterministic secondary sort,
+        // a timestamp collision straddling a 1000-row page boundary can skip a
+        // row. Mirrors every other paginated query in the project.
+        .order("id", { ascending: true })
         .range(from, to),
     );
 
@@ -130,7 +144,16 @@ export async function previewLegacyAdjustmentMigration(): Promise<{
  * Per-row errors do NOT abort the migration — they are captured in the
  * `errors` counter (and, for the UI, as entity-only entries in `details`;
  * the raw error goes to Sentry only), and the loop continues. Rows are
- * processed in `created_at` ascending order for deterministic progress.
+ * processed in `created_at` ascending order (with an `id` tiebreaker) for
+ * deterministic progress.
+ *
+ * Pending accounting (R2-4): `toggleActivityAdjustment` returns the resulting
+ * cashflow status. A row whose flag flipped but whose cashflow couldn't be
+ * priced returns 'pending' — it counts in `migrated` (the flag DID flip, so
+ * it's out of the candidate set) but is ALSO tallied in `result.pending`, the
+ * subset that isn't yet reflected in the S&P benchmark. The UI surfaces this
+ * so the success message stays honest; pending rows self-heal via the backfill
+ * cron.
  *
  * Timeout safety: the loop runs under a wall-clock budget
  * (`MIGRATION_TIME_BUDGET_MS`, below the route `maxDuration`). When the
@@ -176,12 +199,18 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
       buildCandidateQuery(supabase, user.id)
         .select("id, entity_type, entity_name")
         .order("created_at", { ascending: true })
+        // Stable `id` tiebreaker (R2-6) — see preview's note. Critical here:
+        // a skipped row would be silently left un-migrated AND not counted in
+        // `remaining` (the budget only tracks rows we never reached, not rows
+        // pagination dropped).
+        .order("id", { ascending: true })
         .range(from, to),
     );
 
     const result: LegacyAdjustmentMigrationResult = {
       total_candidates: candidates.length,
       migrated: 0,
+      pending: 0,
       errors: 0,
       remaining: 0,
       details: [],
@@ -209,8 +238,14 @@ export async function migrateLegacyAdjustmentFlags(): Promise<LegacyAdjustmentMi
     for (const row of candidates) {
       if (Date.now() - startedAt > MIGRATION_TIME_BUDGET_MS) break;
       try {
-        await toggleActivityAdjustment(row.id, false);
+        // The flag flips regardless of whether the cashflow could be priced.
+        // A 'pending' return means the row IS migrated (out of the candidate
+        // filter) but its cashflow is unresolved — count it in `migrated` AND
+        // track it in the `pending` subset so the UI doesn't overstate success
+        // (R2-4). Pending rows self-heal later via the backfill cron.
+        const status = await toggleActivityAdjustment(row.id, false);
         result.migrated++;
+        if (status === "pending") result.pending++;
       } catch (err) {
         // Per-row failures must not abort the migration. Capture each one
         // individually (with the raw error) so operators can see the failed

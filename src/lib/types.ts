@@ -879,12 +879,24 @@ export interface ImportError {
  * the run never attempted because the time budget fired; 0 when the loop ran
  * to completion. The UI offers a manual "Continue" when `remaining > 0`.
  *
+ * `pending` is a SUBSET of `migrated`: rows whose `is_adjustment` flag DID flip
+ * to false (so they count as migrated) but whose cashflow couldn't be priced —
+ * `toggleActivityAdjustment` wrote `cashflow_status='pending'` rather than
+ * 'complete'. Such rows are invisible to the S&P benchmark until the backfill
+ * cron resolves them, so the UI must report them honestly instead of claiming
+ * full success (R2-4).
+ *
  * Declared here (not in the `"use server"` action module) so Turbopack does
  * not strip the re-export — see the types convention in CLAUDE.md.
  */
 export type LegacyAdjustmentMigrationResult = {
   total_candidates: number;
   migrated: number;
+  /**
+   * Subset of `migrated` whose cashflow landed `pending` (price fetch failed).
+   * The flag flipped, but the cashflow isn't yet reflected in the benchmark.
+   */
+  pending: number;
   errors: number;
   remaining: number;
   /** Per-row ERROR details only — successful migrations are counted, not enumerated. */

@@ -349,11 +349,35 @@ export async function computeDeltaFromSnapshots(
 // ─── Toggle adjustment flag ─────────────────────────────
 // When toggling ON (becomes adjustment): compute delta, clear cashflow.
 // When toggling OFF (becomes non-adjustment): compute cashflow, clear delta.
+//
+// Returns the FlowStatus of the side this call computed (R2-4): when toggling
+// OFF that's `cashflow_status`, when toggling ON it's `delta_status`. The
+// status is 'complete' on a successful price fetch and 'pending' when the
+// fetch failed (the row's flag still flips, but the cashflow/delta is
+// unresolved and will self-heal via the backfill cron). The migration loop
+// uses this to count `pending` rows honestly. The M1 idempotency no-op returns
+// the row's CURRENT status for the requested direction (the already-fetched
+// `row.cashflow_status` / `row.delta_status` — no extra query). The UI caller
+// (activity-timeline.tsx) ignores the return value.
+//
+// `FlowStatus` already includes `null`, so no widening is needed for rows that
+// never had a status written.
+
+/**
+ * Narrow a DB enum-text status column (typed `string | null` in the generated
+ * Database types) to the `FlowStatus` domain union at the query boundary.
+ * Unknown values collapse to `null` — this validates rather than blindly
+ * asserts, so a stray DB value can never masquerade as 'pending'/'complete'.
+ */
+function toFlowStatus(value: string | null): FlowStatus {
+  if (value === "complete" || value === "pending" || value === "failed") return value;
+  return null;
+}
 
 export async function toggleActivityAdjustment(
   logId: string,
   isAdjustment: boolean
-): Promise<void> {
+): Promise<FlowStatus> {
   return captureAction("activity-log.toggleActivityAdjustment", async () => {
   validateUUID(logId, "Activity log ID");
   const supabase = await createServerSupabaseClient();
@@ -381,8 +405,13 @@ export async function toggleActivityAdjustment(
 
   // Idempotency (M1): already at the requested value → no-op. Avoids a
   // redundant 1–8s historical-price fetch + a no-op UPDATE when a concurrent
-  // migration already flipped this row.
-  if (row.is_adjustment === isAdjustment) return;
+  // migration already flipped this row. Return the row's CURRENT status for
+  // the requested direction (R2-4) — the side this call WOULD have computed —
+  // so the migration counter stays honest without re-querying (the full row,
+  // incl. both status columns, is already in hand).
+  if (row.is_adjustment === isAdjustment) {
+    return toFlowStatus(isAdjustment ? row.delta_status : row.cashflow_status);
+  }
 
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
@@ -407,6 +436,17 @@ export async function toggleActivityAdjustment(
       deltaStatus = "complete";
     } catch (err) {
       console.error("[activity-log] Delta computation failed on toggle:", err instanceof Error ? err.message : err);
+      // The error is caught locally (status→'pending', UPDATE still succeeds) so
+      // neither the captureAction wrapper nor the migration loop ever sees it.
+      // Capture here so a single-row History-timeline toggle that hits a
+      // price-fetch failure is operator-visible (R2-2).
+      Sentry.captureException(err, {
+        tags: {
+          action: "activity-log.toggleActivityAdjustment.priceFetch",
+          entity_type: row.entity_type,
+        },
+        extra: { logId, direction: "ON" },
+      });
       deltaStatus = "pending";
     }
     // Clear cashflow (no longer a real money flow)
@@ -447,6 +487,18 @@ export async function toggleActivityAdjustment(
       cashflowStatus = "complete";
     } catch (err) {
       console.error("[activity-log] Cashflow computation failed on toggle:", err instanceof Error ? err.message : err);
+      // Same containment as the ON branch: caught locally → status='pending',
+      // UPDATE still succeeds, so the outer captureAction wrapper never sees it.
+      // Capture here so a single-row toggle hitting a price-fetch failure is
+      // operator-visible. The migration loop captures per-row, but the UI
+      // toggle path otherwise has no Sentry visibility (R2-2).
+      Sentry.captureException(err, {
+        tags: {
+          action: "activity-log.toggleActivityAdjustment.priceFetch",
+          entity_type: row.entity_type,
+        },
+        extra: { logId, direction: "OFF" },
+      });
       cashflowStatus = "pending";
     }
     // Clear delta (no longer an adjustment)
@@ -475,6 +527,12 @@ export async function toggleActivityAdjustment(
     // to throw on 0-match — the undo's state wins).
     .is("undone_at", null);
   if (error) throw new Error(error.message);
+
+  // Return the status of the side this call computed (R2-4): cashflow when
+  // toggling OFF, delta when toggling ON. 'pending' here means the row's flag
+  // flipped but the cashflow/delta couldn't be priced — the migration counts
+  // these so the success message stays honest.
+  return isAdjustment ? deltaStatus : cashflowStatus;
   });
 }
 

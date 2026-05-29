@@ -197,7 +197,9 @@ describe("previewLegacyAdjustmentMigration", () => {
 describe("migrateLegacyAdjustmentFlags", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hoisted.toggleActivityAdjustment.mockResolvedValue(undefined);
+    // toggleActivityAdjustment now returns the resulting FlowStatus (R2-4).
+    // A successful toggle-OFF lands 'complete'; default to that.
+    hoisted.toggleActivityAdjustment.mockResolvedValue("complete");
   });
 
   it("throws when no authenticated user", async () => {
@@ -211,6 +213,7 @@ describe("migrateLegacyAdjustmentFlags", () => {
     expect(result).toEqual({
       total_candidates: 0,
       migrated: 0,
+      pending: 0,
       errors: 0,
       remaining: 0,
       details: [],
@@ -239,12 +242,66 @@ describe("migrateLegacyAdjustmentFlags", () => {
 
     expect(result.total_candidates).toBe(3);
     expect(result.migrated).toBe(3);
+    // All three priced cleanly ('complete') → none pending.
+    expect(result.pending).toBe(0);
     expect(result.errors).toBe(0);
     // Budget was never hit (loop ran to completion) → no un-attempted rows.
     expect(result.remaining).toBe(0);
     // details holds ERROR rows only — successful migrations are counted, not listed.
     expect(result.details).toHaveLength(0);
     expect(hoisted.revalidateDashboard).toHaveBeenCalledOnce();
+  });
+
+  it("counts a row whose toggle returns 'pending' in BOTH migrated and the pending subset (R2-4)", async () => {
+    hoisted.mockClient = createMockClient([
+      {
+        data: [
+          { id: "id-1", entity_type: "crypto_position", entity_name: "BTC pos" },
+          { id: "id-2", entity_type: "stock_position", entity_name: "AAPL pos" },
+          { id: "id-3", entity_type: "cash_account", entity_name: "EUR cash" },
+        ],
+        error: null,
+      },
+    ]);
+    // Row 2's price fetch failed inside toggleActivityAdjustment: the flag
+    // flipped (no throw) but cashflow_status landed 'pending'. The other two
+    // priced cleanly ('complete').
+    hoisted.toggleActivityAdjustment
+      .mockResolvedValueOnce("complete")
+      .mockResolvedValueOnce("pending")
+      .mockResolvedValueOnce("complete");
+
+    const result = await migrateLegacyAdjustmentFlags();
+
+    expect(hoisted.toggleActivityAdjustment).toHaveBeenCalledTimes(3);
+    expect(result.total_candidates).toBe(3);
+    // All three flags flipped → all three migrated (pending is a SUBSET, not
+    // a separate bucket — the row IS migrated, just not yet benchmark-visible).
+    expect(result.migrated).toBe(3);
+    expect(result.pending).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(result.remaining).toBe(0);
+    // Pending is NOT an error — no details, no error tally.
+    expect(result.details).toHaveLength(0);
+    // Rows migrated → revalidation still fires.
+    expect(hoisted.revalidateDashboard).toHaveBeenCalledOnce();
+  });
+
+  it("treats a no-op idempotent return ('complete' from M1 early-return) as a normal migration, not pending", async () => {
+    hoisted.mockClient = createMockClient([
+      {
+        data: [{ id: "id-1", entity_type: "cash_account", entity_name: "EUR cash" }],
+        error: null,
+      },
+    ]);
+    // A concurrent run already flipped this row; toggleActivityAdjustment's M1
+    // early-return reports the row's current cashflow_status ('complete').
+    hoisted.toggleActivityAdjustment.mockResolvedValueOnce("complete");
+
+    const result = await migrateLegacyAdjustmentFlags();
+    expect(result.migrated).toBe(1);
+    expect(result.pending).toBe(0);
+    expect(result.errors).toBe(0);
   });
 
   it("per-row error does not abort loop — other rows still migrate", async () => {
@@ -269,6 +326,9 @@ describe("migrateLegacyAdjustmentFlags", () => {
     expect(hoisted.toggleActivityAdjustment).toHaveBeenCalledTimes(3);
     expect(result.total_candidates).toBe(3);
     expect(result.migrated).toBe(2);
+    // A thrown row is an error, NOT a pending (pending = flag flipped but
+    // unpriced; error = flag never flipped).
+    expect(result.pending).toBe(0);
     expect(result.errors).toBe(1);
     // All 3 attempted → no un-attempted rows, even though one errored.
     expect(result.remaining).toBe(0);
@@ -301,7 +361,7 @@ describe("migrateLegacyAdjustmentFlags", () => {
     });
   });
 
-  it("applies the EXACT filter (user, action=created, is_adjustment=true, transfer_group_id NULL, undone_at NULL, 6 entity types) + .order by created_at asc", async () => {
+  it("applies the EXACT filter (user, action=created, is_adjustment=true, transfer_group_id NULL, undone_at NULL, 6 entity types) + .order by created_at asc, id asc", async () => {
     const mock = createMockClient([{ data: [], error: null }]);
     hoisted.mockClient = mock;
     await migrateLegacyAdjustmentFlags();
@@ -329,9 +389,14 @@ describe("migrateLegacyAdjustmentFlags", () => {
       "exchange_deposit",
       "broker_deposit",
     ]);
+    // created_at + id tiebreaker (R2-6) — id is the stable secondary sort that
+    // prevents a row from being skipped across a page boundary when many bulk-
+    // imported rows share an identical created_at.
     const orderCalls = recorded.filter((c) => c.method === "order");
-    expect(orderCalls).toHaveLength(1);
-    expect(orderCalls[0].args).toEqual(["created_at", { ascending: true }]);
+    expect(orderCalls).toEqual([
+      { method: "order", args: ["created_at", { ascending: true }] },
+      { method: "order", args: ["id", { ascending: true }] },
+    ]);
   });
 
   it("throws when the initial DB query fails", async () => {
@@ -355,7 +420,7 @@ describe("migrateLegacyAdjustmentFlags", () => {
 
     // Drive the wall-clock deterministically. Call sequence inside the action:
     //   1) startedAt              → 0
-    //   2) iter-1 budget check    → 10        (under 50_000 → row 1 runs)
+    //   2) iter-1 budget check    → 10        (under 40_000 → row 1 runs)
     //   3) iter-2 budget check    → 60_000    (over budget → break before row 2)
     const nowSpy = vi
       .spyOn(Date, "now")
@@ -371,6 +436,7 @@ describe("migrateLegacyAdjustmentFlags", () => {
       expect(hoisted.toggleActivityAdjustment).toHaveBeenCalledWith("id-1", false);
       expect(result.total_candidates).toBe(3);
       expect(result.migrated).toBe(1);
+      expect(result.pending).toBe(0);
       expect(result.errors).toBe(0);
       // 2 rows were never attempted → reported for manual Continue.
       expect(result.remaining).toBe(2);

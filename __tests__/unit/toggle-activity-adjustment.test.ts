@@ -18,6 +18,7 @@ const hoisted = vi.hoisted(() => ({
   fetchYahooDailyHistory: vi.fn(),
   fetchCoinHistory: vi.fn(),
   getFXRates: vi.fn(),
+  captureException: vi.fn(),
 }));
 
 // ─── Recording mock query builder ────────────────────────────────────────────
@@ -113,7 +114,7 @@ vi.mock("@/lib/actions/with-sentry", () => ({
 
 vi.mock("@sentry/nextjs", () => ({
   addBreadcrumb: vi.fn(),
-  captureException: vi.fn(),
+  captureException: hoisted.captureException,
   captureMessage: vi.fn(),
 }));
 
@@ -274,7 +275,7 @@ describe("toggleActivityAdjustment — defense-in-depth guards (H4)", () => {
 });
 
 describe("toggleActivityAdjustment — idempotency no-op (M1)", () => {
-  it("returns early WITHOUT an UPDATE or price fetch when the flag already matches", async () => {
+  it("returns early WITHOUT an UPDATE or price fetch when the flag already matches, returning the row's current status (R2-4)", async () => {
     const client = createMockClient([
       {
         table: "activity_log",
@@ -288,6 +289,10 @@ describe("toggleActivityAdjustment — idempotency no-op (M1)", () => {
             undone_at: null,
             before_snapshot: null,
             after_snapshot: { crypto_asset_id: "a1", quantity: 1 },
+            // Toggling ON is the requested direction → delta is the relevant
+            // side, so the no-op must echo delta_status (not cashflow_status).
+            delta_status: "complete",
+            cashflow_status: null,
             created_at: "2024-01-01T00:00:00Z",
             effective_date: null,
           },
@@ -297,14 +302,46 @@ describe("toggleActivityAdjustment — idempotency no-op (M1)", () => {
     ]);
     hoisted.mockClient = client;
 
-    // Toggle to the SAME value it already has.
-    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toBeUndefined();
+    // Toggle to the SAME value it already has → returns the CURRENT delta_status.
+    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toBe("complete");
 
     // Exactly one `from()` (the row fetch). No UPDATE, no historical-price fetch.
     expect(client._fromCalls).toHaveLength(1);
     expect(client._fromCalls[0].isUpdate).toBe(false);
     expect(hoisted.fetchYahooDailyHistory).not.toHaveBeenCalled();
     expect(hoisted.getFXRates).not.toHaveBeenCalled();
+  });
+
+  it("no-op toggle-OFF echoes the row's CURRENT cashflow_status (not delta_status)", async () => {
+    const client = createMockClient([
+      {
+        table: "activity_log",
+        result: {
+          data: {
+            id: VALID_UUID,
+            entity_type: "cash_account",
+            action: "created",
+            is_adjustment: false, // already a non-adjustment
+            transfer_group_id: null,
+            undone_at: null,
+            before_snapshot: null,
+            after_snapshot: { balance: 100, currency: "EUR" },
+            // Toggling OFF is the requested direction → cashflow is the relevant
+            // side. Set the two statuses differently to prove which one is read.
+            delta_status: "complete",
+            cashflow_status: "pending",
+            created_at: "2024-01-01T00:00:00Z",
+            effective_date: null,
+          },
+          error: null,
+        },
+      },
+    ]);
+    hoisted.mockClient = client;
+
+    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toBe("pending");
+    expect(client._fromCalls).toHaveLength(1);
+    expect(client._fromCalls[0].isUpdate).toBe(false);
   });
 });
 
@@ -338,7 +375,9 @@ describe("toggleActivityAdjustment — TOCTOU guard on UPDATE (M2)", () => {
     ]);
     hoisted.mockClient = client;
 
-    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toBeUndefined();
+    // Returns the computed delta side's status (R2-4): a clean price fetch on a
+    // toggle-ON resolves 'complete'.
+    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toBe("complete");
 
     const updateCall = client._fromCalls.find((c) => c.isUpdate);
     expect(updateCall).toBeDefined();
@@ -351,5 +390,152 @@ describe("toggleActivityAdjustment — TOCTOU guard on UPDATE (M2)", () => {
       { method: "eq", args: ["user_id", "user-123"] },
       { method: "is", args: ["undone_at", null] },
     ]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// toggleActivityAdjustment — return status contract + Sentry on price failure (R2-2/R2-4)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("toggleActivityAdjustment — return status + Sentry on price-fetch failure (R2-2/R2-4)", () => {
+  it("toggle-OFF success returns 'complete' (cashflow side) and writes the cashflow", async () => {
+    hoisted.fetchYahooDailyHistory.mockResolvedValue([{ date: "2021-06-15", price: 30000 }]);
+    const client = createMockClient([
+      // 1) row fetch — currently an adjustment, toggling OFF → real change
+      {
+        table: "activity_log",
+        result: {
+          data: {
+            id: VALID_UUID,
+            entity_type: "crypto_position",
+            action: "created",
+            is_adjustment: true,
+            transfer_group_id: null,
+            undone_at: null,
+            before_snapshot: null,
+            after_snapshot: { crypto_asset_id: "a1", quantity: 1 },
+            created_at: "2021-06-15T00:00:00Z",
+            effective_date: "2021-06-15",
+          },
+          error: null,
+        },
+      },
+      // 2) crypto_assets lookup (price) inside computeDeltaFromSnapshots
+      { table: "crypto_assets", result: { data: { coingecko_id: "bitcoin", ticker: "btc" }, error: null } },
+      // 3) crypto_assets lookup (subcategory) for stablecoin classification
+      { table: "crypto_assets", result: { data: { subcategory: null }, error: null } },
+      // 4) UPDATE
+      { table: "activity_log", result: { data: null, error: null } },
+    ]);
+    hoisted.mockClient = client;
+
+    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toBe("complete");
+
+    const updateCall = client._fromCalls.find((c) => c.isUpdate);
+    expect(updateCall).toBeDefined();
+    // Flag flipped OFF, cashflow written, delta cleared.
+    expect(updateCall!.updatePayload!.is_adjustment).toBe(false);
+    expect(updateCall!.updatePayload!.cashflow_status).toBe("complete");
+    expect(updateCall!.updatePayload!.delta_status).toBeNull();
+    // No price-fetch failure → no Sentry capture.
+    expect(hoisted.captureException).not.toHaveBeenCalled();
+  });
+
+  it("toggle-OFF price-fetch failure returns 'pending', STILL flips the flag, and captures to Sentry (R2-2)", async () => {
+    // Neither Yahoo nor CoinGecko has a price → computeDeltaFromSnapshots throws,
+    // the catch sets cashflow_status='pending', but the UPDATE still runs.
+    hoisted.fetchYahooDailyHistory.mockResolvedValue([]);
+    hoisted.fetchCoinHistory.mockResolvedValue([]);
+    const client = createMockClient([
+      {
+        table: "activity_log",
+        result: {
+          data: {
+            id: VALID_UUID,
+            entity_type: "crypto_position",
+            action: "created",
+            is_adjustment: true,
+            transfer_group_id: null,
+            undone_at: null,
+            before_snapshot: null,
+            after_snapshot: { crypto_asset_id: "a1", quantity: 1 },
+            created_at: "2021-06-15T00:00:00Z",
+            effective_date: "2021-06-15",
+          },
+          error: null,
+        },
+      },
+      // crypto_assets lookup (price) — resolves, but both price sources are empty
+      { table: "crypto_assets", result: { data: { coingecko_id: "ghost", ticker: "ghost" }, error: null } },
+      // UPDATE still runs despite the pending status
+      { table: "activity_log", result: { data: null, error: null } },
+    ]);
+    hoisted.mockClient = client;
+
+    await expect(toggleActivityAdjustment(VALID_UUID, false)).resolves.toBe("pending");
+
+    // The flag still flips (row IS migrated) but the cashflow is unresolved.
+    const updateCall = client._fromCalls.find((c) => c.isUpdate);
+    expect(updateCall).toBeDefined();
+    expect(updateCall!.updatePayload!.is_adjustment).toBe(false);
+    expect(updateCall!.updatePayload!.cashflow_status).toBe("pending");
+
+    // R2-2: the locally-caught price failure is captured to Sentry with the
+    // direction + logId so a single-row toggle failure is operator-visible.
+    expect(hoisted.captureException).toHaveBeenCalledTimes(1);
+    const [, ctx] = hoisted.captureException.mock.calls[0];
+    expect(ctx).toMatchObject({
+      tags: {
+        action: "activity-log.toggleActivityAdjustment.priceFetch",
+        entity_type: "crypto_position",
+      },
+      extra: { logId: VALID_UUID, direction: "OFF" },
+    });
+  });
+
+  it("toggle-ON price-fetch failure returns 'pending', STILL flips the flag, and captures to Sentry with direction 'ON' (R2-2)", async () => {
+    hoisted.fetchYahooDailyHistory.mockResolvedValue([]);
+    hoisted.fetchCoinHistory.mockResolvedValue([]);
+    const client = createMockClient([
+      {
+        table: "activity_log",
+        result: {
+          data: {
+            id: VALID_UUID,
+            entity_type: "crypto_position",
+            action: "created",
+            is_adjustment: false, // toggling ON → real change
+            transfer_group_id: null,
+            undone_at: null,
+            before_snapshot: null,
+            after_snapshot: { crypto_asset_id: "a1", quantity: 1 },
+            created_at: "2021-06-15T00:00:00Z",
+            effective_date: "2021-06-15",
+          },
+          error: null,
+        },
+      },
+      // crypto_assets lookup (price) — both sources empty → throws inside
+      { table: "crypto_assets", result: { data: { coingecko_id: "ghost", ticker: "ghost" }, error: null } },
+      // UPDATE still runs
+      { table: "activity_log", result: { data: null, error: null } },
+    ]);
+    hoisted.mockClient = client;
+
+    await expect(toggleActivityAdjustment(VALID_UUID, true)).resolves.toBe("pending");
+
+    const updateCall = client._fromCalls.find((c) => c.isUpdate);
+    expect(updateCall).toBeDefined();
+    expect(updateCall!.updatePayload!.is_adjustment).toBe(true);
+    expect(updateCall!.updatePayload!.delta_status).toBe("pending");
+
+    expect(hoisted.captureException).toHaveBeenCalledTimes(1);
+    const [, ctx] = hoisted.captureException.mock.calls[0];
+    expect(ctx).toMatchObject({
+      tags: {
+        action: "activity-log.toggleActivityAdjustment.priceFetch",
+        entity_type: "crypto_position",
+      },
+      extra: { logId: VALID_UUID, direction: "ON" },
+    });
   });
 });
