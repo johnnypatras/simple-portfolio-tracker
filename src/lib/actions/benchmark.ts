@@ -67,7 +67,7 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
         .order("created_at", { ascending: true })
         .order("id", { ascending: true })
         .range(from, to);
-    });
+    }, 1000, { label: "cashflows" });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[benchmark] deriveCashFlows query failed:", message);

@@ -485,7 +485,7 @@ async function readAllHistoricalPrices(
       .order("asset_key", { ascending: true })
       .order("price_date", { ascending: true })
       .range(from, to),
-  ).catch((e: unknown) => {
+  1000, { label: "historical_prices" }).catch((e: unknown) => {
     throw new Error(
       `historical_prices read failed: ${e instanceof Error ? e.message : String(e)}`,
       { cause: e },
@@ -822,19 +822,19 @@ export async function fetchHistoricalPriceInputsFor(
     is_adjustment: boolean;
   };
   const [cryptoRows, stockRows, cashRows] = await Promise.all([
-    fetchAllPaginated<CryptoOrStockActivityRow>(cryptoActivityRange).catch((e: unknown) => {
+    fetchAllPaginated<CryptoOrStockActivityRow>(cryptoActivityRange, 1000, { label: "activity:crypto" }).catch((e: unknown) => {
       throw new Error(
         `Failed to load crypto activity: ${e instanceof Error ? e.message : String(e)}`,
         { cause: e },
       );
     }),
-    fetchAllPaginated<CryptoOrStockActivityRow>(stockActivityRange).catch((e: unknown) => {
+    fetchAllPaginated<CryptoOrStockActivityRow>(stockActivityRange, 1000, { label: "activity:stock" }).catch((e: unknown) => {
       throw new Error(
         `Failed to load stock activity: ${e instanceof Error ? e.message : String(e)}`,
         { cause: e },
       );
     }),
-    fetchAllPaginated<CashActivityRow>(cashActivityRange).catch((e: unknown) => {
+    fetchAllPaginated<CashActivityRow>(cashActivityRange, 1000, { label: "activity:cash" }).catch((e: unknown) => {
       throw new Error(
         `Failed to load cash activity: ${e instanceof Error ? e.message : String(e)}`,
         { cause: e },

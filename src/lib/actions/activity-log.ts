@@ -556,6 +556,7 @@ export async function exportActivityLogsCsv(): Promise<string> {
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .range(from, to),
+    1000, { label: "activity:csv-export" },
   );
 
   const rows = rawRows.map(normalizeActivityLogRow);

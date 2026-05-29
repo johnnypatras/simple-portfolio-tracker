@@ -82,7 +82,7 @@ export async function exportFullJson(): Promise<PortfolioBackup> {
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .range(from, to),
-    ),
+    1000, { label: "activity:json-export" }),
   ]);
 
   // v5: manual_nav_updates for kind='manual' stock_assets. Owned by the user

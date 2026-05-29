@@ -48,12 +48,33 @@ export type PaginatedError = {
   code: string | null;
 };
 
+/**
+ * Row count above which a paginated read is considered "unusually large" and
+ * warrants a Sentry breadcrumb. At 1 000 rows/page this threshold is 5 full
+ * pages — well beyond any normal single-user dataset (a heavy DCA user with
+ * 10 years of daily entries stays comfortably below 4 000 rows). Crossing it
+ * means either a pathological dataset or a missing filter, both of which are
+ * worth an observability signal before they become a latency incident.
+ */
+const PAGINATION_WARN_ROWS = 5_000;
+
+/** Options for {@link fetchAllPaginated}. */
+export type FetchAllPaginatedOpts = {
+  /**
+   * Human-readable label surfaced in the Sentry breadcrumb when the row count
+   * exceeds {@link PAGINATION_WARN_ROWS}. Defaults to `"unlabeled"` so the
+   * breadcrumb is still emitted even for call sites that don't set a label.
+   */
+  label?: string;
+};
+
 export async function fetchAllPaginated<T>(
   buildQuery: (from: number, to: number) => PromiseLike<{
     data: T[] | null;
     error: PaginatedError | null;
   }>,
   pageSize: number = 1000,
+  opts?: FetchAllPaginatedOpts,
 ): Promise<T[]> {
   const all: T[] = [];
   // Loop is broken as soon as a short page arrives (rows.length < pageSize),
@@ -78,6 +99,23 @@ export async function fetchAllPaginated<T>(
     const rows = data ?? [];
     all.push(...rows);
     if (rows.length < pageSize) break;
+  }
+  // Fire-and-forget breadcrumb when the row count crosses the warning threshold.
+  // Dynamic import keeps Sentry out of the critical path — a Sentry failure or
+  // absence never blocks the data read. The .catch(() => {}) ensures no
+  // unhandled-rejection even if the module is unavailable (test env, edge runtime
+  // without Sentry wired, etc.).
+  if (all.length > PAGINATION_WARN_ROWS) {
+    void import("@sentry/nextjs")
+      .then((S) => {
+        S.addBreadcrumb({
+          category: "pagination",
+          message: "large paginated read",
+          level: "warning",
+          data: { label: opts?.label ?? "unlabeled", rows: all.length },
+        });
+      })
+      .catch(() => {});
   }
   return all;
 }

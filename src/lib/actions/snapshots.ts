@@ -165,7 +165,7 @@ export async function getSnapshots(
         .order("snapshot_date", { ascending: true })
         .order("id", { ascending: true })
         .range(from, to),
-    ).catch((err: unknown) => {
+    1000, { label: "snapshots:dashboard" }).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[snapshots] Failed to fetch snapshots:", message);
       throw new Error(`Failed to load portfolio history: ${message}`, { cause: err });

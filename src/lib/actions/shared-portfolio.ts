@@ -103,7 +103,7 @@ async function getSharedPortfolioImpl(
         .order("snapshot_date", { ascending: true })
         .order("id", { ascending: true })
         .range(from, to),
-    ).then(
+    1000, { label: "snapshots:share" }).then(
       (data): { data: SnapshotRow[]; error: null } => ({ data, error: null }),
       (error: unknown): { data: null; error: { message: string } } => ({
         data: null,
