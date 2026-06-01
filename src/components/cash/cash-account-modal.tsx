@@ -9,6 +9,8 @@ import {
 } from "@/lib/actions/cash-accounts";
 import { findOrCreateInstitution } from "@/lib/actions/institutions";
 import type { CashAccount, CashAccountCreateInput, CashAccountUpdateInput, Institution } from "@/lib/types";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
 /** Sentinel <option> value for the "create a new bank" choice in the bank picker. */
 const NEW_BANK = "__new_bank__";
@@ -191,7 +193,7 @@ export function CashAccountModal({
         )}
         {!cashAccount?.last_was_transfer && cashAccount?.last_was_adjustment && (
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
-            <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">Adj.</span>
+            <span className="text-[10px] text-amber-400 font-medium" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>Adj.</span>
             <span className="text-[10px] text-zinc-400">Last saved as portfolio adjustment</span>
           </div>
         )}
@@ -311,7 +313,7 @@ export function CashAccountModal({
             onChange={(e) => setEffectiveDate(e.target.value)}
             className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
           />
-          <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-xs text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {/* Error display */}
@@ -321,40 +323,34 @@ export function CashAccountModal({
           </p>
         )}
 
-        {/* Footer: adjustment checkbox + buttons */}
-        <div className="flex items-center justify-between gap-2 pt-2">
-          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
-            <input
-              type="checkbox"
-              checked={isAdjustment}
-              onChange={(e) => setIsAdjustment(e.target.checked)}
-              className="accent-amber-500"
-            />
-            Portfolio adjustment
-          </label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              aria-busy={loading}
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
-            >
-              {loading
-                ? "Saving..."
-                : isEditing
-                  ? "Save Changes"
-                  : isBankOrigin
-                    ? "Add Account"
-                    : "Add Deposit"}
-            </button>
-          </div>
+        {/* Adjustment checkbox + helper text */}
+        <div className="pt-2">
+          <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="cash" />
+        </div>
+
+        {/* Footer: action buttons */}
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            aria-busy={loading}
+            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+          >
+            {loading
+              ? "Saving..."
+              : isEditing
+                ? "Save Changes"
+                : isBankOrigin
+                  ? "Add Account"
+                  : "Add Deposit"}
+          </button>
         </div>
       </form>
     </Modal>

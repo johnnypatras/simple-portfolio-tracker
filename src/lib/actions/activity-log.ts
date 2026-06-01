@@ -1,7 +1,6 @@
 "use server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getFXRates } from "@/lib/prices/fx";
 import { captureAction } from "@/lib/actions/with-sentry";
 import * as Sentry from "@sentry/nextjs";
@@ -12,13 +11,13 @@ import {
   CASH_ENTITY_TYPES,
   type CashEntityType,
 } from "@/lib/deltas";
-import { classifyAssetClass } from "@/lib/cashflow";
 import { toCsv } from "@/lib/csv";
 import { round2 } from "@/lib/format";
 import { validateUUID } from "@/lib/validation";
-import { MAX_QUERY_LIMIT, ACTIVITY_LOG_DEFAULT_LIMIT, ACTIVITY_LOG_MAX_LIMIT } from "@/lib/constants";
+import { ACTIVITY_LOG_DEFAULT_LIMIT, ACTIVITY_LOG_MAX_LIMIT } from "@/lib/constants";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ActionType, ActivityLog, AssetClass, EntityType, AdjustmentDelta, FlowStatus } from "@/lib/types";
+import type { ActionType, ActivityLog, AssetClass, EntityType, FlowStatus, ToggleAdjustmentResult } from "@/lib/types";
 import type { Database } from "@/types/database";
 import { normalizeActivityLogRow } from "@/lib/activity-log-normalize";
 
@@ -224,7 +223,9 @@ export async function computeDeltaFromSnapshots(
     if (Math.abs(qtyDelta) < 1e-12) return { usd: 0, eur: 0 };
 
     if (entityType === "crypto_position") {
-      // Look up crypto asset for coingecko_id
+      // Look up crypto asset for coingecko_id + ticker. The ticker drives the
+      // Yahoo `{TICKER}-USD` symbol (e.g. BTC-USD); coingecko_id is the
+      // obscure-coin fallback source.
       const assetId =
         (after?.crypto_asset_id as string) ??
         (before?.crypto_asset_id as string);
@@ -233,33 +234,56 @@ export async function computeDeltaFromSnapshots(
       const supabase = supabaseOverride ?? (await createServerSupabaseClient());
       const { data: asset } = await supabase
         .from("crypto_assets")
-        .select("coingecko_id")
+        .select("coingecko_id, ticker")
         .eq("id", assetId)
         .single();
       if (!asset?.coingecko_id) throw new Error(`Crypto asset ${assetId} not found or missing coingecko_id`);
 
-      // Fetch historical price for the date
-      const { fetchCoinHistory } = await import("@/lib/prices/coingecko");
       const txDate = date.split("T")[0];
-      const daysSince = Math.ceil(
-        (Date.now() - new Date(txDate).getTime()) / 86_400_000
-      );
-      const history = await fetchCoinHistory(
-        asset.coingecko_id,
-        Math.max(daysSince + 5, 30)
-      );
 
-      if (history.length === 0) {
-        throw new Error(`CoinGecko returned no price history for ${asset.coingecko_id} (${daysSince} days)`);
-      }
-
-      // Find closest price on or before the date
+      // PRIMARY: Yahoo `{TICKER}-USD` daily history. Unlike CoinGecko's
+      // market_chart (Demo plan caps at ~365 days), Yahoo serves multi-year
+      // history, so backdated lots older than a year reconstruct correctly.
+      // This matches historical-prices-augmentation.ts, which prices the same
+      // backdated crypto lot on the chart via `${ticker.toUpperCase()}-USD`.
+      // Both paths MUST agree so the benchmark seed reconciles.
       let priceUsd = 0;
-      for (const h of history) {
-        if (h.date <= txDate) priceUsd = h.price;
-        else break;
+      if (asset.ticker) {
+        const { fetchYahooDailyHistory } = await import("@/lib/prices/historical");
+        const yahooSymbol = `${asset.ticker.toUpperCase()}-USD`;
+        const yahooHistory = await fetchYahooDailyHistory(yahooSymbol, txDate, txDate);
+        // fetchYahooDailyHistory already pads the start edge (RANGE_PAD_DAYS) so
+        // a prior trading day exists to forward-fill from. Walk on-or-before.
+        for (const h of yahooHistory) {
+          if (h.date <= txDate) priceUsd = h.price;
+          else break;
+        }
+        if (priceUsd === 0 && yahooHistory.length > 0) priceUsd = yahooHistory[0].price;
       }
-      if (priceUsd === 0) priceUsd = history[0].price;
+
+      // FALLBACK: CoinGecko market_chart for obscure coins not on Yahoo (Yahoo
+      // returned []). Subject to the ~365-day Demo-plan cap — best-effort only.
+      if (priceUsd === 0) {
+        const { fetchCoinHistory } = await import("@/lib/prices/coingecko");
+        const daysSince = Math.ceil(
+          (Date.now() - new Date(txDate).getTime()) / 86_400_000
+        );
+        const history = await fetchCoinHistory(
+          asset.coingecko_id,
+          Math.max(daysSince + 5, 30)
+        );
+        for (const h of history) {
+          if (h.date <= txDate) priceUsd = h.price;
+          else break;
+        }
+        if (priceUsd === 0 && history.length > 0) priceUsd = history[0].price;
+      }
+
+      if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
+        throw new Error(
+          `No positive historical price for crypto asset ${assetId} (ticker=${asset.ticker ?? "?"}, coingecko_id=${asset.coingecko_id}) at ${txDate} from Yahoo or CoinGecko. Refusing to write zero-valued delta.`,
+        );
+      }
 
       const deltaUsd = qtyDelta * priceUsd;
       // Convert to EUR
@@ -325,11 +349,38 @@ export async function computeDeltaFromSnapshots(
 // ─── Toggle adjustment flag ─────────────────────────────
 // When toggling ON (becomes adjustment): compute delta, clear cashflow.
 // When toggling OFF (becomes non-adjustment): compute cashflow, clear delta.
+//
+// Returns `{ status, changed }` (ToggleAdjustmentResult). `status` is the
+// FlowStatus of the side this call computed (R2-4): when toggling OFF that's
+// `cashflow_status`, when toggling ON it's `delta_status`. It is 'complete' on
+// a successful price fetch and 'pending' when the fetch failed (the row's flag
+// still flips, but the cashflow/delta is unresolved and self-heals via the
+// backfill cron). `changed` is true on a real flip and false on the M1
+// idempotency no-op (row already in the requested state); the migration loop
+// counts only real flips so concurrent runs can't double-claim a row (F3), and
+// uses `status` to tally `pending` rows honestly. The no-op echoes the row's
+// CURRENT status for the requested direction (the already-fetched
+// `row.cashflow_status` / `row.delta_status` — no extra query). The UI caller
+// (activity-timeline.tsx) ignores the return value.
+//
+// `FlowStatus` already includes `null`, so no widening is needed for rows that
+// never had a status written.
+
+/**
+ * Narrow a DB enum-text status column (typed `string | null` in the generated
+ * Database types) to the `FlowStatus` domain union at the query boundary.
+ * Unknown values collapse to `null` — this validates rather than blindly
+ * asserts, so a stray DB value can never masquerade as 'pending'/'complete'.
+ */
+function toFlowStatus(value: string | null): FlowStatus {
+  if (value === "complete" || value === "pending" || value === "failed") return value;
+  return null;
+}
 
 export async function toggleActivityAdjustment(
   logId: string,
   isAdjustment: boolean
-): Promise<void> {
+): Promise<ToggleAdjustmentResult> {
   return captureAction("activity-log.toggleActivityAdjustment", async () => {
   validateUUID(logId, "Activity log ID");
   const supabase = await createServerSupabaseClient();
@@ -345,6 +396,28 @@ export async function toggleActivityAdjustment(
     .single();
   if (fetchErr) throw new Error(fetchErr.message);
   if (!row) throw new Error("Activity log entry not found");
+
+  // Defense-in-depth (H4): transfer legs MUST stay is_adjustment=true so the
+  // S&P benchmark ignores them — flipping one to false recreates the phantom
+  // bulk-deposit bug. Undone rows are tombstones; toggling them is meaningless
+  // and would re-derive cashflow for a reversed action. The migration's
+  // candidate filter already excludes both, but the UI toggle and any future
+  // caller don't — guard at the primitive.
+  if (row.transfer_group_id !== null) throw new Error("Cannot toggle adjustment on transfer legs");
+  if (row.undone_at !== null) throw new Error("Cannot toggle adjustment on undone entries");
+
+  // Idempotency (M1): already at the requested value → no-op. Avoids a
+  // redundant 1–8s historical-price fetch + a no-op UPDATE when a concurrent
+  // migration already flipped this row. Return the row's CURRENT status for
+  // the requested direction (R2-4) — the side this call WOULD have computed —
+  // so the migration counter stays honest without re-querying (the full row,
+  // incl. both status columns, is already in hand).
+  if (row.is_adjustment === isAdjustment) {
+    return {
+      status: toFlowStatus(isAdjustment ? row.delta_status : row.cashflow_status),
+      changed: false,
+    };
+  }
 
   let deltaUsd: number | null = null;
   let deltaEur: number | null = null;
@@ -369,6 +442,17 @@ export async function toggleActivityAdjustment(
       deltaStatus = "complete";
     } catch (err) {
       console.error("[activity-log] Delta computation failed on toggle:", err instanceof Error ? err.message : err);
+      // The error is caught locally (status→'pending', UPDATE still succeeds) so
+      // neither the captureAction wrapper nor the migration loop ever sees it.
+      // Capture here so a single-row History-timeline toggle that hits a
+      // price-fetch failure is operator-visible (R2-2).
+      Sentry.captureException(err, {
+        tags: {
+          action: "activity-log.toggleActivityAdjustment.priceFetch",
+          entity_type: row.entity_type,
+        },
+        extra: { logId, direction: "ON" },
+      });
       deltaStatus = "pending";
     }
     // Clear cashflow (no longer a real money flow)
@@ -409,6 +493,18 @@ export async function toggleActivityAdjustment(
       cashflowStatus = "complete";
     } catch (err) {
       console.error("[activity-log] Cashflow computation failed on toggle:", err instanceof Error ? err.message : err);
+      // Same containment as the ON branch: caught locally → status='pending',
+      // UPDATE still succeeds, so the outer captureAction wrapper never sees it.
+      // Capture here so a single-row toggle hitting a price-fetch failure is
+      // operator-visible. The migration loop captures per-row, but the UI
+      // toggle path otherwise has no Sentry visibility (R2-2).
+      Sentry.captureException(err, {
+        tags: {
+          action: "activity-log.toggleActivityAdjustment.priceFetch",
+          entity_type: row.entity_type,
+        },
+        extra: { logId, direction: "OFF" },
+      });
       cashflowStatus = "pending";
     }
     // Clear delta (no longer an adjustment)
@@ -430,156 +526,21 @@ export async function toggleActivityAdjustment(
       cashflow_status: cashflowStatus,
     })
     .eq("id", logId)
-    .eq("user_id", user.id);
-  if (error) throw new Error(error.message);
-  });
-}
-
-// ─── Adjustment deltas for chart ────────────────────────
-// Returns cumulative adjustment deltas by date for the chart.
-
-export async function getAdjustmentDeltas(
-  userId?: string
-): Promise<AdjustmentDelta[]> {
-  // Admin client path is for Edge Function / cron only — validate UUID to prevent misuse
-  if (userId) validateUUID(userId, "User ID");
-  const supabase = userId
-    ? createAdminClient()
-    : await createServerSupabaseClient();
-
-  // On the non-admin path, resolve the authenticated user for explicit user_id filtering
-  let resolvedUserId = userId;
-  if (!resolvedUserId) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
-    resolvedUserId = user.id;
-  }
-
-  // Fetch stablecoin position IDs so we can classify them as cash (matching snapshot logic)
-  // Snapshots count stablecoins in cash_value_usd, not crypto_value_usd.
-  //
-  // Also fetch the IDs of stock_positions whose stock_asset has kind='manual'.
-  // Those positions are priced via NAV history (manual_nav_updates) and their
-  // historical contribution is added directly to snapshot stocks_value_* by
-  // augmentSnapshotsWithManualNavs() in getSnapshots(). Including their
-  // is_adjustment activity_log entries in the back-fill formula
-  // `value + (finalCumDelta - cumDelta)` would (a) double-count value for
-  // dates ≥ effective_date and (b) project today's value onto pre-purchase
-  // dates — the user explicitly wants pre-purchase dates to show no asset.
-  const [stablecoinRes, manualStockPosRes] = await Promise.all([
-    supabase
-      .from("crypto_positions")
-      .select("id, crypto_assets!inner(subcategory)")
-      .ilike("crypto_assets.subcategory", "stablecoin")
-      .eq("crypto_assets.user_id", resolvedUserId),
-    supabase
-      .from("stock_positions")
-      .select("id, stock_assets!inner(kind, user_id)")
-      .eq("stock_assets.user_id", resolvedUserId)
-      .eq("stock_assets.kind", "manual"),
-  ]);
-  if (stablecoinRes.error) throw new Error(`Failed to load stablecoin positions: ${stablecoinRes.error.message}`);
-  if (manualStockPosRes.error) throw new Error(`Failed to load manual stock positions: ${manualStockPosRes.error.message}`);
-  const stablecoinPosIds = new Set(
-    (stablecoinRes.data ?? []).map((p) => p.id as string)
-  );
-  const manualStockPosIds = new Set(
-    (manualStockPosRes.data ?? []).map((p) => p.id as string)
-  );
-
-  const query = supabase
-    .from("activity_log")
-    .select("created_at, effective_date, delta_usd, delta_eur, entity_type, entity_id, entity_table")
-    .eq("is_adjustment", true)
-    .eq("user_id", resolvedUserId)
-    .is("undone_at", null)
-    .not("delta_usd", "is", null)
-    .order("created_at", { ascending: true })
-    .limit(MAX_QUERY_LIMIT);
-
-  const { data, error } = await query;
+    .eq("user_id", user.id)
+    // TOCTOU guard (M2): we read the row, then spent ~1–8s fetching external
+    // prices. If a concurrent undo set undone_at in that window, this UPDATE
+    // matches 0 rows and the now-undone row is correctly left alone (no need
+    // to throw on 0-match — the undo's state wins).
+    .is("undone_at", null);
   if (error) throw new Error(error.message);
 
-  if (!data?.length) return [];
-
-  // Post-sort by effective_date (falls back to created_at date portion)
-  // so cumulative sums accumulate in correct chronological order
-  const sorted = [...data].sort((a, b) => {
-    const dateA = (a.effective_date as string) ?? (a.created_at as string).split("T")[0];
-    const dateB = (b.effective_date as string) ?? (b.created_at as string).split("T")[0];
-    return dateA.localeCompare(dateB);
+  // Return the status of the side this call computed (R2-4): cashflow when
+  // toggling OFF, delta when toggling ON. 'pending' here means the row's flag
+  // flipped but the cashflow/delta couldn't be priced — the migration counts
+  // these so the success message stays honest. `changed: true` because we
+  // reached this point past the idempotency guard, so the UPDATE ran.
+  return { status: isAdjustment ? deltaStatus : cashflowStatus, changed: true };
   });
-
-  // Entity-type to asset-class mapping
-  // Stablecoin crypto_positions are reclassified as cash to match snapshot aggregation
-  const getAssetClass = (entityType: string, entityId: string | null, entityTable: string | null): "crypto" | "stocks" | "cash" | null => {
-    if (entityType === "crypto_position") {
-      // Stablecoins are counted as cash in snapshots (subcategory = 'stablecoin')
-      if (entityTable === "crypto_positions" && entityId && stablecoinPosIds.has(entityId)) {
-        return "cash";
-      }
-      return "crypto";
-    }
-    return classifyAssetClass(entityType as EntityType);
-  };
-
-  // Build cumulative sums by date — total + per asset class
-  const byDate = new Map<string, {
-    usd: number; eur: number;
-    cryptoUsd: number; cryptoEur: number;
-    stocksUsd: number; stocksEur: number;
-    cashUsd: number; cashEur: number;
-  }>();
-
-  let cumUsd = 0, cumEur = 0;
-  let cryptoUsd = 0, cryptoEur = 0;
-  let stocksUsd = 0, stocksEur = 0;
-  let cashUsd = 0, cashEur = 0;
-
-  for (const row of sorted) {
-    // Skip kind='manual' stock_position entries — they're priced via NAV
-    // history and contribute to past snapshots directly through
-    // augmentSnapshotsWithManualNavs(). Including them here would double-count
-    // post-purchase value and incorrectly project today's value onto
-    // pre-purchase dates. The back-fill should stop at effective_date.
-    if (
-      row.entity_type === "stock_position" &&
-      typeof row.entity_id === "string" &&
-      manualStockPosIds.has(row.entity_id)
-    ) {
-      continue;
-    }
-
-    const dUsd = (row.delta_usd as number) ?? 0;
-    const dEur = (row.delta_eur as number) ?? 0;
-    cumUsd += dUsd;
-    cumEur += dEur;
-
-    const assetClass = getAssetClass(row.entity_type as string, row.entity_id as string | null, row.entity_table as string | null);
-    if (assetClass === "crypto") { cryptoUsd += dUsd; cryptoEur += dEur; }
-    else if (assetClass === "stocks") { stocksUsd += dUsd; stocksEur += dEur; }
-    else if (assetClass === "cash") { cashUsd += dUsd; cashEur += dEur; }
-
-    const date = (row.effective_date as string) ?? (row.created_at as string).split("T")[0];
-    byDate.set(date, {
-      usd: cumUsd, eur: cumEur,
-      cryptoUsd, cryptoEur,
-      stocksUsd, stocksEur,
-      cashUsd, cashEur,
-    });
-  }
-
-  return Array.from(byDate.entries()).map(([date, v]) => ({
-    date,
-    cumulative_usd: v.usd,
-    cumulative_eur: v.eur,
-    crypto_cumulative_usd: v.cryptoUsd,
-    crypto_cumulative_eur: v.cryptoEur,
-    stocks_cumulative_usd: v.stocksUsd,
-    stocks_cumulative_eur: v.stocksEur,
-    cash_cumulative_usd: v.cashUsd,
-    cash_cumulative_eur: v.cashEur,
-  }));
 }
 
 // ─── CSV export ─────────────────────────────────────────
@@ -588,16 +549,24 @@ export async function exportActivityLogsCsv(): Promise<string> {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
-  const { data, error } = await supabase
-    .from("activity_log")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(MAX_QUERY_LIMIT);
 
-  if (error) throw new Error(error.message);
+  // Paginate past the PostgREST max_rows cap (1000): a `.limit()` is silently
+  // capped, so a heavy user's CSV export would be truncated mid-history (data
+  // loss in THEIR export). Stable order — created_at desc + id tiebreaker —
+  // guarantees page integrity even when two rows share the same created_at.
+  const rawRows = await fetchAllPaginated<Database["public"]["Tables"]["activity_log"]["Row"]>(
+    (from, to) =>
+      supabase
+        .from("activity_log")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    1000, { label: "activity:csv-export" },
+  );
 
-  const rows = (data ?? []).map(normalizeActivityLogRow);
+  const rows = rawRows.map(normalizeActivityLogRow);
 
   const headers = [
     "Date", "Effective Date", "Action", "Type", "Name", "Description",

@@ -1,11 +1,13 @@
 /**
  * Chart enrichment — pure computation, no React.
  *
- * Extracts the benchmark / adjustment enrichment logic from
- * portfolio-chart.tsx so it can be tested without a render context.
+ * Adds the S&P 500 benchmark line to a sequence of chart points by replaying
+ * cash flows into hypothetical S&P units. The portfolio line is the literal
+ * historical truth from snapshots (after augmentation); the benchmark line
+ * answers "what if every dollar had been put into the S&P 500 instead?".
  */
 
-import type { AdjustmentDelta, CashFlowEvent, BaseCurrency } from "@/lib/types";
+import type { CashFlowEvent, BaseCurrency } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -24,11 +26,9 @@ export interface ChartPoint {
   cashPct: number;
 }
 
-/** Chart data point after enrichment with S&P benchmark and adjustment values. */
+/** Chart data point after enrichment with S&P benchmark value. */
 export interface EnrichedChartPoint extends ChartPoint {
   sp500Value?: number;
-  adjustedValue?: number;
-  rawValue?: number;
 }
 
 export interface EnrichChartDataInput {
@@ -37,7 +37,6 @@ export interface EnrichChartDataInput {
   primaryCurrency: BaseCurrency;
   sp500History: { date: string; close: number }[];
   cashFlows: CashFlowEvent[];
-  adjustmentDeltas: AdjustmentDelta[];
   /** Snapshot ratios for per-class S&P scaling (null = total mode, no scaling). */
   snapshotRatios: { date: string; ratio: number }[] | null;
 }
@@ -65,27 +64,6 @@ function toDisplayFromUsd(
 function getSliceValue(p: ChartPoint, viewMode: ChartViewMode, primaryCurrency: BaseCurrency): number {
   if (viewMode === "total") return p.value;
   return toDisplayFromUsd(getSliceValueUsd(p, viewMode), p, primaryCurrency);
-}
-
-function getDeltaPair(
-  d: AdjustmentDelta,
-  viewMode: ChartViewMode,
-): { cumUsd: number; cumEur: number } {
-  if (viewMode === "total") return { cumUsd: d.cumulative_usd, cumEur: d.cumulative_eur };
-  if (viewMode === "investments") return {
-    cumUsd: d.crypto_cumulative_usd + d.stocks_cumulative_usd,
-    cumEur: d.crypto_cumulative_eur + d.stocks_cumulative_eur,
-  };
-  if (viewMode === "crypto") return { cumUsd: d.crypto_cumulative_usd, cumEur: d.crypto_cumulative_eur };
-  if (viewMode === "stocks") return { cumUsd: d.stocks_cumulative_usd, cumEur: d.stocks_cumulative_eur };
-  return { cumUsd: d.cash_cumulative_usd, cumEur: d.cash_cumulative_eur };
-}
-
-function getCumulativeDelta(
-  date: string,
-  deltaMap: Map<string, { usd: number; eur: number }>,
-): { usd: number; eur: number } {
-  return deltaMap.get(date) ?? { usd: 0, eur: 0 };
 }
 
 function getSliceRatio(
@@ -121,8 +99,13 @@ function toDisplayCurrency(
 // ── Main function ──────────────────────────────────────────
 
 /**
- * Enrich chart data points with S&P 500 benchmark values and adjustment
- * compensation. Pure function — no React, no I/O.
+ * Enrich chart data points with S&P 500 benchmark values. Pure function —
+ * no React, no I/O.
+ *
+ * The portfolio `value` is the literal truth (already augmented for backdated
+ * lots via historical-price + manual-NAV augmentation upstream). The S&P
+ * benchmark is seeded against that same value at chartStart and then evolves
+ * by replaying subsequent cash flows.
  */
 export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint[] {
   const {
@@ -131,22 +114,10 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
     primaryCurrency,
     sp500History,
     cashFlows,
-    adjustmentDeltas,
     snapshotRatios,
   } = input;
 
   if (points.length === 0) return [];
-
-  // Pre-compute delta lookup sorted by date
-  const deltaLookup = adjustmentDeltas.map((d) => ({
-    date: d.date,
-    ...getDeltaPair(d, viewMode),
-  }));
-
-  const finalCumDelta =
-    deltaLookup.length > 0
-      ? deltaLookup[deltaLookup.length - 1]
-      : { cumUsd: 0, cumEur: 0 };
 
   // Build sp500Map with forward-fill for weekends/holidays so getSp500Price is O(1)
   const sp500Map = new Map(sp500History.map((p) => [p.date, p.close]));
@@ -178,55 +149,64 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
     }
   }
 
-  // Build deltaMap keyed by every chart date so getCumulativeDelta is O(1)
-  const deltaMap = new Map<string, { usd: number; eur: number }>();
-  if (points.length > 0) {
-    let lastDelta = { usd: 0, eur: 0 };
-    let di = 0;
-    for (const p of points) {
-      while (di < deltaLookup.length && deltaLookup[di].date <= p.date) {
-        lastDelta = { usd: deltaLookup[di].cumUsd, eur: deltaLookup[di].cumEur };
-        di++;
-      }
-      deltaMap.set(p.date, lastDelta);
-    }
-  }
-
   const hasCashFlows = cashFlows.length > 0;
   const chartStart = points[0].date;
 
-  // Shorthand for display-currency delta
-  const deltaDisp = (d: { usd: number; eur: number }) =>
-    primaryCurrency === "EUR" ? d.eur : d.usd;
-
-  const finalDeltaDisplay =
-    primaryCurrency === "EUR" ? finalCumDelta.cumEur : finalCumDelta.cumUsd;
-
   if (hasCashFlows) {
-    return enrichCashFlowAdjusted(
+    return enrichWithSp500Benchmark(
       points, viewMode, primaryCurrency, sp500Map,
-      cashFlows, deltaMap, finalDeltaDisplay, deltaDisp,
-      snapshotRatios, chartStart,
+      cashFlows, snapshotRatios, chartStart,
     );
   }
 
+  // The naive scaling fallback is legitimate for a brand-new user with no
+  // recorded activity (empty cashFlows AND empty portfolio). But if the
+  // portfolio has real value while cashFlows is empty, that points to a
+  // deriveCashFlows regression — the cash-flow-replay benchmark is silently
+  // degraded to a naive line. Leave a breadcrumb (not a captureMessage, to
+  // avoid alert noise) so any later Sentry event carries the signal. Guarded
+  // on a non-zero portfolio so legitimately-empty new accounts stay quiet.
+  if (points.some((p) => p.value > 0)) {
+    recordNaiveFallbackBreadcrumb(points.length);
+  }
+
   return enrichNaiveFallback(
-    points, viewMode, primaryCurrency, sp500Map,
-    deltaMap, finalDeltaDisplay, deltaDisp, chartStart,
+    points, viewMode, primaryCurrency, sp500Map, chartStart,
   );
 }
 
-// ── Cash-flow-adjusted path ────────────────────────────────
+/**
+ * Fire-and-forget Sentry breadcrumb for the suspicious naive-fallback case.
+ *
+ * This module is pure and bundled into the client portfolio chart, so it
+ * avoids a top-level `@sentry/nextjs` import. The dynamic import keeps the
+ * enrichment functions synchronous (the `.catch` swallows any failure so a
+ * missing/unconfigured Sentry never throws into the render path). `addBreadcrumb`
+ * is a no-op when no Sentry client is active, which is the case in unit tests.
+ */
+function recordNaiveFallbackBreadcrumb(pointCount: number): void {
+  void import("@sentry/nextjs")
+    .then((Sentry) => {
+      Sentry.addBreadcrumb({
+        category: "chart-enrichment",
+        message: "S&P naive fallback: no cashflows despite non-zero portfolio",
+        level: "warning",
+        data: { pointCount },
+      });
+    })
+    .catch(() => {
+      // Sentry unavailable (e.g. test env or import failure) — non-fatal.
+    });
+}
 
-function enrichCashFlowAdjusted(
+// ── Cash-flow-driven S&P benchmark path ────────────────────
+
+function enrichWithSp500Benchmark(
   points: ChartPoint[],
   viewMode: ChartViewMode,
   primaryCurrency: BaseCurrency,
   sp500Map: Map<string, number>,
   cashFlows: CashFlowEvent[],
-  deltaMap: Map<string, { usd: number; eur: number }>,
-  finalDeltaDisplay: number,
-  deltaDisp: (d: { usd: number; eur: number }) => number,
   snapshotRatios: { date: string; ratio: number }[] | null,
   chartStart: string,
 ): EnrichedChartPoint[] {
@@ -247,16 +227,21 @@ function enrichCashFlowAdjusted(
     }
   }
 
-  // Seed S&P units so benchmark starts at the adjusted portfolio value.
+  // Seed S&P units so the benchmark starts at the same value as the portfolio
+  // line at chartStart. The portfolio value is the literal truth (already
+  // augmented upstream by historical-price + manual-NAV); the benchmark must
+  // match that anchor so both lines diverge from a common starting point.
   const firstPoint = points[0];
   const sp500StartPrice = getSp500Price(firstPoint.date, sp500Map);
   if (sp500StartPrice && sp500StartPrice > 0) {
-    const firstDelta = getCumulativeDelta(firstPoint.date, deltaMap);
     const firstSliceVal = getSliceValue(firstPoint, viewMode, primaryCurrency);
     const firstSliceUsd = getSliceValueUsd(firstPoint, viewMode);
-    const adjustedFirstDisp = firstSliceVal + (finalDeltaDisplay - deltaDisp(firstDelta));
+    // Seed against the raw portfolio value at chartStart — NOT against a
+    // back-filled projection. This is the Phase 4 contract: the chart shows
+    // literal historical truth, so the S&P benchmark must seed off that truth.
+    const seedDisp = firstSliceVal;
 
-    // Convert adjusted display value → USD for unit calculation.
+    // Convert seed display value → USD for unit calculation.
     // Four-tier FX ratio (audit R1 Phase 5): per-class → portfolio-wide →
     // forward-scan → skip. Identity-rate fallback corrupted S&P seeding by
     // ~15-18% for EUR-primary users whose first chart point was empty (e.g.
@@ -278,12 +263,23 @@ function enrichCashFlowAdjusted(
     }
 
     if (fxRatioUsdPerDisp !== null && fxRatioUsdPerDisp > 0) {
-      const adjustedFirstUsd = adjustedFirstDisp * fxRatioUsdPerDisp;
-      const neededUnits = adjustedFirstUsd / sp500StartPrice;
-      if (neededUnits !== preChartUnits) {
-        const seedDelta = neededUnits - preChartUnits;
+      const seedUsd = seedDisp * fxRatioUsdPerDisp;
+      const neededUnits = seedUsd / sp500StartPrice;
+      // Baseline against the units actually present at chartStart. A cash flow
+      // dated exactly at chartStart lands in unitsByDate (the partition uses
+      // cf.date < chartStart for preChartUnits), so the chartStart flow's units
+      // are NOT in preChartUnits. Seeding against preChartUnits alone would then
+      // ADD a duplicate seedDelta on top of that flow (double-counting the
+      // benchmark at chartStart — the Phase 2 back-extension case, where the
+      // earliest synthetic flow sits on chartStart). Comparing to the actual
+      // chartStart units makes seedDelta 0 when the flow already provides them.
+      const unitsAtChartStart = unitsByDate.has(chartStart)
+        ? unitsByDate.get(chartStart)!
+        : preChartUnits;
+      if (neededUnits !== unitsAtChartStart) {
+        const seedDelta = neededUnits - unitsAtChartStart;
         sp500Units += seedDelta;
-        preChartUnits = neededUnits;
+        preChartUnits += seedDelta;
         for (const [date, units] of unitsByDate) {
           unitsByDate.set(date, units + seedDelta);
         }
@@ -303,10 +299,7 @@ function enrichCashFlowAdjusted(
       : undefined;
 
     const sliceVal = getSliceValue(p, viewMode, primaryCurrency);
-    const delta = getCumulativeDelta(p.date, deltaMap);
-    const adjustedValue = sliceVal + (finalDeltaDisplay - deltaDisp(delta));
-
-    return { ...p, value: sliceVal, sp500Value, adjustedValue, rawValue: sliceVal };
+    return { ...p, value: sliceVal, sp500Value };
   });
 }
 
@@ -317,14 +310,9 @@ function enrichNaiveFallback(
   viewMode: ChartViewMode,
   primaryCurrency: BaseCurrency,
   sp500Map: Map<string, number>,
-  deltaMap: Map<string, { usd: number; eur: number }>,
-  finalDeltaDisplay: number,
-  deltaDisp: (d: { usd: number; eur: number }) => number,
   chartStart: string,
 ): EnrichedChartPoint[] {
-  const firstSliceVal = getSliceValue(points[0], viewMode, primaryCurrency);
-  const firstDeltaFb = getCumulativeDelta(chartStart, deltaMap);
-  const portfolioStart = firstSliceVal + (finalDeltaDisplay - deltaDisp(firstDeltaFb));
+  const portfolioStart = getSliceValue(points[0], viewMode, primaryCurrency);
   const sp500Start = getSp500Price(chartStart, sp500Map);
 
   return points.map((p) => {
@@ -337,9 +325,6 @@ function enrichNaiveFallback(
       }
     }
 
-    const delta = getCumulativeDelta(p.date, deltaMap);
-    const adjustedValue = sliceVal + (finalDeltaDisplay - deltaDisp(delta));
-
-    return { ...p, value: sliceVal, sp500Value, adjustedValue, rawValue: sliceVal };
+    return { ...p, value: sliceVal, sp500Value };
   });
 }

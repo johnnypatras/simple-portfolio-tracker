@@ -2,13 +2,53 @@
 
 export type AssetClass = "crypto" | "stocks" | "cash";
 
-export interface CashFlowEvent {
+/**
+ * A real cash flow (deposit/buy/sell/withdraw) derived from the activity log by
+ * `deriveCashFlows`. Carries entity attribution (`entity_name`) so it can be
+ * surfaced in the deposit tooltip. `synthetic` is `false`/absent on this variant
+ * — the discriminant that distinguishes it from benchmark-only synthetic flows.
+ */
+export interface RealCashFlowEvent {
   date: string;       // YYYY-MM-DD
   amount_usd: number; // positive = deposit, negative = withdrawal
   amount_eur?: number; // EUR amount via historical rate (avoids USD round-trip for EUR entities)
   asset_class?: AssetClass;
+  /** Real flows may carry entity attribution for the deposit-tooltip breakdown. */
   entity_name?: string;
+  synthetic?: false;
 }
+
+/**
+ * A synthetic S&P-benchmark-only cash flow produced by `buildBenchmarkCashFlows`
+ * to seed the S&P benchmark for backdated is_adjustment lots. These are
+ * benchmark-only inputs and MUST be filtered out before consumers that surface
+ * deposit UX (e.g., `computeDeposits` in dashboard-changes.ts).
+ *
+ * INVARIANT (type-enforced): synthetic flows carry NO `entity_name`. They have
+ * no entity identity because they are never user-facing — they exist only to
+ * drive the S&P-units seed and are filtered out before any deposit/UI surface.
+ * Omitting `entity_name` from this variant makes `{ synthetic: true,
+ * entity_name: "x" }` a compile error; the runtime producer invariant is also
+ * asserted by the multi-delta test in
+ * __tests__/unit/historical-prices-augmentation.test.ts.
+ */
+export interface SyntheticCashFlowEvent {
+  date: string;       // YYYY-MM-DD
+  amount_usd: number; // positive = deposit, negative = withdrawal
+  amount_eur?: number; // EUR amount via historical rate (avoids USD round-trip for EUR entities)
+  asset_class?: AssetClass;
+  synthetic: true;
+  // NO entity_name — benchmark-only flows are never surfaced in deposit UI.
+}
+
+/**
+ * Discriminated union of cash flow events. The `synthetic` discriminant
+ * type-enforces the invariant that benchmark-only flows never carry an
+ * `entity_name`. Narrow via `!f.synthetic` (→ {@link RealCashFlowEvent}) or
+ * `f.synthetic` (→ {@link SyntheticCashFlowEvent}); see `computeDeposits` for
+ * the `f is RealCashFlowEvent` filter guard the union requires.
+ */
+export type CashFlowEvent = RealCashFlowEvent | SyntheticCashFlowEvent;
 
 // ─── Database entity types ──────────────────────────────
 
@@ -662,20 +702,6 @@ export type TransferResult =
   | { success: true; transferGroupId: string; partialFailure?: boolean }
   | { success: false; error: string; transferGroupId?: string; partialFailure?: boolean };
 
-// ─── Adjustment Deltas (chart enrichment) ───────────────
-
-export interface AdjustmentDelta {
-  date: string;
-  cumulative_usd: number;
-  cumulative_eur: number;
-  crypto_cumulative_usd: number;
-  crypto_cumulative_eur: number;
-  stocks_cumulative_usd: number;
-  stocks_cumulative_eur: number;
-  cash_cumulative_usd: number;
-  cash_cumulative_eur: number;
-}
-
 // ─── Command Palette ─────────────────────────────────────
 
 /** Flat portfolio item for command palette search. */
@@ -867,6 +893,78 @@ export interface ImportError {
   error: string;
   backup?: PortfolioBackup;
 }
+
+/**
+ * Result of `toggleActivityAdjustment`.
+ *
+ * `changed` distinguishes a real flip from the M1 idempotency no-op: when the
+ * row is already in the requested `is_adjustment` state (e.g. a concurrent
+ * migration run flipped it first) the action returns early WITHOUT mutating,
+ * and `changed` is false. The migration loop counts only real flips, so two
+ * concurrent runs can never both claim the same row as `migrated` — closing the
+ * F3 count-inflation race. The UI toggle ignores this result.
+ *
+ * `status` is the FlowStatus of the side this call computed (R2-4): cashflow
+ * when toggling OFF, delta when toggling ON; 'pending' when the price fetch
+ * failed but the flag still flipped. On the no-op, it echoes the row's current
+ * status for the requested direction.
+ *
+ * Declared here (not in the `"use server"` action module) so Turbopack does
+ * not strip the re-export — see the types convention in CLAUDE.md.
+ */
+export type ToggleAdjustmentResult = {
+  status: FlowStatus;
+  /** True iff this call actually mutated the row; false on the M1 idempotency no-op. */
+  changed: boolean;
+};
+
+/**
+ * Result of the one-time legacy-adjustment migration server action.
+ *
+ * `migrated` rows are counted, not enumerated. `details` carries ERROR rows
+ * only (no raw PG text — that goes to Sentry). `remaining` counts candidates
+ * the run never attempted because the time budget fired; 0 when the loop ran
+ * to completion. The UI offers a manual "Continue" when `remaining > 0`.
+ *
+ * `pending` is a SUBSET of `migrated`: rows whose `is_adjustment` flag DID flip
+ * to false (so they count as migrated) but whose cashflow couldn't be priced —
+ * `toggleActivityAdjustment` wrote `cashflow_status='pending'` rather than
+ * 'complete'. Such rows are invisible to the S&P benchmark until the backfill
+ * cron resolves them, so the UI must report them honestly instead of claiming
+ * full success (R2-4).
+ *
+ * `skipped` counts rows that were already in the target state when this run
+ * reached them — a concurrent migration (or a prior partial run) flipped them
+ * first, so `toggleActivityAdjustment` returned its no-op (`changed: false`).
+ * They are migrated, just not BY THIS RUN, so they are tracked separately to
+ * avoid double-claiming across concurrent runs (F3). The counts partition the
+ * candidate set exactly: migrated + skipped + errors + remaining === total.
+ *
+ * Declared here (not in the `"use server"` action module) so Turbopack does
+ * not strip the re-export — see the types convention in CLAUDE.md.
+ */
+export type LegacyAdjustmentMigrationResult = {
+  total_candidates: number;
+  migrated: number;
+  /**
+   * Subset of `migrated` whose cashflow landed `pending` (price fetch failed).
+   * The flag flipped, but the cashflow isn't yet reflected in the benchmark.
+   */
+  pending: number;
+  /**
+   * Rows already migrated by a concurrent run when this run reached them
+   * (toggle no-op). Not an error, not `remaining` — see the type doc above.
+   */
+  skipped: number;
+  errors: number;
+  remaining: number;
+  /** Per-row ERROR details only — successful migrations are counted, not enumerated. */
+  details: Array<{
+    id: string;
+    entity_type: string;
+    entity_name: string;
+  }>;
+};
 
 /** Options for cash-account mutations that produce activity-log entries. */
 export interface CashAccountOpts {

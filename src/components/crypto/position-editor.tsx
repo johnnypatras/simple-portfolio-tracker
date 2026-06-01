@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
 import type { CryptoAssetWithPositions, Wallet, TransferMode, AcquisitionType } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 
 interface PositionEditorProps {
   open: boolean;
@@ -493,12 +494,12 @@ export function PositionEditor({
                     </span>
                   )}
                   {!existingPosition?.last_was_transfer && (adjOverrides[walletId] ?? existingPosition?.last_was_adjustment) && !justSaved && (
-                    <span className="text-[10px] text-amber-400 font-medium" title="Not a real transaction — portfolio balance correction">
+                    <span className="text-[10px] text-amber-400 font-medium" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                       Adj.
                     </span>
                   )}
                 </div>
-                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
+                <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-400 cursor-pointer select-none" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                   <input
                     type="checkbox"
                     checked={edit?.isAdjustment ?? false}

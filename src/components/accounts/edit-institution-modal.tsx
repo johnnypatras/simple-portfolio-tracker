@@ -8,6 +8,7 @@ import { updateInstitutionRoles, removeInstitutionRole, deleteInstitution } from
 import { updateWallet } from "@/lib/actions/wallets";
 import type { InstitutionWithRoles, Wallet, PrivacyLabel } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, parseWalletChains, serializeChains } from "@/lib/types";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 
 interface EditInstitutionModalProps {
   open: boolean;
@@ -197,7 +198,7 @@ export function EditInstitutionModal({
               </p>
               <label
                 className="flex items-center gap-1 text-[10px] text-amber-400 font-medium cursor-pointer"
-                title="Not a real transaction — portfolio balance correction"
+                title={IS_ADJUSTMENT_TOOLTIP_TEXT}
               >
                 <input
                   type="checkbox"
@@ -471,7 +472,7 @@ export function EditInstitutionModal({
               </div>
               <label
                 className="flex items-center gap-1 text-[10px] text-amber-400 font-medium cursor-pointer"
-                title="Not a real transaction — portfolio balance correction"
+                title={IS_ADJUSTMENT_TOOLTIP_TEXT}
               >
                 <input
                   type="checkbox"

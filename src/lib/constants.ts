@@ -23,12 +23,6 @@ export const ALL_SNAPSHOTS_DAYS = 99999;
 /** Maximum share/invite expiry in days (~10 years) */
 export const MAX_SHARE_EXPIRY_DAYS = 3650;
 
-/** Upper bound for paginated Supabase queries (prevents unbounded scans) */
-export const MAX_QUERY_LIMIT = 10_000;
-
-/** Upper bound for full snapshot history queries (dashboards, share, export) */
-export const MAX_SNAPSHOTS_LIMIT = 100_000;
-
 /** Snapshot comparison period labels for portfolio cards */
 export const PERIOD_LABELS = {
   "24h": "vs yesterday",
@@ -109,3 +103,37 @@ export const ACTIVITY_LOG_MAX_LIMIT = 500;
  * the comparison delta helper.
  */
 export const MIN_BREAKDOWN_DISPLAY_VALUE = 0.5;
+
+/**
+ * Tooltip text shown on the inline "Adj." badge + "Portfolio adjustment"
+ * checkbox label across all modals/editors. The semantic refresh
+ * (2026-05-28) clarifies that the flag means "not a real cash flow" —
+ * post-Phase-4 the S&P benchmark consumes the cashflow stream, so this
+ * flag controls whether the row contributes to the benchmark's deposits.
+ */
+export const IS_ADJUSTMENT_TOOLTIP_TEXT =
+  "Not a real cash flow — internal adjustment (transfer, balance correction, manual fix)";
+
+/**
+ * Helper text shown below the "Portfolio adjustment" checkbox in modal
+ * forms. Guides users to leave the box unchecked for real money flows
+ * (the post-Phase-4 default), and points them to the Effective date
+ * field for backdating real transactions.
+ */
+export const IS_ADJUSTMENT_HELP_TEXT =
+  "Check this only if the entry doesn't represent real money flowing in or out (e.g., a transfer between your accounts, or a manual balance correction). For real buys, deposits, or imports, leave this unchecked — use the 'Effective date' field to set when the transaction actually happened.";
+
+/**
+ * Aria label/title for the adjustment toggle button when the entry IS already
+ * marked as an adjustment (is_adjustment=true). Clicking converts it back to a
+ * real cash flow so the S&P benchmark counts it as a deposit.
+ */
+export const IS_ADJUSTMENT_TOGGLE_ON_LABEL =
+  "Marked as adjustment — click to count as cash flow";
+
+/**
+ * Aria label/title for the adjustment toggle button when the entry is NOT
+ * marked as an adjustment (is_adjustment=false). Clicking flags it as an
+ * internal adjustment so the S&P benchmark ignores it.
+ */
+export const IS_ADJUSTMENT_TOGGLE_OFF_LABEL = "Mark as portfolio adjustment";

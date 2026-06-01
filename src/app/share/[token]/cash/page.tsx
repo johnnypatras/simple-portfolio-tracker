@@ -34,11 +34,15 @@ export default async function SharedCashPage({
     ]),
   ];
 
-  const [stablecoinPrices, fxRates, eurUsdBatch, cashFlowResult] = await Promise.all([
+  // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
+  // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
+  const [stablecoinPrices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch, cashFlowResult] = await Promise.all([
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
     getFXRatesSafe(cur, allCurrencies),
+    getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
+    getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
     getStockPrices(["EURUSD=X"]),
     deriveCashFlows(share.owner_id),
   ]);
@@ -54,6 +58,8 @@ export default async function SharedCashPage({
     cashAccounts,
     primaryCurrency: cur,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 

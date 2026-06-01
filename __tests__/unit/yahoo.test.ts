@@ -674,10 +674,11 @@ describe("fetchIndexHistory", () => {
     expect(url).toContain("period2=");
   });
 
-  it("logs an error when response granularity is not 1d (silent-downsample guard)", async () => {
+  it("returns [] and logs an error when response granularity is not 1d (silent-downsample guard)", async () => {
     // Simulates a regression where Yahoo returns coarser data despite our
-    // explicit interval=1d request. The function still returns whatever
-    // points it got, but surfaces a loud warning so we notice.
+    // explicit interval=1d request. The function REFUSES the downsampled data
+    // (returns []) so the benchmark line never shows phantom bucket-boundary
+    // jumps, and surfaces a loud warning so we notice.
     const ts = Math.floor(new Date("2024-01-15T00:00:00Z").getTime() / 1000);
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -694,8 +695,8 @@ describe("fetchIndexHistory", () => {
     });
 
     const result = await fetchIndexHistory("^GSPC", 30);
-    // Data still flows through (we don't refuse it; we just warn)
-    expect(result).toEqual([{ date: "2024-01-15", close: 4800 }]);
+    // Downsampled data is rejected — no false jumps reach the chart.
+    expect(result).toEqual([]);
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("Unexpected dataGranularity"),
     );

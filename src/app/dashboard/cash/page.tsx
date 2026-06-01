@@ -35,12 +35,16 @@ export default async function CashPage() {
     ]),
   ];
 
-  // Fetch stablecoin prices + FX rates + EUR/USD change in parallel
-  const [stablecoinPrices, fxRates, eurUsdBatch] = await Promise.all([
+  // Fetch stablecoin prices + FX rates + EUR/USD change in parallel.
+  // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
+  // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
+  const [stablecoinPrices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch] = await Promise.all([
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
     getFXRatesSafe(profile.primary_currency, allCurrencies),
+    getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
+    getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
     getStockPrices(["EURUSD=X"]),
   ]);
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
@@ -54,6 +58,8 @@ export default async function CashPage() {
     cashAccounts,
     primaryCurrency: profile.primary_currency,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 

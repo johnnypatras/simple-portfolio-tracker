@@ -1,8 +1,10 @@
 "use server";
 
 import { cache } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateShareToken } from "./shares";
+import { captureAction } from "./with-sentry";
 import type {
   AcquisitionType,
   Profile,
@@ -17,24 +19,47 @@ import type {
   SharedPortfolioData,
 } from "@/lib/types";
 import { normalizeCategory } from "@/lib/stock-categories";
-import { MAX_SNAPSHOTS_LIMIT } from "@/lib/constants";
+import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import { pickJoinedName } from "@/lib/supabase/join-utils";
+import type { Database } from "@/types/database";
 import { findSnapshotAt } from "@/lib/portfolio/snapshot-utils";
 import {
   augmentSnapshotsWithManualNavs,
   fetchManualNavInputsFor,
 } from "@/lib/portfolio/manual-nav-augmentation";
+import { augmentAndExtendSnapshots } from "@/lib/portfolio/historical-prices-augmentation";
+import { getHistoricalPriceInputsForOwner } from "@/lib/actions/historical-inputs-cache";
 
 // SharedPortfolioData and ValidatedShare are defined in @/lib/types — Turbopack
 // strips type re-exports from "use server" modules, so consumers (share pages,
 // layouts) import those types directly from @/lib/types.
+
+// Module-local (NOT exported — Turbopack strips type re-exports from "use
+// server" modules). Generated Row shape for the paginated snapshot fetch.
+type SnapshotRow = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
 
 /**
  * Validate a share token and fetch the owner's full portfolio data.
  * Returns null if the token is invalid/expired/revoked.
  * Uses service-role client to bypass RLS.
  */
-export const getSharedPortfolio = cache(async function getSharedPortfolio(
+// captureAction routes any UNCAUGHT throw (e.g. createAdminClient failure, a
+// thrown helper) to Sentry with action="shared-portfolio.getSharedPortfolio".
+// Intentional `return null` paths (invalid/expired token) do NOT throw, so they
+// stay silent; the genuine backend-query failures below capture explicitly
+// before their `return null` so a valid token whose downstream query errors
+// still surfaces an operator signal instead of a silent 404.
+//
+// Wrapped in React `cache()` so a single request that reads the shared
+// portfolio multiple times (layout + page) hits the DB once.
+export const getSharedPortfolio = cache(
+  (token: string): Promise<SharedPortfolioData | null> =>
+    captureAction("shared-portfolio.getSharedPortfolio", () =>
+      getSharedPortfolioImpl(token),
+    ),
+);
+
+async function getSharedPortfolioImpl(
   token: string
 ): Promise<SharedPortfolioData | null> {
   const share = await validateShareToken(token);
@@ -61,15 +86,42 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     admin.from("wallets").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
     admin.from("brokers").select("*").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: true }),
     admin.from("institutions").select("*").eq("user_id", userId).is("deleted_at", null).order("name"),
-    // All snapshots — chart and panel all-time change share this data.
-    // Explicit .limit() overrides PostgREST's 1000-row default.
-    admin.from("portfolio_snapshots").select("*").eq("user_id", userId)
-      .order("snapshot_date", { ascending: true })
-      .limit(MAX_SNAPSHOTS_LIMIT),
+    // All snapshots — chart and panel all-time change share this data. Paginate
+    // past the PostgREST max_rows cap (default 1000): a share recipient of an
+    // owner with >1000 daily snapshots (~2.7 years) would otherwise get the
+    // OLDEST part of the chart silently dropped. `.limit()` does NOT lift the
+    // server cap — only `.range()` paging does. `.order(...)` MUST precede
+    // `.range(...)`; the `id` tiebreaker (UUID PK) guarantees deterministic page
+    // boundaries when two rows share a snapshot_date. Re-shaped to the
+    // { data, error } envelope so it flows through the shared error loop below
+    // (capture-then-404), matching the sibling parallel queries.
+    fetchAllPaginated<SnapshotRow>((from, to) =>
+      admin
+        .from("portfolio_snapshots")
+        .select("*")
+        .eq("user_id", userId)
+        .order("snapshot_date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    1000, { label: "snapshots:share" }).then(
+      (data): { data: SnapshotRow[]; error: null } => ({ data, error: null }),
+      (error: unknown): { data: null; error: { message: string } } => ({
+        data: null,
+        error: { message: error instanceof Error ? error.message : String(error) },
+      }),
+    ),
   ]);
 
   if (profileRes.error || !profileRes.data) {
     console.error("[shared-portfolio] Profile fetch failed:", profileRes.error?.message);
+    // A valid token whose owner-profile query errors → silent 404 for the
+    // recipient. Capture so operators see the backend failure. (A genuinely
+    // missing profile with no .error is a data-integrity anomaly worth the
+    // same signal.)
+    Sentry.captureException(
+      profileRes.error ?? new Error("shared-portfolio: profile row missing without query error"),
+      { tags: { context: "shared-portfolio.profiles" } },
+    );
     return null;
   }
   for (const [label, res] of [
@@ -83,12 +135,17 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   ] as const) {
     if (res.error) {
       console.error(`[shared-portfolio] ${label} fetch failed:`, res.error.message);
+      // Backend query failure on a valid token — masking it as a 404 hides a
+      // real outage. Tag by table so operators can pinpoint the failing query.
+      Sentry.captureException(res.error, {
+        tags: { context: `shared-portfolio.${label}` },
+      });
       return null;
     }
   }
 
-  // profileRes.data is guaranteed non-null at this point by the earlier
-  // response-validation loop (lines 67-82) which returns null on missing data.
+  // profileRes.data is guaranteed non-null here by the `!profileRes.data`
+  // guard above, which returns null on missing data.
   const profile: Profile = {
     ...profileRes.data,
     role: profileRes.data.role as Profile["role"],
@@ -131,10 +188,16 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   ]);
   if (cryptoPositionsData.error) {
     console.error("[shared-portfolio] crypto_positions fetch failed:", cryptoPositionsData.error.message);
+    Sentry.captureException(cryptoPositionsData.error, {
+      tags: { context: "shared-portfolio.crypto_positions" },
+    });
     return null;
   }
   if (stockPositionsData.error) {
     console.error("[shared-portfolio] stock_positions fetch failed:", stockPositionsData.error.message);
+    Sentry.captureException(stockPositionsData.error, {
+      tags: { context: "shared-portfolio.stock_positions" },
+    });
     return null;
   }
 
@@ -220,10 +283,24 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
   // chart history for owners holding kind='manual' assets (ELTIFs, SICAVs).
   // The viewer is not the owner — admin client + explicit owner_id bypasses
   // RLS which would otherwise scope to auth.uid() and return zero rows.
-  const manualInputs = await fetchManualNavInputsFor(admin, userId);
-  const augmentedSnapshots = manualInputs.positions.length > 0
+  // The token is already validated above (validateShareToken → return null on
+  // failure), so the userId passed to getHistoricalPriceInputsForOwner is a
+  // verified owner_id. The wrapper owns graceful degradation (catch → empty
+  // inputs + Sentry) AND React-cache()-dedups with the identical call inside
+  // getHistoricalBenchmarkExtension(owner_id) in the same share render — one
+  // fetchHistoricalPriceInputsFor execution instead of two.
+  const [manualInputs, historicalInputs] = await Promise.all([
+    fetchManualNavInputsFor(admin, userId),
+    getHistoricalPriceInputsForOwner(userId),
+  ]);
+  const withManual = manualInputs.positions.length > 0
     ? augmentSnapshotsWithManualNavs(snapshots, manualInputs.positions, manualInputs.navs)
     : snapshots;
+  const augmentedSnapshots = augmentAndExtendSnapshots(
+    withManual,
+    historicalInputs.lots,
+    historicalInputs.prices,
+  );
 
   // ── Snapshot lookups for change calculations ──────────
   // Snapshot lookups use `findSnapshotAt` (binary search, O(log n) per call).
@@ -246,4 +323,4 @@ export const getSharedPortfolio = cache(async function getSharedPortfolio(
     // "All" = earliest snapshot (snapshots array is now all-time)
     snapAll: augmentedSnapshots.length > 0 ? augmentedSnapshots[0] : null,
   };
-});
+}

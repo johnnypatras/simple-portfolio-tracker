@@ -5,7 +5,7 @@
  * FX decomposition, and deposit sums from snapshots and cash flows.
  */
 
-import type { PortfolioSnapshot, AssetClass, CashFlowEvent, BaseCurrency, AdjustmentDelta } from "@/lib/types";
+import type { PortfolioSnapshot, AssetClass, CashFlowEvent, RealCashFlowEvent, BaseCurrency } from "@/lib/types";
 import { MIN_BREAKDOWN_DISPLAY_VALUE } from "@/lib/constants";
 
 // ── Types ──────────────────────────────────────────────────
@@ -59,7 +59,6 @@ export interface ChangeContext {
   cryptoChange24hPercent: number;
   pastSnapshots: Record<string, PortfolioSnapshot | null>;
   cashFlows: CashFlowEvent[];
-  adjustmentDeltas: AdjustmentDelta[];
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -111,40 +110,6 @@ export function deriveClassFx(
   return { fxPct, fxAbs, pastClassEur };
 }
 
-/** Cumulative delta at a given date (forward-fill). */
-export function getCumDeltaAtDate(
-  date: string,
-  deltas: AdjustmentDelta[],
-  primaryCurrency: BaseCurrency,
-  assetClass?: "crypto" | "stocks" | "cash",
-): number {
-  let result = 0;
-  for (const d of deltas) {
-    if (d.date > date) break;
-    result = assetClass
-      ? (primaryCurrency === "EUR"
-          ? d[`${assetClass}_cumulative_eur`]
-          : d[`${assetClass}_cumulative_usd`])
-      : (primaryCurrency === "EUR" ? d.cumulative_eur : d.cumulative_usd);
-  }
-  return result;
-}
-
-/** Final cumulative delta (last entry). */
-export function getCumDeltaFinal(
-  deltas: AdjustmentDelta[],
-  primaryCurrency: BaseCurrency,
-  assetClass?: "crypto" | "stocks" | "cash",
-): number {
-  if (deltas.length === 0) return 0;
-  const d = deltas[deltas.length - 1];
-  return assetClass
-    ? (primaryCurrency === "EUR"
-        ? d[`${assetClass}_cumulative_eur`]
-        : d[`${assetClass}_cumulative_usd`])
-    : (primaryCurrency === "EUR" ? d.cumulative_eur : d.cumulative_usd);
-}
-
 // ── Main functions ─────────────────────────────────────────
 
 /** Total portfolio change for the given period. */
@@ -164,30 +129,24 @@ export function getChangeForPeriod(
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
 
-  const deltas = ctx.adjustmentDeltas;
-  const snapshotDate = snapshot.snapshot_date;
   const valueKey = ctx.primaryCurrency === "EUR" ? "total_value_eur" : "total_value_usd";
   const otherKey = ctx.primaryCurrency === "EUR" ? "total_value_usd" : "total_value_eur";
-  const otherCurrency: BaseCurrency = ctx.primaryCurrency === "EUR" ? "USD" : "EUR";
   const currentValueOther = ctx.primaryCurrency === "EUR" ? ctx.totalValueUsd : ctx.totalValueEur;
 
-  const rawPastValue = snapshot[valueKey] ?? 0;
-
-  // Adjustment compensation: add back not-yet-imported value
-  // (must run before the zero-check — rawPast can be 0 pre-import but adjusted > 0)
-  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, ctx.primaryCurrency);
-  const finalCum = getCumDeltaFinal(deltas, ctx.primaryCurrency);
-  const pastValue = rawPastValue + (finalCum - cumAtSnapshot);
+  // pastValue is the AUGMENTED snapshot value: post-Phase-4 the period
+  // snapshots come from getSnapshots → augmentAndExtendSnapshots, so backdated
+  // crypto/stock/cash lots already contribute their reconstructed value at this
+  // date. The `<= 0` guard therefore does NOT mean "no back-fill" — it catches a
+  // genuinely-empty past portfolio (brand-new account, or no holdings yet as of
+  // N days ago), returning "—" instead of a meaningless +∞% from a zero base.
+  const pastValue = snapshot[valueKey] ?? 0;
 
   if (pastValue <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
 
   const primaryReturn = ((ctx.totalValue - pastValue) / pastValue) * 100;
 
-  // FX decomposition — also adjust the other currency past value
-  const rawPastOther = snapshot[otherKey] ?? 0;
-  const cumAtSnapshotOther = getCumDeltaAtDate(snapshotDate, deltas, otherCurrency);
-  const finalCumOther = getCumDeltaFinal(deltas, otherCurrency);
-  const pastOther = rawPastOther + (finalCumOther - cumAtSnapshotOther);
+  // FX decomposition — compare directly against snapshot values
+  const pastOther = snapshot[otherKey] ?? 0;
 
   let fxPct = 0;
   if (pastOther > 0 && currentValueOther > 0) {
@@ -223,13 +182,9 @@ export function getCryptoChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  const rawPastUsd = snapshot.crypto_value_usd ?? 0;
-  const deltas = ctx.adjustmentDeltas;
-  const snapshotDate = snapshot.snapshot_date;
-  // Force "USD" — rawPastUsd is always from *_value_usd columns, so deltas must match
-  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "crypto");
-  const finalCum = getCumDeltaFinal(deltas, "USD", "crypto");
-  const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
+  // pastUsd is the augmented snapshot crypto value; `<= 0` means no crypto
+  // existed at this date (new account / no holdings yet), not "no back-fill".
+  const pastUsd = snapshot.crypto_value_usd ?? 0;
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
     ctx.cryptoValue, ctx.cryptoValueUsd, ctx.cryptoValueEur, pastUsd, snapshot, ctx.primaryCurrency,
@@ -255,13 +210,9 @@ export function getStockChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  const rawPastUsd = snapshot.stocks_value_usd ?? 0;
-  const deltas = ctx.adjustmentDeltas;
-  const snapshotDate = snapshot.snapshot_date;
-  // Force "USD" — rawPastUsd is always from *_value_usd columns, so deltas must match
-  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "stocks");
-  const finalCum = getCumDeltaFinal(deltas, "USD", "stocks");
-  const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
+  // pastUsd is the augmented snapshot stocks value; `<= 0` means no stocks
+  // existed at this date (new account / no holdings yet), not "no back-fill".
+  const pastUsd = snapshot.stocks_value_usd ?? 0;
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
     ctx.stocksValue, ctx.stocksValueUsd, ctx.stocksValueEur, pastUsd, snapshot, ctx.primaryCurrency,
@@ -288,13 +239,9 @@ export function getCashChangeForPeriod(
   }
   const snapshot = ctx.pastSnapshots[period];
   if (!snapshot) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
-  const rawPastUsd = snapshot.cash_value_usd ?? 0;
-  const deltas = ctx.adjustmentDeltas;
-  const snapshotDate = snapshot.snapshot_date;
-  // Force "USD" — rawPastUsd is always from *_value_usd columns, so deltas must match
-  const cumAtSnapshot = getCumDeltaAtDate(snapshotDate, deltas, "USD", "cash");
-  const finalCum = getCumDeltaFinal(deltas, "USD", "cash");
-  const pastUsd = rawPastUsd + (finalCum - cumAtSnapshot);
+  // pastUsd is the augmented snapshot cash value; `<= 0` means no cash existed
+  // at this date (new account / no holdings yet), not "no back-fill".
+  const pastUsd = snapshot.cash_value_usd ?? 0;
   if (pastUsd <= 0) return { percent: 0, valueChange: 0, available: false, fxPercent: 0, fxValueChange: 0 };
   const { fxPct, fxAbs, pastClassEur } = deriveClassFx(
     ctx.cashValue, ctx.cashValueUsd, ctx.cashValueEur, pastUsd, snapshot, ctx.primaryCurrency,
@@ -335,7 +282,16 @@ export function computeDeposits(
   };
   const cutoff = new Date(now.getTime() - msMap[period]);
   cutoff.setUTCHours(0, 0, 0, 0);
-  const filtered = cashFlows.filter(
+  // Strip synthetic benchmark-only flows BEFORE date/class filtering. These are
+  // produced by buildBenchmarkCashFlows for is_adjustment backdated lots so the
+  // S&P benchmark line has cash flows to replay; they were never real deposits
+  // and would otherwise surface in the deposit tooltip as "Unknown" entries.
+  // Typed guard (not a plain predicate): TS narrows the union through
+  // `f is RealCashFlowEvent`, so `f.entity_name` below is accessible without a
+  // cast. A plain `f => !f.synthetic` predicate would leave the result typed
+  // as CashFlowEvent[] and make the entity_name read a compile error.
+  const realFlows = cashFlows.filter((f): f is RealCashFlowEvent => !f.synthetic);
+  const filtered = realFlows.filter(
     f => new Date(f.date) >= cutoff && (!filterClass || f.asset_class === filterClass)
   );
   const amt = (f: CashFlowEvent): number =>

@@ -37,6 +37,7 @@ import { backdateActivityEntry, unsplitActivityEntry } from "@/lib/actions/split
 import { undoActivity } from "@/lib/actions/undo";
 import { backfillSingleRow } from "@/lib/actions/backfill";
 import { useSharedView } from "@/components/shared-view-context";
+import { IS_ADJUSTMENT_TOOLTIP_TEXT, IS_ADJUSTMENT_TOGGLE_ON_LABEL, IS_ADJUSTMENT_TOGGLE_OFF_LABEL } from "@/lib/constants";
 
 // ─── Props ──────────────────────────────────────────────
 
@@ -571,7 +572,7 @@ export function ActivityTimeline({
     try {
       await toggleActivityAdjustment(logId, isAdjustment);
       startTransition(() => { router.refresh(); });
-      toast.success(isAdjustment ? "Marked as adjustment" : "Marked as transaction");
+      toast.success(isAdjustment ? "Marked as adjustment" : "Marked as cash flow");
     } catch {
       toast.error("Failed to update");
     }
@@ -832,7 +833,7 @@ export function ActivityTimeline({
                                   Split
                                 </span>
                                 {parent.is_adjustment && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title="Not a real transaction — portfolio balance correction">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                                     Adj.
                                   </span>
                                 )}
@@ -957,7 +958,7 @@ export function ActivityTimeline({
                               </span>
                             )}
                             {!log.transfer_group_id && !log.compensates_for && log.is_adjustment && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title="Not a real transaction — portfolio balance correction">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/15 text-amber-400" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>
                                 Adj.
                               </span>
                             )}
@@ -1040,16 +1041,20 @@ export function ActivityTimeline({
                               <GitBranch className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {!isReadOnly && !log.undone_at && CASH_FLOW_ENTITIES.includes(log.entity_type) && (
+                          {/* Transfer legs are excluded (H4-UI): they must stay
+                              is_adjustment=true, and the server action now throws
+                              if toggled — never offer a UI action that would error. */}
+                          {!isReadOnly && !log.undone_at && !log.transfer_group_id && CASH_FLOW_ENTITIES.includes(log.entity_type) && (
                             <button
                               onClick={() => handleToggleAdjustment(log.id, !log.is_adjustment)}
+                              aria-pressed={log.is_adjustment}
                               className={`p-1 rounded transition-all ${
                                 log.is_adjustment
                                   ? "text-amber-400 bg-amber-500/10"
                                   : "md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800"
                               }`}
-                              aria-label={log.is_adjustment ? "Marked as adjustment — click to count as transaction" : "Mark as portfolio adjustment"}
-                              title={log.is_adjustment ? "Marked as adjustment — click to count as transaction" : "Mark as portfolio adjustment"}
+                              aria-label={log.is_adjustment ? IS_ADJUSTMENT_TOGGLE_ON_LABEL : IS_ADJUSTMENT_TOGGLE_OFF_LABEL}
+                              title={log.is_adjustment ? IS_ADJUSTMENT_TOGGLE_ON_LABEL : IS_ADJUSTMENT_TOGGLE_OFF_LABEL}
                             >
                               <SlidersHorizontal className="w-3.5 h-3.5" />
                             </button>

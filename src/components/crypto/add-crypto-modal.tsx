@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
 import type { CoinGeckoSearchResult, Wallet, AcquisitionType } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains, getWalletChainTokens } from "@/lib/types";
+import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
 interface ExistingCryptoEntry {
   coingecko_id: string;
@@ -622,7 +623,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
                 onChange={(e) => setEffectiveDate(e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
               />
-              <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
+              <p className="text-xs text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
             </div>
 
             {error && (
@@ -631,15 +632,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
               </p>
             )}
 
-            <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
-              <input
-                type="checkbox"
-                checked={isAdjustment}
-                onChange={(e) => setIsAdjustment(e.target.checked)}
-                className="accent-amber-500"
-              />
-              Portfolio adjustment
-            </label>
+            <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="crypto" />
 
             <button
               type="submit"

@@ -8,6 +8,7 @@ import { addManualNavAsset } from "@/lib/actions/manual-nav";
 import { upsertStockPosition } from "@/lib/actions/stocks";
 import { MAX_NAV_NOTE_LENGTH } from "@/lib/constants";
 import type { AssetCategory, Broker } from "@/lib/types";
+import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
 interface AddManualNavModalProps {
   open: boolean;
@@ -549,7 +550,7 @@ export function AddManualNavModal({
             onChange={(e) => setEffectiveDate(e.target.value)}
             className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
           />
-          <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
+          <p className="text-xs text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 
         {navGapWarning && (
@@ -564,15 +565,7 @@ export function AddManualNavModal({
           </p>
         )}
 
-        <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none" title="Not a real transaction — portfolio balance correction">
-          <input
-            type="checkbox"
-            checked={isAdjustment}
-            onChange={(e) => setIsAdjustment(e.target.checked)}
-            className="accent-amber-500"
-          />
-          Portfolio adjustment
-        </label>
+        <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="manual-nav" />
 
         <button
           type="submit"

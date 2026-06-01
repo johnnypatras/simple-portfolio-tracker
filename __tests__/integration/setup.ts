@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { execFileSync } from "child_process";
+import { randomUUID } from "crypto";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,30 +67,43 @@ export async function createTestUser(email?: string): Promise<{
   cleanup: () => void;
 }> {
   const config = getLocalConfig();
-  const testEmail = email ?? `test-${Date.now()}@test.local`;
   const password = "testpassword123";
 
   const userClient = createClient(config.API_URL, config.ANON_KEY);
 
-  // signUp creates the user and auto-confirms email on local Supabase.
-  // Retry once on "Database error" — concurrent signups in parallel test files
-  // can transiently fail under load.
-  let data, error;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    ({ data, error } = await userClient.auth.signUp({
+  // signUp creates the user and auto-confirms email on local Supabase. Under
+  // parallel test load (8 files signing up concurrently) two failures are
+  // transient and clear on retry:
+  //   • "Database error"        — GoTrue signup contention under load.
+  //   • "...already registered" — email collision. `Date.now()` has 1ms
+  //     resolution, so two workers in the same tick produced identical emails.
+  // When we own the address (no explicit `email` arg) we regenerate a
+  // UUID-keyed address each attempt, so a collision cannot recur; an explicit
+  // email is reused as-is (the caller owns its uniqueness). Retry up to 4×
+  // with linear backoff.
+  let userId = "";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const testEmail = email ?? `test-${Date.now()}-${randomUUID()}@test.local`;
+    const { data, error } = await userClient.auth.signUp({
       email: testEmail,
       password,
-    }));
-    if (!error) break;
-    if (attempt === 0 && error.message.includes("Database error")) {
-      await new Promise((r) => setTimeout(r, 500));
+    });
+    if (!error && data.user) {
+      userId = data.user.id;
+      break;
+    }
+    const msg = error?.message ?? "signUp returned no user";
+    const transient =
+      msg.includes("Database error") || msg.includes("already registered");
+    if (attempt < 3 && transient) {
+      await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
       continue;
     }
-    throw new Error("Failed to sign up test user: " + error.message);
+    throw new Error("Failed to sign up test user: " + msg);
   }
-  if (error) throw new Error("Failed to sign up test user: " + error.message);
-  if (!data?.user) throw new Error("signUp returned no user");
-  const userId = data.user.id;
+  if (!userId) {
+    throw new Error("Failed to sign up test user: exhausted retries");
+  }
 
   // Activate the user — is_active_user() RLS check blocks pending users from all operations.
   // The auth trigger creates the profile row, but we need to wait for it.

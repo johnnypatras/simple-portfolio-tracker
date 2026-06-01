@@ -12,7 +12,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { Layers, TrendingUp, Info, BarChart3, Percent } from "lucide-react";
-import type { PortfolioSnapshot, CashFlowEvent, AdjustmentDelta, BaseCurrency } from "@/lib/types";
+import type { PortfolioSnapshot, CashFlowEvent, BaseCurrency } from "@/lib/types";
 import { fmtCurrencyCompact } from "@/lib/format";
 import { enrichChartData } from "@/lib/portfolio/chart-enrichment";
 import type { ChartViewMode, ChartPoint } from "@/lib/portfolio/chart-enrichment";
@@ -26,7 +26,6 @@ interface PortfolioChartProps {
   primaryCurrency: BaseCurrency;
   sp500History?: { date: string; close: number }[];
   cashFlows?: CashFlowEvent[];
-  adjustmentDeltas?: AdjustmentDelta[];
   liveSlicesUsd?: { crypto: number; stocks: number; cash: number };
   /** When true, chart defaults to cumulative % return mode */
   defaultReturnMode?: boolean;
@@ -92,6 +91,22 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+/** X-axis tick format for multi-year spans — "Sep 2022" (month + year, drops
+ *  day-of-month since at multi-year scale ticks land on different months anyway).
+ *  Avoids the "Sep 22" ambiguity (Sept 22nd? 2022?) that surfaces once the chart
+ *  back-extends across calendar years. */
+function formatTickWithYear(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+/** Tooltip date — always includes the year so the on-hover readout is precise
+ *  regardless of the selected period. */
+function formatTooltipDate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function PortfolioChart({
   snapshots,
   liveValue,
@@ -99,7 +114,6 @@ export function PortfolioChart({
   primaryCurrency,
   sp500History = [],
   cashFlows = [],
-  adjustmentDeltas = [],
   liveSlicesUsd,
   defaultReturnMode = false,
   pendingCount = 0,
@@ -112,8 +126,6 @@ export function PortfolioChart({
   const [viewMode, setViewMode] = useState<ChartViewMode>("total");
   const [returnMode, setReturnMode] = useState(defaultReturnMode);
   const period = PERIODS[periodIdx];
-
-  const hasDeltas = adjustmentDeltas.length > 0;
 
   const valueKey =
     primaryCurrency === "EUR" ? "total_value_eur" : "total_value_usd";
@@ -193,30 +205,28 @@ export function PortfolioChart({
       primaryCurrency,
       sp500History,
       cashFlows,
-      adjustmentDeltas,
       snapshotRatios,
     });
-  }, [snapshots, liveValue, liveValueUsd, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, adjustmentDeltas, viewMode]);
+  }, [snapshots, liveValue, liveValueUsd, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, viewMode]);
 
   // Use the active dataKey for y-axis domain.
   // Note: uses a reduce loop instead of `Math.min(...arr)` spread to avoid
   // V8 call-stack overflow if `data` grows to tens of thousands of points
-  // (MAX_SNAPSHOTS_LIMIT = 100_000 caps fetch size).
+  // (snapshots are fetched via full pagination, so the series is unbounded).
   const yDomain = useMemo(() => {
     if (data.length === 0) return [0, 100] as const;
     let minValue = Infinity;
     let maxValue = -Infinity;
     for (const d of data) {
-      const v = (hasDeltas ? d.adjustedValue : d.value) ?? d.value;
-      if (v < minValue) minValue = v;
-      if (v > maxValue) maxValue = v;
+      if (d.value < minValue) minValue = d.value;
+      if (d.value > maxValue) maxValue = d.value;
       if (showBenchmark && d.sp500Value != null) {
         if (d.sp500Value < minValue) minValue = d.sp500Value;
         if (d.sp500Value > maxValue) maxValue = d.sp500Value;
       }
     }
     return [Math.floor(minValue * 0.99), Math.ceil(maxValue * 1.01)] as const;
-  }, [data, hasDeltas, showBenchmark]);
+  }, [data, showBenchmark]);
 
   // Compute allocation area fields relative to yDomain baseline.
   // Uses overlapping (non-stacked) areas: each fills from yDomain[0] to its value.
@@ -224,16 +234,15 @@ export function PortfolioChart({
   const chartData = useMemo(() => {
     const base = yDomain[0];
     return data.map((p) => {
-      const dv = hasDeltas ? (p.adjustedValue ?? p.value) : p.value;
-      const range = Math.max(dv - base, 0);
+      const range = Math.max(p.value - base, 0);
       return {
         ...p,
-        allocCrypto: dv,
+        allocCrypto: p.value,
         allocStocks: base + range * (p.cashPct + p.stocksPct) / 100,
         allocCash: base + range * p.cashPct / 100,
       };
     });
-  }, [data, yDomain, hasDeltas]);
+  }, [data, yDomain]);
 
   // ── % Return mode transformation ──
   // Converts absolute values to cumulative % return from the first visible point.
@@ -244,15 +253,14 @@ export function PortfolioChart({
     const first = chartData[0];
     if (!first) return { finalData: chartData, finalYDomain: yDomain };
 
-    const baseVal = hasDeltas ? (first.adjustedValue ?? first.value) : first.value;
+    const baseVal = first.value;
     const baseSp500 = first.sp500Value;
 
     const toPct = (v: number, base: number) =>
       base > 0 ? ((v - base) / base) * 100 : 0;
 
     const transformed = chartData.map((p) => {
-      const val = hasDeltas ? (p.adjustedValue ?? p.value) : p.value;
-      const pctReturn = toPct(val, baseVal);
+      const pctReturn = toPct(p.value, baseVal);
       const sp500Pct =
         baseSp500 != null && baseSp500 > 0 && p.sp500Value != null
           ? toPct(p.sp500Value, baseSp500)
@@ -261,11 +269,6 @@ export function PortfolioChart({
       return {
         ...p,
         value: pctReturn,
-        adjustedValue: pctReturn,
-        rawValue:
-          p.rawValue != null && baseVal > 0
-            ? toPct(p.rawValue, baseVal)
-            : undefined,
         sp500Value: sp500Pct,
         // Allocation areas not meaningful as percentages
         allocCrypto: 0,
@@ -293,7 +296,13 @@ export function PortfolioChart({
         Math.ceil(Math.max(maxVal + 1, 1)),
       ] as const,
     };
-  }, [chartData, yDomain, returnMode, hasDeltas, showBenchmark]);
+  }, [chartData, yDomain, returnMode, showBenchmark]);
+
+  // X-axis tick year handling: only inject the year when the visible range
+  // actually crosses calendar years (multi-year "All" view with backdating).
+  // Sub-year views (24H/30D/90D/1Y in-year) keep the compact "MMM D" format.
+  const crossesYears = chartData.length >= 2 &&
+    chartData[0].date.slice(0, 4) !== chartData[chartData.length - 1].date.slice(0, 4);
 
   // Are we showing stacked allocation areas? Only in total view with allocation ON, not in % return mode
   const showStackedAlloc = showAllocation && viewMode === "total" && !returnMode;
@@ -431,7 +440,7 @@ export function PortfolioChart({
             </defs>
             <XAxis
               dataKey="date"
-              tickFormatter={formatDate}
+              tickFormatter={crossesYears ? formatTickWithYear : formatDate}
               tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
               axisLine={false}
               tickLine={false}
@@ -456,17 +465,12 @@ export function PortfolioChart({
                 const point = payload[0].payload as {
                   date: string;
                   value: number;
-                  adjustedValue?: number;
-                  rawValue?: number;
                   sp500Value?: number;
                   cryptoPct: number;
                   stocksPct: number;
                   cashPct: number;
                 };
-                const displayValue =
-                  hasDeltas
-                    ? (point.adjustedValue ?? point.value)
-                    : point.value;
+                const displayValue = point.value;
                 const fmtVal = (v: number) =>
                   returnMode
                     ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`
@@ -474,7 +478,7 @@ export function PortfolioChart({
                 return (
                   <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 shadow-lg">
                     <p className="text-xs text-zinc-400">
-                      {formatDate(point.date)}
+                      {formatTooltipDate(point.date)}
                     </p>
                     <p className="text-sm font-medium text-zinc-100">
                       {viewMode !== "total" && (
@@ -492,11 +496,6 @@ export function PortfolioChart({
                         );
                       })()}
                     </p>
-                    {!returnMode && hasDeltas && point.rawValue != null && Math.abs(point.rawValue - displayValue) > 0.5 && (
-                      <p className="text-[10px] text-zinc-400 mt-0.5">
-                        Raw: {fmtCurrencyCompact(point.rawValue, primaryCurrency)}
-                      </p>
-                    )}
                     {showBenchmark && point.sp500Value != null && (
                       <p className="text-xs text-zinc-400 mt-0.5">
                         S&P 500 TR {fmtVal(point.sp500Value)}
@@ -567,7 +566,7 @@ export function PortfolioChart({
             <Area
               yAxisId="value"
               type="monotone"
-              dataKey={hasDeltas ? "adjustedValue" : "value"}
+              dataKey="value"
               stroke={VIEW_MODE_COLORS[viewMode]}
               strokeWidth={2}
               fill={showStackedAlloc ? "none" : VIEW_MODE_GRADIENTS[viewMode]}

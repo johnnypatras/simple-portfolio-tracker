@@ -31,9 +31,13 @@ export default async function StocksPage() {
   const uniqueCurrencies = [...new Set(["USD", "EUR", ...assets.map((a) => a.currency)])];
   const supabase = await createServerSupabaseClient();
   const today = new Date().toISOString().slice(0, 10);
-  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, manualNavs] = await Promise.all([
+  // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
+  // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
+  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, manualNavs] = await Promise.all([
     getStockAndIndexPrices(yahooTickers),
     getFXRatesSafe(cur, uniqueCurrencies),
+    getFXRatesSafe("USD", uniqueCurrencies.filter((c) => c !== "USD")),
+    getFXRatesSafe("EUR", uniqueCurrencies.filter((c) => c !== "EUR")),
     manualStockAssets.length > 0 ? getLatestManualNavsAt(supabase, today) : Promise.resolve([]),
   ]);
   injectManualNavPrices(manualStockAssets, manualNavs, prices);
@@ -48,6 +52,8 @@ export default async function StocksPage() {
     cashAccounts: [],
     primaryCurrency: cur,
     fxRates,
+    fxRatesUsd,
+    fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
   });
 

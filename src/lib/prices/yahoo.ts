@@ -464,19 +464,27 @@ export async function fetchIndexHistory(
     if (!result) return [];
 
     // Defensive: if Yahoo ever silently downgrades granularity again (the
-    // exact failure mode that motivated this rewrite), surface it loudly
-    // rather than producing a chart with a phantom step at every coarser
-    // bucket boundary.
+    // exact failure mode that motivated this rewrite), surface it loudly AND
+    // refuse the data — returning coarser-than-daily closes would produce a
+    // chart with a phantom step at every coarser bucket boundary (the original
+    // +13% Q1→Q2 jump). Mirrors fetchYahooDailyHistory's contract: reject
+    // downsampled history and let the benchmark contribute nothing for the
+    // uncovered range rather than a false jump.
     const granularity = result.meta?.dataGranularity;
     if (granularity && granularity !== "1d") {
-      const msg = `[yahoo] Unexpected dataGranularity "${granularity}" for ${ticker} (expected "1d") — benchmark chart may show false jumps`;
+      const msg = `[yahoo] Unexpected dataGranularity "${granularity}" for ${ticker} (expected "1d") — refusing downsampled benchmark history`;
       console.error(msg);
       try {
         const Sentry = await import("@sentry/nextjs");
-        Sentry.captureMessage(msg, "warning");
+        Sentry.captureMessage(msg, {
+          level: "warning",
+          tags: { phase: "yahoo_index_history" },
+          extra: { ticker, granularity },
+        });
       } catch {
         // Sentry unavailable in tests / non-prod — log already happened
       }
+      return [];
     }
 
     const timestamps: number[] = result.timestamp ?? [];
