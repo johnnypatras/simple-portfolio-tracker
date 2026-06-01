@@ -1,4 +1,5 @@
 import { getCashAccounts } from "@/lib/actions/cash-accounts";
+import { getInstitutionsWithRoles } from "@/lib/actions/institutions";
 import { getProfile } from "@/lib/actions/profile";
 import { getCryptoAssetsWithPositions } from "@/lib/actions/crypto";
 import { deriveCashFlows } from "@/lib/actions/benchmark";
@@ -12,12 +13,13 @@ import { MobileMenuButton } from "@/components/sidebar";
 import { isStablecoin } from "@/lib/cashflow";
 
 export default async function CashPage() {
-  const [cashAccounts, profile, cryptoAssets, cashFlowResult] =
+  const [cashAccounts, profile, cryptoAssets, cashFlowResult, institutions] =
     await Promise.all([
       getCashAccounts(),
       getProfile(),
       getCryptoAssetsWithPositions(),
       deriveCashFlows(),
+      getInstitutionsWithRoles(),
     ]);
 
   const cashFlows = cashFlowResult.events;
@@ -81,6 +83,7 @@ export default async function CashPage() {
         fxValueChange24h={summary.cashTotalFxValueChange24h}
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
+        institutions={institutions}
       />
     </div>
   );

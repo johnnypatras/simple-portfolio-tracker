@@ -96,9 +96,41 @@ vi.mock("@/lib/validation", () => ({
 }));
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
-import { mergeCashAccounts, findExistingCash, updateCashAccount } from "@/lib/actions/cash-accounts";
+import { mergeCashAccounts, findExistingCash, updateCashAccount, createCashAccount } from "@/lib/actions/cash-accounts";
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
+
+describe("createCashAccount — bank must have an institution (orphan guard)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // auth.getUser() resolves a user; the guard throws before any DB write,
+    // so no preset .from() results are needed for the throwing cases.
+    hoisted.mockClient = createMockClient([]);
+  });
+
+  it("throws when a bank-origin account has no institution (and no wallet/broker)", async () => {
+    await expect(
+      createCashAccount({ currency: "EUR", balance: 100 }),
+    ).rejects.toThrow("A bank account must have a bank");
+  });
+
+  it("throws even when a name is provided but no bank", async () => {
+    await expect(
+      createCashAccount({ currency: "EUR", balance: 100, name: "Savings" }),
+    ).rejects.toThrow(/must have a bank/);
+  });
+
+  it("does NOT apply the guard to a wallet deposit (institution legitimately absent)", async () => {
+    // A wallet/broker deposit has no institution_id by design. The guard must
+    // not fire — the call proceeds PAST it to the insert, which (with the empty
+    // mock returning a null row) fails downstream with a DIFFERENT error. That
+    // distinct failure proves the institution guard was skipped for deposits.
+    await expect(
+      createCashAccount({ currency: "EUR", balance: 100, wallet_id: "11111111-2222-3333-4444-555555555555" }),
+    ).rejects.toThrow(/Failed to create cash account/);
+  });
+});
+
 describe("mergeCashAccounts", () => {
   beforeEach(() => {
     vi.clearAllMocks();

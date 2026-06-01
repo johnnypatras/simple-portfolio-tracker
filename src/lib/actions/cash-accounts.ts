@@ -262,6 +262,15 @@ export async function createCashAccount(
   if (input.wallet_id) validateUUID(input.wallet_id, "Wallet ID");
   if (input.broker_id) validateUUID(input.broker_id, "Broker ID");
 
+  // A bank-origin cash account (not an exchange/broker deposit) MUST belong to
+  // an institution. Without this guard, a context-free "Add Cash" creates an
+  // orphan that renders as "Unknown Bank" and is invisible in the Accounts tab.
+  // Defense-in-depth: the modal also requires a bank, but this blocks any
+  // caller (API/import/bug) from persisting an institution-less bank account.
+  if (!input.wallet_id && !input.broker_id && !input.institution_id) {
+    throw new Error("A bank account must have a bank — please select or create one.");
+  }
+
   // Normalize empty name to null
   const normalizedName = input.name?.trim() || null;
   if (normalizedName) validateName(normalizedName, 100, "Account name");
