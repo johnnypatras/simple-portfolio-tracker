@@ -34,6 +34,7 @@ function createQueryBuilder(resolveValue: unknown) {
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     single: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockReturnThis(),
     then<TResult1 = unknown, TResult2 = never>(
       onfulfilled?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -96,9 +97,53 @@ vi.mock("@/lib/validation", () => ({
 }));
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
-import { mergeCashAccounts, findExistingCash, updateCashAccount } from "@/lib/actions/cash-accounts";
+import { mergeCashAccounts, findExistingCash, updateCashAccount, createCashAccount } from "@/lib/actions/cash-accounts";
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
+
+describe("createCashAccount — bank must have an institution (orphan guard)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // auth.getUser() resolves a user; the guard throws before any DB write,
+    // so no preset .from() results are needed for the throwing cases.
+    hoisted.mockClient = createMockClient([]);
+  });
+
+  it("throws when a bank-origin account has no institution (and no wallet/broker)", async () => {
+    await expect(
+      createCashAccount({ currency: "EUR", balance: 100 }),
+    ).rejects.toThrow("A bank account must have a bank");
+  });
+
+  it("throws even when a name is provided but no bank", async () => {
+    await expect(
+      createCashAccount({ currency: "EUR", balance: 100, name: "Savings" }),
+    ).rejects.toThrow(/must have a bank/);
+  });
+
+  it("does NOT apply the guard to a wallet deposit — proceeds to a successful insert", async () => {
+    // A wallet/broker deposit has no institution_id by design. The guard must
+    // not fire: with a successful insert mock the call RESOLVES (a positive
+    // assertion — if the guard wrongly fired it would reject with "must have a
+    // bank", which can never resolve). Stronger than asserting a downstream error.
+    hoisted.mockClient = createMockClient([
+      { data: { id: "dep-1", balance: 100, currency: "EUR" }, error: null }, // insert
+    ]);
+    await expect(
+      createCashAccount({ currency: "EUR", balance: 100, wallet_id: "11111111-2222-3333-4444-555555555555" }),
+    ).resolves.toBe("dep-1");
+  });
+
+  it("does NOT apply the guard to a broker deposit either", async () => {
+    hoisted.mockClient = createMockClient([
+      { data: { id: "dep-2", balance: 50, currency: "USD" }, error: null }, // insert
+    ]);
+    await expect(
+      createCashAccount({ currency: "USD", balance: 50, broker_id: "22222222-3333-4444-5555-666666666666" }),
+    ).resolves.toBe("dep-2");
+  });
+});
+
 describe("mergeCashAccounts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -285,6 +330,9 @@ describe("mergeCashAccounts", () => {
     // Track how updateCashAccount is called by intercepting createServerSupabaseClient.
     // Each call to updateCashAccount/deleteCashAccount gets a fresh client.
     const updateClient = createMockClient([
+      // institution ownership check (runs first in updateCashAccount when an
+      // institution_id is supplied) → returns a row = caller owns it
+      { data: { id: "inst-A" }, error: null },
       // before snapshot fetch
       { data: { id: "surv-id", balance: 6500, currency: "EUR" }, error: null },
       // update query
@@ -331,12 +379,14 @@ describe("mergeCashAccounts", () => {
       "aaaaaaaa-0000-0000-0000-000000000002",
     );
 
-    // Verify updateCashAccount was called — the update client's from() should have been invoked
-    // The update client's .from() is called for: before fetch, update, after fetch, display names
+    // Verify updateCashAccount was called — the update client's from() should have been invoked.
+    // The update client's .from() is called for: institution ownership check,
+    // before fetch, update, after fetch, display names.
     expect(updateClient.from).toHaveBeenCalled();
 
-    // The second .from() call is the update — check that .update() was called on its builder
-    const updateBuilder = updateClient.from.mock.results[1]?.value;
+    // The THIRD .from() call is the update (index 2: after the ownership check
+    // and the before-snapshot fetch) — check that .update() was called on it.
+    const updateBuilder = updateClient.from.mock.results[2]?.value;
     expect(updateBuilder.update).toHaveBeenCalled();
 
     // Verify the balance in the update call: the update builder's update() should receive { balance: 7000, ... }

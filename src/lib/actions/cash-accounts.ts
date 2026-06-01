@@ -262,6 +262,31 @@ export async function createCashAccount(
   if (input.wallet_id) validateUUID(input.wallet_id, "Wallet ID");
   if (input.broker_id) validateUUID(input.broker_id, "Broker ID");
 
+  // A bank-origin cash account (not an exchange/broker deposit) MUST belong to
+  // an institution. Without this guard, a context-free "Add Cash" creates an
+  // orphan that renders as "Unknown Bank" and is invisible in the Accounts tab.
+  // Defense-in-depth: the modal also requires a bank, but this blocks any
+  // caller (API/import/bug) from persisting an institution-less bank account.
+  if (!input.wallet_id && !input.broker_id && !input.institution_id) {
+    throw new Error("A bank account must have a bank — please select or create one.");
+  }
+
+  // Ownership: the FK only checks an institution EXISTS globally, and RLS on
+  // cash_accounts scopes the row's OWNER — neither stops a direct server-action
+  // call from linking to ANOTHER user's institution_id (the bank picker is the
+  // first path that lets a raw client-chosen id reach the insert). Verify with
+  // an RLS-scoped read, mirroring the ownership checks in institutions.ts.
+  if (input.institution_id) {
+    const { data: ownsInstitution } = await supabase
+      .from("institutions")
+      .select("id")
+      .eq("id", input.institution_id)
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!ownsInstitution) throw new Error("Institution not found");
+  }
+
   // Normalize empty name to null
   const normalizedName = input.name?.trim() || null;
   if (normalizedName) validateName(normalizedName, 100, "Account name");
@@ -359,6 +384,19 @@ export async function updateCashAccount(
   if (input.institution_id) validateUUID(input.institution_id, "Institution ID");
   if (input.wallet_id) validateUUID(input.wallet_id, "Wallet ID");
   if (input.broker_id) validateUUID(input.broker_id, "Broker ID");
+
+  // Ownership check when (re)assigning an institution — e.g. the orphan-fix
+  // edit path. Mirrors createCashAccount; see the rationale there.
+  if (input.institution_id) {
+    const { data: ownsInstitution } = await supabase
+      .from("institutions")
+      .select("id")
+      .eq("id", input.institution_id)
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!ownsInstitution) throw new Error("Institution not found");
+  }
 
   // Normalize inputs once; partialUpdate() strips `undefined` keys so that
   // "not provided" is distinguished from "explicitly null". A caller that
