@@ -443,5 +443,44 @@ describe("CashAccountModal — bank picker (orphan fix)", () => {
     const [id, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
     expect(id).toBe("ca-1");
     expect(input).toMatchObject({ institution_id: "inst-alpha" });
+    // Picked an EXISTING bank → must not create a new institution.
+    expect(vi.mocked(instActions.findOrCreateInstitution)).not.toHaveBeenCalled();
+  });
+
+  // Regression guard for the new `!cashAccount?.institution_id` clause: a normal
+  // account (institution already set) must NOT show the picker, even when the
+  // modal is opened WITHOUT the (redundant) institutionId prop.
+  it("normal edit (account already has a bank) does NOT show the picker", () => {
+    const acct = makeCashAccount(); // institution_id: "inst-1"
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={acct} institutions={BANKS} />);
+    expect(screen.queryByLabelText("Bank")).not.toBeInTheDocument();
+  });
+
+  it("normal edit save omits institution_id (partialUpdate leaves the bank intact)", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const acct = makeCashAccount({ balance: 1500, apy: 1.5 });
+    const { container } = render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={acct} institutions={BANKS} />);
+    fireEvent.submit(container.querySelector("form")!);
+    await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
+    const [, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
+    expect(input).not.toHaveProperty("institution_id");
+  });
+
+  // Dominant flow: adding cash from a bank's context (picker hidden) must pass
+  // the contextual institutionId straight through, without findOrCreate.
+  it("create from a bank context (institutionId set): no picker, passes it through", async () => {
+    vi.mocked(cashActions.createCashAccount).mockResolvedValue("new-id");
+    const { container } = render(
+      <CashAccountModal isOpen onClose={vi.fn()} institutionId="inst-1" institutionName="Alpha Bank" institutions={BANKS} />,
+    );
+    expect(screen.queryByLabelText("Bank")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Account Name"), { target: { value: "Savings" } });
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText(/APY/), { target: { value: "0" } });
+    fireEvent.submit(container.querySelector("form")!);
+    await waitFor(() => expect(vi.mocked(cashActions.createCashAccount)).toHaveBeenCalled());
+    const [input] = vi.mocked(cashActions.createCashAccount).mock.calls[0];
+    expect(input).toMatchObject({ institution_id: "inst-1" });
+    expect(vi.mocked(instActions.findOrCreateInstitution)).not.toHaveBeenCalled();
   });
 });
