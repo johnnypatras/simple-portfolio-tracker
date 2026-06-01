@@ -23,6 +23,7 @@ import type {
   CashAccount,
   CryptoAssetWithPositions,
   CoinGeckoPriceData,
+  Institution,
 } from "@/lib/types";
 import { countryName } from "@/lib/types";
 import { HIDDEN_BELOW, IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
@@ -67,6 +68,8 @@ interface CashTableProps {
   fxValueChange24h?: number;
   deposits?: number;
   depositBreakdown?: { name: string; value: number }[];
+  /** Banks for the Add/Edit cash modal's bank picker (empty in read-only/share views). */
+  institutions?: Institution[];
 }
 
 export function CashTable({
@@ -80,6 +83,7 @@ export function CashTable({
   fxValueChange24h = 0,
   deposits = 0,
   depositBreakdown,
+  institutions = [],
 }: CashTableProps) {
   const { isReadOnly } = useSharedView();
   const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
@@ -695,6 +699,7 @@ export function CashTable({
           cashAccount={editingCash}
           institutionId={editingCash?.institution_id ?? undefined}
           institutionName={editingCash?.institution_name ?? undefined}
+          institutions={institutions}
           walletId={editingCash?.wallet_id ?? undefined}
           walletName={editingCash?.wallet_name ?? undefined}
           brokerId={editingCash?.broker_id ?? undefined}

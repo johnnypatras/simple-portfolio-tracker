@@ -7,9 +7,13 @@ import {
   createCashAccount,
   updateCashAccount,
 } from "@/lib/actions/cash-accounts";
-import type { CashAccount, CashAccountCreateInput, CashAccountUpdateInput } from "@/lib/types";
+import { findOrCreateInstitution } from "@/lib/actions/institutions";
+import type { CashAccount, CashAccountCreateInput, CashAccountUpdateInput, Institution } from "@/lib/types";
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
+
+/** Sentinel <option> value for the "create a new bank" choice in the bank picker. */
+const NEW_BANK = "__new_bank__";
 
 interface CashAccountModalProps {
   isOpen: boolean;
@@ -17,6 +21,8 @@ interface CashAccountModalProps {
   cashAccount?: CashAccount | null;
   institutionId?: string;
   institutionName?: string;
+  /** Banks to choose from when adding/fixing a bank account that has no parent institution. */
+  institutions?: Institution[];
   walletId?: string;
   walletName?: string;
   brokerId?: string;
@@ -29,6 +35,7 @@ export function CashAccountModal({
   cashAccount,
   institutionId,
   institutionName,
+  institutions = [],
   walletId,
   walletName,
   brokerId,
@@ -46,10 +53,20 @@ export function CashAccountModal({
   const [currency, setCurrency] = useState<string>("EUR");
   const [balance, setBalance] = useState("");
   const [apy, setApy] = useState("");
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
+  const [newBankName, setNewBankName] = useState("");
 
   // Bank-origin accounts show the name field; deposits (wallet/broker) do not
   const isBankOrigin = !walletId && !brokerId && !cashAccount?.wallet_id && !cashAccount?.broker_id;
   const isEditing = !!cashAccount;
+
+  // Show the bank picker only when a bank-origin account GENUINELY has no parent
+  // bank: no institution from context AND (when editing) none on the row itself.
+  // This covers a context-free "Add Cash" (new) and fixing an existing orphan
+  // that renders as "Unknown Bank", while leaving normal accounts untouched —
+  // even if the modal is opened without the (redundant) institutionId prop.
+  const showInstitutionPicker =
+    isBankOrigin && !institutionId && !cashAccount?.institution_id;
 
   // Derive modal title from context
   function getTitle(): string {
@@ -60,7 +77,7 @@ export function CashAccountModal({
     }
     if (walletId) return `Add Deposit — ${walletName ?? "Exchange"}`;
     if (brokerId) return `Add Deposit — ${brokerName ?? "Broker"}`;
-    return `Add Account — ${institutionName ?? "Bank"}`;
+    return institutionName ? `Add Account — ${institutionName}` : "Add Cash Account";
   }
 
   // Sync form when modal opens or cashAccount changes
@@ -73,6 +90,8 @@ export function CashAccountModal({
       setError(null);
       setIsAdjustment(false);
       setEffectiveDate("");
+      setSelectedInstitutionId("");
+      setNewBankName("");
     } else if (isOpen) {
       setName("");
       setCurrency("EUR");
@@ -81,6 +100,8 @@ export function CashAccountModal({
       setError(null);
       setIsAdjustment(false);
       setEffectiveDate("");
+      setSelectedInstitutionId("");
+      setNewBankName("");
     }
   }, [isOpen, cashAccount]);
 
@@ -103,12 +124,31 @@ export function CashAccountModal({
         throw new Error("APY must be a valid number");
       }
 
+      // Resolve the parent bank when the picker is shown (standalone "Add Cash"
+      // or fixing an orphan). "+ New bank" reuses findOrCreateInstitution, which
+      // also grants the bank role implicitly once the cash account links to it.
+      let resolvedInstitutionId = institutionId;
+      if (showInstitutionPicker) {
+        if (selectedInstitutionId === NEW_BANK) {
+          const trimmed = newBankName.trim();
+          if (!trimmed) throw new Error("Enter a name for the new bank");
+          resolvedInstitutionId = await findOrCreateInstitution(trimmed);
+        } else if (selectedInstitutionId) {
+          resolvedInstitutionId = selectedInstitutionId;
+        } else {
+          throw new Error("Select a bank for this account");
+        }
+      }
+
       if (isEditing) {
         const input: CashAccountUpdateInput = {
           currency,
           balance: parsedBalance,
           apy: parsedApy,
           name: isBankOrigin ? name : undefined,
+          // Only set institution when the picker resolved one (fixing an orphan).
+          // A normal edit omits it so partialUpdate leaves the existing bank intact.
+          ...(showInstitutionPicker ? { institution_id: resolvedInstitutionId } : {}),
         };
         await updateCashAccount(cashAccount.id, input, {
           isAdjustment,
@@ -116,7 +156,7 @@ export function CashAccountModal({
         });
       } else {
         const input: CashAccountCreateInput = {
-          institution_id: institutionId,
+          institution_id: resolvedInstitutionId,
           currency,
           balance: parsedBalance,
           apy: parsedApy,
@@ -155,6 +195,41 @@ export function CashAccountModal({
           <div className="flex items-center gap-1.5 -mt-2 mb-1">
             <span className="text-[10px] text-amber-400 font-medium" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>Adj.</span>
             <span className="text-[10px] text-zinc-400">Last saved as portfolio adjustment</span>
+          </div>
+        )}
+
+        {/* Bank picker — shown when a bank-origin account has no parent bank:
+            a context-free "Add Cash", or fixing an existing "Unknown Bank" orphan */}
+        {showInstitutionPicker && (
+          <div>
+            <label htmlFor={`${id}-bank`} className="block text-xs text-zinc-400 mb-1">
+              Bank
+            </label>
+            <select
+              id={`${id}-bank`}
+              value={selectedInstitutionId}
+              onChange={(e) => setSelectedInstitutionId(e.target.value)}
+              required
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+            >
+              <option value="">Select bank…</option>
+              {institutions.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.name}
+                </option>
+              ))}
+              <option value={NEW_BANK}>+ New bank…</option>
+            </select>
+            {selectedInstitutionId === NEW_BANK && (
+              <input
+                type="text"
+                value={newBankName}
+                onChange={(e) => setNewBankName(e.target.value)}
+                placeholder="New bank name (e.g. Alpha Bank)"
+                required
+                className="w-full mt-2 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+              />
+            )}
           </div>
         )}
 
