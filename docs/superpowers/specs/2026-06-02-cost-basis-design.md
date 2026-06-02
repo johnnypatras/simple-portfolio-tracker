@@ -31,12 +31,17 @@ classifier, and a pure **average-cost engine**.
 - **Split** an existing lot into multiple dated **cost** legs (extends the existing split feature).
 - Fix the latent **backdate-stale-amount** benchmark bug.
 - Work **uniformly** across crypto, stocks, and cash; consistent, **self-explanatory** modals.
+- **Uniform treatment of existing + new entries** — older imports/transactions behave identically to new
+  ones, with no two-tier system and (almost) no migration (§7.6).
+- A faint **cost-basis overlay line** on the dashboard chart (the gap to the value line = unrealized gain,
+  visualized over time) — additive, cheap (no price lookups; §12 Phase 5). The *value* line is untouched.
 
 **Non-goals (explicitly parked / rejected — see §14)**
-- Bulk auto-detect-and-reclassify of recurring interest (parked; builds on the per-txn yield flag).
+- Bulk **auto-detect**-and-reclassify of recurring interest (parked; v1 ships *manual* multi-select Mark-as-Yield).
 - FIFO / specific-lot / tax-lot accounting (rejected — average-cost only; rationale §4.4).
 - Dedicated per-asset detail pages (later; the drawer covers v1).
-- Changing the truth-line chart (it stays market-price; out of scope).
+- Changing how the **value** (truth) line is drawn — it stays market-price. *(The new cost-basis overlay is a
+  separate, additive line; the value line itself is out of scope.)*
 
 ---
 
@@ -109,16 +114,20 @@ or accept the lump dated at the *weighted-middle* of accumulation.
 
 Minimal and additive. One new column; the rest reuses existing fields.
 
-### 5.1 New column
+### 5.1 New columns
 ```sql
--- migration NNN_transaction_yield.sql
+-- migration NNN_transaction_cost_basis.sql
 ALTER TABLE activity_log
-  ADD COLUMN is_yield BOOLEAN NOT NULL DEFAULT false;
+  ADD COLUMN is_yield          BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN cashflow_user_set BOOLEAN NOT NULL DEFAULT false;
 
 COMMENT ON COLUMN activity_log.is_yield IS
   'Transaction is income/return (interest, staking, airdrop): units added at cost €0, excluded from benchmark cash flows. Distinct from is_adjustment (corrections/transfers).';
+COMMENT ON COLUMN activity_log.cashflow_user_set IS
+  'True when the user explicitly typed the amount (cost/proceeds); false = auto-computed market value. Backdate-recompute (§7.2) only touches false rows.';
 ```
-- No backfill needed (existing rows default `false`). Regenerate `src/types/database.ts` after.
+- **No backfill** (existing rows default `false` for both — correct: none are yet yield, none had a
+  user-typed amount). Regenerate `src/types/database.ts` after; CI drift-check enforced.
 
 ### 5.2 Cost = the existing `cashflow_amount_usd/eur` (now user-authored)
 - **Buy/Sell:** `cashflow_amount_*` = the user-entered amount (cost / proceeds). If left blank, falls back
@@ -196,11 +205,10 @@ Blank → existing market-derived value. Never coerce a blank to 0 (mirrors the 
 
 ### 7.2 Backdate recompute (fixes the latent bug)
 `backdateActivityEntry` today changes only `effective_date`, leaving a stale import-date amount → benchmark
-overstates. **Fix:** on backdate of a real cash-flow entry, if the entry has **no user-authored cost**,
+overstates. **Fix:** on backdate of a real cash-flow entry, if `cashflow_user_set = false` (no user-authored amount),
 **recompute** `cashflow_amount_* = qty × historical-price(new date) × FX` (PR #94 historical-price path). If
-it **has** a user cost, keep it. Either way the stale amount is replaced. (User-authored vs auto flag: a
-`cashflow_user_set BOOLEAN` companion, or infer from an explicit edit — decided in the plan; default to a
-small boolean to avoid ambiguity.)
+`cashflow_user_set = true`, **keep** the user's amount. Either way the stale import-date amount never
+survives a re-date. (The flag is set `true` whenever the user types/edits the amount — §5.1.)
 
 ### 7.3 Sells and where proceeds go
 A Sell always **realizes gain** for cost basis (`proceeds − avg×units`), independent of the proceeds'
@@ -219,6 +227,30 @@ for P&L but is *not* an external flow. Fees (the leg-delta difference) reduce re
 Extends `splitActivityEntry`: each `SplitLeg = { effective_date, quantity, cost? }`. Children get the entered
 per-leg cost (fallback: proportional, as today). Parent preserved as `undone` (reversible via `unsplit`).
 Quantities must sum to the parent. Used to reconstruct DCA so the benchmark sees dated flows (§4.5).
+
+### 7.6 Existing data behaves like new data (uniformity — no two-tier system)
+A hard requirement: after this ships, **older imports/transactions are processed by the exact same code as
+new ones.** This falls out (almost free) of two earlier choices — classification is **derived** and all
+P&L/benchmark numbers are **read-time** — so there's no legacy state to migrate.
+
+| Aspect | Existing entries today | Uniform? | Action |
+|---|---|---|---|
+| **Type** (buy/sell/deposit/withdrawal/transfer) | derived by `classifyTransaction()` from fields they already have (`is_adjustment`, `transfer_group_id`, `is_yield`-default-false, qty direction, entity) | ✅ automatic | none |
+| **Cost amount** | auto market-value + `cashflow_user_set=false` (default) | ✅ identical to a *new* entry with no typed cost (market fallback) | optional: type real costs later via Edit |
+| **Backdating** | recompute-to-market-at-date (no user cost) | ✅ same rule | none |
+| **Editing** | full Add field-set incl. **type reclassification** (§8.4) | ✅ same flow | as desired |
+| **77 Feb-2026 imports** | #94's legacy-adjustment migration → `is_adjustment=false` real cash flows, market-value cost | ✅ become normal buys/deposits | optional: enter true costs |
+| **Existing Yield** (e.g. GHO interest) | default `is_yield=false` → reads as deposit/buy until reclassified | ⚠️ **one cleanup** | Mark-as-Yield |
+
+**The single cleanup — existing Yield.** Interest/staking entries can't be auto-classified (data alone can't
+tell yield from a deposit — needs user knowledge). To make it painless and reach full uniformity, v1 adds a
+**multi-select "Mark as Yield"** in the drawer (select GHO's ~14 interest rows → one action). The *automatic*
+heuristic detector stays parked (§14). After this one pass, old and new yield are identical.
+
+**Why (almost) no migration:** the only new stored fields are `is_yield` (default `false` — correct for every
+existing non-yield row) and `cashflow_user_set` (default `false` — correct, none were user-set). Everything
+else is derived or read-time. Re-classifying or re-costing an old row is a normal **Edit**, and the benchmark
++ P&L recompute on the next render (the value snapshots are untouched — quantity/worth don't change).
 
 ---
 
@@ -277,11 +309,20 @@ explainer so the user is *guided to the proper selection*.
   (`validatePastOrTodayDate`), `role="alert"` errors. Currency validated.
 
 ### 8.4 The Edit (existing transaction) flow — the primary use case
-The same field set as Add, pre-filled, opened inline from a drawer row's pencil. Editing **Amount paid**
-or **Date** on a real cash-flow entry **corrects that entry** (updates `cashflow_amount_*` / `effective_date`
-via the recompute contract §7.2) — it does **not** create a phantom transaction. Guards: cannot edit a
-transfer leg's amount here (edit via the transfer flow); cannot edit an `undone`/split-child entry (unsplit
-first) — mirrors `backdateActivityEntry`'s existing guards, surfaced as friendly messages.
+The same field set as Add (incl. the **type selector**), pre-filled, opened inline from a drawer row's pencil.
+Editing **Amount paid**, **Date**, **or the type/classification** of a real cash-flow entry **corrects that
+entry** — it does **not** create a phantom transaction:
+- **Amount / Date** → updates `cashflow_amount_*` / `effective_date` (recompute contract §7.2).
+- **Type → Yield** (e.g. an existing GHO "deposit" → Yield): sets `is_yield=true`, `cashflow_amount_*=0`
+  (cost €0); the entry drops out of benchmark contributions and the engine treats its units as €0-cost. The
+  benchmark line de-inflates and P&L corrects on the next render (read-time; value snapshots untouched).
+  This is the same recompute the existing adjustment-toggle performs, generalized to the yield flag.
+- **Bulk:** a drawer **multi-select → "Mark as Yield"** applies the above to several rows at once (the
+  one-pass cleanup of §7.6). Reversible (re-edit back to its derived type).
+
+Guards: cannot edit a transfer leg's amount here (edit via the transfer flow); cannot edit an
+`undone`/split-child entry (unsplit first) — mirrors `backdateActivityEntry`'s existing guards, surfaced as
+friendly messages.
 
 ### 8.5 Double-count prevention (Buy vs Transfer)
 The Buy/Sell guidance text (above) plus an optional inline nudge: when adding a **Buy** on an asset while
@@ -364,8 +405,13 @@ Per-asset, in the holdings table and/or the drawer summary:
 3. **Average-cost engine + A+B display** — pure `cost-basis.ts`; thread avg/realized/unrealized/total into
    aggregate + display surfaces; dashboard total. *(the numbers)*
 4. **Split-with-cost** — extend `SplitLeg` + `splitActivityEntry` + the split modal cost fields. *(DCA)*
+5. **Cost-basis overlay line** — extend the engine to emit a **cost-basis-at-each-date** series (a running
+   total of amounts paid − cost of units sold; **no historical-price lookups**), and draw a faint third line
+   on the dashboard chart. Sequenced last (needs the Phase-3 engine); contained addition. *(visualizes
+   unrealized gain over time as the gap between the value and cost lines.)*
 
-Each phase independently testable; benchmark accuracy verifiable after Phase 1, the engine after Phase 3.
+Each phase independently testable; benchmark accuracy verifiable after Phase 1, the engine after Phase 3,
+the overlay after Phase 5.
 
 ---
 
@@ -382,13 +428,22 @@ Each phase independently testable; benchmark accuracy verifiable after Phase 1, 
 
 ## 14. Open questions / parked / future
 
-- **Bulk interest reclassification** (auto-detect recurring yield) — parked; builds on the per-txn `is_yield`.
-- **DRIP** (dividend reinvested into shares) — v1 treats reinvested income as Yield (cost €0). Strict tax
-  treatment (cost = dividend value) is a future refinement; flagged, not blocking.
-- **`cashflow_user_set` flag vs. inferring user-authored cost** — settle in the plan (lean: small boolean).
-- **`transaction_kind` explicit enum** — v1 derives buy/sell/deposit/withdrawal from qty-direction + entity
-  type + `is_yield`; an explicit kind column is a possible later clarity refactor.
+**Resolved 2026-06-02:**
+- **`cashflow_user_set`** — ✅ **explicit boolean** (default `false`). Deterministic; inference (compare to
+  qty×market) is too fragile for a financial value. Backdate-recompute touches only `false` rows.
+- **`transaction_kind`** — ✅ **derive via one canonical `classifyTransaction()` helper; do NOT store a
+  redundant enum.** The kind is fully determined by existing fields, so a stored column would be derivable-
+  anyway + drift-prone (and you'd run the helper to backfill it regardless). Finer income subtypes
+  ("dividend" vs "interest") are a deliberate later addition, not a reason to denormalize now.
+- **DRIP** (dividend reinvested into shares) — ✅ **treat as Yield (cost €0).** Benchmark-correct,
+  total-P&L-correct, total-return-neutral on ex-date, and one transaction not two. Strict tax-lot treatment
+  (cost = dividend value) only if tax-lots are ever built (they're rejected — §4.4).
+
+**Parked / future:**
+- **Bulk *auto-detect* interest reclassification** — parked; v1 ships *manual* multi-select Mark-as-Yield
+  (§7.6/§8.4), which is the same `is_yield` flag applied in batch by hand.
 - **Per-asset detail pages** — the spacious long-term home for both axes; deferred.
+- **Strict per-lot / tax reporting** — rejected for this total-return tracker (§4.4).
 
 ---
 
