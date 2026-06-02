@@ -1,6 +1,6 @@
 # Cost Basis & Realized/Unrealized P&L — Design Spec
 
-**Status:** Draft for review · **Date:** 2026-06-02
+**Status:** Reviewed — round 2 incorporated · **Date:** 2026-06-02
 **Branch:** `feat/cost-basis` (stacked on `feat/historical-prices-chart` / PR #94)
 **Decision:** Scope **A + B** (total P&L + benchmark **and** average-cost / realized-unrealized split)
 
@@ -112,7 +112,7 @@ or accept the lump dated at the *weighted-middle* of accumulation.
 
 ## 5. Data model changes
 
-Minimal and additive. One new column; the rest reuses existing fields.
+Minimal and additive. Two new boolean columns; the rest reuses existing fields.
 
 ### 5.1 New columns
 ```sql
@@ -133,8 +133,10 @@ COMMENT ON COLUMN activity_log.cashflow_user_set IS
 - **Buy/Sell:** `cashflow_amount_*` = the user-entered amount (cost / proceeds). If left blank, falls back
   to the current auto-computed `qty × market price × FX` (today's behavior). This makes cost **optional with
   a market fallback**.
-- **Yield:** `is_yield=true`, `cashflow_amount_* = 0` (cost €0). Value-of-yield-earned is **derived**
-  (`units × historical price`) for reporting — never stored/typed.
+- **Yield:** `is_yield=true`, `cashflow_amount_* = 0` (cost €0). The "total yield earned €" figure is
+  **derived** (`units × historical price`) for *display only* — never stored/typed. It is the one yield number
+  that needs a historical-price lookup; the core P&L math (avg/realized/unrealized) is price-free and does not
+  depend on it.
 - **Currency:** the amount is entered in EUR or USD (toggle); the other is computed via FX-at-`effective_date`
   (existing `toUsdAndEur`). Stocks may enter in native trading currency (same conversion path).
 
@@ -151,6 +153,16 @@ each child's `cashflow_amount` instead of the current proportional-by-quantity d
 `src/lib/portfolio/cost-basis.ts` — a pure, unit-tested function. Operates on an **asset's total quantity
 across wallets** (so wallet↔wallet transfers net to zero and never create a cost event; only real
 acquisitions/disposals move the totals — see §7.4).
+
+It runs **independently per display currency** (EUR and USD): each pass uses that currency's stored
+per-transaction amounts and is internally consistent; the two results legitimately differ by exchange-rate
+timing and are **never cross-reconciled** — **EUR (base currency) is authoritative** for the headline P&L
+(§7.7).
+
+**Quantity per transaction** comes from a single helper `quantityDelta(txn)` — *not* a bare
+`unitsAfter − unitsBefore` — because some rows have **null snapshots**: split children carry the amount in
+`details.split_quantity` (signed by `action`), `removed` rows zero the position. The helper centralizes all
+of this (mirrors #94's `qty_delta_override`) so the engine can never hit `null − null = NaN`.
 
 ```
 computeCostBasis(transactionsAsc, currentMarketValue) -> {
@@ -173,7 +185,7 @@ Algorithm (per asset, transactions sorted by `COALESCE(effective_date, created_a
 ```
 units = 0; cost = 0; realized = 0
 for txn in stream:
-  qtyDelta = unitsAfter - unitsBefore                 // from snapshots (or the netted group delta)
+  qtyDelta = quantityDelta(txn)                       // helper: snapshots, or details.split_quantity for null-snapshot rows
   if qtyDelta == 0: continue
   value      = txn.transfer_group_id ? |txn.delta| : |txn.cashflow_amount|   // € value of this flow/leg
   isCorrection = txn.is_adjustment and not txn.transfer_group_id and not txn.is_yield
@@ -200,8 +212,11 @@ asserted in tests. Guards: `units→0` (no divide-by-zero), re-buy after full ex
 ## 7. Behavior details
 
 ### 7.1 Cost override + the optional/fallback contract
-Buy/Sell modal "Amount paid/received" is **optional**. Filled → sets `cashflow_amount_*` (+ `cashflow_status='complete'`).
-Blank → existing market-derived value. Never coerce a blank to 0 (mirrors the cash modal's NaN-guard lesson).
+Buy/Sell modal "Amount paid/received" is **optional**. Filled → sets `cashflow_amount_*` (+ `cashflow_status='complete'`)
+**and `cashflow_user_set=true`**. Blank → existing market-derived value. Never coerce a blank to 0 (mirrors the
+cash modal's NaN-guard lesson). **`cashflow_user_set` flips to `true` only when the amount is actually
+entered or changed** — never on a no-op save of a pre-filled market value, or backdate-recompute (§7.2) would
+silently stop working on an untouched row.
 
 ### 7.2 Backdate recompute (fixes the latent bug)
 `backdateActivityEntry` today changes only `effective_date`, leaving a stale import-date amount → benchmark
@@ -221,7 +236,9 @@ A wallet↔wallet move (both legs the same asset) nets to **zero** quantity chan
 net **disposal** on the source asset → realizes gain at the **moved value** (`|delta|`); the destination
 (cash) acquires at that value. Transfer legs stay `is_adjustment=true` (benchmark-neutral — internal move),
 so cost-basis realization and benchmark inclusion are deliberately **decoupled**: a transfer realizes gain
-for P&L but is *not* an external flow. Fees (the leg-delta difference) reduce realized proceeds naturally.
+for P&L but is *not* an external flow. **Fees:** a transfer whose asset-level net remainder is non-zero (you
+send 1.000, receive 0.999) is a **fee** — the lost units are a disposal at **€0 proceeds**, i.e. a small
+**realized loss equal to their cost basis**, never a spurious gain (§10 case 24).
 
 ### 7.5 Split into dated cost legs
 Extends `splitActivityEntry`: each `SplitLeg = { effective_date, quantity, cost? }`. Children get the entered
@@ -251,6 +268,23 @@ heuristic detector stays parked (§14). After this one pass, old and new yield a
 existing non-yield row) and `cashflow_user_set` (default `false` — correct, none were user-set). Everything
 else is derived or read-time. Re-classifying or re-costing an old row is a normal **Edit**, and the benchmark
 + P&L recompute on the next render (the value snapshots are untouched — quantity/worth don't change).
+
+### 7.7 Multi-currency P&L (EUR authoritative; never reconciled)
+The engine runs once per currency. Because each purchase was converted to EUR and USD at the FX rate **on its
+own date**, the EUR avg-cost and the USD avg-cost will **not** equal each other under today's FX — and that is
+**correct** (forcing them to match would pretend you paid today's rate on a past buy). So **EUR (the user's
+base currency) is authoritative** for the headline "you're up €X"; USD is the secondary view (the app's
+existing dual-currency pattern). The two are **never cross-reconciled**; a one-line tooltip notes they can
+differ due to exchange-rate timing. A stock in a third native currency converts into both EUR and USD at
+`effective_date` (existing `toUsdAndEur`).
+
+### 7.8 Manual-NAV assets (ELTIF/SICAV) — a simpler cost path
+These have no `qty × market-price`; the fund reports a periodic **NAV** you record by hand, so forcing them
+through the unit engine is wrong. Instead: **cost = Σ(subscriptions) − Σ(redemptions)** (the cash you put in,
+captured via the same Amount field), **value = latest NAV**, **total P&L = value − cost**. The per-unit
+**average cost and the realized/unrealized split are skipped** (no tradeable units to average or realize) —
+they render "—". Cash **distributions** are **Yield** on the receiving cash account. This keeps these holdings
+in the P&L picture (no two-tier gap) without distorting the unit engine.
 
 ---
 
@@ -333,6 +367,8 @@ the user holds tracked cash, a subtle hint "Using money from a tracked account? 
 Per-asset, in the holdings table and/or the drawer summary:
 - **Average cost** (per unit), **Unrealized**, **Realized**, **Total P&L** (€ + %). Color via existing
   `changeColor`. Realized hidden/`—` when zero (pure-hold assets) to reduce noise.
+- **EUR (base currency) is the authoritative headline P&L**; USD is the secondary dual-currency view (§7.7).
+  Manual-NAV assets show **total P&L only** (avg/realized/unrealized = "—", §7.8).
 - Portfolio-level **Total P&L** stat on the dashboard. The S&P line is corrected (cost-accurate, yield-excluded).
 - Reuse existing responsive column-hiding (`HIDDEN_BELOW`); P&L columns hide first on narrow screens, full
   detail always available in the drawer.
@@ -341,13 +377,25 @@ Per-asset, in the holdings table and/or the drawer summary:
 
 ## 9. Server actions (new / modified)
 
-- `src/lib/actions/transactions.ts` (new): `addTransaction(assetRef, { type, quantity, amount?, currency?, date?, isYield })`,
-  `editTransaction(entryId, patch)` — both validated, RLS-scoped (`.eq('user_id')`), `revalidateDashboard()`,
-  Sentry-wrapped (`captureAction`). Thin orchestration over existing `upsertPosition` / cash-account / `logActivity`.
+- `src/lib/actions/transactions.ts` (new): `addTransaction(assetRef, {...})`, `editTransaction(entryId, patch)`
+  — both validated, `revalidateDashboard()`, Sentry-wrapped (`captureAction`). **Ownership is verified in the
+  action layer, not just relied on via RLS:** `editTransaction(entryId)` MUST re-fetch with
+  `.eq('id', entryId).eq('user_id', user.id)` and 404 if absent — exactly the cross-user gap PR #97's review
+  caught (an RLS policy is necessary but a direct-by-id mutation must still confirm ownership in the action).
+  Thin orchestration over existing `upsertPosition` / cash-account / `logActivity`.
 - `splits.ts`: extend `SplitLeg` with `cost?`; `splitActivityEntry` uses it.
 - `backfill.ts` / backdate path: implement the recompute-on-backdate contract (§7.2).
-- `benchmark.ts` `deriveCashFlows`: exclude `is_yield=true`; use the (now possibly user-authored)
-  `cashflow_amount_*` at `effective_date`.
+- `benchmark.ts`: `deriveCashFlows` excludes `is_yield=true` and uses the (now user-authored) `cashflow_amount_*`
+  — **the actual amount invested** — at `effective_date`. **⚠ Interaction with PR #94's seed (the single most
+  delicate change):** the benchmark *should* invest your real cost (the whole point — "what if I'd put the
+  money I actually spent into the S&P"). But #94's seed self-reconciles to ≈0 *only* under its assumption that
+  the benchmark flow = `qty × market-price(date)` (the truth-line value). With **cost ≠ market on a backdated
+  lot**, a **real, correct seed delta** appears (= market − cost at that date = your instant unrealized gain at
+  purchase): the benchmark line legitimately starts at what you *invested* (cost) while the portfolio line
+  starts at *market value*. #94's seed / `buildBenchmarkCashFlows` must be adjusted to **allow** this delta
+  (not cancel it) **without re-triggering the double-count guards**. Scoped to *backdated lots that carry a
+  user cost* (recent/at-chart-start lots have cost≈market → delta≈0 → #94 unchanged). Dedicated tests vs.
+  #94's seed cases under cost≠market + a live-smoke reconciliation (§10 case 25).
 - `src/lib/portfolio/cost-basis.ts` (new pure module): the average-cost engine (§6).
 - Thread cost-basis outputs into `aggregate.ts` / `assemble.ts` / `shared-portfolio.ts` for display.
 
@@ -372,11 +420,18 @@ Per-asset, in the holdings table and/or the drawer summary:
 15. **Backdate an existing real cash-flow lot** → amount recomputed (or user cost kept); benchmark accurate.
 16. **Multi-currency cost** (EUR vs USD; stock native currency) → stored both via FX-at-date.
 17. **Stablecoin (all gain = yield)** → P&L meaningful only via yield handling.
-18. **Manual-NAV asset (ELTIF/SICAV)** → cost = subscription amount; NAV drives value; distributions = cash yield.
+18. **Manual-NAV asset (ELTIF/SICAV)** → simple path (§7.8): cost = net subscription, value = latest NAV, P&L = value − cost; per-unit avg + realized/unrealized **skipped** ("—"); cash distributions = Yield.
 19. **Editing/undoing a transaction** → engine recomputes; existing undo machinery intact.
 20. **Long yield history (GHO ~14 entries)** → drawer groups/collapses; performant.
 21. **Zero/blank/NaN amount** → blocked, never coerced to 0.
 22. **Float boundary at units→0** → no divide-by-zero, no drift (tolerance).
+23. **Split child (null snapshots)** → `quantityDelta` reads `details.split_quantity`; engine never NaNs.
+24. **Transfer with a fee** (net remainder ≠ 0) → fee = realized **loss** at €0 proceeds, not a spurious gain.
+25. **Backdated lot, user cost ≠ market** → benchmark seeds at *cost* with a correct non-zero delta vs the
+    market-valued truth-line; #94 seed / double-count guards not re-triggered (§9).
+26. **Multi-currency divergence** → EUR and USD avg-cost legitimately differ under today's FX; EUR
+    authoritative; never reconciled (§7.7).
+27. **Manual-NAV** → total P&L = NAV − subscription; avg/realized/unrealized show "—" (§7.8).
 
 ---
 
@@ -418,11 +473,14 @@ the overlay after Phase 5.
 ## 13. Migration & rollout
 
 - Built on **`feat/cost-basis`** (stacked on `feat/historical-prices-chart`). #94 stays clean.
-- One additive migration (`is_yield`, default false) — no data backfill; CI type-drift check enforced.
+- One additive migration (**two columns**: `is_yield` + `cashflow_user_set`, both default `false`) — no data
+  backfill; CI type-drift check enforced.
 - **#94 and cost-basis are verified *together* before prod** (the agreed plan): all gates + `/review audit`
   + live/visual smoke. `pg_dump` before the (separate) #94 legacy-adjustment migration; this feature needs
   no destructive data migration of its own.
-- Ship order TBD with the user: merge #94 → main, then cost-basis → main (back-to-back), or a combined verify.
+- **Scope (decided 2026-06-02): all five phases ship together** as one feature — with extra care for the size:
+  exhaustive per-phase TDD, the `/review audit`, and the delicate #94-seed interaction (§9) all cleared before
+  the combined ship. Verify **#94 + cost-basis together**, then merge #94 → main and cost-basis → main back-to-back.
 
 ---
 
