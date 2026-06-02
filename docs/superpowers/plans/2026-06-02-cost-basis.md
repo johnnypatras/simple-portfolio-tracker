@@ -45,6 +45,13 @@
 
 *Outcome: every transaction can carry a user-authored amount + the two new flags; backdating no longer leaves a stale benchmark amount. Verifiable by integration tests on the benchmark.*
 
+> ⚠ **Sequencing + DB gate (review-3 H4 / L1):** the cost-override primitives (1.4b) and the ownership-verified
+> `transactions.ts` actions (authored in Task 2.5) are **dependencies of the Phase-1 integration tests (1.6)**.
+> So build the `addTransaction`/`editTransaction` skeleton — with the `.eq(id).eq(user_id)` + UPDATE +
+> `.is(undone_at,null)` contract — **here, before 1.6**; Task 2.5 then completes the type→primitive mapping.
+> And run **`supabase db reset`** before EVERY integration step in this phase (applies migration 021), or the
+> tests fail with "column is_yield does not exist".
+
 ### Task 1.1: Migration — two boolean columns
 
 **Files:**
@@ -138,56 +145,71 @@ export const COST_COPY = {
 - Create: `src/lib/transaction-kind.ts`
 - Test: `__tests__/unit/transaction-kind.test.ts`
 
-- [ ] **Step 1: Write failing tests** (cover the null-snapshot/split-child case from objection #1, and every kind)
+> ⚠ **Review-3 corrections baked in:** (B2) cash positions store `balance`/`amount`, **NOT** `quantity`, and
+> there are **four** cash entity types — so the helpers MUST be entity-aware (cash skipped/misclassified
+> otherwise). (B3) split children store a **signed** `split_quantity` (Task 4.1) and inherit the parent's
+> `action` (never `removed`), so the sign comes from the stored value, **not** from `action`.
+
+- [ ] **Step 1: Write failing tests** (real fixtures — cash uses `balance`, all four cash types, signed split)
 ```ts
 import { classifyTransaction, quantityDelta } from "@/lib/transaction-kind";
-const base = { action:"updated", entity_type:"crypto_position", is_adjustment:false, is_yield:false,
+const cryptoBuy = { action:"updated", entity_type:"crypto_position", is_adjustment:false, is_yield:false,
   transfer_group_id:null, split_from_id:null, details:null,
-  before_snapshot:{ quantity:"1" }, after_snapshot:{ quantity:"3" } } as any;
+  before_snapshot:{ quantity:1 }, after_snapshot:{ quantity:3 } } as any;
+const bankDeposit = { ...cryptoBuy, entity_type:"bank_account",
+  before_snapshot:{ balance:300 }, after_snapshot:{ balance:500 } };
 
 describe("quantityDelta", () => {
-  it("reads before/after snapshots", () => expect(quantityDelta(base)).toBe(2));
-  it("falls back to details.split_quantity when snapshots are null", () =>
-    expect(quantityDelta({ ...base, before_snapshot:null, after_snapshot:null,
-      action:"created", details:{ split_quantity:"0.5" } })).toBe(0.5));
-  it("signs split_quantity negative for removed", () =>
-    expect(quantityDelta({ ...base, before_snapshot:null, after_snapshot:null,
-      action:"removed", details:{ split_quantity:"0.5" } })).toBe(-0.5));
+  it("crypto: after − before from snapshots", () => expect(quantityDelta(cryptoBuy)).toBe(2));
+  it("CASH reads `balance`, not quantity (B2)", () => expect(quantityDelta(bankDeposit)).toBe(200));
+  it("removed: delta = −before", () =>
+    expect(quantityDelta({ ...cryptoBuy, action:"removed", after_snapshot:null, before_snapshot:{ quantity:2 } })).toBe(-2));
+  it("split child uses the SIGNED split_quantity — a split SELL stays negative (B3)", () =>
+    expect(quantityDelta({ ...cryptoBuy, before_snapshot:null, after_snapshot:null, details:{ split_quantity:-0.5 } })).toBe(-0.5));
   it("never NaNs on fully-null rows", () =>
-    expect(quantityDelta({ ...base, before_snapshot:null, after_snapshot:null, details:null })).toBe(0));
+    expect(quantityDelta({ ...cryptoBuy, before_snapshot:null, after_snapshot:null, details:null })).toBe(0));
 });
 describe("classifyTransaction", () => {
-  it("buy = qty up, real cash flow", () => expect(classifyTransaction(base)).toBe("buy"));
-  it("sell = qty down", () => expect(classifyTransaction({ ...base, after_snapshot:{quantity:"0.5"} })).toBe("sell"));
-  it("yield wins over qty sign", () => expect(classifyTransaction({ ...base, is_yield:true })).toBe("yield"));
-  it("transfer from transfer_group_id", () => expect(classifyTransaction({ ...base, is_adjustment:true, transfer_group_id:"g1" })).toBe("transfer"));
-  it("adjustment = is_adjustment without transfer", () => expect(classifyTransaction({ ...base, is_adjustment:true })).toBe("adjustment"));
-  it("cash qty-up is deposit, qty-down is withdrawal", () => {
-    expect(classifyTransaction({ ...base, entity_type:"cash_account" })).toBe("deposit");
-    expect(classifyTransaction({ ...base, entity_type:"cash_account", after_snapshot:{quantity:"0.5"} })).toBe("withdrawal");
-  });
+  it("crypto buy/sell", () => {
+    expect(classifyTransaction(cryptoBuy)).toBe("buy");
+    expect(classifyTransaction({ ...cryptoBuy, after_snapshot:{ quantity:0.5 } })).toBe("sell"); });
+  it("ALL four cash entity types → deposit / withdrawal (B2)", () => {
+    for (const t of ["bank_account","exchange_deposit","broker_deposit","cash_account"]) {
+      expect(classifyTransaction({ ...bankDeposit, entity_type:t })).toBe("deposit");
+      expect(classifyTransaction({ ...bankDeposit, entity_type:t, after_snapshot:{ balance:100 } })).toBe("withdrawal"); }});
+  it("yield wins · transfer · adjustment", () => {
+    expect(classifyTransaction({ ...cryptoBuy, is_yield:true })).toBe("yield");
+    expect(classifyTransaction({ ...cryptoBuy, is_adjustment:true, transfer_group_id:"g1" })).toBe("transfer");
+    expect(classifyTransaction({ ...cryptoBuy, is_adjustment:true })).toBe("adjustment"); });
 });
 ```
 - [ ] **Step 2: Run → FAIL.** Run: `npm test -- transaction-kind`.
-- [ ] **Step 3: Implement** (single source of truth — see spec §14 "derive, don't store")
+- [ ] **Step 3: Implement** — entity-aware (the cash field comes from `cashAmountField`, same source as `extractQuantity`); signed split; handles created/updated/removed via snapshots.
 ```ts
+import { CASH_ENTITY_TYPES, cashAmountField, type CashEntityType } from "@/lib/deltas";
 export type TransactionKind = "buy"|"sell"|"yield"|"deposit"|"withdrawal"|"transfer"|"adjustment";
 
-function qty(snap: unknown): number {
-  if (snap && typeof snap === "object" && "quantity" in snap) return Number((snap as { quantity: unknown }).quantity) || 0;
+const CASH = new Set<string>(CASH_ENTITY_TYPES);
+function fieldFor(entityType: string): string {
+  return CASH.has(entityType) ? cashAmountField(entityType as CashEntityType) : "quantity";
+}
+function val(snap: unknown, field: string): number {
+  if (snap && typeof snap === "object") { const v = (snap as Record<string, unknown>)[field]; return typeof v === "number" ? v : Number(v) || 0; }
   return 0;
 }
 export function quantityDelta(row: any): number {
-  if (row.before_snapshot != null || row.after_snapshot != null) return qty(row.after_snapshot) - qty(row.before_snapshot);
-  const sq = row.details?.split_quantity;
-  if (sq != null) return (row.action === "removed" ? -1 : 1) * (Number(sq) || 0);
-  return 0;
+  // split child (null snapshots): the SIGNED split_quantity stored at split time (B3)
+  if (row.before_snapshot == null && row.after_snapshot == null) {
+    return row.details?.split_quantity != null ? Number(row.details.split_quantity) || 0 : 0;
+  }
+  const f = fieldFor(row.entity_type);                       // 'balance'/'amount' for cash, else 'quantity' (B2)
+  return val(row.after_snapshot, f) - val(row.before_snapshot, f);  // created:+after · removed:−before · updated:delta
 }
 export function classifyTransaction(row: any): TransactionKind {
   if (row.is_yield) return "yield";
   if (row.transfer_group_id) return "transfer";
   if (row.is_adjustment) return "adjustment";
-  const isCash = row.entity_type === "cash_account";
+  const isCash = CASH.has(row.entity_type);                  // all four cash types, not just 'cash_account' (B2)
   const up = quantityDelta(row) >= 0;
   return isCash ? (up ? "deposit" : "withdrawal") : (up ? "buy" : "sell");
 }
@@ -204,6 +226,20 @@ export function classifyTransaction(row: any): TransactionKind {
 - [ ] **Step 1:** Read `CreateActivityLogParams` (~line 70-110) and the insert object. Add two optional params `is_yield?: boolean`, `cashflow_user_set?: boolean`, defaulting `?? false` in the insert (mirror the existing `cashflow_amount_usd: params.cashflow_amount_usd ?? null` pattern).
 - [ ] **Step 2: typecheck** → Expected: passes.
 - [ ] **Step 3: Commit** — `git commit -m "feat(cost-basis): logActivity accepts is_yield + cashflow_user_set"`
+
+### Task 1.4b: ⚠ Cost-override params on the write primitives (B1 — the feature's SPINE, was missing)
+
+**Files:**
+- Modify: `src/lib/actions/crypto.ts` (`upsertPosition`), the cash create/update actions (`cash-accounts.ts`), `src/lib/activity-fx.ts` (`computeActivityFx` + `computeActivityFxWithConversion`)
+- Test: `__tests__/integration/transactions.test.ts`
+
+**Why (review-3 B1):** these primitives currently COMPUTE `cashflow = qtyDelta × currentPrice` and expose **no** user-amount param. Without this task a typed cost is silently overwritten by market value — the whole feature fails. Must land before the actions (1.7) and the cost-capture integration test (1.6).
+
+- [ ] **Step 1: Failing test** — call `upsertPosition` (and a cash create) with an override `{ cashflowUsd, cashflowEur, cashflowUserSet:true }`; assert the logged `activity_log` row carries `cashflow_amount_usd/eur = override` + `cashflow_user_set=true` (NOT `qty × price`). With no override → unchanged (market value, `user_set=false`).
+- [ ] **Step 2: Run → FAIL.**
+- [ ] **Step 3: Implement** — add an optional `cashflowOverride?: { usd:number; eur:number }` input to `computeActivityFx`/…WithConversion: when present, set `cashflowUsd/cashflowEur = override` and skip the `qty × price` path (returns a `userSet:true` marker). Thread `opts.cashflowOverride` through `upsertPosition` + the cash create/update actions into `computeActivityFx`, and pass `cashflow_user_set` to `logActivity`. Absent → today's behavior. (Never coerce a blank to 0 — that's the modal's job, §7.1.)
+- [ ] **Step 4: Run → PASS.**
+- [ ] **Step 5: Commit** — `git commit -m "feat(cost-basis): cost-override on upsertPosition + cash actions + computeActivityFx (B1)"`
 
 ### Task 1.5: Backdate-recompute fix (the latent benchmark bug)
 
@@ -285,7 +321,15 @@ export function classifyTransaction(row: any): TransactionKind {
 
 **Files:** Create `src/lib/actions/transactions.ts`; Test extends `__tests__/integration/transactions.test.ts`
 
-**Logic sanity (assert):** addTransaction(type) maps to the right primitive (Buy/Sell→`upsertPosition`; Deposit/Withdrawal→cash action; Yield→qty-up with `is_yield=true`, `cashflow_amount=0`); editTransaction re-fetches with `.eq("id").eq("user_id")` (404 if absent — #97); markAsYield only flips eligible rows (real cash flow, not transfer/undone), sets `is_yield=true`+`cashflow_amount=0`, returns `{updated, skipped}`.
+**Logic sanity (assert) — review-3 corrections:** `addTransaction(type)` maps to the **override-extended**
+primitive (Buy/Sell→`upsertPosition` with `cashflowOverride`; Deposit/Withdrawal→cash action with override;
+Yield→qty-up with `is_yield=true`, **amount left intact**). **`editTransaction` is a direct `activity_log`
+UPDATE** — `logActivity` is insert-only, so editing an existing row's amount/date/`is_yield`/`cashflow_user_set`
+is an UPDATE (mirror `backdateActivityEntry`/`toggleActivityAdjustment`), scoped `.eq("id").eq("user_id")` (404
+if absent — #97) **and `.is("undone_at", null)`** (TOCTOU, M4). Validate at the boundary: `validateUUID(entryId)`
++ amount/qty/date (M3). `markAsYield(ids)` validates each `validateUUID(id)`, flips only eligible rows (real
+cash flow, not transfer/undone), sets **`is_yield=true` (amount NOT zeroed — H2 → un-yield is lossless)**,
+returns `{updated, skipped}`.
 
 - [ ] **Step 1: Failing tests** — per the sanity list above, incl. markAsYield skipping a transfer leg.
 - [ ] **Step 2-4:** implement as thin, `captureAction`-wrapped, `revalidateDashboard()` orchestration over existing primitives; **ownership verified in the action**; run.
@@ -336,7 +380,14 @@ describe("computeCostBasis", () => {
 });
 ```
 - [ ] **Step 2: Run → FAIL.**
-- [ ] **Step 3: Implement exactly the spec §6 algorithm** (pre-net transfer groups within the asset; `quantityDelta()` for qty; `value = transfer ? |delta| : |cashflow_amount|`; the four-branch loop; guards). Return `{avgCost, costBasis, realized, unrealized, totalPnL, totalYieldValue}`.
+- [ ] **Step 3: Implement the spec §6 algorithm.** The **pre-step resolves each stream entry's `value`**:
+  `|cashflow_amount|` for buys/sells, moved-value for cross-asset transfers, **`0` for a same-asset fee
+  remainder** (B5 — a realized loss, never a gain). Use `quantityDelta()` (entity-aware + signed-split — Task
+  1.3) for qty; then the four-branch loop + guards. Return `{avgCost, costBasis, realized, unrealized,
+  totalPnL}` — **NOT `totalYieldValue`** (H1: it needs a per-date price the pure engine has no input for;
+  "total yield earned" is computed in the display layer with a price map). All **27** §10 cases must have a
+  named test (M5 — the original plan named only ~7); the property-based identity invariant covers random
+  sequences.
 - [ ] **Step 4: Run → PASS (all 27 + invariant).**
 - [ ] **Step 5: Commit** — `git commit -m "feat(cost-basis): average-cost engine (27 cases + identity invariant)"`
 
@@ -352,23 +403,33 @@ describe("computeCostBasis", () => {
 
 **Files:** Modify `aggregate.ts`/`assemble.ts`/`shared-portfolio.ts`; the three tables; Test: component tests for the columns
 
-**UI-LOCKDOWN:** Realized column shows "—" when 0 (pure-hold); manual-NAV rows show "—" for avg/realized/unrealized (`COST_COPY.manualNavDash` tooltip) and a real Total P&L; P&L columns hide first under `HIDDEN_BELOW` on narrow screens (full detail always in the drawer).
+**UI-LOCKDOWN:** Realized column shows "—" when 0 (pure-hold); **manual-NAV is NOT a special case** (review-3
+B6 — it uses the engine: full avg/realized/unrealized once a cost is entered, market/NAV fallback until then;
+drop the unused `COST_COPY.manualNavDash` key); P&L columns hide first under `HIDDEN_BELOW` on narrow screens
+(full detail always in the drawer).
 
-- [ ] **Step 1-5:** TDD the per-asset display (avg cost, unrealized, realized, total P&L €+%, `changeColor`); EUR authoritative headline + USD secondary with `COST_COPY.fxDivergenceTooltip`; manual-NAV simple path (§7.8); dashboard Total P&L stat; commit.
+> ⚠ **Largest integration surface (review-3 H5) — split into sub-tasks, not one checkbox:** `aggregate.ts`
+> (~334 lines), `assemble.ts`, `shared-portfolio.ts`, the three tables, the dashboard stat, AND share-page
+> read-only parity. Suggested: **3.3a** aggregate per-asset P&L fields → **3.3b** table columns → **3.3c**
+> dashboard Total P&L stat → **3.3d** share-page parity. The "total yield earned" figure (H1) is computed
+> *here* with the historical-price map (not in the engine).
+
+- [ ] **Step 1-5 (per sub-task):** TDD the per-asset display (avg cost, unrealized, realized, total P&L €+%,
+  `changeColor`); EUR-authoritative headline + USD secondary with `COST_COPY.fxDivergenceTooltip`; dashboard
+  Total P&L stat; share-page read-only parity; commit each sub-task.
 
 ### Task 3.4: ⚠ The #94 seed interaction (RISKIEST — do not rush)
 
 **Files:** Modify `src/lib/actions/benchmark.ts` (use user amount) + `src/lib/portfolio/chart-enrichment.ts` (seed); Test `__tests__/integration/cost-basis-benchmark.test.ts` + a unit test on the seed function.
 
-**Design rule (spec §9):** the benchmark invests the **actual user cost** at `effective_date`; #94's seed must **allow** the correct non-zero delta `= market − cost` on backdated cost≠market lots (the benchmark line starts at cost, the portfolio at market), **without** re-triggering the double-count guards. Scoped to backdated-with-user-cost lots.
+**Design rule (spec §9, DIAGNOSIS CORRECTED in review-3):** `enrichWithSp500Benchmark` (chart-enrichment.ts:242) sets `seedDisp = firstSliceVal` = the portfolio's **market value** at chartStart and forces the benchmark to match it via `seedDelta` — it **actively re-anchors to market and ERASES** any cost gap (it does NOT "passively allow a delta we must un-cancel"). **The fix:** `seedDisp` must become the **cost basis at chartStart** (a scalar from the engine's `costBasisSeries`), so the benchmark anchors to *what you invested* while the portfolio stays at *market*. `enrichWithSp500Benchmark` is **not exported** → test via the public `enrichChartData` (UNIT, not Supabase — H6). The is_adjustment synthetic flows (`buildBenchmarkCashFlows`) stay market-valued and are excluded from the cost seed (scope bound).
 
-- [ ] **Step 1: READ `chart-enrichment.ts` `enrichWithSp500Benchmark` (the `seedDisp`/`seedDelta`/`unitsAtChartStart` block) end-to-end before changing anything.** The seed currently assumes flow = market value.
-- [ ] **Step 2: Write failing tests:**
-  - Unit (seed): a backdated lot with cost €5,000 but market €8,000 at chartStart → benchmark seeds at **cost (5,000)**, portfolio at **market (8,000)**, delta **3,000** preserved (not cancelled).
-  - Control: cost == market → delta ≈ 0, identical to today (#94 unchanged).
-  - Integration: full pipeline reconciles; no double-count (benchmark units don't get the lot twice).
+- [ ] **Step 1: READ `chart-enrichment.ts:204-304` end-to-end.** Confirm `seedDisp = firstSliceVal` (line 242) and the `neededUnits`/`unitsAtChartStart`/`seedDelta` re-anchor (265-286). Identify where the **cost basis at chartStart** is threaded in — a new param to `enrichWithSp500Benchmark`, sourced from `costBasisSeries(chartStart)` at the `enrichChartData` call site (the only public entry).
+- [ ] **Step 2: Write failing tests — UNIT, via the public `enrichChartData` (the seed function isn't exported):**
+  - A backdated lot, cost €5,000, **market €8,000** at chartStart → the S&P line at chartStart = **€5,000** (cost), the portfolio line = **€8,000** (market) — the €3,000 gap survives.
+  - Control: cost == market → **byte-identical to today** (the regression guard).
 - [ ] **Step 3: Run → FAIL.**
-- [ ] **Step 4: Implement the minimal seed adjustment** so the seed uses the actual contributed cost for backdated user-cost lots and allows the delta; re-run the **entire** existing benchmark suite (`npm test -- benchmark chart-enrichment`) to prove no #94 regression.
+- [ ] **Step 4: Implement** — thread `costBasisAtChartStart` into `enrichWithSp500Benchmark` and set `seedDisp = costBasisAtChartStart` (replacing `firstSliceVal`); keep the FX-ratio + `unitsAtChartStart` machinery intact. **Re-run the ENTIRE existing benchmark + chart-enrichment suite** (`npm test -- benchmark chart-enrichment`) — cost≈market must be unchanged.
 - [ ] **Step 5: Live-smoke note (manual, at integration time):** drive the running app with a backdated crypto lot at a known cost ≠ market; confirm the two lines start apart by exactly the delta and reconcile thereafter.
 - [ ] **Step 6: Commit** — `git commit -m "feat(benchmark): use actual cost; seed allows honest cost≠market delta (#94 interaction)"`
 
@@ -380,8 +441,14 @@ describe("computeCostBasis", () => {
 
 **Files:** Modify `src/lib/types.ts` (SplitLeg), `src/lib/actions/splits.ts`; Test `__tests__/unit/split-helpers.test.ts` + integration
 
-- [ ] **Step 1: Failing tests** — splitting `2 BTC €40k` into legs `0.5@2019 €4k · 0.5@2021 €8k · 1.0@2023 €28k` creates children whose `cashflow_amount` = the entered per-leg cost; quantities sum to parent; `unsplit` restores; a leg with no cost falls back to proportional.
-- [ ] **Step 2-4:** add optional `cost` to `SplitLeg`; in `splitActivityEntry` use entered cost when present; run.
+- [ ] **Step 1: Failing tests** — splitting `2 BTC €40k` into legs `0.5@2019 €4k · 0.5@2021 €8k · 1.0@2023 €28k`
+  creates children whose `cashflow_amount` = the entered per-leg cost; **`details.split_quantity` is stored
+  SIGNED by the parent's net direction (B3)** — splitting a SELL yields a **negative** split_quantity so
+  `quantityDelta` (Task 1.3) keeps it a disposal, not a buy; quantities sum to parent; `unsplit` restores; a
+  leg with no cost falls back to proportional.
+- [ ] **Step 2-4:** add optional `cost` to `SplitLeg` **and to the `split-modal.tsx` `onSplit` callback's
+  inline leg type** (L2 — it's typed `{effective_date, quantity}[]`, not `SplitLeg`); in `splitActivityEntry`
+  use entered cost when present AND store `split_quantity` signed by `Math.sign(extractQuantity(parent))`; run.
 - [ ] **Step 5: Commit** — `git commit -m "feat(cost-basis): split legs carry per-leg cost for DCA"`
 
 ### Task 4.2: Split modal — per-leg cost field
@@ -428,7 +495,20 @@ describe("computeCostBasis", () => {
 
 ## Self-Review (run against the spec)
 
-- **Spec coverage:** §5 data → T1.1; classifier/quantityDelta (§6, obj #1) → T1.3; cost override + user_set (§5.2/§7.1) → T1.4/T2.5; backdate recompute (§7.2) → T1.5; yield exclusion (§9) → T2.1; drawer/modal/type-selector/guidance (§8) → T2.2-2.4; multi-select Mark-as-Yield (§7.6/§8.4) → T2.6; engine 27 cases (§6/§10) → T3.1; per-currency EUR-auth (§7.7) → T3.2; display + manual-NAV (§8.6/§7.8) → T3.3; **#94 seed (§9)** → T3.4; split-with-cost (§5.3/§7.5) → T4; overlay (§12 P5) → T5. Transfer fee (§7.4/#3) → T3.1 case 24. Security (#9) → T1.6/T2.5. **No gaps found.**
+> ⚠ **The original "No gaps found" below was WRONG** — a 3-agent code-verification review (2026-06-03) found
+> blocking bugs (cash `balance` vs `quantity`, split-child sign, the missing cost-override task, the
+> mis-diagnosed #94 seed, manual-NAV's false premise). **All are corrected in this revision** (see commit
+> `cb2a978` spec + this plan's review-3 edits) and in `memory/cost-basis-review-findings.md`. A single-pass
+> self-review is not a substitute for outside verification on a feature this size — a **comprehensive audit
+> runs on this revised plan before any code is written.**
+
+- **Spec coverage:** §5 data → T1.1; **cost-override primitives (B1) → T1.4b**; classifier/quantityDelta
+  (entity-aware + signed-split) → T1.3; cost override + user_set (§5.2/§7.1) → T1.4b/T2.5; backdate recompute
+  (§7.2) → T1.5; yield exclusion (§9) → T2.1; drawer/modal/type-selector/guidance (§8) → T2.2-2.4; multi-select
+  Mark-as-Yield (§7.6/§8.4) → T2.6; engine 27 cases (§6/§10) → T3.1; per-currency EUR-auth (§7.7) → T3.2;
+  display + manual-NAV-via-engine (§8.6/§7.8) → T3.3 (sub-tasks); **#94 seed = seedDisp→costBasisAtChartStart
+  (§9)** → T3.4; split-with-cost + signed split (§5.3/§7.5) → T4; overlay (§12 P5) → T5. Transfer-fee €0 (§7.4)
+  → T3.1. Security + UPDATE + TOCTOU (#97/H3/M4) → T1.6/T2.5.
 - **Placeholder scan:** the engine, classifier, copy, migration carry full code; UI/integration tasks carry named tests + exact lockdown matrices + verbatim copy + the template file to mirror + the function to read (T3.4) — concrete, not "TBD". The two genuinely read-then-edit tasks (T1.5 backdate, T3.4 seed) explicitly say *read first* because fabricating a subtle diff would be less accurate than the implementer reading the real function — this is the intended subagent-driven contract, not a placeholder.
 - **Type consistency:** `TransactionKind`, `quantityDelta`, `classifyTransaction`, `computeCostBasis`, `costBasisSeries`, `TYPE_GUIDANCE`/`COST_COPY` names are used identically across tasks.
 
