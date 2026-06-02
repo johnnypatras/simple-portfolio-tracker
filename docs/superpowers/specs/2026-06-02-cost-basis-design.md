@@ -1,0 +1,398 @@
+# Cost Basis & Realized/Unrealized P&L — Design Spec
+
+**Status:** Draft for review · **Date:** 2026-06-02
+**Branch:** `feat/cost-basis` (stacked on `feat/historical-prices-chart` / PR #94)
+**Decision:** Scope **A + B** (total P&L + benchmark **and** average-cost / realized-unrealized split)
+
+---
+
+## 1. Summary
+
+Let the user record the **actual amount paid/received** (incl. fees) and the **date** for every
+transaction of an asset — on existing entries as well as new ones — so the app can:
+
+1. compute **accurate gains/losses** (total, and split into realized vs. unrealized, with average buy price), and
+2. feed the **S&P benchmark** the correct cash-flow amount at the correct (possibly backdated) date.
+
+The chart's value line is **untouched** — it always uses market price. Cost feeds only P&L and the
+benchmark. The feature is a thin, mostly-additive layer over the existing `activity_log` (which already
+records every mutation): a new per-transaction **Transactions drawer**, a **cost field**, a **yield**
+classifier, and a pure **average-cost engine**.
+
+---
+
+## 2. Goals / Non-goals
+
+**Goals**
+- Capture/edit **amount paid (buys) / received (sells)** + **date** per transaction, on new and **existing** entries.
+- Classify income as **Yield** (cost €0, excluded from benchmark contributions).
+- Per-asset **average cost · unrealized · realized · total P&L**; portfolio totals; corrected benchmark.
+- A per-asset **Transactions drawer** (a lens on `activity_log`) reachable from each holdings row.
+- **Split** an existing lot into multiple dated **cost** legs (extends the existing split feature).
+- Fix the latent **backdate-stale-amount** benchmark bug.
+- Work **uniformly** across crypto, stocks, and cash; consistent, **self-explanatory** modals.
+
+**Non-goals (explicitly parked / rejected — see §14)**
+- Bulk auto-detect-and-reclassify of recurring interest (parked; builds on the per-txn yield flag).
+- FIFO / specific-lot / tax-lot accounting (rejected — average-cost only; rationale §4.4).
+- Dedicated per-asset detail pages (later; the drawer covers v1).
+- Changing the truth-line chart (it stays market-price; out of scope).
+
+---
+
+## 3. Background: what already exists (and is reused)
+
+- **`activity_log`** records every mutation (created/updated/removed) with before/after snapshots,
+  `effective_date`, `is_adjustment`, `transfer_group_id`, `split_from_id`, and **pre-computed cashflows**
+  (`cashflow_amount_usd/eur`, `cashflow_status`) + deltas (`delta_*`).
+- **`logActivity()`** already accepts `cashflow_amount_usd/eur` + `cashflow_status` as params
+  (currently filled by the auto-computed `computeActivityFx()`), so "override the amount" is **threading a
+  user number into an existing param**, not a schema change.
+- **S&P benchmark** (`deriveCashFlows` in `benchmark.ts`) reads `cashflow_status='complete'` rows; backdated
+  lots are handled by PR #94's `buildBenchmarkCashFlows` + `^SP500TR` extension; seed in `chart-enrichment.ts`.
+- **Transfers** (`transfers.ts`) are two-legged, both legs `is_adjustment=true` → **benchmark-neutral**
+  (models internal moves; prevents double-counting).
+- **Splits** (`splitActivityEntry` in `splits.ts`) already divide one entry into ≥2 dated child legs
+  (conserving quantity); `backdateActivityEntry` sets `effective_date` on an existing entry.
+- Holdings rows already **expand** to show the **wallet/broker distribution** (`crypto-table.tsx`); the
+  position editor edits **per-wallet quantities**. → Both own the *where-held* (wallet) axis.
+
+---
+
+## 4. Domain model & core concepts
+
+### 4.1 The two axes of an asset
+- **Where held** — wallet / broker. Owned by the row expansion + position editor. *Untouched by this feature.*
+- **When/how acquired** — the transactions (buys, sells, yield). Lives in `activity_log`; surfaced by the
+  new **Transactions drawer**. *This is the cost/date axis.*
+
+### 4.2 The portfolio-boundary model (drives benchmark inclusion)
+The benchmark counts only crossings of the **portfolio boundary**; everything internal is excluded.
+
+| Event | Nature | Benchmark | Cost-basis effect |
+|---|---|---|---|
+| **Buy** (new external money → asset) | external **in** | counts (+contribution) | adds units at **cost = amount paid** |
+| **Deposit** (salary/savings → cash) | external **in** | counts (+contribution) | adds cash at face value |
+| **Sell** (asset → proceeds) | disposal | see §7.3 | **realizes gain** (`proceeds − avg-cost×units`) |
+| **Withdrawal** (cash → spent/out) | external **out** | counts (−contribution) | removes cash |
+| **Yield** (interest/staking/airdrop) | internal **return** | **excluded** | adds units at **cost €0** (full value is gain) |
+| **Transfer** (asset ↔ cash, wallet ↔ wallet) | internal **move** | **excluded** (`is_adjustment=true`) | cost-neutral at asset level (§7.4) |
+
+**Rationale for Yield exclusion** (a user challenged "yield could've been in the S&P"): yield is money the
+*portfolio generated* (internal return), not money brought in from outside. The benchmark seeds **both**
+worlds with the same external contributions and lets each grow on its **own** internal returns (your yield;
+the S&P's dividends via `^SP500TR`). Counting yield as a contribution would hand the S&P side capital that
+only existed because you held the yielding asset → double-count. The *opportunity cost* of low-yield assets
+is captured automatically by the value comparison over time. (Withdrawing yield to spend **is** a counted
+outflow; earning it is not a flow.)
+
+### 4.3 Cost is **date-independent**; only the benchmark/chart need the date
+All P&L figures are pure `money ÷ quantity` arithmetic — **no date input**. So approximate/forgotten dates
+do **not** affect P&L; the date only affects the chart x-position and which S&P price the benchmark buys at
+(both already graceful). This is why **FIFO is rejected** — it matches sells to buys by date *order*, so
+fuzzy dates produce misleadingly-precise wrong realized gains. Average-cost is order-independent and robust.
+
+### 4.4 Average-cost (the only method)
+`avg cost = total cost ÷ total units`. On a partial sell, cost removed = `avg-cost × units sold`. This is
+the only method that needs no per-lot date precision. Total P&L (`current value + Σproceeds − Σcost`) is
+identical under any method; only the *realized/unrealized split* depends on method, and average-cost is the
+right fit for a personal, date-approximate tracker.
+
+### 4.5 Lumped accumulation (DCA entered as one lot)
+Entering years of buys as one dated lot does **not** skew cost basis/P&L (date-independent, given the true
+*total* cost). It only skews the **benchmark timing**. Fix: **Split** the lot into dated cost legs (§7.5),
+or accept the lump dated at the *weighted-middle* of accumulation.
+
+---
+
+## 5. Data model changes
+
+Minimal and additive. One new column; the rest reuses existing fields.
+
+### 5.1 New column
+```sql
+-- migration NNN_transaction_yield.sql
+ALTER TABLE activity_log
+  ADD COLUMN is_yield BOOLEAN NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN activity_log.is_yield IS
+  'Transaction is income/return (interest, staking, airdrop): units added at cost €0, excluded from benchmark cash flows. Distinct from is_adjustment (corrections/transfers).';
+```
+- No backfill needed (existing rows default `false`). Regenerate `src/types/database.ts` after.
+
+### 5.2 Cost = the existing `cashflow_amount_usd/eur` (now user-authored)
+- **Buy/Sell:** `cashflow_amount_*` = the user-entered amount (cost / proceeds). If left blank, falls back
+  to the current auto-computed `qty × market price × FX` (today's behavior). This makes cost **optional with
+  a market fallback**.
+- **Yield:** `is_yield=true`, `cashflow_amount_* = 0` (cost €0). Value-of-yield-earned is **derived**
+  (`units × historical price`) for reporting — never stored/typed.
+- **Currency:** the amount is entered in EUR or USD (toggle); the other is computed via FX-at-`effective_date`
+  (existing `toUsdAndEur`). Stocks may enter in native trading currency (same conversion path).
+
+### 5.3 Split legs carry per-leg cost
+`SplitLeg` gains an optional `cost` (in the leg's currency). `splitActivityEntry` uses the entered cost for
+each child's `cashflow_amount` instead of the current proportional-by-quantity division. Constraint:
+Σ(leg quantity) = parent quantity (existing); Σ(leg cost) is shown but **not** forced to equal the parent
+(user may be correcting the total). See §7.5.
+
+---
+
+## 6. The average-cost engine (pure module)
+
+`src/lib/portfolio/cost-basis.ts` — a pure, unit-tested function. Operates on an **asset's total quantity
+across wallets** (so wallet↔wallet transfers net to zero and never create a cost event; only real
+acquisitions/disposals move the totals — see §7.4).
+
+```
+computeCostBasis(transactionsAsc, currentMarketValue) -> {
+  avgCost,          // remaining cost ÷ remaining units (0 if no units)
+  costBasis,        // remaining cost of currently-held units
+  realized,         // Σ over sells of (proceeds − avgCostAtSale × unitsSold)
+  unrealized,       // currentMarketValue − costBasis
+  totalPnL,         // realized + unrealized
+  totalYieldValue,  // Σ over yield txns of (units × price-at-date)  [derived, for display]
+}
+```
+
+**Pre-step — net transfer legs by `transfer_group` within the asset** (this is what makes wallet moves
+cost-neutral): a group whose legs are *all* this asset (wallet↔wallet move) nets to **qty 0** → skip
+entirely (cost carries over, no realized, no step-up). A group with one leg on this asset (cross-asset, e.g.
+crypto→cash) leaves a single net **disposal/acquisition at the moved value**. The remaining stream then has
+exactly four kinds: **buy, sell, yield, correction** (a bare `is_adjustment` with no `transfer_group_id`).
+
+Algorithm (per asset, transactions sorted by `COALESCE(effective_date, created_at)`, post-netting):
+```
+units = 0; cost = 0; realized = 0
+for txn in stream:
+  qtyDelta = unitsAfter - unitsBefore                 // from snapshots (or the netted group delta)
+  if qtyDelta == 0: continue
+  value      = txn.transfer_group_id ? |txn.delta| : |txn.cashflow_amount|   // € value of this flow/leg
+  isCorrection = txn.is_adjustment and not txn.transfer_group_id and not txn.is_yield
+
+  if txn.is_yield:            units += qtyDelta                              // earned units → cost += 0
+  elif qtyDelta > 0:                                                         // acquisition
+       if isCorrection:       units += qtyDelta                             // balance-up fix → cost += 0
+       else:                  units += qtyDelta; cost += value              // BUY (amount paid) / TRANSFER-IN (moved value)
+  else:                                                                     // qtyDelta < 0 — disposal
+       avg = units > 0 ? cost/units : 0; out = -qtyDelta
+       if isCorrection:       cost -= avg*out; units -= out                 // balance-down fix → no realized
+       else:                  realized += value - avg*out; cost -= avg*out; units -= out  // SELL (proceeds) / TRANSFER-OUT (realizes)
+costBasis = cost
+avgCost   = units > 0 ? cost/units : 0
+unrealized = currentMarketValue - costBasis
+totalPnL  = realized + unrealized
+```
+**Invariant:** `totalPnL` must equal `currentMarketValue + Σproceeds − Σcost` (method-independent identity) —
+asserted in tests. Guards: `units→0` (no divide-by-zero), re-buy after full exit (avg restarts cleanly from
+0/0), float tolerance on the zero-crossing. Transfers and corrections each get dedicated tests (§10).
+
+---
+
+## 7. Behavior details
+
+### 7.1 Cost override + the optional/fallback contract
+Buy/Sell modal "Amount paid/received" is **optional**. Filled → sets `cashflow_amount_*` (+ `cashflow_status='complete'`).
+Blank → existing market-derived value. Never coerce a blank to 0 (mirrors the cash modal's NaN-guard lesson).
+
+### 7.2 Backdate recompute (fixes the latent bug)
+`backdateActivityEntry` today changes only `effective_date`, leaving a stale import-date amount → benchmark
+overstates. **Fix:** on backdate of a real cash-flow entry, if the entry has **no user-authored cost**,
+**recompute** `cashflow_amount_* = qty × historical-price(new date) × FX` (PR #94 historical-price path). If
+it **has** a user cost, keep it. Either way the stale amount is replaced. (User-authored vs auto flag: a
+`cashflow_user_set BOOLEAN` companion, or infer from an explicit edit — decided in the plan; default to a
+small boolean to avoid ambiguity.)
+
+### 7.3 Sells and where proceeds go
+A Sell always **realizes gain** for cost basis (`proceeds − avg×units`), independent of the proceeds'
+destination. For the **benchmark**: if proceeds leave the portfolio it's an external outflow (counted); if
+they land in tracked cash it's internal (model via **Transfer** → neutral). The modal guides this (§8.5).
+
+### 7.4 Transfers (netted by `transfer_group` within the asset — §6 pre-step)
+A wallet↔wallet move (both legs the same asset) nets to **zero** quantity change → **no cost event**
+(cost-neutral carryover; no realized, no step-up). A cross-asset transfer (e.g. crypto→cash) leaves a single
+net **disposal** on the source asset → realizes gain at the **moved value** (`|delta|`); the destination
+(cash) acquires at that value. Transfer legs stay `is_adjustment=true` (benchmark-neutral — internal move),
+so cost-basis realization and benchmark inclusion are deliberately **decoupled**: a transfer realizes gain
+for P&L but is *not* an external flow. Fees (the leg-delta difference) reduce realized proceeds naturally.
+
+### 7.5 Split into dated cost legs
+Extends `splitActivityEntry`: each `SplitLeg = { effective_date, quantity, cost? }`. Children get the entered
+per-leg cost (fallback: proportional, as today). Parent preserved as `undone` (reversible via `unsplit`).
+Quantities must sum to the parent. Used to reconstruct DCA so the benchmark sees dated flows (§4.5).
+
+---
+
+## 8. UX design (consistent, self-explanatory) — the heart of the feature
+
+> Design principles: **add no new always-on column** (tables are width-tight); **ride existing affordances**;
+> **one unified "Add transaction" flow** with a clear **type selector** + inline guidance so the user is led
+> to the correct choice; follow established modal conventions (`space-y-4`, `text-xs text-zinc-400 mb-1`
+> labels, dark theme, `focus-trap-react`, `role="dialog"`, `role="alert"` on errors, `accent-amber-500`
+> reserved for adjustments).
+
+### 8.1 Row affordance — a "Transactions" (history) icon
+Each holdings row's action cluster (crypto/stock/cash tables) gains a **history icon** beside Edit/Delete
+(hover-revealed; no new column). Opens the **Transactions drawer** for that asset. Distinct from the wallet
+expansion and the position editor (which keep the *where-held* axis).
+
+### 8.2 The Transactions drawer (per-asset lens on `activity_log`)
+- Right-anchored panel: header `{Asset} · Transactions`, a one-line summary (`held · value · cost · P&L`),
+  the transaction list (newest-or-oldest first; sortable by date), and footer actions **+ Add transaction**
+  and **Split a lot**.
+- **Grouping for long lists (yield assets like GHO):** consecutive **Yield** entries collapse into a single
+  expandable row ("+ N more weekly accruals (€lo–€hi · date→date)"); a **type filter** (All · Buys · Sells ·
+  Yield) is available. Prevents a HODL+yield asset from becoming a wall of rows.
+- Each row: **type badge** (color-coded), quantity, amount (cost/proceeds, or "—" for yield), date, and an
+  inline **edit** pencil. Editing expands the row into the edit form in place (§8.4).
+- Empty state: "No transactions yet — Add the first one."
+
+### 8.3 The Add-transaction modal — **type selector + guidance**
+A single modal with a prominent **type selector** whose options + helper text adapt to the asset class.
+Selecting a type shows exactly the fields that type needs (no irrelevant fields), each with a short
+explainer so the user is *guided to the proper selection*.
+
+**Type vocabulary by asset class** (same concepts, asset-appropriate labels):
+
+| Asset class | Type options |
+|---|---|
+| Crypto / Stocks / Manual-NAV | **Buy · Sell · Yield · Transfer→** |
+| Cash | **Deposit · Withdrawal · Yield · Transfer→** |
+
+**Per-type fields + guidance text (shown under the selector):**
+
+| Type | Fields | Inline guidance (verbatim intent) |
+|---|---|---|
+| **Buy** | Quantity · Amount paid (€/$ toggle) · Date | "Bought with **new money** you added. Moving cash you already track into this? Use **Transfer** instead — otherwise it double-counts against the S&P." |
+| **Sell** | Quantity · Amount received · Date | "Sold for cash/proceeds. Realizes gain/loss. If the cash stays in an account you track, record it as a **Transfer**." |
+| **Yield** | Quantity received · Date | "Interest, staking, rewards or an airdrop — units you **earned, didn't pay for**. Counted as profit (cost €0); not a contribution to the S&P comparison." |
+| **Deposit** (cash) | Amount · Date | "**External money in** (e.g. salary, savings). Counts as a contribution in the S&P comparison." |
+| **Withdrawal** (cash) | Amount · Date | "Money leaving your tracked portfolio (spending). Counts as a withdrawal in the S&P comparison." |
+| **Transfer →** | (routes to the existing Transfer dialog) | "Move value **between accounts you already track** (e.g. cash → crypto). Doesn't affect the S&P comparison — it's internal." |
+
+- **Amount is optional** for Buy/Sell with a clear hint: "Leave blank to use the market value on that date."
+- **Adjustment** is *not* a primary type (it's a correction): reachable via an "Advanced" affordance or the
+  existing adjustment checkbox, keeping the amber `accent-amber-500` convention. Not surfaced as a normal type
+  to avoid confusing corrections with real activity.
+- Validation: numeric amount (NaN-guarded, never coerced to 0), positive quantity, past-or-today date
+  (`validatePastOrTodayDate`), `role="alert"` errors. Currency validated.
+
+### 8.4 The Edit (existing transaction) flow — the primary use case
+The same field set as Add, pre-filled, opened inline from a drawer row's pencil. Editing **Amount paid**
+or **Date** on a real cash-flow entry **corrects that entry** (updates `cashflow_amount_*` / `effective_date`
+via the recompute contract §7.2) — it does **not** create a phantom transaction. Guards: cannot edit a
+transfer leg's amount here (edit via the transfer flow); cannot edit an `undone`/split-child entry (unsplit
+first) — mirrors `backdateActivityEntry`'s existing guards, surfaced as friendly messages.
+
+### 8.5 Double-count prevention (Buy vs Transfer)
+The Buy/Sell guidance text (above) plus an optional inline nudge: when adding a **Buy** on an asset while
+the user holds tracked cash, a subtle hint "Using money from a tracked account? → Transfer." No hard block
+(user may genuinely add external money), but the guidance makes the correct path obvious.
+
+### 8.6 Display surfaces (A + B)
+Per-asset, in the holdings table and/or the drawer summary:
+- **Average cost** (per unit), **Unrealized**, **Realized**, **Total P&L** (€ + %). Color via existing
+  `changeColor`. Realized hidden/`—` when zero (pure-hold assets) to reduce noise.
+- Portfolio-level **Total P&L** stat on the dashboard. The S&P line is corrected (cost-accurate, yield-excluded).
+- Reuse existing responsive column-hiding (`HIDDEN_BELOW`); P&L columns hide first on narrow screens, full
+  detail always available in the drawer.
+
+---
+
+## 9. Server actions (new / modified)
+
+- `src/lib/actions/transactions.ts` (new): `addTransaction(assetRef, { type, quantity, amount?, currency?, date?, isYield })`,
+  `editTransaction(entryId, patch)` — both validated, RLS-scoped (`.eq('user_id')`), `revalidateDashboard()`,
+  Sentry-wrapped (`captureAction`). Thin orchestration over existing `upsertPosition` / cash-account / `logActivity`.
+- `splits.ts`: extend `SplitLeg` with `cost?`; `splitActivityEntry` uses it.
+- `backfill.ts` / backdate path: implement the recompute-on-backdate contract (§7.2).
+- `benchmark.ts` `deriveCashFlows`: exclude `is_yield=true`; use the (now possibly user-authored)
+  `cashflow_amount_*` at `effective_date`.
+- `src/lib/portfolio/cost-basis.ts` (new pure module): the average-cost engine (§6).
+- Thread cost-basis outputs into `aggregate.ts` / `assemble.ts` / `shared-portfolio.ts` for display.
+
+---
+
+## 10. Comprehensive edge cases (must each have a test)
+
+1. **Pure buy-and-hold, no sells** → realized 0, unrealized = value − cost, avg = cost÷qty.
+2. **Partial sell** → realized = proceeds − avg×sold; remainder keeps avg.
+3. **Sell at a loss** → negative realized.
+4. **Full exit then re-buy** → avg restarts from 0/0; no carryover.
+5. **Yield (GHO interest)** → units +, cost €0, lowers avg, value = gain; excluded from benchmark.
+6. **Yield then sold** → realized = full proceeds (cost €0).
+7. **Airdrop / new asset as yield** → first txn is Yield, cost €0.
+8. **Cash yield (bank interest)** → Yield on the cash account; excluded from contributions.
+9. **Salary deposit** → Deposit; counts as contribution; mirror of yield.
+10. **Buy with tracked cash** → must be a Transfer (neutral), not a Buy (guided; tested for no double-count).
+11. **Wallet→wallet move (same crypto)** → net-zero at asset level → cost-neutral.
+12. **Crypto→cash transfer (disposal)** → realizes gain; benchmark-neutral.
+13. **Lumped DCA** → correct total P&L; benchmark timing off until split; Split fixes it.
+14. **Split with explicit per-leg costs** → children carry costs; reversible; quantities sum.
+15. **Backdate an existing real cash-flow lot** → amount recomputed (or user cost kept); benchmark accurate.
+16. **Multi-currency cost** (EUR vs USD; stock native currency) → stored both via FX-at-date.
+17. **Stablecoin (all gain = yield)** → P&L meaningful only via yield handling.
+18. **Manual-NAV asset (ELTIF/SICAV)** → cost = subscription amount; NAV drives value; distributions = cash yield.
+19. **Editing/undoing a transaction** → engine recomputes; existing undo machinery intact.
+20. **Long yield history (GHO ~14 entries)** → drawer groups/collapses; performant.
+21. **Zero/blank/NaN amount** → blocked, never coerced to 0.
+22. **Float boundary at units→0** → no divide-by-zero, no drift (tolerance).
+
+---
+
+## 11. Testing strategy (TDD throughout)
+
+- **Unit:** the `cost-basis.ts` engine exhaustively (every §10 numeric case + the method-independent identity
+  invariant); the recompute-on-backdate logic; currency conversion; split-with-cost math.
+- **Component:** the Add/Edit transaction modal (each type shows correct fields + guidance; validation;
+  optional-amount fallback; type-vocabulary per asset class); the drawer (grouping/collapse, filter, edit-in-place).
+- **Integration (local Supabase, RLS):** `addTransaction`/`editTransaction` persist + RLS-scope; `is_yield`
+  excluded from `deriveCashFlows`; backdate recompute; split-with-cost round-trips; ownership checks.
+- **Quality gates:** typecheck, lint, production build, coverage thresholds on the new pure module (≥90%).
+- **`/review audit`** (16-agent) on the combined branch before shipping.
+- **Live + visual smoke:** real Yahoo/Frankfurter; drive the running app on the GHO case + a backdated
+  crypto lot; verify avg cost, realized/unrealized, the corrected S&P line, and the yield exclusion reconcile.
+- **`pg_dump`** before any prod data step (Supabase Free = no backups).
+
+---
+
+## 12. Phased implementation (for the plan)
+
+1. **Data + cost capture/override** — `is_yield` migration, regenerate types; cost field on Add/Edit;
+   optional/fallback contract; backdate recompute fix. *(foundation + the latent-bug fix)*
+2. **Yield + Add-transaction type selector + Transactions drawer** — row history icon, drawer, the unified
+   modal with type vocabulary + guidance, grouping/filter, edit-in-place. *(the UX)*
+3. **Average-cost engine + A+B display** — pure `cost-basis.ts`; thread avg/realized/unrealized/total into
+   aggregate + display surfaces; dashboard total. *(the numbers)*
+4. **Split-with-cost** — extend `SplitLeg` + `splitActivityEntry` + the split modal cost fields. *(DCA)*
+
+Each phase independently testable; benchmark accuracy verifiable after Phase 1, the engine after Phase 3.
+
+---
+
+## 13. Migration & rollout
+
+- Built on **`feat/cost-basis`** (stacked on `feat/historical-prices-chart`). #94 stays clean.
+- One additive migration (`is_yield`, default false) — no data backfill; CI type-drift check enforced.
+- **#94 and cost-basis are verified *together* before prod** (the agreed plan): all gates + `/review audit`
+  + live/visual smoke. `pg_dump` before the (separate) #94 legacy-adjustment migration; this feature needs
+  no destructive data migration of its own.
+- Ship order TBD with the user: merge #94 → main, then cost-basis → main (back-to-back), or a combined verify.
+
+---
+
+## 14. Open questions / parked / future
+
+- **Bulk interest reclassification** (auto-detect recurring yield) — parked; builds on the per-txn `is_yield`.
+- **DRIP** (dividend reinvested into shares) — v1 treats reinvested income as Yield (cost €0). Strict tax
+  treatment (cost = dividend value) is a future refinement; flagged, not blocking.
+- **`cashflow_user_set` flag vs. inferring user-authored cost** — settle in the plan (lean: small boolean).
+- **`transaction_kind` explicit enum** — v1 derives buy/sell/deposit/withdrawal from qty-direction + entity
+  type + `is_yield`; an explicit kind column is a possible later clarity refactor.
+- **Per-asset detail pages** — the spacious long-term home for both axes; deferred.
+
+---
+
+## 15. References
+- PR #94 truth-based chart (the base): `2026-05-27-historical-prices-augmentation-design.md`
+- `is_adjustment` read/write map + benchmark seed: project memory `chart-correctness-architecture.md`
+- Design exploration + rationale (yield/salary boundary, placement evolution): project memory `pending-features.md`
