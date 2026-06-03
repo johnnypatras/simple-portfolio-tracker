@@ -7,6 +7,7 @@ import {
   loadAssetTransactions,
   addTransaction,
   editTransaction,
+  markAsYield,
   type AssetTransactionDisplayRow,
 } from "@/lib/actions/transactions";
 import { TransactionsDrawer } from "@/components/transactions/transactions-drawer";
@@ -220,6 +221,22 @@ export function TransactionsManager({
     [onMutated, refetch],
   );
 
+  // ── Mark-as-yield flow ─────────────────────────────────────────────────
+  const handleMarkAsYield = useCallback(
+    async (ids: string[]) => {
+      try {
+        const result = await markAsYield(ids);
+        toast.success(
+          `${result.updated} marked as yield${result.skipped ? `, ${result.skipped} skipped` : ""}`,
+        );
+        refetch();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to mark as yield");
+      }
+    },
+    [refetch],
+  );
+
   if (!target) return null;
 
   const editState = modal?.mode === "edit" ? modal.edit : null;
@@ -236,6 +253,7 @@ export function TransactionsManager({
         onEdit={handleEdit}
         onAdd={() => setModal({ mode: "add" })}
         onAddFirst={() => setModal({ mode: "add" })}
+        onMarkAsYield={handleMarkAsYield}
       />
 
       <TransactionModal

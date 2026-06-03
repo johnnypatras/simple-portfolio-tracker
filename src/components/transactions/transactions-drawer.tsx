@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { X, Pencil } from "lucide-react";
 import FocusTrap from "focus-trap-react";
 import type { TransactionKind } from "@/lib/transaction-kind";
 import { fmtCurrency, formatQuantity } from "@/lib/format";
+import { COST_COPY } from "@/lib/cost-basis-copy";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,18 +21,29 @@ export interface TransactionDisplayRow {
   date: string;
 }
 
+/** Extended row shape passed by the manager — optional flags default to false. */
+export type EnrichedDisplayRow = TransactionDisplayRow & {
+  isTransferLeg?: boolean;
+  isSplitChild?: boolean;
+};
+
 export interface TransactionsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   assetName: string;
   assetClass: "crypto" | "stock" | "cash";
-  rows: TransactionDisplayRow[];
+  rows: EnrichedDisplayRow[];
   onEdit: (rowId: string) => void;
   onAddFirst?: () => void;
   /** Header "+ Add" affordance (distinct from the empty-state `onAddFirst` CTA). */
   onAdd?: () => void;
   /** While true, the list area shows a pulse skeleton instead of rows/empty-state. */
   loading?: boolean;
+  /**
+   * When provided, enables multi-select "Mark as Yield" bulk reclassification.
+   * Share / read-only callers simply omit this prop to hide the entire UI.
+   */
+  onMarkAsYield?: (ids: string[]) => Promise<void> | void;
 }
 
 // ── Filter chip definitions ───────────────────────────────────────────────────
@@ -109,17 +121,58 @@ function formatQty(qty: number): string {
   return qty < 0 ? `-${formatted}` : `+${formatted}`;
 }
 
+// ── Yield eligibility ─────────────────────────────────────────────────────────
+
+/** UI-side eligibility check. Returns a disabled reason string, or null if eligible. */
+function getYieldIneligibleReason(row: EnrichedDisplayRow): string | null {
+  if (row.isTransferLeg) return "Part of a transfer";
+  if (row.isSplitChild)  return "Split into dated parts";
+  if (row.kind === "yield") return "Already yield";
+  if (row.kind === "adjustment") return "Balance correction, not income";
+  if (row.kind === "transfer") return "Part of a transfer";
+  // sell / withdrawal or non-positive qty
+  if (row.kind !== "buy" && row.kind !== "deposit") return "Only acquisitions can be yield";
+  if (row.quantity <= 0) return "Only acquisitions can be yield";
+  return null;
+}
+
 // ── Transaction row component ─────────────────────────────────────────────────
 
 function TransactionRow({
   row,
   onEdit,
+  showCheckbox,
+  checked,
+  onToggle,
 }: {
-  row: TransactionDisplayRow;
+  row: EnrichedDisplayRow;
   onEdit: (id: string) => void;
+  showCheckbox: boolean;
+  checked: boolean;
+  onToggle: (id: string) => void;
 }) {
+  const ineligibleReason = showCheckbox ? getYieldIneligibleReason(row) : null;
+  const isDisabled = showCheckbox && ineligibleReason !== null;
+
   return (
     <div className="group flex items-center gap-3 px-4 py-2.5 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+      {/* Selection checkbox */}
+      {showCheckbox && (
+        <div className="shrink-0">
+          <input
+            type="checkbox"
+            aria-label={`Select ${row.kind} transaction ${formatDate(row.date)}`}
+            checked={checked}
+            disabled={isDisabled}
+            title={ineligibleReason ?? undefined}
+            onChange={() => {
+              if (!isDisabled) onToggle(row.id);
+            }}
+            className="accent-emerald-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+          />
+        </div>
+      )}
+
       {/* Kind badge */}
       <div className="shrink-0">
         <KindBadge kind={row.kind} />
@@ -159,16 +212,16 @@ function TransactionRow({
  * A "display item" is either a single row, or a yield-group.
  * Yield runs > 2 rows are collapsed: first 2 shown, rest behind an expand toggle.
  */
-type SingleItem = { type: "row"; row: TransactionDisplayRow };
+type SingleItem = { type: "row"; row: EnrichedDisplayRow };
 type GroupItem = {
   type: "group";
   /** Unique key for this group. */
   key: string;
-  rows: TransactionDisplayRow[];
+  rows: EnrichedDisplayRow[];
 };
 type DisplayItem = SingleItem | GroupItem;
 
-function buildDisplayItems(rows: TransactionDisplayRow[]): DisplayItem[] {
+function buildDisplayItems(rows: EnrichedDisplayRow[]): DisplayItem[] {
   const items: DisplayItem[] = [];
   let i = 0;
 
@@ -215,12 +268,18 @@ function YieldGroup({
   expanded,
   onToggle,
   onEdit,
+  showCheckbox,
+  selectedIds,
+  onToggleSelect,
 }: {
   groupKey: string;
-  rows: TransactionDisplayRow[];
+  rows: EnrichedDisplayRow[];
   expanded: boolean;
   onToggle: (key: string) => void;
   onEdit: (id: string) => void;
+  showCheckbox: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   const alwaysVisible = rows.slice(0, 2);
   const hidden = rows.slice(2);
@@ -228,7 +287,14 @@ function YieldGroup({
   return (
     <div>
       {alwaysVisible.map((r) => (
-        <TransactionRow key={r.id} row={r} onEdit={onEdit} />
+        <TransactionRow
+          key={r.id}
+          row={r}
+          onEdit={onEdit}
+          showCheckbox={showCheckbox}
+          checked={selectedIds.has(r.id)}
+          onToggle={onToggleSelect}
+        />
       ))}
 
       {!expanded && (
@@ -246,7 +312,14 @@ function YieldGroup({
       {expanded && (
         <>
           {hidden.map((r) => (
-            <TransactionRow key={r.id} row={r} onEdit={onEdit} />
+            <TransactionRow
+              key={r.id}
+              row={r}
+              onEdit={onEdit}
+              showCheckbox={showCheckbox}
+              checked={selectedIds.has(r.id)}
+              onToggle={onToggleSelect}
+            />
           ))}
           <button
             type="button"
@@ -275,13 +348,21 @@ export function TransactionsDrawer({
   onAddFirst,
   onAdd,
   loading = false,
+  onMarkAsYield,
 }: TransactionsDrawerProps) {
   const titleId = useId();
   const [activeFilter, setActiveFilter] = useState<FilterChipKey>("all");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Multi-select state: selected row ids + confirm state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  // In-flight guard: prevents double-fire on rapid Confirm clicks.
+  const isSubmittingRef = useRef(false);
   // Tracks the previous isOpen value so we can detect a closed→open transition
   // and reset transient state inline during render (React's "derived state from prev render" idiom).
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  // Shadow the rows reference to detect identity changes for selection reset.
+  const [prevRows, setPrevRows] = useState(rows);
 
   // Esc-to-close (identical to Modal)
   useEffect(() => {
@@ -302,7 +383,16 @@ export function TransactionsDrawer({
     if (isOpen) {
       setActiveFilter("all");
       setExpandedGroups(new Set());
+      setSelectedIds(new Set());
+      setConfirming(false);
     }
+  }
+
+  // Reset selection when rows identity changes (post-refetch).
+  if (rows !== prevRows) {
+    setPrevRows(rows);
+    setSelectedIds(new Set());
+    setConfirming(false);
   }
 
   if (!isOpen) return null;
@@ -319,8 +409,13 @@ export function TransactionsDrawer({
   // Pure + O(n) over a per-asset list (typically <200 rows) — cheap enough to recompute each render; no useMemo needed.
   const displayItems = buildDisplayItems(filteredRows);
 
+  const showCheckbox = onMarkAsYield !== undefined;
+  const selectionCount = selectedIds.size;
+
   function handleChipClick(chipKey: FilterChipKey) {
     setActiveFilter(chipKey);
+    setSelectedIds(new Set());
+    setConfirming(false);
   }
 
   function toggleGroup(key: string) {
@@ -333,6 +428,41 @@ export function TransactionsDrawer({
       }
       return next;
     });
+  }
+
+  function toggleRowSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setConfirming(false);
+  }
+
+  async function handleConfirmMarkAsYield() {
+    if (!onMarkAsYield || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    try {
+      await onMarkAsYield([...selectedIds]);
+      // Only clear on success — on rejection these lines are skipped,
+      // leaving confirm state intact so the user can retry.
+      setSelectedIds(new Set());
+      setConfirming(false);
+    } catch {
+      // Caller (TransactionsManager) handles error display (toast).
+      // Intentionally swallowed here so the unhandled rejection doesn't
+      // escape — confirm state is preserved for retry.
+    } finally {
+      isSubmittingRef.current = false;
+    }
   }
 
   return (
@@ -440,7 +570,7 @@ export function TransactionsDrawer({
                 </p>
                 <button
                   type="button"
-                  onClick={() => setActiveFilter("all")}
+                  onClick={() => handleChipClick("all")}
                   className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors"
                 >
                   Clear filter
@@ -458,6 +588,9 @@ export function TransactionsDrawer({
                         key={item.row.id}
                         row={item.row}
                         onEdit={onEdit}
+                        showCheckbox={showCheckbox}
+                        checked={selectedIds.has(item.row.id)}
+                        onToggle={toggleRowSelect}
                       />
                     );
                   }
@@ -470,12 +603,64 @@ export function TransactionsDrawer({
                       expanded={expandedGroups.has(item.key)}
                       onToggle={toggleGroup}
                       onEdit={onEdit}
+                      showCheckbox={showCheckbox}
+                      selectedIds={selectedIds}
+                      onToggleSelect={toggleRowSelect}
                     />
                   );
                 })}
               </div>
             )}
           </div>
+
+          {/* ── Selection action bar ───────────────────────────────── */}
+          {showCheckbox && selectionCount > 0 && (
+            <div className="shrink-0 border-t border-zinc-800 px-4 py-3 bg-zinc-900">
+              {confirming ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-zinc-400">
+                    {COST_COPY.markAsYieldConfirm}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleConfirmMarkAsYield}
+                      className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(false)}
+                      className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-zinc-400 flex-1">
+                    {selectionCount} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(true)}
+                    className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
+                  >
+                    Mark as Yield
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="px-3 py-1.5 min-h-6 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </FocusTrap>
     </div>

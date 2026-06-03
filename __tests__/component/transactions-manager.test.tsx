@@ -20,6 +20,7 @@ const hoisted = vi.hoisted(() => ({
   loadAssetTransactions: vi.fn(),
   addTransaction: vi.fn(),
   editTransaction: vi.fn(),
+  markAsYield: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -28,6 +29,7 @@ vi.mock("@/lib/actions/transactions", () => ({
   loadAssetTransactions: hoisted.loadAssetTransactions,
   addTransaction: hoisted.addTransaction,
   editTransaction: hoisted.editTransaction,
+  markAsYield: hoisted.markAsYield,
 }));
 
 vi.mock("sonner", () => ({
@@ -111,6 +113,7 @@ beforeEach(() => {
   hoisted.loadAssetTransactions.mockResolvedValue([makeRow()]);
   hoisted.addTransaction.mockResolvedValue(undefined);
   hoisted.editTransaction.mockResolvedValue({ success: true });
+  hoisted.markAsYield.mockResolvedValue({ updated: 1, skipped: 0 });
 });
 
 // ── Test 1: Stale-response race ───────────────────────────────────────────────
@@ -229,8 +232,98 @@ describe("TransactionsManager — refetch after add (FIX 1+2)", () => {
     });
 
     // Key assertion: both calls use the same assetRef.
-     
+
     const calls = hoisted.loadAssetTransactions.mock.calls as unknown[][];
     expect(calls[1]?.[0]).toEqual(calls[0]?.[0]);
+  });
+});
+
+// ── Test 4: Successful markAsYield → toast + refetch ─────────────────────────
+
+describe("TransactionsManager — markAsYield success (updated + skipped toast)", () => {
+  it("shows success toast with updated count and triggers a refetch", async () => {
+    const buyRow = makeRow({ id: "buy-1", kind: "buy", quantity: 1, amount: 500 });
+    hoisted.loadAssetTransactions.mockResolvedValue([buyRow]);
+    hoisted.markAsYield.mockResolvedValue({ updated: 1, skipped: 0 });
+
+    renderManager(TARGET_A);
+
+    // Wait for the row to appear (drawer shows after initial load)
+    await screen.findByRole("button", { name: /edit transaction/i });
+
+    // Select the row via checkbox and click Mark as Yield → Confirm
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole("button", { name: /Mark as Yield/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
+
+    await waitFor(() => {
+      expect(hoisted.markAsYield).toHaveBeenCalledWith(["buy-1"]);
+    });
+    await waitFor(() => {
+      expect(hoisted.toastSuccess).toHaveBeenCalledWith("1 marked as yield");
+    });
+    // Refetch: loadAssetTransactions called twice (initial + after yield)
+    await waitFor(() => {
+      expect(hoisted.loadAssetTransactions).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("includes skipped count in toast when skipped > 0", async () => {
+    const buyRow = makeRow({ id: "buy-1", kind: "buy", quantity: 1, amount: 500 });
+    hoisted.loadAssetTransactions.mockResolvedValue([buyRow]);
+    hoisted.markAsYield.mockResolvedValue({ updated: 2, skipped: 1 });
+
+    renderManager(TARGET_A);
+    await screen.findByRole("button", { name: /edit transaction/i });
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole("button", { name: /Mark as Yield/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
+
+    await waitFor(() => {
+      expect(hoisted.toastSuccess).toHaveBeenCalledWith("2 marked as yield, 1 skipped");
+    });
+  });
+});
+
+// ── Test 5: Failed markAsYield → toast.error ─────────────────────────────────
+
+describe("TransactionsManager — markAsYield rejection → toast.error", () => {
+  it("shows toast.error when markAsYield throws", async () => {
+    const buyRow = makeRow({ id: "buy-1", kind: "buy", quantity: 1, amount: 500 });
+    hoisted.loadAssetTransactions.mockResolvedValue([buyRow]);
+    hoisted.markAsYield.mockRejectedValue(new Error("Server error"));
+
+    renderManager(TARGET_A);
+    await screen.findByRole("button", { name: /edit transaction/i });
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole("button", { name: /Mark as Yield/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
+
+    await waitFor(() => {
+      expect(hoisted.toastError).toHaveBeenCalledWith("Server error");
+    });
+  });
+
+  it("falls back to generic message when thrown value is not an Error", async () => {
+    const buyRow = makeRow({ id: "buy-1", kind: "buy", quantity: 1, amount: 500 });
+    hoisted.loadAssetTransactions.mockResolvedValue([buyRow]);
+    hoisted.markAsYield.mockRejectedValue("some string error");
+
+    renderManager(TARGET_A);
+    await screen.findByRole("button", { name: /edit transaction/i });
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole("button", { name: /Mark as Yield/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
+
+    await waitFor(() => {
+      expect(hoisted.toastError).toHaveBeenCalledWith("Failed to mark as yield");
+    });
   });
 });
