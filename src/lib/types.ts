@@ -983,3 +983,27 @@ export interface CashAccountOpts {
   cashflowOverride?: UsdEurAmount;
   isYield?: boolean;
 }
+
+/**
+ * Asset reference discriminated union — identifies an ASSET (not a position).
+ *
+ * Introduced in Task 1.6 as the stable signature for `addTransaction`.
+ * Consumed more broadly in Task 2.4 (`getAssetTransactions`) and Task 2.5
+ * (full addTransaction / editTransaction expansion).
+ *
+ * This is intentionally asset-level, not position-level: `getAssetTransactions`
+ * resolves it to ALL of the asset's positions across wallets. Carrying a
+ * `walletId` here would fracture that cross-wallet read.
+ *
+ * The wallet/broker for a write lives in the transaction params
+ * (`AddTransactionParams.walletId` / `AddTransactionParams.brokerId`),
+ * not here.
+ *
+ * - crypto: identifies a crypto_asset by its DB id.
+ * - stock:  identifies a stock_asset by its DB id.
+ * - cash:   identifies a cash_account by its DB id.
+ */
+export type AssetRef =
+  | { class: "crypto"; assetId: string }
+  | { class: "stock"; assetId: string }
+  | { class: "cash"; accountId: string };

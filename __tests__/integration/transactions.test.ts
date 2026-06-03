@@ -545,3 +545,202 @@ describe("backdateActivityEntry — cashflow recompute on backdate (integration)
     expect(logAfter!.cashflow_user_set).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 1.6 — addTransaction / editTransaction skeleton
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Import after mocks (mocks are already declared at the top of this file)
+import { addTransaction, editTransaction } from "@/lib/actions/transactions";
+
+describe("addTransaction — cost capture (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  let walletId: string;
+  let cryptoAssetId: string;
+  const coingeckoId = `bitcoin-add-txn-test-${randomUUID()}`;
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+    hoisted.testClient = client;
+
+    const { data: wallet, error: walletErr } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "AddTxn Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (walletErr) throw new Error("Failed to create wallet: " + walletErr.message);
+    walletId = wallet!.id;
+
+    cryptoAssetId = await createCryptoAsset({
+      ticker: "BTC",
+      name: "Bitcoin AddTxn Test",
+      coingecko_id: coingeckoId,
+    });
+  });
+
+  afterAll(() => cleanup());
+
+  // (a) Buy WITH a user cost amount → stores override amounts, cashflow_user_set=true
+  it("(a) addTransaction Buy with costAmount stores override amounts and cashflow_user_set=true", async () => {
+    const cost = { usd: 7500, eur: 6818 };
+
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        action: "buy",
+        quantity: 0.15,
+        currentPriceUsd: 60000, // market price — should be IGNORED
+        currentPriceEur: 54545,
+        costAmount: cost,
+        walletId,
+      },
+    );
+
+    const { data: log } = await client
+      .from("activity_log")
+      .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
+      .eq("entity_type", "crypto_position")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    expect(log).not.toBeNull();
+    // Must store the caller-supplied cost, NOT qty × price = 0.15 × 60000 = 9000
+    expect(Number(log!.cashflow_amount_usd)).toBe(7500);
+    expect(Number(log!.cashflow_amount_eur)).toBe(6818);
+    expect(log!.cashflow_user_set).toBe(true);
+  });
+
+  // (b) Buy with BLANK/absent costAmount → market fallback, cashflow_user_set=false
+  it("(b) addTransaction Buy without costAmount uses market price and cashflow_user_set=false", async () => {
+    // Create a second wallet for a clean, isolated entry
+    const { data: wallet2, error: w2Err } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "NoOverride Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (w2Err) throw new Error("Failed to create wallet2: " + w2Err.message);
+
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        action: "buy",
+        quantity: 0.1,
+        currentPriceUsd: 50000,
+        currentPriceEur: 45454,
+        walletId: wallet2!.id,
+        // costAmount deliberately absent
+      },
+    );
+
+    const { data: log } = await client
+      .from("activity_log")
+      .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
+      .eq("entity_type", "crypto_position")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    expect(log).not.toBeNull();
+    // Market fallback: qty=0.1, price=$50,000 → usd ≈ 5000
+    expect(Number(log!.cashflow_amount_usd)).toBeCloseTo(5000, 0);
+    expect(log!.cashflow_user_set).toBe(false);
+  });
+
+  // (e) Missing walletId → throws before any DB write
+  it("(e) addTransaction with class=crypto and no walletId rejects with walletId error", async () => {
+    await expect(
+      addTransaction(
+        { class: "crypto", assetId: cryptoAssetId },
+        {
+          action: "buy",
+          quantity: 0.05,
+          currentPriceUsd: 60000,
+          // walletId deliberately absent
+        },
+      ),
+    ).rejects.toThrow(/walletId/i);
+  });
+});
+
+describe("editTransaction — cross-user ownership (integration)", () => {
+  let userA: { client: SupabaseClient; userId: string; cleanup: () => void };
+  let userB: { client: SupabaseClient; userId: string; cleanup: () => void };
+  let userAEntryId: string;
+  let userAOriginalDate: string | null;
+
+  beforeAll(async () => {
+    userA = await createTestUser();
+    userB = await createTestUser();
+
+    // Set testClient to userA so createCryptoAsset / upsertPosition run as userA
+    hoisted.testClient = userA.client;
+
+    const walletARes = await userA.client
+      .from("wallets")
+      .insert({ user_id: userA.userId, name: "OwnershipTest Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (walletARes.error) throw new Error("wallet: " + walletARes.error.message);
+    const walletAId = walletARes.data!.id;
+
+    const coinId = `bitcoin-ownership-${randomUUID()}`;
+    const assetId = await createCryptoAsset({
+      ticker: "BTC",
+      name: "Bitcoin Ownership Test",
+      coingecko_id: coinId,
+    });
+
+    await upsertPosition(
+      { crypto_asset_id: assetId, wallet_id: walletAId, quantity: 1.0 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545 },
+    );
+
+    // Fetch the activity_log entry created for userA's position
+    const { data: entry } = await userA.client
+      .from("activity_log")
+      .select("id, effective_date")
+      .eq("entity_type", "crypto_position")
+      .eq("user_id", userA.userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    if (!entry) throw new Error("Failed to find userA activity_log entry");
+    userAEntryId = entry.id;
+    userAOriginalDate = entry.effective_date;
+  });
+
+  afterAll(() => {
+    userA.cleanup();
+    userB.cleanup();
+  });
+
+  it("(c) editTransaction as userB on userA's entry returns not-found and does NOT mutate the row", async () => {
+    // Switch mock client to userB so editTransaction runs as userB
+    hoisted.testClient = userB.client;
+
+    const result = await editTransaction(userAEntryId, { effectiveDate: "2024-01-01" });
+
+    // Must return a not-found result — no cross-user write
+    expect(result.success).toBe(false);
+    expect(result.notFound).toBe(true);
+
+    // Verify userA's row is unchanged
+    const { data: row } = await userA.client
+      .from("activity_log")
+      .select("effective_date")
+      .eq("id", userAEntryId)
+      .single();
+
+    expect(row).not.toBeNull();
+    expect(row!.effective_date).toBe(userAOriginalDate);
+  });
+});
