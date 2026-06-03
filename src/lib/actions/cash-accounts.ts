@@ -345,6 +345,7 @@ export async function createCashAccount(
     before_snapshot: null,
     after_snapshot: created,
     is_adjustment: opts?.isAdjustment,
+    is_yield: opts?.isYield ?? false,
     delta_usd: fx.deltaUsd,
     delta_eur: fx.deltaEur,
     delta_status: fx.deltaStatus,
@@ -352,6 +353,7 @@ export async function createCashAccount(
     cashflow_amount_eur: fx.cashflowEur,
     cashflow_asset_class: fx.cashflowAssetClass,
     cashflow_status: fx.cashflowStatus,
+    cashflow_user_set: fx.cashflowUserSet,
     transfer_group_id: opts?.transferGroupId,
     effective_date: opts?.effectiveDate,
   });
@@ -500,6 +502,7 @@ export async function updateCashAccount(
     before_snapshot: before,
     after_snapshot: after,
     is_adjustment: opts?.isAdjustment,
+    is_yield: opts?.isYield ?? false,
     delta_usd: fx.deltaUsd,
     delta_eur: fx.deltaEur,
     delta_status: fx.deltaStatus,
@@ -507,6 +510,7 @@ export async function updateCashAccount(
     cashflow_amount_eur: fx.cashflowEur,
     cashflow_asset_class: fx.cashflowAssetClass,
     cashflow_status: fx.cashflowStatus,
+    cashflow_user_set: fx.cashflowUserSet,
     transfer_group_id: opts?.transferGroupId,
     effective_date: opts?.effectiveDate,
   });
@@ -696,6 +700,8 @@ export async function mergeCashAccounts(
 
 /**
  * Unified FX computation: routes to adjustment delta or cashflow based on opts.
+ * When opts.cashflowOverride is present and the action is not an adjustment,
+ * the override amounts are used directly (balance-delta computation is skipped).
  */
 async function computeFx(
   action: ActionType,
@@ -715,6 +721,14 @@ async function computeFx(
     fx.deltaUsd = delta.deltaUsd;
     fx.deltaEur = delta.deltaEur;
     fx.deltaStatus = delta.deltaStatus;
+  } else if (opts?.cashflowOverride != null) {
+    // User-supplied amount: skip balance-delta computation entirely.
+    const { classifyAssetClass } = await import("@/lib/cashflow");
+    fx.cashflowUsd = opts.cashflowOverride.usd;
+    fx.cashflowEur = opts.cashflowOverride.eur;
+    fx.cashflowAssetClass = classifyAssetClass("cash_account");
+    fx.cashflowStatus = "complete";
+    fx.cashflowUserSet = true;
   } else {
     const cf = await computeCashflow(
       action,

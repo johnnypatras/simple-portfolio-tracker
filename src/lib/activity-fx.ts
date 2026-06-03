@@ -5,7 +5,7 @@
  */
 
 import { classifyAssetClass } from "@/lib/cashflow";
-import type { FlowStatus, AssetClass, EntityType } from "@/lib/types";
+import type { FlowStatus, AssetClass, EntityType, UsdEurAmount } from "@/lib/types";
 
 // ─── Shared types ─────────────────────────────────────────
 
@@ -17,6 +17,8 @@ export interface FxResult {
   cashflowEur: number | null;
   cashflowAssetClass: AssetClass | null;
   cashflowStatus: FlowStatus;
+  /** True when the cashflow amounts came from a user-supplied override, not qty × price. */
+  cashflowUserSet: boolean;
 }
 
 export function emptyFx(): FxResult {
@@ -28,6 +30,7 @@ export function emptyFx(): FxResult {
     cashflowEur: null,
     cashflowAssetClass: null,
     cashflowStatus: null,
+    cashflowUserSet: false,
   };
 }
 
@@ -46,17 +49,19 @@ export function computeActivityFx(opts: {
   isAdjustment?: boolean;
   entityType: EntityType;
   isStable?: boolean;
+  amountOverride?: UsdEurAmount;
 }): FxResult {
   const result = emptyFx();
   if (opts.isAdjustment) {
-    result.deltaUsd = opts.valUsd;
-    result.deltaEur = opts.valEur;
+    result.deltaUsd = opts.amountOverride?.usd ?? opts.valUsd;
+    result.deltaEur = opts.amountOverride?.eur ?? opts.valEur;
     result.deltaStatus = "complete";
   } else {
-    result.cashflowUsd = opts.valUsd;
-    result.cashflowEur = opts.valEur;
+    result.cashflowUsd = opts.amountOverride?.usd ?? opts.valUsd;
+    result.cashflowEur = opts.amountOverride?.eur ?? opts.valEur;
     result.cashflowAssetClass = classifyAssetClass(opts.entityType, opts.isStable);
     result.cashflowStatus = "complete";
+    if (opts.amountOverride != null) result.cashflowUserSet = true;
   }
   return result;
 }
@@ -78,8 +83,26 @@ export async function computeActivityFxWithConversion(opts: {
   isAdjustment?: boolean;
   entityType: EntityType;
   isStable?: boolean;
+  amountOverride?: UsdEurAmount;
 }): Promise<FxResult> {
   const result = emptyFx();
+
+  // When an override is present, skip qty × price conversion entirely.
+  if (opts.amountOverride != null) {
+    if (opts.isAdjustment) {
+      result.deltaUsd = opts.amountOverride.usd;
+      result.deltaEur = opts.amountOverride.eur;
+      result.deltaStatus = "complete";
+    } else {
+      result.cashflowUsd = opts.amountOverride.usd;
+      result.cashflowEur = opts.amountOverride.eur;
+      result.cashflowAssetClass = classifyAssetClass(opts.entityType, opts.isStable);
+      result.cashflowStatus = "complete";
+      result.cashflowUserSet = true;
+    }
+    return result;
+  }
+
   try {
     const { toUsdAndEur } = await import("@/lib/actions/activity-log");
     const converted = await toUsdAndEur(

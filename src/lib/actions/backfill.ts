@@ -34,6 +34,8 @@ export async function backfillCashflowsAndDeltas(): Promise<{
   // Query rows needing cashflow backfill:
   // 1. Legacy rows: cashflow_status IS NULL + entity produces cashflows + not adjustment + not undone
   // 2. Pending rows: cashflow_status = 'pending' + not recently attempted
+  // Exclude rows where the user explicitly set the cashflow amount (cashflow_user_set=true) —
+  // overwriting a user-supplied value would discard their intentional entry.
   const { data: cashflowRows } = await supabase
     .from("activity_log")
     .select(
@@ -41,6 +43,7 @@ export async function backfillCashflowsAndDeltas(): Promise<{
     )
     .eq("user_id", user.id)
     .eq("is_adjustment", false)
+    .eq("cashflow_user_set", false)
     .is("undone_at", null)
     .in("entity_type", [...CASHFLOW_PRODUCING_ENTITY_TYPES])
     .or(
@@ -328,7 +331,7 @@ export async function backfillSingleRow(rowId: string): Promise<{
 
   const { data: row, error: fetchErr } = await supabase
     .from("activity_log")
-    .select("id, action, entity_type, entity_id, before_snapshot, after_snapshot, created_at, effective_date, is_adjustment, cashflow_status, delta_status")
+    .select("id, action, entity_type, entity_id, before_snapshot, after_snapshot, created_at, effective_date, is_adjustment, cashflow_status, cashflow_user_set, delta_status")
     .eq("id", rowId)
     .eq("user_id", user.id)
     .single();
@@ -337,7 +340,9 @@ export async function backfillSingleRow(rowId: string): Promise<{
 
   const entityType = row.entity_type as EntityType;
   const isCashEntity = CASH_ENTITY_TYPES.includes(entityType as CashEntityType);
-  const needsCashflow = row.cashflow_status === "pending" || row.cashflow_status === "failed";
+  // Never overwrite a user-supplied cashflow amount — the delta write may still proceed.
+  const cashflowUserSet = row.cashflow_user_set === true;
+  const needsCashflow = !cashflowUserSet && (row.cashflow_status === "pending" || row.cashflow_status === "failed");
   const needsDelta = row.delta_status === "pending" || row.delta_status === "failed";
 
   if (!needsCashflow && !needsDelta) {

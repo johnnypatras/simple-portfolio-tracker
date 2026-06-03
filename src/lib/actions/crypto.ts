@@ -7,6 +7,7 @@ import type {
   CryptoAssetInput,
   CryptoAssetWithPositions,
   CryptoPositionInput,
+  UsdEurAmount,
   Wallet,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
@@ -290,6 +291,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   currentPriceEur?: number;
   transferGroupId?: string;
   effectiveDate?: string;
+  cashflowOverride?: UsdEurAmount;
+  isYield?: boolean;
 }) {
   return captureAction("crypto.upsertPosition", async () => {
   validateUUID(input.crypto_asset_id, "Crypto asset ID");
@@ -343,8 +346,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       const qty = (existing.quantity as number) ?? 0;
       const valUsd = -(qty * (opts?.currentPriceUsd ?? 0));
       const valEur = -(qty * (opts?.currentPriceEur ?? 0));
-      const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null)
-        ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable })
+      const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || opts?.cashflowOverride != null)
+        ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: opts?.cashflowOverride })
         : emptyFx();
 
       await logActivity({
@@ -357,6 +360,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         before_snapshot: existing,
         after_snapshot: null,
         is_adjustment: opts?.isAdjustment,
+        is_yield: opts?.isYield ?? false,
         delta_usd: fx.deltaUsd,
         delta_eur: fx.deltaEur,
         delta_status: fx.deltaStatus,
@@ -364,6 +368,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         cashflow_amount_eur: fx.cashflowEur,
         cashflow_asset_class: fx.cashflowAssetClass,
         cashflow_status: fx.cashflowStatus,
+        cashflow_user_set: fx.cashflowUserSet,
         transfer_group_id: opts?.transferGroupId,
         effective_date: opts?.effectiveDate,
       });
@@ -437,8 +442,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
     const qtyDelta = afterQty - beforeQty;
     const valUsd = qtyDelta * (opts?.currentPriceUsd ?? 0);
     const valEur = qtyDelta * (opts?.currentPriceEur ?? 0);
-    const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null)
-      ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable })
+    const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || opts?.cashflowOverride != null)
+      ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: opts?.cashflowOverride })
       : emptyFx();
 
     await logActivity({
@@ -451,6 +456,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       before_snapshot: before,
       after_snapshot: after,
       is_adjustment: opts?.isAdjustment,
+      is_yield: opts?.isYield ?? false,
       delta_usd: fx.deltaUsd,
       delta_eur: fx.deltaEur,
       delta_status: fx.deltaStatus,
@@ -458,6 +464,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       cashflow_amount_eur: fx.cashflowEur,
       cashflow_asset_class: fx.cashflowAssetClass,
       cashflow_status: fx.cashflowStatus,
+      cashflow_user_set: fx.cashflowUserSet,
       transfer_group_id: opts?.transferGroupId,
       effective_date: opts?.effectiveDate,
     });

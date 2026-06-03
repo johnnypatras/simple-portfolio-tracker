@@ -966,10 +966,20 @@ export type LegacyAdjustmentMigrationResult = {
   }>;
 };
 
+/**
+ * A pre-computed USD + EUR amount pair supplied by the caller.
+ * Used as the `cashflowOverride` / `amountOverride` parameter in
+ * `upsertPosition`, `upsertStockPosition`, and cash-account mutations.
+ * The primitive layer persists both values verbatim — no FX derivation.
+ */
+export type UsdEurAmount = { usd: number; eur: number };
+
 /** Options for cash-account mutations that produce activity-log entries. */
 export interface CashAccountOpts {
   isAdjustment?: boolean;
   transferGroupId?: string;
   effectiveDate?: string;
   fxRate?: number;
+  cashflowOverride?: UsdEurAmount;
+  isYield?: boolean;
 }

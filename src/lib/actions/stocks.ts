@@ -7,6 +7,7 @@ import type {
   StockAssetInput,
   StockAssetWithPositions,
   StockPositionInput,
+  UsdEurAmount,
   Broker,
 } from "@/lib/types";
 import { logActivity } from "@/lib/actions/activity-log";
@@ -338,6 +339,8 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   assetCurrency?: string;
   transferGroupId?: string;
   effectiveDate?: string;
+  cashflowOverride?: UsdEurAmount;
+  isYield?: boolean;
 }) {
   return captureAction("stocks.upsertStockPosition", async () => {
   validateUUID(input.stock_asset_id, "Stock asset ID");
@@ -380,8 +383,8 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
 
       const qty = (existing.quantity as number) ?? 0;
       const deltaNative = -(qty * (opts?.currentPriceNative ?? 0));
-      const fx = (opts?.currentPriceNative != null)
-        ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts.assetCurrency ?? "USD", effectiveDate: opts.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position" })
+      const fx = (opts?.currentPriceNative != null || opts?.cashflowOverride != null)
+        ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: opts?.cashflowOverride })
         : emptyFx();
 
       await logActivity({
@@ -394,6 +397,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         before_snapshot: existing,
         after_snapshot: null,
         is_adjustment: opts?.isAdjustment,
+        is_yield: opts?.isYield ?? false,
         delta_usd: fx.deltaUsd,
         delta_eur: fx.deltaEur,
         delta_status: fx.deltaStatus,
@@ -401,6 +405,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         cashflow_amount_eur: fx.cashflowEur,
         cashflow_asset_class: fx.cashflowAssetClass,
         cashflow_status: fx.cashflowStatus,
+        cashflow_user_set: fx.cashflowUserSet,
         transfer_group_id: opts?.transferGroupId,
         effective_date: opts?.effectiveDate,
       });
@@ -464,8 +469,8 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
     const afterQty = input.quantity;
     const qtyDelta = afterQty - beforeQty;
     const deltaNative = qtyDelta * (opts?.currentPriceNative ?? 0);
-    const fx = (opts?.currentPriceNative != null)
-      ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts.assetCurrency ?? "USD", effectiveDate: opts.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position" })
+    const fx = (opts?.currentPriceNative != null || opts?.cashflowOverride != null)
+      ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: opts?.cashflowOverride })
       : emptyFx();
 
     await logActivity({
@@ -478,6 +483,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       before_snapshot: before,
       after_snapshot: after,
       is_adjustment: opts?.isAdjustment,
+      is_yield: opts?.isYield ?? false,
       delta_usd: fx.deltaUsd,
       delta_eur: fx.deltaEur,
       delta_status: fx.deltaStatus,
@@ -485,6 +491,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       cashflow_amount_eur: fx.cashflowEur,
       cashflow_asset_class: fx.cashflowAssetClass,
       cashflow_status: fx.cashflowStatus,
+      cashflow_user_set: fx.cashflowUserSet,
       transfer_group_id: opts?.transferGroupId,
       effective_date: opts?.effectiveDate,
     });
