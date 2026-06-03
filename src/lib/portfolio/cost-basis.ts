@@ -296,3 +296,49 @@ export function computeCostBasis(
 
   return { avgCost, costBasis, realized, unrealized, totalPnL };
 }
+
+/**
+ * Per-currency P&L for one asset (spec §7.7).
+ *
+ * EUR is AUTHORITATIVE — it is the headline P&L exposed to the user and used for
+ * portfolio aggregation. The USD pass is secondary: it will legitimately diverge from
+ * EUR by FX timing (every transaction stores both amounts at the rate that was live
+ * when it was entered, not at today's rate). The two passes are NEVER cross-reconciled;
+ * each is internally consistent within its own currency arithmetic.
+ */
+export interface AssetPnL {
+  /** EUR pass — the AUTHORITATIVE headline P&L (base currency). */
+  eur: CostBasisResult;
+  /** USD pass — secondary; legitimately diverges by FX timing; NEVER reconciled to EUR. */
+  usd: CostBasisResult;
+}
+
+/**
+ * Run the average-cost engine independently for EUR and USD (§7.7).
+ *
+ * Each pass reads only that currency's stored columns and is self-consistent.
+ * The results legitimately diverge because every transaction captures the FX rate
+ * at entry time, not today's rate. EUR is authoritative for the headline P&L.
+ *
+ * @param txnsAsc     transactions sorted ascending by COALESCE(effective_date, created_at).
+ * @param currentValue current market value expressed in both currencies.
+ * @param opts.onAnomaly optional anomaly sink forwarded to BOTH passes (so an oversell
+ *                        fires it once per currency, not just for the EUR pass).
+ */
+export function computeAssetPnL(
+  txnsAsc: CostBasisTxn[],
+  currentValue: { valueEur: number; valueUsd: number },
+  opts?: { onAnomaly?: (msg: string) => void },
+): AssetPnL {
+  const onAnomaly = opts?.onAnomaly;
+  return {
+    eur: computeCostBasis(txnsAsc, currentValue.valueEur, {
+      currency: "eur",
+      onAnomaly,
+    }),
+    usd: computeCostBasis(txnsAsc, currentValue.valueUsd, {
+      currency: "usd",
+      onAnomaly,
+    }),
+  };
+}

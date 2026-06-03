@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { computeCostBasis, type CostBasisTxn } from "@/lib/portfolio/cost-basis";
+import {
+  computeCostBasis,
+  computeAssetPnL,
+  type CostBasisTxn,
+} from "@/lib/portfolio/cost-basis";
 
 /**
  * Builder for a CostBasisTxn fixture.
@@ -635,6 +639,105 @@ describe("computeCostBasis — engine cases from spec §10 + invariant", () => {
     expect(eur.realized).toBeCloseTo(30000, 6);
     // USD: realized = 66000 − 30000 = 36000.
     expect(usd.realized).toBeCloseTo(36000, 6);
+  });
+});
+
+describe("computeAssetPnL — per-currency (§7.7, case 26)", () => {
+  // ── Case 26a · divergent EUR vs USD amounts are each internally consistent ──
+  it("26a · buy with divergent currency amounts: each pass internally consistent; results differ", () => {
+    // buy 1 unit: cashflow_amount_eur = 30000, cashflow_amount_usd = 33000
+    const txn: CostBasisTxn = {
+      entity_type: "crypto_position",
+      action: "updated",
+      is_yield: false,
+      is_adjustment: false,
+      transfer_group_id: null,
+      split_from_id: null,
+      cashflow_amount_eur: 30000,
+      cashflow_amount_usd: 33000,
+      delta_eur: null,
+      delta_usd: null,
+      before_snapshot: { quantity: 0 },
+      after_snapshot: { quantity: 1 },
+      details: null,
+    };
+    const result = computeAssetPnL(
+      [txn],
+      { valueEur: 40000, valueUsd: 44000 },
+    );
+
+    // EUR pass: costBasis = 30000, unrealized = 40000 − 30000 = 10000
+    expect(result.eur.costBasis).toBe(30000);
+    expect(result.eur.unrealized).toBe(10000);
+
+    // USD pass: costBasis = 33000, unrealized = 44000 − 33000 = 11000
+    expect(result.usd.costBasis).toBe(33000);
+    expect(result.usd.unrealized).toBe(11000);
+
+    // Divergence is LEGITIMATE — never reconciled. Assert they differ.
+    expect(result.eur.costBasis).not.toBe(result.usd.costBasis);
+    expect(result.eur.unrealized).not.toBe(result.usd.unrealized);
+  });
+
+  // ── Case 26b · C3 disposal (adjustment leg) diverges per currency too ──────
+  it("26b · C3 disposal leg: realized diverges per currency; each pass consistent", () => {
+    // buy 1 unit at 30000 EUR / 33000 USD (both columns equal from mk)
+    const buy = mk(0, 1, 30000);
+    // Override buy's per-currency amounts to be divergent.
+    const divergentBuy: CostBasisTxn = {
+      ...buy,
+      cashflow_amount_eur: 30000,
+      cashflow_amount_usd: 33000,
+    };
+
+    // adjustment-leg disposal: delta_eur = 60000, delta_usd = 66000
+    const disposal: CostBasisTxn = {
+      entity_type: "crypto_position",
+      action: "updated",
+      is_yield: false,
+      is_adjustment: true,
+      transfer_group_id: "g-26b",
+      split_from_id: null,
+      cashflow_amount_eur: null,
+      cashflow_amount_usd: null,
+      delta_eur: 60000,
+      delta_usd: 66000,
+      before_snapshot: { quantity: 1 },
+      after_snapshot: { quantity: 0 },
+      details: null,
+    };
+
+    const result = computeAssetPnL(
+      [divergentBuy, disposal],
+      { valueEur: 0, valueUsd: 0 },
+    );
+
+    // EUR pass: realized = 60000 − 30000 = 30000
+    expect(result.eur.realized).toBeCloseTo(30000, 6);
+
+    // USD pass: realized = 66000 − 33000 = 33000
+    expect(result.usd.realized).toBeCloseTo(33000, 6);
+
+    // They differ — the divergence is legitimate.
+    expect(result.eur.realized).not.toBeCloseTo(result.usd.realized, 6);
+  });
+
+  // ── Case 26c · onAnomaly is forwarded to BOTH passes ─────────────────────
+  it("26c · onAnomaly forwarded to both passes: spy called twice on oversell fixture", () => {
+    const spy = vi.fn();
+
+    // A lone sell (no prior buy) triggers an oversell in EACH pass independently.
+    const oversell = mk(1, 0, 150, { sell: true });
+
+    computeAssetPnL(
+      [oversell],
+      { valueEur: 0, valueUsd: 0 },
+      { onAnomaly: spy },
+    );
+
+    // One call per pass (EUR + USD).
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("oversell"));
   });
 });
 
