@@ -66,6 +66,8 @@ export async function logActivity(params: {
   before_snapshot?: unknown;
   after_snapshot?: unknown;
   is_adjustment?: boolean;
+  is_yield?: boolean;
+  cashflow_user_set?: boolean;
   delta_usd?: number | null;
   delta_eur?: number | null;
   transfer_group_id?: string;
@@ -97,6 +99,8 @@ export async function logActivity(params: {
       before_snapshot: (params.before_snapshot ?? null) as ActivityLogInsert["before_snapshot"],
       after_snapshot: (params.after_snapshot ?? null) as ActivityLogInsert["after_snapshot"],
       is_adjustment: params.is_adjustment ?? false,
+      is_yield: params.is_yield ?? false,
+      cashflow_user_set: params.cashflow_user_set ?? false,
       delta_usd: params.delta_usd ?? null,
       delta_eur: params.delta_eur ?? null,
       transfer_group_id: params.transfer_group_id ?? null,
