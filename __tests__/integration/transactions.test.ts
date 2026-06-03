@@ -208,6 +208,49 @@ describe("cost-override threading (integration)", () => {
     expect(log!.is_yield).toBe(false);
   });
 
+  // ─── Task 3.3b — single-currency `cost` opt → FX-derived dual override ────────
+  //
+  // upsertStockPosition's new `cost` opt mirrors addTransaction: a single-currency
+  // amount is converted to a dual { usd, eur } pair via toUsdAndEur (FX-at-date),
+  // the typed currency stored verbatim, the derived leg round2'd, and
+  // cashflow_user_set flipped true. This is the manual-NAV/position cost spine.
+  it("(a2) upsertStockPosition with single-currency cost {1000, EUR} derives the USD leg and sets cashflow_user_set=true", async () => {
+    // Fresh broker so the "most recent" log row is unambiguously this write.
+    const { data: costBroker, error: cbErr } = await client
+      .from("brokers")
+      .insert({ user_id: userId, name: "Cost Spine Broker" })
+      .select("id")
+      .single();
+    if (cbErr) throw new Error("Failed to create broker: " + cbErr.message);
+
+    await upsertStockPosition(
+      { stock_asset_id: stockAssetId, broker_id: costBroker!.id, quantity: 10 },
+      {
+        // No cashflowOverride — the single-currency cost drives the derivation.
+        cost: { amount: 1000, currency: "EUR" },
+        currentPriceNative: 350, // market price — IGNORED once a cost is present
+        assetCurrency: "USD",
+      },
+    );
+
+    const { data: log } = await client
+      .from("activity_log")
+      .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set, is_yield")
+      .eq("entity_type", "stock_position")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    expect(log).not.toBeNull();
+    // EUR is the input currency → stored verbatim.
+    expect(Number(log!.cashflow_amount_eur)).toBe(1000);
+    // USD is FX-derived: round2(1000 × 1.10) = 1100 (NOT qty × price = 3500).
+    expect(Number(log!.cashflow_amount_usd)).toBe(1100);
+    expect(log!.cashflow_user_set).toBe(true);
+    expect(log!.is_yield).toBe(false);
+  });
+
   it("(a) createCashAccount with cashflowOverride stores override amounts and cashflow_user_set=true", async () => {
     const override = { usd: 1100, eur: 1000 };
 

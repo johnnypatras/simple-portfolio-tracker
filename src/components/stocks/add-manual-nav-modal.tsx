@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { addManualNavAsset } from "@/lib/actions/manual-nav";
 import { upsertStockPosition } from "@/lib/actions/stocks";
 import { MAX_NAV_NOTE_LENGTH } from "@/lib/constants";
+import { COST_COPY } from "@/lib/cost-basis-copy";
 import type { AssetCategory, Broker } from "@/lib/types";
 import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
@@ -65,6 +66,12 @@ export function AddManualNavModal({
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionBrokerId, setPositionBrokerId] = useState("");
   const [positionQuantity, setPositionQuantity] = useState("");
+  // Amount paid (incl. fees) — the cost spine. Dirty-tracked: an untouched field
+  // emits NO cost (the position falls back to market/NAV value). Mirrors
+  // transaction-modal's provenance gate.
+  const [positionCost, setPositionCost] = useState("");
+  const [positionCostDirty, setPositionCostDirty] = useState(false);
+  const [positionCostCurrency, setPositionCostCurrency] = useState<"EUR" | "USD">("EUR");
 
   // ─── Adjustment + effective date ────────────────────────
   const [isAdjustment, setIsAdjustment] = useState(false);
@@ -100,6 +107,9 @@ export function AddManualNavModal({
       setPositionOpen(false);
       setPositionBrokerId("");
       setPositionQuantity("");
+      setPositionCost("");
+      setPositionCostDirty(false);
+      setPositionCostCurrency("EUR");
       setIsAdjustment(false);
       setEffectiveDate("");
       setError(null);
@@ -148,6 +158,14 @@ export function AddManualNavModal({
 
       const qty = parseFloat(positionQuantity);
       if (positionBrokerId && qty > 0) {
+        // Provenance gate (mirrors transaction-modal): emit a cost ONLY when the
+        // user actually typed a finite, non-blank amount. An untouched field
+        // passes no cost → the position falls back to market/NAV value.
+        const costNum = parseFloat(positionCost);
+        const cost =
+          positionCostDirty && positionCost.trim() !== "" && Number.isFinite(costNum)
+            ? { amount: costNum, currency: positionCostCurrency }
+            : undefined;
         try {
           await upsertStockPosition(
             {
@@ -160,6 +178,7 @@ export function AddManualNavModal({
               ...dateOpts,
               currentPriceNative: navNum ?? undefined,
               assetCurrency: currency,
+              ...(cost ? { cost } : {}),
             },
           );
         } catch (posErr) {
@@ -531,6 +550,37 @@ export function AddManualNavModal({
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums"
                     />
                   </div>
+                </div>
+                {/* Amount paid (incl. fees) — optional cost spine. Blank → market/NAV fallback. */}
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor={`${id}-cost`} className="block text-xs text-zinc-400">
+                      Amount paid (incl. fees)
+                    </label>
+                    <select
+                      id={`${id}-cost-currency`}
+                      value={positionCostCurrency}
+                      onChange={(e) => setPositionCostCurrency(e.target.value as "EUR" | "USD")}
+                      className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70"
+                      aria-label="Amount paid currency"
+                    >
+                      <option value="EUR">EUR</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  </div>
+                  <input
+                    id={`${id}-cost`}
+                    type="text"
+                    inputMode="decimal"
+                    value={positionCost}
+                    onChange={(e) => {
+                      setPositionCost(e.target.value);
+                      setPositionCostDirty(true);
+                    }}
+                    placeholder="Leave blank to use market value"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums"
+                  />
+                  <p className="text-xs text-zinc-400 mt-1">{COST_COPY.amountOptionalHint}</p>
                 </div>
               </div>
             )}

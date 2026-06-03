@@ -21,6 +21,7 @@ import {
 } from "@/components/cash/cash-columns";
 import { formatCurrency } from "@/lib/format";
 import type { ColumnDef, RenderContext } from "@/lib/column-config";
+import type { AssetPnL } from "@/lib/portfolio/cost-basis";
 import type {
   CashAccount,
   CryptoAssetWithPositions,
@@ -72,6 +73,8 @@ interface CashTableProps {
   depositBreakdown?: { name: string; value: number }[];
   /** Banks for the Add/Edit cash modal's bank picker (empty in read-only/share views). */
   institutions?: Institution[];
+  /** Per-asset cost-basis P&L keyed `cash:{accountId}` (EUR authoritative). */
+  pnlByAsset?: Record<string, AssetPnL>;
 }
 
 export function CashTable({
@@ -86,6 +89,7 @@ export function CashTable({
   deposits = 0,
   depositBreakdown,
   institutions = [],
+  pnlByAsset,
 }: CashTableProps) {
   const { isReadOnly } = useSharedView();
   const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
@@ -246,9 +250,9 @@ export function CashTable({
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:cash", columns, 3);
+  } = useColumnConfig("colConfig:cash", columns, 4);
 
-  const ctx: RenderContext = { primaryCurrency, fxRates };
+  const ctx: RenderContext = { primaryCurrency, fxRates, pnlByAsset };
 
   // ── Build unified row array ──────────────────────────────
   const cashRows: CashRow[] = useMemo(

@@ -1,11 +1,20 @@
 import type { ReactNode } from "react";
 import type { FXRates } from "@/lib/prices/fx";
+import type { AssetPnL } from "@/lib/portfolio/cost-basis";
 
 // ── Context passed to every renderCell / renderHeader ────────
 
 export interface RenderContext {
   primaryCurrency: string;
   fxRates: FXRates;
+  /**
+   * Per-asset cost-basis P&L, keyed by AssetKey (`crypto:{id}` / `stock:{id}` /
+   * `cash:{accountId}`). Optional — absent when the cost-basis transaction read
+   * was skipped or failed (graceful degradation); column renderers then show
+   * "—". EUR is the authoritative headline; USD diverges legitimately by FX
+   * timing. See {@link AssetPnL}.
+   */
+  pnlByAsset?: Record<string, AssetPnL>;
 }
 
 // ── Generic column definition ────────────────────────────────

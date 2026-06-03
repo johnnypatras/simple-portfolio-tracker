@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { upsertStockPosition, deleteStockPosition, updateStockAsset } from "@/lib/actions/stocks";
 import type { StockAssetWithPositions, Broker, AssetCategory, TransferMode } from "@/lib/types";
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { COST_COPY } from "@/lib/cost-basis-copy";
 
 const TYPES: { value: AssetCategory; label: string }[] = [
   { value: "individual_stock", label: "Individual Stock" },
@@ -100,6 +101,9 @@ export function StockPositionEditor({
     setEdits(map);
     setAdjustmentFlags({});
     setAdjOverrides({});
+    setCostEdits({});
+    setCostDirty({});
+    setCostCurrency({});
     setEffectiveDate("");
   }, [asset.id, asset.name, asset.yahoo_ticker, asset.isin, asset.category, asset.subcategory, asset.tags, asset.positions]);
 
@@ -164,6 +168,13 @@ export function StockPositionEditor({
   // Per-row adjustment flags (transient, not part of position data)
   const [adjustmentFlags, setAdjustmentFlags] = useState<Record<string, boolean>>({});
 
+  // Per-row "Amount paid (incl. fees)" — the cost spine. Transient + dirty-tracked:
+  // an untouched field emits NO cost (position falls back to market value).
+  // Mirrors transaction-modal's provenance gate.
+  const [costEdits, setCostEdits] = useState<Record<string, string>>({});
+  const [costDirty, setCostDirty] = useState<Record<string, boolean>>({});
+  const [costCurrency, setCostCurrency] = useState<Record<string, "EUR" | "USD">>({});
+
   // Which broker to add a new position for
   const [addingBroker, setAddingBroker] = useState("");
 
@@ -182,6 +193,14 @@ export function StockPositionEditor({
     const qty = parseFloat(edits[brokerId] ?? "0");
     const yahooTicker = asset.yahoo_ticker;
     const priceData = yahooTicker ? prices?.[yahooTicker] : undefined;
+    // Provenance gate (mirrors transaction-modal): emit a cost ONLY when the user
+    // actually typed a finite, non-blank amount for this row. Untouched → no cost.
+    const costStr = costEdits[brokerId] ?? "";
+    const costNum = parseFloat(costStr);
+    const cost =
+      (costDirty[brokerId] ?? false) && costStr.trim() !== "" && Number.isFinite(costNum)
+        ? { amount: costNum, currency: costCurrency[brokerId] ?? "EUR" }
+        : undefined;
     try {
       await upsertStockPosition({
         stock_asset_id: asset.id,
@@ -192,6 +211,7 @@ export function StockPositionEditor({
         currentPriceNative: priceData?.price,
         assetCurrency: priceData?.currency ?? asset.currency,
         ...(effectiveDate ? { effectiveDate } : {}),
+        ...(cost ? { cost } : {}),
       });
       // If zero, remove from local state
       if (qty <= 0) {
@@ -205,6 +225,10 @@ export function StockPositionEditor({
       const wasAdj = adjustmentFlags[brokerId] ?? false;
       setAdjOverrides((prev) => ({ ...prev, [brokerId]: wasAdj }));
       setAdjustmentFlags((prev) => ({ ...prev, [brokerId]: false }));
+      // Clear the cost field after a successful save so it doesn't re-apply on
+      // the next save of an unrelated edit (the value is now persisted).
+      setCostEdits((prev) => ({ ...prev, [brokerId]: "" }));
+      setCostDirty((prev) => ({ ...prev, [brokerId]: false }));
       setJustSavedId(brokerId);
       toast.success(wasAdj ? "Saved as adjustment" : "Position saved");
     } catch (err) {
@@ -593,6 +617,42 @@ export function StockPositionEditor({
                     </button>
                   </>
                 )}
+              </div>
+              {/* Amount paid (incl. fees) — optional cost spine. Blank → market fallback. */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor={`${id}-cost-${brokerId}`} className="block text-xs text-zinc-400">
+                    Amount paid (incl. fees)
+                  </label>
+                  <select
+                    id={`${id}-cost-currency-${brokerId}`}
+                    value={costCurrency[brokerId] ?? "EUR"}
+                    onChange={(e) =>
+                      setCostCurrency((prev) => ({ ...prev, [brokerId]: e.target.value as "EUR" | "USD" }))
+                    }
+                    disabled={isSaving}
+                    className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50"
+                    aria-label="Amount paid currency"
+                  >
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+                <input
+                  id={`${id}-cost-${brokerId}`}
+                  type="text"
+                  inputMode="decimal"
+                  value={costEdits[brokerId] ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCostEdits((prev) => ({ ...prev, [brokerId]: v }));
+                    setCostDirty((prev) => ({ ...prev, [brokerId]: true }));
+                  }}
+                  placeholder="Leave blank to use market value"
+                  disabled={isSaving}
+                  className="w-full px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums disabled:opacity-50"
+                />
+                <p className="text-[10px] text-zinc-400 mt-1">{COST_COPY.amountOptionalHint}</p>
               </div>
             </div>
           );

@@ -4,6 +4,12 @@ import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef, SortDirection } from "@/lib/column-config";
 export type { SortDirection } from "@/lib/column-config";
 import { formatCurrency, formatQuantity } from "@/lib/format";
+import {
+  renderAvgCostCell,
+  renderUnrealizedCell,
+  renderRealizedCell,
+  renderTotalPnLCell,
+} from "@/lib/portfolio/pnl-cells";
 import { navStaleness } from "@/lib/manual-nav";
 import { STALE_NAV_DAYS_THRESHOLD } from "@/lib/constants";
 import type {
@@ -725,6 +731,46 @@ export function getStockColumns(handlers: {
               : "—"}
         </span>
       ),
+    },
+    {
+      key: "avgCost",
+      label: "Avg Cost",
+      header: "Avg Cost",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      renderCell: (row, ctx) =>
+        renderAvgCostCell(ctx.pnlByAsset?.[`stock:${row.asset.id}`], ctx.primaryCurrency),
+    },
+    {
+      key: "unrealized",
+      label: "Unrealized",
+      header: "Unrealized",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      renderCell: (row, ctx) =>
+        renderUnrealizedCell(ctx.pnlByAsset?.[`stock:${row.asset.id}`], ctx.primaryCurrency),
+    },
+    {
+      key: "realized",
+      label: "Realized",
+      header: "Realized",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      renderCell: (row, ctx) =>
+        renderRealizedCell(ctx.pnlByAsset?.[`stock:${row.asset.id}`], ctx.primaryCurrency),
+    },
+    {
+      key: "totalPnL",
+      label: "Total P&L",
+      header: "Total P&L",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      renderCell: (row, ctx) =>
+        renderTotalPnLCell(ctx.pnlByAsset?.[`stock:${row.asset.id}`], ctx.primaryCurrency),
     },
     {
       key: "actions",

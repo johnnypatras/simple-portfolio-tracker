@@ -7,6 +7,7 @@ import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { getOwnerAssetTransactions } from "@/lib/portfolio/owner-pnl";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { CashTable } from "@/components/cash/cash-table";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -38,7 +39,7 @@ export default async function CashPage() {
   // Fetch stablecoin prices + FX rates + EUR/USD change in parallel.
   // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
   // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
-  const [stablecoinPrices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch] = await Promise.all([
+  const [stablecoinPrices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch, assetTransactions] = await Promise.all([
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
@@ -46,6 +47,7 @@ export default async function CashPage() {
     getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
     getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
     getStockPrices(["EURUSD=X"]),
+    getOwnerAssetTransactions(),
   ]);
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
@@ -61,6 +63,8 @@ export default async function CashPage() {
     fxRatesUsd,
     fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    // null → no P&L computed (graceful degradation already logged in the helper).
+    assetTransactions: assetTransactions ?? undefined,
   });
 
   const cur = profile.primary_currency;
@@ -90,6 +94,7 @@ export default async function CashPage() {
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
         institutions={institutions}
+        pnlByAsset={summary.pnlByAsset}
       />
     </div>
   );

@@ -200,6 +200,47 @@ describe("AddManualNavModal", () => {
     resolveAdd("new-asset-id");
   });
 
+  // ─── Task 3.3b — "Amount paid (incl. fees)" cost field ──────────────────────
+
+  it("renders the cost field inside the position section with EUR/USD currency select", () => {
+    renderOpen();
+    fireEvent.click(screen.getByRole("button", { name: /Add initial position/i }));
+    const costInput = screen.getByLabelText(/Amount paid \(incl\. fees\)/i);
+    expect(costInput).toBeInTheDocument();
+    expect(costInput).toHaveValue(""); // blank by default
+    expect(screen.getByLabelText(/Amount paid currency/i)).toHaveValue("EUR");
+  });
+
+  it("an untouched cost field passes NO cost to upsertStockPosition (market fallback)", async () => {
+    renderOpen();
+    fireEvent.change(screen.getByLabelText(/Ticker/i), { target: { value: "ENXF" } });
+    fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: "EQT Nexus" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add initial position/i }));
+    fireEvent.change(screen.getByLabelText(/Broker/i), { target: { value: "broker-1" } });
+    fireEvent.change(screen.getByLabelText(/Shares/i), { target: { value: "50" } });
+    // Cost field left untouched.
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalled());
+    const [, opts] = hoisted.upsertStockPosition.mock.calls[0];
+    expect(opts.cost).toBeUndefined();
+  });
+
+  it("a typed cost is threaded to upsertStockPosition with the chosen currency", async () => {
+    renderOpen();
+    fireEvent.change(screen.getByLabelText(/Ticker/i), { target: { value: "ENXF" } });
+    fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: "EQT Nexus" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add initial position/i }));
+    fireEvent.change(screen.getByLabelText(/Broker/i), { target: { value: "broker-1" } });
+    fireEvent.change(screen.getByLabelText(/Shares/i), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/Amount paid \(incl\. fees\)/i), { target: { value: "1000" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalled());
+    const [, opts] = hoisted.upsertStockPosition.mock.calls[0];
+    expect(opts.cost).toEqual({ amount: 1000, currency: "EUR" });
+  });
+
   it("resets state when the modal re-opens after closing", () => {
     const { rerender } = renderOpen();
     fireEvent.change(screen.getByLabelText(/Ticker/i), { target: { value: "DIRTY" } });

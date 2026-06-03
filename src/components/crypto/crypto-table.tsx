@@ -46,6 +46,14 @@ import {
   type SortDirection,
 } from "./crypto-columns";
 import { formatCurrency, formatQuantity, GROUP_PALETTE } from "@/lib/format";
+import {
+  sumGroupPnL,
+  renderAvgCostCell,
+  renderUnrealizedCell,
+  renderRealizedCell,
+  renderTotalPnLCell,
+} from "@/lib/portfolio/pnl-cells";
+import type { AssetPnL } from "@/lib/portfolio/cost-basis";
 import { useSharedView } from "@/components/shared-view-context";
 
 // ── Group mode ──────────────────────────────────────────────
@@ -73,9 +81,11 @@ interface CryptoTableProps {
   fxValueChange24h?: number;
   deposits?: number;
   depositBreakdown?: { name: string; value: number }[];
+  /** Per-asset cost-basis P&L keyed `crypto:{assetId}` (EUR authoritative). */
+  pnlByAsset?: Record<string, AssetPnL>;
 }
 
-export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown }: CryptoTableProps) {
+export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown, pnlByAsset }: CryptoTableProps) {
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
@@ -342,9 +352,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:crypto", columns, 5);
+  } = useColumnConfig("colConfig:crypto", columns, 6);
 
-  const ctx: RenderContext = { primaryCurrency, fxRates };
+  const ctx: RenderContext = { primaryCurrency, fxRates, pnlByAsset };
 
   const totalPositions = useMemo(
     () => assets.reduce((sum, a) => sum + a.positions.length, 0),
@@ -941,6 +951,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               </div>,
                               formatCurrency(group.totalValue, primaryCurrency),
                               "px-4 py-2.5",
+                              undefined,
+                              sumGroupPnL(groupAssetIds.map((id) => `crypto:${id}`), pnlByAsset),
+                              primaryCurrency,
                             )}
                           </tr>
 
@@ -1006,6 +1019,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 </div>,
                                 formatCurrency(group.totalValue, primaryCurrency),
                                 "px-4 py-2.5",
+                                undefined,
+                                sumGroupPnL(groupAssetIds.map((id) => `crypto:${id}`), pnlByAsset),
+                                primaryCurrency,
                               )}
                             </tr>
 
@@ -1067,6 +1083,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                   </div>,
                                   formatCurrency(group.totalValue, primaryCurrency),
                                   "px-4 py-2.5",
+                                  undefined,
+                                  sumGroupPnL(groupAssetIds.map((id) => `crypto:${id}`), pnlByAsset),
+                                  primaryCurrency,
                                 )}
                               </tr>
 
@@ -1126,6 +1145,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                   </div>,
                                   formatCurrency(group.totalValue, primaryCurrency),
                                   "px-4 py-2.5",
+                                  undefined,
+                                  sumGroupPnL(groupAssetIds.map((id) => `crypto:${id}`), pnlByAsset),
+                                  primaryCurrency,
                                 )}
                               </tr>
 
@@ -1223,6 +1245,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                   </div>,
                                   formatCurrency(group.totalValue, primaryCurrency),
                                   "px-4 py-2.5",
+                                  undefined,
+                                  sumGroupPnL(groupAssetIds.map((id) => `crypto:${id}`), pnlByAsset),
+                                  primaryCurrency,
                                 )}
                               </tr>
 
@@ -1551,12 +1576,31 @@ function CustodyGroupHeader({
 
 // ── Group header cells: renders content in Asset, value in Value, hidden elsewhere ──
 
+/** Render the summed group P&L for one of the four P&L columns (or null). */
+function renderGroupPnLCell(
+  colKey: string,
+  groupPnl: AssetPnL | undefined,
+  primaryCurrency: string,
+): ReactNode {
+  switch (colKey) {
+    case "avgCost": return renderAvgCostCell(groupPnl, primaryCurrency);
+    case "unrealized": return renderUnrealizedCell(groupPnl, primaryCurrency);
+    case "realized": return renderRealizedCell(groupPnl, primaryCurrency);
+    case "totalPnL": return renderTotalPnLCell(groupPnl, primaryCurrency);
+    default: return null;
+  }
+}
+
+const PNL_COLUMN_KEYS = new Set(["avgCost", "unrealized", "realized", "totalPnL"]);
+
 function groupHeaderCells(
   orderedColumns: ColumnDef<CryptoRow>[],
   assetContent: ReactNode,
   formattedValue: string,
   padding: string,
   valueClass: string = "text-xs font-medium text-zinc-400",
+  groupPnl?: AssetPnL,
+  primaryCurrency?: string,
 ) {
   return orderedColumns.map((col) => {
     const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
@@ -1567,6 +1611,14 @@ function groupHeaderCells(
       return (
         <td key={col.key} className={`${padding} text-right ${hidden}`}>
           <span className={`${valueClass} tabular-nums`}>{formattedValue}</span>
+        </td>
+      );
+    }
+    // Aggregate P&L per group (sum of member assets) — mirrors how value sums.
+    if (PNL_COLUMN_KEYS.has(col.key)) {
+      return (
+        <td key={col.key} className={`${padding} text-right ${hidden}`}>
+          {renderGroupPnLCell(col.key, groupPnl, primaryCurrency ?? "EUR")}
         </td>
       );
     }

@@ -1,10 +1,30 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
-import type { ColumnDef } from "@/lib/column-config";
+import type { ColumnDef, RenderContext } from "@/lib/column-config";
 import { formatCurrency } from "@/lib/format";
+import {
+  renderAvgCostCell,
+  renderUnrealizedCell,
+  renderRealizedCell,
+  renderTotalPnLCell,
+  sumGroupPnL,
+} from "@/lib/portfolio/pnl-cells";
 import type { CashAccount } from "@/lib/types";
 import { countryName } from "@/lib/types";
+
+/**
+ * Group-level P&L for a cash row: sum the cost-basis P&L of every account in the
+ * group (keyed `cash:{accountId}`). Cash P&L is usually trivial (cost==balance)
+ * but yield-bearing accounts accrue realized/unrealized via interest at cost 0.
+ * avgCost has no group meaning → forced to "—" by sumGroupPnL.
+ */
+function cashGroupPnL(row: CashRow, pnlByAsset?: RenderContext["pnlByAsset"]) {
+  return sumGroupPnL(
+    row.data.accounts.map((a) => `cash:${a.id}`),
+    pnlByAsset,
+  );
+}
 
 // ── Cash group (computed, not a DB type) ────────────────────
 
@@ -245,6 +265,52 @@ export function getCashColumns(handlers: {
           {formatCurrency(row.data.totalValue, ctx.primaryCurrency)}
         </span>
       ),
+    },
+
+    // ── Cost-basis P&L (default-hidden — cash P&L is usually trivial) ──────
+    {
+      key: "avgCost",
+      label: "Avg Cost",
+      header: "Avg Cost",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      defaultVisible: false,
+      renderCell: (row, ctx) =>
+        renderAvgCostCell(cashGroupPnL(row, ctx.pnlByAsset), ctx.primaryCurrency),
+    },
+    {
+      key: "unrealized",
+      label: "Unrealized",
+      header: "Unrealized",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      defaultVisible: false,
+      renderCell: (row, ctx) =>
+        renderUnrealizedCell(cashGroupPnL(row, ctx.pnlByAsset), ctx.primaryCurrency),
+    },
+    {
+      key: "realized",
+      label: "Realized",
+      header: "Realized",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      defaultVisible: false,
+      renderCell: (row, ctx) =>
+        renderRealizedCell(cashGroupPnL(row, ctx.pnlByAsset), ctx.primaryCurrency),
+    },
+    {
+      key: "totalPnL",
+      label: "Total P&L",
+      header: "Total P&L",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      defaultVisible: false,
+      renderCell: (row, ctx) =>
+        renderTotalPnLCell(cashGroupPnL(row, ctx.pnlByAsset), ctx.primaryCurrency),
     },
 
     // ── Actions (pinned right) ─────────────────────────────

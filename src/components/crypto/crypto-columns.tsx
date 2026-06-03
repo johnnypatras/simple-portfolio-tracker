@@ -4,6 +4,12 @@ import type { ColumnDef, SortDirection } from "@/lib/column-config";
 export type { SortDirection } from "@/lib/column-config";
 import type { CryptoAssetWithPositions, CoinGeckoPriceData } from "@/lib/types";
 import { formatCurrency, formatQuantity } from "@/lib/format";
+import {
+  renderAvgCostCell,
+  renderUnrealizedCell,
+  renderRealizedCell,
+  renderTotalPnLCell,
+} from "@/lib/portfolio/pnl-cells";
 
 // ── Computed row type (asset + price data) ───────────────────
 
@@ -648,6 +654,46 @@ export function getCryptoColumns(handlers: {
             : "—"}
         </span>
       ),
+    },
+    {
+      key: "avgCost",
+      label: "Avg Cost",
+      header: "Avg Cost",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      renderCell: (row, ctx) =>
+        renderAvgCostCell(ctx.pnlByAsset?.[`crypto:${row.asset.id}`], ctx.primaryCurrency),
+    },
+    {
+      key: "unrealized",
+      label: "Unrealized",
+      header: "Unrealized",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      renderCell: (row, ctx) =>
+        renderUnrealizedCell(ctx.pnlByAsset?.[`crypto:${row.asset.id}`], ctx.primaryCurrency),
+    },
+    {
+      key: "realized",
+      label: "Realized",
+      header: "Realized",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      renderCell: (row, ctx) =>
+        renderRealizedCell(ctx.pnlByAsset?.[`crypto:${row.asset.id}`], ctx.primaryCurrency),
+    },
+    {
+      key: "totalPnL",
+      label: "Total P&L",
+      header: "Total P&L",
+      align: "right",
+      width: "w-28",
+      hiddenBelow: "xl",
+      renderCell: (row, ctx) =>
+        renderTotalPnLCell(ctx.pnlByAsset?.[`crypto:${row.asset.id}`], ctx.primaryCurrency),
     },
     {
       key: "actions",

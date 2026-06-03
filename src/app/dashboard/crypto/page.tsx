@@ -6,6 +6,7 @@ import { getPrices } from "@/lib/prices/coingecko";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { getOwnerAssetTransactions } from "@/lib/portfolio/owner-pnl";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { CryptoTable } from "@/components/crypto/crypto-table";
 import { MobileMenuButton } from "@/components/sidebar";
@@ -27,12 +28,13 @@ export default async function CryptoPage() {
   // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
   const coinIds = assets.map((a) => a.coingecko_id);
   const allCurrencies = ["USD", "EUR"];
-  const [prices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch] = await Promise.all([
+  const [prices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch, assetTransactions] = await Promise.all([
     getPrices(coinIds),
     getFXRatesSafe(cur, allCurrencies),
     getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
     getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
     getStockPrices(["EURUSD=X"]),
+    getOwnerAssetTransactions(),
   ]);
   const eurUsdData = eurUsdBatch["EURUSD=X"] ?? null;
 
@@ -54,6 +56,8 @@ export default async function CryptoPage() {
     fxRatesUsd,
     fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    // null → no P&L computed (graceful degradation already logged in the helper).
+    assetTransactions: assetTransactions ?? undefined,
   });
 
   const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
@@ -78,6 +82,7 @@ export default async function CryptoPage() {
         fxValueChange24h={summary.cryptoFxValueChange24h}
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
+        pnlByAsset={summary.pnlByAsset}
       />
     </div>
   );

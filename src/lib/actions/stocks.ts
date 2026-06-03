@@ -10,11 +10,12 @@ import type {
   UsdEurAmount,
   Broker,
 } from "@/lib/types";
-import { logActivity } from "@/lib/actions/activity-log";
-import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin, validateTags, validateCurrency } from "@/lib/validation";
+import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
+import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin, validateTags, validateCurrency, validateAmount } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
+import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { PG_UNIQUE_VIOLATION } from "@/lib/supabase/error-codes";
 
@@ -340,6 +341,16 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
   cashflowOverride?: UsdEurAmount;
+  /**
+   * Single-currency cost the user typed (incl. fees) — the subscription/position
+   * cost spine. When present AND no `cashflowOverride` was already given, the
+   * other currency is derived here via FX-at-date (`toUsdAndEur`, which THROWS on
+   * FX failure so a bad rate never silently writes a wrong cost) and the
+   * resulting { usd, eur } pair becomes the `cashflowOverride`. The user's typed
+   * currency is stored EXACTLY; only the derived leg is round2'd. EXACTLY the
+   * addTransaction pattern. Ignored for yield (cost 0).
+   */
+  cost?: { amount: number; currency: "EUR" | "USD" } | null;
   isYield?: boolean;
 }) {
   return captureAction("stocks.upsertStockPosition", async () => {
@@ -349,6 +360,26 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  // ── Single-currency cost → dual-currency override (mirrors addTransaction) ──
+  // Only when a cost was supplied, no explicit cashflowOverride was already
+  // given (the override wins — it carries both currencies verbatim), and this is
+  // not a yield (yield has no cost). toUsdAndEur calls getFXRates, which THROWS
+  // on FX failure — a bad rate never silently writes a wrong cost. The typed
+  // currency is stored verbatim; only the cross-currency derived leg is round2'd.
+  let cashflowOverride = opts?.cashflowOverride;
+  if (opts?.cost != null && cashflowOverride == null && !opts?.isYield) {
+    validateAmount(opts.cost.amount, "Cost");
+    const derived = await toUsdAndEur(
+      opts.cost.amount,
+      opts.cost.currency,
+      opts.effectiveDate,
+    );
+    cashflowOverride =
+      opts.cost.currency === "EUR"
+        ? { eur: opts.cost.amount, usd: round2(derived.usd) }
+        : { usd: opts.cost.amount, eur: round2(derived.eur) };
+  }
 
   // Fetch asset ticker for logging
   const { data: asset } = await supabase
@@ -383,8 +414,8 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
 
       const qty = (existing.quantity as number) ?? 0;
       const deltaNative = -(qty * (opts?.currentPriceNative ?? 0));
-      const fx = (opts?.currentPriceNative != null || opts?.cashflowOverride != null)
-        ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: opts?.cashflowOverride })
+      const fx = (opts?.currentPriceNative != null || cashflowOverride != null)
+        ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: cashflowOverride })
         : emptyFx();
 
       await logActivity({
@@ -469,8 +500,8 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
     const afterQty = input.quantity;
     const qtyDelta = afterQty - beforeQty;
     const deltaNative = qtyDelta * (opts?.currentPriceNative ?? 0);
-    const fx = (opts?.currentPriceNative != null || opts?.cashflowOverride != null)
-      ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: opts?.cashflowOverride })
+    const fx = (opts?.currentPriceNative != null || cashflowOverride != null)
+      ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: cashflowOverride })
       : emptyFx();
 
     await logActivity({

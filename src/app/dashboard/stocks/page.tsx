@@ -5,6 +5,7 @@ import { deriveCashFlows } from "@/lib/actions/benchmark";
 import { getStockAndIndexPrices } from "@/lib/prices/yahoo";
 import { getFXRatesSafe } from "@/lib/prices/fx";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import { getOwnerAssetTransactions } from "@/lib/portfolio/owner-pnl";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { StockTable } from "@/components/stocks/stock-table";
 import { StaleNavBanner } from "@/components/stocks/stale-nav-banner";
@@ -33,12 +34,13 @@ export default async function StocksPage() {
   const today = new Date().toISOString().slice(0, 10);
   // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
   // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
-  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, manualNavs] = await Promise.all([
+  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, manualNavs, assetTransactions] = await Promise.all([
     getStockAndIndexPrices(yahooTickers),
     getFXRatesSafe(cur, uniqueCurrencies),
     getFXRatesSafe("USD", uniqueCurrencies.filter((c) => c !== "USD")),
     getFXRatesSafe("EUR", uniqueCurrencies.filter((c) => c !== "EUR")),
     manualStockAssets.length > 0 ? getLatestManualNavsAt(supabase, today) : Promise.resolve([]),
+    getOwnerAssetTransactions(),
   ]);
   injectManualNavPrices(manualStockAssets, manualNavs, prices);
   const eurUsdData = indexPrices["EURUSD=X"] ?? null;
@@ -55,6 +57,8 @@ export default async function StocksPage() {
     fxRatesUsd,
     fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    // null → no P&L computed (graceful degradation already logged in the helper).
+    assetTransactions: assetTransactions ?? undefined,
   });
 
   const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
@@ -93,6 +97,7 @@ export default async function StocksPage() {
         latestManualNavDates={Object.fromEntries(
           manualNavs.map((n) => [n.asset_id, n.effective_date])
         )}
+        pnlByAsset={summary.pnlByAsset}
       />
     </div>
   );

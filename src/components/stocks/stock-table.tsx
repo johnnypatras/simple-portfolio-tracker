@@ -21,6 +21,14 @@ import { toast } from "sonner";
 import { deleteStockAsset } from "@/lib/actions/stocks";
 import type { FXRates } from "@/lib/prices/fx";
 import type { RenderContext, ColumnDef } from "@/lib/column-config";
+import {
+  sumGroupPnL,
+  renderAvgCostCell,
+  renderUnrealizedCell,
+  renderRealizedCell,
+  renderTotalPnLCell,
+} from "@/lib/portfolio/pnl-cells";
+import type { AssetPnL } from "@/lib/portfolio/cost-basis";
 import { HIDDEN_BELOW } from "@/lib/constants";
 import type {
   StockAssetWithPositions,
@@ -82,9 +90,11 @@ interface StockTableProps {
   dividends?: YahooDividendMap;
   /** Latest manual NAV effective_date per asset id, for staleness display */
   latestManualNavDates?: Record<string, string>;
+  /** Per-asset cost-basis P&L keyed `stock:{assetId}` (EUR authoritative). */
+  pnlByAsset?: Record<string, AssetPnL>;
 }
 
-export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown, dividends, latestManualNavDates }: StockTableProps) {
+export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, fxValueChange24h = 0, deposits = 0, depositBreakdown, dividends, latestManualNavDates, pnlByAsset }: StockTableProps) {
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
@@ -422,9 +432,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
     toggleColumn,
     moveColumn,
     resetToDefaults,
-  } = useColumnConfig("colConfig:stocks", columns, 8);
+  } = useColumnConfig("colConfig:stocks", columns, 9);
 
-  const ctx: RenderContext = { primaryCurrency, fxRates };
+  const ctx: RenderContext = { primaryCurrency, fxRates, pnlByAsset };
 
   const totalPositions = useMemo(
     () => assets.reduce((sum, a) => sum + a.positions.length, 0),
@@ -1019,6 +1029,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                               </div>,
                               formatCurrency(group.totalValue, primaryCurrency),
                               "px-4 py-2.5",
+                              undefined,
+                              sumGroupPnL(groupAssetIds.map((id) => `stock:${id}`), pnlByAsset),
+                              primaryCurrency,
                             )}
                           </tr>
 
@@ -1080,6 +1093,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                               </div>,
                               formatCurrency(group.totalValue, primaryCurrency),
                               "px-4 py-2.5",
+                              undefined,
+                              sumGroupPnL(groupAssetIds.map((id) => `stock:${id}`), pnlByAsset),
+                              primaryCurrency,
                             )}
                           </tr>
 
@@ -1195,6 +1211,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                               </div>,
                               formatCurrency(group.totalValue, primaryCurrency),
                               "px-4 py-2.5",
+                              undefined,
+                              sumGroupPnL(groupAssetIds.map((id) => `stock:${id}`), pnlByAsset),
+                              primaryCurrency,
                             )}
                           </tr>
 
@@ -1291,6 +1310,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                               </div>,
                               formatCurrency(group.totalValue, primaryCurrency),
                               "px-4 py-2.5",
+                              undefined,
+                              sumGroupPnL(groupAssetIds.map((id) => `stock:${id}`), pnlByAsset),
+                              primaryCurrency,
                             )}
                           </tr>
 
@@ -1584,12 +1606,31 @@ function MobileStockCard({
 // ── Expanded sub-row ─────────────────────────────────────────
 // ── Group header cells: renders content in Asset, value in Value, hidden elsewhere ──
 
+/** Render the summed group P&L for one of the four P&L columns (or null). */
+function renderGroupPnLCell(
+  colKey: string,
+  groupPnl: AssetPnL | undefined,
+  primaryCurrency: string,
+): ReactNode {
+  switch (colKey) {
+    case "avgCost": return renderAvgCostCell(groupPnl, primaryCurrency);
+    case "unrealized": return renderUnrealizedCell(groupPnl, primaryCurrency);
+    case "realized": return renderRealizedCell(groupPnl, primaryCurrency);
+    case "totalPnL": return renderTotalPnLCell(groupPnl, primaryCurrency);
+    default: return null;
+  }
+}
+
+const PNL_COLUMN_KEYS = new Set(["avgCost", "unrealized", "realized", "totalPnL"]);
+
 function groupHeaderCells(
   orderedColumns: ColumnDef<StockRow>[],
   assetContent: ReactNode,
   formattedValue: string,
   padding: string,
   valueClass: string = "text-xs font-medium text-zinc-400",
+  groupPnl?: AssetPnL,
+  primaryCurrency?: string,
 ) {
   return orderedColumns.map((col) => {
     const hidden = col.hiddenBelow ? HIDDEN_BELOW[col.hiddenBelow] : "";
@@ -1600,6 +1641,14 @@ function groupHeaderCells(
       return (
         <td key={col.key} className={`${padding} text-right ${hidden}`}>
           <span className={`${valueClass} tabular-nums`}>{formattedValue}</span>
+        </td>
+      );
+    }
+    // Aggregate P&L per group (sum of member assets) — mirrors how value sums.
+    if (PNL_COLUMN_KEYS.has(col.key)) {
+      return (
+        <td key={col.key} className={`${padding} text-right ${hidden}`}>
+          {renderGroupPnLCell(col.key, groupPnl, primaryCurrency ?? "EUR")}
         </td>
       );
     }
@@ -1778,6 +1827,8 @@ function TickerGroupRows({
           formatCurrency(group.totalValueBase, primaryCurrency),
           `${headerPl} py-3`,
           "text-sm font-semibold text-zinc-100",
+          sumGroupPnL(group.rows.map((r) => `stock:${r.asset.id}`), ctx.pnlByAsset),
+          primaryCurrency,
         )}
       </tr>
 
