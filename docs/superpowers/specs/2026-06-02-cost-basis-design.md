@@ -1,6 +1,6 @@
 # Cost Basis & Realized/Unrealized P&L — Design Spec
 
-**Status:** Reviewed — round 7 (3 review rounds + architect re-design + 3 comprehensive 6-agent code-grounded audits) incorporated · **Date:** 2026-06-02 (rev 2026-06-03)
+**Status:** Reviewed — round 8 (3 review rounds + architect re-design + 3 full 6-agent + 1 targeted code-grounded audits; the last clean) incorporated · **Date:** 2026-06-02 (rev 2026-06-03)
 **Branch:** `feat/cost-basis` (stacked on `feat/historical-prices-chart` / PR #94)
 **Decision:** Scope **A + B** (total P&L + benchmark **and** average-cost / realized-unrealized split)
 
@@ -480,7 +480,9 @@ Per-asset, in the holdings table and/or the drawer summary:
     `cashflow_asset_class` set via `classifyAssetClass(...)`** (the toggle sets it on the real-flow side and nulls
     it on the adjustment side — omitting it mis-labels the contribution's asset class in the benchmark/deposit
     breakdown; ⚠ for a `crypto_position` row, replicate the toggle's `isStablecoin(subcategory)` pre-check so a
-    stablecoin buckets as **cash**, not crypto — audit-r6). ⚠ `deriveCashFlows` keys on
+    stablecoin buckets as **cash**, not crypto — audit-r6; the `subcategory` lives on `crypto_assets`, not the
+    row, so fetch it via the row's `crypto_asset_id` as `toggleActivityAdjustment` does — audit-r7). ⚠
+    `deriveCashFlows` keys on
     **`cashflow_status='complete'`**, not on a non-null amount — so
     writing the amount while leaving a stale opposite **status** re-creates the phantom-contribution bug.
     **Never populate both sides.** **TOCTOU guard (M4):** scope the UPDATE with
@@ -492,7 +494,9 @@ Per-asset, in the holdings table and/or the drawer summary:
     so un-yield is lossless). **`markAsYield`** flips only **eligible** rows — full predicate (audit-3 + audit-r5):
     `is_adjustment = false AND transfer_group_id IS NULL AND split_from_id IS NULL AND undone_at IS NULL AND
     compensates_for IS NULL AND cashflow_status = 'complete' AND is_yield = false` **AND `quantityDelta(row) > 0`**
-    (the last term is checked in the action after the fetch — direction isn't pure SQL) — sets `is_yield=true`
+    (the last term is checked in the action after the fetch — direction isn't pure SQL; ⚠ so the fetch must
+    `select('*')` to pull the before/after snapshots + `details` that `quantityDelta` reads — audit-r7 — else it
+    sees `undefined` snapshots, returns 0, and silently skips every row) — sets `is_yield=true`
     (amount left **intact** — §5.2); everything else → `skipped`; returns `{updated, skipped}`. (⚠ **`quantityDelta
     > 0` is essential — audit-r6 HIGH:** yield is by definition a qty-**UP** acquisition, so a **Sell/Withdrawal
     disposal** (`action='removed'` or a qty-down `'updated'`, also `is_adjustment=false`+`cashflow_status='complete'`)
@@ -565,13 +569,16 @@ Per-asset, in the holdings table and/or the drawer summary:
      over **all** positions (not the backdated-only lot builder). The plan spells out the exact SELECT.
   3. It is threaded as a **new prop**: `page.tsx:157` + `share/[token]/page.tsx:75` → `PortfolioChart` →
      `enrichChartData` → `enrichWithSp500Benchmark`.
-  4. **The seed is a *delta from* `firstSliceVal`, not a re-reconstruction of it (audit-3 — the byte-identical
-     guarantee):** `seedDisp = firstSliceVal − costGap(chartStart, viewMode)`, where
-     `costGap = Σ (marketAtChartStart − userCost)` over **only the lots the user explicitly costed**
+  4. **The seed is a *delta from* `firstSliceUsd`, not a re-reconstruction of it (audit-3 — the byte-identical
+     guarantee):** `seedUsd = firstSliceUsd − gapUsd(chartStart, viewMode)`, where
+     `gapUsd = Σ (marketAtChartStart − userCost)` over **only the lots the user explicitly costed**
      (`cashflow_user_set = true AND NOT is_yield`) in that view-mode's class. `lookupCostAtOrBefore` **reads/sums
      the pre-computed per-class `*GapUsd` columns** (audit-r5 F1) for the view-mode (**0** when no lot is
      user-costed). **Apply it in USD (audit-r6):** `seedUsd = firstSliceUsd − gapUsd` → `neededUnits = seedUsd /
-     sp500StartPrice` (the existing :251-263 machinery), avoiding a separate gap FX conversion. The benchmark
+     sp500StartPrice` (the existing :251-263 machinery), avoiding a separate gap FX conversion. ⚠ **Preserve the
+     empty-slice fallback (audit-r7):** when `firstSliceUsd ≤ 0` (the tier-2/3/4 path that fixed a prior
+     EUR-seeding bug) `gapUsd` is also 0 → keep today's *skip-seeding* behavior; do NOT unconditionally seed from
+     `firstSliceUsd = 0`. The benchmark
      then anchors to *what you invested* while the portfolio line stays at *market* — the delta survives.
   - **Byte-identical regression guard (now EXACT, not reconstruction-matched):** subtracting a gap *from the real
     `firstSliceVal`* (rather than recomputing the whole value) means that when **no lot is user-costed**,
@@ -646,8 +653,8 @@ Per-asset, in the holdings table and/or the drawer summary:
 24. **Transfer with a fee** (same-asset net remainder ≠ 0) → fee = realized **loss** at €0 proceeds (B5), not a
     spurious gain.
 25. **Backdated lot, user cost ≠ market** → benchmark **seeds at cost** via
-    `seedDisp = firstSliceVal − costGap(chartStart, viewMode)` (gap = `Σ(market − userCost)` over user-costed
-    lots) with a correct non-zero delta vs the market-valued truth-line; **with no user-costed lot the gap is 0
+    `seedUsd = firstSliceUsd − gapUsd(chartStart, viewMode)` (gap = `Σ(market − userCost)` over user-costed
+    `NOT is_yield` lots; applied in USD — §9) with a correct non-zero delta vs the market-valued truth-line; **with no user-costed lot the gap is 0
     → byte-identical** to #94 — exact via the same code path, even with a populated series (§9, C2).
 26. **Multi-currency divergence** → EUR and USD avg-cost legitimately differ under today's FX; EUR
     authoritative; never reconciled (§7.7).
