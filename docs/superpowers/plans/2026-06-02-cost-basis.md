@@ -10,7 +10,7 @@
 
 **Two cross-cutting requirements (apply to EVERY UI task — do not treat as optional):**
 - **UI-LOCKDOWN CHECK:** for each control, enumerate its disabled/blocked/dead-end states and prove there is always a clear way out (never a trap). Each UI task lists its lockdown matrix; tests assert the disabled/blocked states render a reason, not a silent dead control.
-- **EXPLANATORY COPY:** every tickbox/button/type-option carries simple, accurate helper text describing what it does and what will happen. The verbatim strings live in `src/lib/cost-basis-copy.ts` (Task 2.0) so they're tested once and reused; components import them.
+- **EXPLANATORY COPY:** every tickbox/button/type-option carries simple, accurate helper text describing what it does and what will happen. The verbatim strings live in `src/lib/cost-basis-copy.ts` (Task 1.2) so they're tested once and reused; components import them.
 
 ---
 
@@ -254,7 +254,8 @@ export function classifyTransaction(row: any): TransactionKind {
 - [ ] **Step 3: Implement** —
   - `activity-fx.ts`: add `amountOverride?: { usd:number; eur:number }` to `computeActivityFx` **and** `computeActivityFxWithConversion`; when present, set `cashflowUsd/cashflowEur = override` and **skip** the `qty × price` path. Add a `cashflowUserSet: boolean` field to `FxResult` (set `true` when the override is used; `emptyFx()` defaults it `false`).
   - `crypto.ts` (`upsertPosition`) + `stocks.ts` (`upsertStockPosition`): accept `opts.cashflowOverride` **and `opts.isYield`**; pass `cashflowOverride` to the `computeActivityFx*` call + pass `cashflow_user_set` **and `is_yield`** to `logActivity` (⚠ audit-3 BLOCKER — the new-Yield row is an INSERT through these primitives, so `is_yield` MUST be settable here, not only via the UPDATE-based editTransaction/markAsYield).
-  - `cash-accounts.ts`: add `cashflowOverride` **+ `isYield`** to `CashAccountOpts`; since cash uses `computeFx`/`computeCashflow`, branch to the override there (skip the balance-delta computation); forward `cashflow_user_set` **and `is_yield`** at **each** cash `logActivity` call-site (create, update, duplicate-merge — enumerate them; easy to miss one).
+  - `cash-accounts.ts`: add `cashflowOverride` **+ `isYield`** to `CashAccountOpts`; since cash uses `computeFx`/`computeCashflow`, branch to the override there (skip the balance-delta computation); forward `cashflow_user_set` **and `is_yield`** at the cash `logActivity` call-sites — **create + update** (the two that addTransaction's deposit-style yield routes through; `mergeCashAccounts` delegates to update/delete and itself logs nothing — audit-r5).
+  - `backfill.ts`: add `.eq("cashflow_user_set", false)` to the cashflow-backfill WHERE (`:42-47`) so the daily cron never overwrites a user-authored cost with market value (audit-r5 — defense even if a user-cost row is briefly `pending`).
   - Absent → today's behavior. (Never coerce a blank to 0 — that's the modal's job, §7.1.)
 - [ ] **Step 4: Run → PASS.**
 - [ ] **Step 5: Commit** — `git commit -m "feat(cost-basis): cost-override on upsertPosition/upsertStockPosition/cash + activity-fx (B1)"`
@@ -289,9 +290,9 @@ export function classifyTransaction(row: any): TransactionKind {
 
 **Files:** Modify `src/lib/actions/benchmark.ts`; Test `__tests__/integration/cost-basis-benchmark.test.ts`
 
-- [ ] **Step 1: Failing tests (BOTH readers — audit-3 BLOCKER):** (a) seed a complete cash flow + a yield entry on the same asset; assert `deriveCashFlows` returns the cash flow but **not** the yield row. (b) seed a **backdated** yield row (with `effective_date`); assert it is **excluded** from the synthetic flows produced by `fetchHistoricalPriceInputsFor` → `buildBenchmarkCashFlows` (the second reader, in `historical-prices-augmentation.ts`) — a backdated yield must not become a phantom S&P contribution.
+- [ ] **Step 1: Failing tests (CORRECTED audit-r5 — `deriveCashFlows` ONLY):** (a) seed a complete cash flow + a yield entry on the same asset; assert `deriveCashFlows` returns the cash flow but **not** the yield row. (b) seed a **backdated** yield row (`effective_date`); assert it is absent from `deriveCashFlows` AND the synthetic flows, **AND that its UNITS still appear in the value/truth line** (`augmentAndExtendSnapshots`) — the key non-regression: yield units are holdings.
 - [ ] **Step 2: Run → FAIL.**
-- [ ] **Step 3: Implement:** add `is_yield` to the `.select(...)` and filter it out (`.eq("is_yield", false)`) in **`deriveCashFlows`** AND in the three SELECT ranges of **`fetchHistoricalPriceInputsFor`** (crypto/stock/cash) / filter in `buildBenchmarkCashFlows`. Confirm no #94 benchmark test regresses (`npm test -- benchmark`).
+- [ ] **Step 3: Implement:** add `is_yield` to the `.select(...)` and `.eq("is_yield", false)` in **`deriveCashFlows` ONLY**. ⚠ Do **NOT** filter `fetchHistoricalPriceInputsFor` — its lot stream is the SHARED input to the value line, so a row-level `is_yield` filter would drop yield UNITS from the truth line (audit-r5 BLOCKER). The synthetic reader `buildBenchmarkCashFlows` already excludes yield structurally (it gates on `is_adjustment !== true`; yield is `is_adjustment=false`). Confirm no #94 benchmark OR value-line test regresses (`npm test -- benchmark`).
 - [ ] **Step 4: Run → PASS.**
 - [ ] **Step 5: Commit** — `git commit -m "feat(benchmark): exclude is_yield rows from cash flows"`
 
@@ -329,7 +330,7 @@ export function classifyTransaction(row: any): TransactionKind {
 
 ### Task 2.4: Per-asset transactions query + row history icon
 
-**Files:** Modify `crypto-table.tsx` / `stock-table.tsx` / `cash-table.tsx` (action cluster); new read in `src/lib/actions/transactions.ts` or `activity-log.ts`
+**Files:** Modify `crypto-table.tsx` / `stock-table.tsx` / `cash-table.tsx` (action cluster); new read in `src/lib/actions/transactions.ts`; `src/lib/types.ts` (the `AssetRef` discriminated union)
 
 > ⚠ **Engine-input contract (audit-2 + audit-3):** the read feeds the cost engine, so it must be **asset-level,
 > NOT per-`entity_id`** — `entity_id` for crypto/stocks is the **per-wallet position id**, so one asset across N
@@ -337,9 +338,14 @@ export function classifyTransaction(row: any): TransactionKind {
 > to 0 (spurious realized gain). Resolve `assetRef` → asset (`crypto_asset_id`/`stock_asset_id`) → **all of that
 > asset's position ids** (RLS-scoped) → `.in("entity_id", positionIds)`. **Cash** is the exception (`entity_id =
 > cash_accounts.id`, the account *is* the asset). Keep **`.eq("user_id", user.id)`** (defense-in-depth — positions
-> carry no `user_id`), **`.is("undone_at", null)`** (a split flips parent→`undone` atomically with the child
-> insert → exactly **live parents OR children, never both**), and **select both `cashflow_amount_*` AND
-> `delta_*`** (C3: transfer/adjustment legs carry their value in `delta_*`, not `cashflow_amount_*`).
+> carry no `user_id`), **`.is("undone_at", null)`** (a split marks parent→`undone` right *after* inserting
+> children — **sequential, not one transaction**, audit-r5 → defensively skip a parent that still has live
+> children so a mid-split failure can't double-count), and **select both `cashflow_amount_*` AND `delta_*`** (C3:
+> transfer/adjustment legs carry their value in `delta_*`, not `cashflow_amount_*`).
+> ⚠ **Dual-client contract (audit-r5 HIGH):** accept `(supabase, userId)` so the **share page** (non-owner, admin
+> client scoped by `owner_id` — `shared-portfolio.ts`) can feed the engine for Task 3.3d's read-only cost P&L;
+> mirror `fetchHistoricalPriceInputsFor`'s owner/authed duality. RLS-only leaves the share page with no cost data.
+> Define `assetRef` as a typed discriminated union in `types.ts` (`{class:'crypto'|'stock';assetId} | {class:'cash';accountId}`).
 > ⚠ **Cash placement (L3):** the cash *group* row renders `actions: () => null` (cash-columns.tsx:252-259) and
 > Edit/Delete live on the **expanded sub-rows** — so the cash history icon needs a sub-row or group-level
 > placement, not a drop-in to a (nonexistent) group cluster.
@@ -362,16 +368,20 @@ activity-log.ts:380-407), scoped `.eq("id").eq("user_id")` (404 if absent — #9
 (TOCTOU, M4). **Guards:** reject a **transfer leg** (`transfer_group_id != null`), a **split child / undone row**
 (`split_from_id != null` or `undone_at != null`), **and a compensation row (`compensates_for != null` — audit-3)**,
 with the `COST_COPY.transferLegLocked` / `splitChildLocked` messages (+ a compensation message). **Write amount
-AND status (audit-3 HIGH):** mirror `toggleActivityAdjustment`'s full UPDATE — `is_adjustment` row →
-`{delta_*, delta_status:'complete', cashflow_amount_*:null, cashflow_status:null}`; real-flow row → the inverse;
+AND status — all 8 columns (audit-3 HIGH + audit-r5):** mirror `toggleActivityAdjustment`'s full UPDATE —
+`is_adjustment` row → `{delta_*, delta_status:'complete', cashflow_amount_*:null, cashflow_status:null,
+cashflow_asset_class:null}`; real-flow row → the inverse **with `cashflow_asset_class` set via
+`classifyAssetClass(...)`** (omitting it mis-labels the contribution's class in the benchmark/deposit breakdown);
 **never both** (`deriveCashFlows` keys on `cashflow_status`, so a stale status re-creates the phantom
 contribution). Validate at the boundary: `validateUUID(entryId)` + amount/qty/date (M3). `markAsYield(ids)`
 validates each `validateUUID(id)`, flips only **eligible** rows — predicate **`is_adjustment=false AND
-transfer_group_id IS NULL AND undone_at IS NULL AND compensates_for IS NULL AND` (real cash flow)** (audit-3) —
-sets **`is_yield=true` (amount NOT zeroed — H2 → un-yield is lossless)**, everything else → `skipped`; returns
-`{updated, skipped}`.
+transfer_group_id IS NULL AND split_from_id IS NULL AND undone_at IS NULL AND compensates_for IS NULL AND
+cashflow_status='complete' AND is_yield=false`** (audit-3 + audit-r5: `split_from_id` essential — markAsYield is
+bulk, a live split child otherwise passes every term; `cashflow_status='complete'` is the concrete real-flow
+test; `is_yield=false` keeps `{updated}` honest) — sets **`is_yield=true` (amount NOT zeroed — H2 → un-yield is
+lossless)**, everything else → `skipped`; returns `{updated, skipped}`.
 
-- [ ] **Step 1: Failing tests** — per the sanity list above, incl. `editTransaction` rejecting a transfer leg + a split child + **a compensation row**; the `is_adjustment`→`delta_*` branch asserting `cashflow_amount_*` **AND `cashflow_status`** both stay null (audit-3); `addTransaction(type='yield')` on a NEW asset producing a row with `is_yield=true` (audit-3 BLOCKER); and `markAsYield` **skipping** a transfer leg, an `is_adjustment` correction, and a compensation row (→ `skipped`).
+- [ ] **Step 1: Failing tests** — per the sanity list above, incl. `editTransaction` rejecting a transfer leg + a split child + **a compensation row**; the `is_adjustment`→`delta_*` branch asserting `cashflow_amount_*` **AND `cashflow_status`** both stay null **and the real-flow branch sets `cashflow_asset_class`** (audit-r5); `addTransaction(type='yield')` on a NEW asset producing a row with `is_yield=true` (audit-3 BLOCKER); and `markAsYield` **skipping** a transfer leg, an `is_adjustment` correction, a compensation row, **a split child, and an already-yield row** (→ `skipped`).
 - [ ] **Step 2-4:** implement as thin, `captureAction`-wrapped, `revalidateDashboard()` orchestration over existing primitives; **ownership verified in the action**; run.
 - [ ] **Step 5: Commit** — `git commit -m "feat(cost-basis): addTransaction/editTransaction/markAsYield (ownership-verified)"`
 
@@ -443,7 +453,7 @@ describe("computeCostBasis — engine cases from spec §10 + invariant", () => {
   it("INVARIANT (buy/sell/yield only): totalPnL === currentValue + Σproceeds − Σcost (tolerance EPS for cent-rounded inputs)", () => { /* property test, excludes corrections */ });
 });
 // Cases living in OTHER files (not the pure engine): 10 (double-count) → benchmark/integration; 14 (split math) →
-// split-helpers.test; 15 (backdate recompute) → cost-basis-backdate.test; 16/26 (per-currency) → Task 3.2; 20
+// split-helpers.test; 15 (backdate recompute) → cost-basis-backdate.test; 16 (dual-currency storage) → Task 1.4b; 26 (per-currency divergence) → Task 3.2; 20
 // (drawer grouping) → component; 25 (seed) → Task 3.4; 28 (un-yield lossless) + 29 (override persist) → integration.
 ```
 - [ ] **Step 2: Run → FAIL.**
@@ -499,13 +509,15 @@ narrow screens (full detail always in the drawer).
 
 **Design rule (spec §9, re-architected per audit-2 C2):** a scalar seed is **infeasible** — `enrichWithSp500Benchmark` runs **client-side** in a `useMemo`, `chartStart` is **period-dependent** (24H/3D/…/All) and **per-view-mode** (crypto/stocks/cash/total), the engine is per-asset. So build a **server-side, portfolio-wide, per-class running-cost series** and look it up per period/mode at the seed. Corrections/synthetic `is_adjustment` flows stay **market-valued** (the scope bound + the byte-identical guard).
 
-- [ ] **Step 3.4a — `buildCostBasisSeries` (pure, server-side, over ALL positions — audit-3 BLOCKER).** Create it in `historical-prices-augmentation.ts`. ⚠ It must run over **all** of the user's positions, NOT #94's backdated-only lots (`buildHistoricalLots` drops non-backdated positions and its lot inputs carry **quantity only, never cost**). Feed it the **per-asset cost + `delta` streams** (the engine's real input); value each **real** lot at its **cost** (user amount, else market fallback) and each **`is_adjustment`** lot at **market** (`lotContributionAtDate`). Apply the **same stablecoin crypto→cash reclassification** the value line uses (`aggregate.ts`/augmentation ~865-887) so per-class cost matches per-class value. Emit `{ date, cryptoCostUsd, stocksCostUsd, cashCostUsd, …Eur }[]` (total/investments by summation). Failing unit test first: a real backdated lot (cost €5,000) → series shows €5,000; an `is_adjustment` lot → its **market** value, not 0; a stablecoin lot lands in the **cash** column.
-- [ ] **Step 3.4b — expose via `getHistoricalBenchmarkExtension`** (`benchmark.ts:145-198`): add the series to its return. ⚠ This is a **third read** (audit-3) — neither "reuse #94's lots" (no cost) nor "superset of `deriveCashFlows`" (selects no `delta_*`, excludes `is_adjustment`). Spell out the SELECT: per-asset rows with `cashflow_amount_*`, `delta_*`, `is_adjustment`, `is_yield` (excluded), `effective_date`/`created_at`, `entity_id`, `details`. (`deriveCashFlows` itself now excludes `is_yield` and uses the user amount — Task 2.1.)
-- [ ] **Step 3.4c — thread the prop:** `page.tsx:157` + `share/[token]/page.tsx:75` → `PortfolioChart` → `enrichChartData` → `enrichWithSp500Benchmark`. Add `lookupCostAtOrBefore(series, chartStart, viewMode)` that returns the per-class **cost GAP** `Σ(marketAtChartStart − userCost)` over lots with `cashflow_user_set=true` (total/investments by summation) — **0** when none are user-costed.
+- [ ] **Step 3.4a-pre — WIDEN #94's price-fetch for user-costed lots (audit-r5 F2 — the load-bearing fix).** `marketAtChartStart` for a user-costed lot needs cached `historical_prices` + FX, but `ensureHistoricalPricesCached`/`buildHistoricalLots` fetch prices **only for backdated lots** (`:601` drops non-backdated), and a user-costed lot is usually a *non-backdated* normal buy → no cached price → `lotContributionAtDate` returns null → gap silently wrong. Extend the price-fetch to ALSO cover the assets of `cashflow_user_set=true` lots back to `chartStart` (bounded — only assets the user costed). Failing test: a non-backdated user-costed lot has a cached price at chartStart after the widening.
+- [ ] **Step 3.4a — `buildCostBasisSeries` (pure, server-side, over ALL positions — audit-3 BLOCKER).** Create it in `historical-prices-augmentation.ts`. ⚠ It must run over **all** of the user's positions, NOT #94's backdated-only lots. Feed it the **per-asset cost + `delta` streams** + **`cashflow_user_set`** (the gap gate); value each **real** lot at its **cost** (user amount, else market fallback) and each **`is_adjustment`** lot at **market** (`lotContributionAtDate`). Apply the **same stablecoin crypto→cash reclassification** the value line uses (`aggregate.ts`/augmentation ~865-887) so per-class cost matches per-class value. **Emit BOTH (audit-r5 F1):** absolute per-class **cost** columns `{ date, cryptoCostUsd, …, …Eur }` (for the Phase-5 overlay) AND explicit per-class **gap** columns `{ cryptoGapUsd, …, …GapEur }` = `Σ(lotContributionAtDate(lot,date) − userCost)` over `cashflow_user_set=true` lots (for the seed — the gap CANNOT be recovered from an aggregated cost total, so emit it while per-lot data is in scope). Failing unit test: a real backdated lot (cost €5,000) → `cryptoCostUsd` shows €5,000; an `is_adjustment` lot → its **market** value, not 0; a stablecoin lot lands in the **cash** columns; a user-costed lot (cost €5k, market €8k) → `cryptoGapUsd` = €3,000.
+- [ ] **Step 3.4b — expose via `getHistoricalBenchmarkExtension`** (`benchmark.ts:145-198`): add the series to its return. ⚠ This is a **third read** (audit-3) — neither "reuse #94's lots" (no cost) nor "superset of `deriveCashFlows`" (selects no `delta_*`, excludes `is_adjustment`). Spell out the SELECT: per-asset rows over **all** positions with `cashflow_amount_*`, `delta_*`, **`cashflow_user_set`** (the gap gate — audit-r5 F3), `is_adjustment`, `is_yield`, `effective_date`/`created_at`, `entity_id`, `details`. (`deriveCashFlows` itself excludes `is_yield` and uses the user amount — Task 2.1.)
+- [ ] **Step 3.4c — thread the prop:** `page.tsx:157` + `share/[token]/page.tsx:75` → `PortfolioChart` → `enrichChartData` → `enrichWithSp500Benchmark`. Add `lookupCostAtOrBefore(series, chartStart, viewMode)` that **reads/sums the pre-computed per-class `*GapUsd/*GapEur` columns** (audit-r5 F1 — NOT recomputed from a cost total) for the view-mode (total/investments by summation) — **0** when none are user-costed.
 - [ ] **Step 3.4d — READ `chart-enrichment.ts:204-304` end-to-end**, confirm `seedDisp = firstSliceVal` (line 242) and the `neededUnits`/`unitsAtChartStart`/`seedDelta` re-anchor (265-286).
 - [ ] **Step 3.4e — Write failing seed tests — UNIT, via the public `enrichChartData`:**
   - A backdated lot, cost €5,000, **market €8,000** at chartStart → `costGap = 3,000` → S&P line at chartStart = `firstSliceVal − 3,000` (cost), portfolio line = market — the €3,000 gap survives.
-  - Control 1: no user cost (gap 0) → `seedDisp == firstSliceVal` **byte-identical**.
+  - A **non-backdated** user-costed lot (cost ≠ market) that predates a short-period `chartStart` → its gap is applied too (validates the 3.4a-pre price widening; tolerate `EPS` on this user-costed branch — reconstructed market may differ from the snapshot by FX/forward-fill ULPs, audit-r5 F4).
+  - Control 1: no user cost (gap 0) → `seedDisp == firstSliceVal` **byte-identical** (exact, not EPS).
   - **Control 2 (the real guard — audit-3): a *populated* series** (a backdated lot present, cost == market → gap 0) → **still byte-identical** (proves the gap-subtraction, not an empty-series accident).
   - An `is_adjustment` lot present at chartStart → never user-costed → not in the gap → byte-identical.
 - [ ] **Step 3.4f — Implement** `seedDisp = firstSliceVal − (lookupCostAtOrBefore(series, chartStart, viewMode) ?? 0)` — the seed is a **delta from the real `firstSliceVal`** (NOT a reconstruction of it), so a zero gap is byte-identical via the same code path (reuse the FX-ratio tiers :251-263 for the gap conversion; keep the `unitsAtChartStart` machinery intact). **Re-run the ENTIRE existing benchmark + chart-enrichment suite** (`npm test -- benchmark chart-enrichment`) — must be unchanged.
