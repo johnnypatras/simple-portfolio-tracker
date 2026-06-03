@@ -44,6 +44,7 @@ export type Database = {
           cashflow_asset_class: string | null
           cashflow_attempted_at: string | null
           cashflow_status: string | null
+          cashflow_user_set: boolean
           compensates_for: string | null
           created_at: string
           delta_attempted_at: string | null
@@ -59,6 +60,7 @@ export type Database = {
           entity_type: Database["public"]["Enums"]["entity_type"]
           id: string
           is_adjustment: boolean
+          is_yield: boolean
           split_from_id: string | null
           transfer_group_id: string | null
           undone_at: string | null
@@ -73,6 +75,7 @@ export type Database = {
           cashflow_asset_class?: string | null
           cashflow_attempted_at?: string | null
           cashflow_status?: string | null
+          cashflow_user_set?: boolean
           compensates_for?: string | null
           created_at?: string
           delta_attempted_at?: string | null
@@ -88,6 +91,7 @@ export type Database = {
           entity_type: Database["public"]["Enums"]["entity_type"]
           id?: string
           is_adjustment?: boolean
+          is_yield?: boolean
           split_from_id?: string | null
           transfer_group_id?: string | null
           undone_at?: string | null
@@ -102,6 +106,7 @@ export type Database = {
           cashflow_asset_class?: string | null
           cashflow_attempted_at?: string | null
           cashflow_status?: string | null
+          cashflow_user_set?: boolean
           compensates_for?: string | null
           created_at?: string
           delta_attempted_at?: string | null
@@ -117,6 +122,7 @@ export type Database = {
           entity_type?: Database["public"]["Enums"]["entity_type"]
           id?: string
           is_adjustment?: boolean
+          is_yield?: boolean
           split_from_id?: string | null
           transfer_group_id?: string | null
           undone_at?: string | null
