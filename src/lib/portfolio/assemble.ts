@@ -5,6 +5,9 @@ import type { FXRates } from "@/lib/prices/fx";
 import { getLatestManualNavsAt, partitionStockAssetsForPricing, injectManualNavPrices } from "@/lib/manual-nav";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAllAssetTransactions } from "./asset-transactions";
+import type { AssetKey } from "./asset-transactions";
+import type { CostBasisTxn } from "./cost-basis";
 import { aggregatePortfolio } from "./aggregate";
 import type { PortfolioSummary } from "./aggregate";
 import { computeDashboardInsights } from "./dashboard-insights";
@@ -79,10 +82,41 @@ export async function assemblePortfolioView(
   // For share-page reads (ownerUserId provided), use the admin client + explicit
   // user_id arg so the SQL function still scopes correctly. RLS bypass is safe:
   // shared-portfolio.ts already gates which fields the viewer sees; manual NAV
-  // values just complete that picture.
+  // values just complete that picture. The cost-basis transaction read shares
+  // this exact client (same dual-client #97 contract).
   const navClient = options?.ownerUserId ? createAdminClient() : supabase;
+  const txnClient = navClient;
 
-  const [cryptoPrices, { stockPrices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, manualNavs] =
+  // Per-asset transaction streams for cost-basis P&L. Kept fully PARALLEL with the
+  // price fetches: the user resolution (share page → ownerUserId; owner dashboard
+  // → session) happens INSIDE this promise so nothing is awaited before the batch
+  // below. If no user resolves (unauthenticated edge case), skip the read (P&L is
+  // purely additive). GRACEFUL DEGRADATION: a thrown read is logged + Sentry-
+  // captured and yields `null` — the dashboard must never 500 because cost data
+  // failed; aggregatePortfolio then computes no P&L from `null`.
+  const assetTransactionsPromise: Promise<Map<AssetKey, CostBasisTxn[]> | null> =
+    (async () => {
+      try {
+        const effectiveUserId =
+          options?.ownerUserId ??
+          (await supabase.auth.getUser()).data.user?.id ??
+          null;
+        if (!effectiveUserId) return null;
+        return await getAllAssetTransactions(txnClient, effectiveUserId);
+      } catch (e: unknown) {
+        console.error("[assemble] getAllAssetTransactions failed:", e);
+        void import("@sentry/nextjs")
+          .then((Sentry) => {
+            Sentry.captureException(e, {
+              tags: { area: "cost-basis", op: "getAllAssetTransactions" },
+            });
+          })
+          .catch(() => {});
+        return null;
+      }
+    })();
+
+  const [cryptoPrices, { stockPrices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, manualNavs, assetTransactions] =
     await Promise.all([
       getPrices(coinIds),
       getStockAndIndexPrices(yahooTickers),
@@ -92,6 +126,7 @@ export async function assemblePortfolioView(
       manualStockAssets.length > 0
         ? getLatestManualNavsAt(navClient, today, options?.ownerUserId)
         : Promise.resolve([]),
+      assetTransactionsPromise,
     ]);
 
   // Inject manual NAVs into stockPrices keyed by `asset.ticker` (yahoo_ticker is
@@ -100,6 +135,12 @@ export async function assemblePortfolioView(
   injectManualNavPrices(manualStockAssets, manualNavs, stockPrices);
 
   const eurUsdData = indexPrices["EURUSD=X"] ?? null;
+
+  // Collect cost-engine anomalies (genuine oversells — disposals exceeding held
+  // units, only reachable from corrupt/backdated data). The aggregate stays
+  // sync + Sentry-free; we own the sink and fire ONE captureMessage below if any
+  // fired, rather than one per occurrence.
+  const pnlAnomalies: string[] = [];
 
   const summary = aggregatePortfolio({
     cryptoAssets,
@@ -112,7 +153,28 @@ export async function assemblePortfolioView(
     fxRatesUsd,
     fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    // null → no P&L computed (graceful degradation already logged above).
+    assetTransactions: assetTransactions ?? undefined,
+    onPnlAnomaly: (msg) => pnlAnomalies.push(msg),
   });
+
+  if (pnlAnomalies.length > 0) {
+    // ONE aggregated signal per assembly (not per oversell). Dynamic import keeps
+    // Sentry out of this module's static graph (mirrors chart-enrichment.ts) and
+    // off the critical path; .catch swallows an unconfigured/absent Sentry.
+    void import("@sentry/nextjs")
+      .then((Sentry) => {
+        Sentry.captureMessage("cost-basis P&L anomalies during aggregation", {
+          level: "warning",
+          extra: {
+            count: pnlAnomalies.length,
+            // Cap the sample so a pathological dataset can't bloat the event.
+            sample: pnlAnomalies.slice(0, 10),
+          },
+        });
+      })
+      .catch(() => {});
+  }
 
   const insights = computeDashboardInsights({
     cryptoAssets, cryptoPrices, stockAssets, stockPrices,

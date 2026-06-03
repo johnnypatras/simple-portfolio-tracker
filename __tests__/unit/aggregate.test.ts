@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
+import type { AssetKey } from "@/lib/portfolio/asset-transactions";
+import type { CostBasisTxn } from "@/lib/portfolio/cost-basis";
 
 let idCounter = 0;
 
@@ -323,5 +325,253 @@ describe("aggregatePortfolio", () => {
     // fxChange24hPercent = -23000 / 46000 = -0.5
     expect(result.cryptoFxChange24hPercent).toBeCloseTo(-0.5, 1);
     expect(result.cryptoFxValueChange24h).toBeCloseTo(-230, 0);
+  });
+
+  // ── Cost-basis P&L threading (Task 3.3a) ───────────────────────────────────
+
+  it("omits all P&L fields when no assetTransactions map is passed (legacy callers)", () => {
+    const result = aggregatePortfolio({
+      cryptoAssets: [{
+        id: "ca1", name: "BTC", ticker: "BTC", coingecko_id: "bitcoin",
+        image_url: null, chain: null, subcategory: null,
+        user_id: "u1", created_at: "",
+        positions: [cryptoPos(1, "ca1")],
+      }],
+      cryptoPrices: { bitcoin: { usd: 50000, eur: 46000, usd_24h_change: 0, eur_24h_change: 0 } },
+      stockAssets: [], stockPrices: {},
+      cashAccounts: [],
+      primaryCurrency: "EUR", fxRates: { EUR: 1, USD: 1.09 },
+      fxRatesUsd: { USD: 1, EUR: 0.92 },
+      fxRatesEur: { EUR: 1, USD: 1.09 },
+    });
+    expect(result.pnlByAsset).toBeUndefined();
+    expect(result.costBasisTotals).toBeUndefined();
+  });
+
+  it("computes per-asset P&L for a single crypto buy (cost = buy; unrealized = value − cost)", () => {
+    // One BTC buy: cost basis €46,000 / $50,000. Current value €54,000 / $60,000.
+    const txns: CostBasisTxn[] = [
+      {
+        entity_type: "crypto_position",
+        action: "created",
+        after_snapshot: { quantity: 1 },
+        cashflow_amount_eur: 46000,
+        cashflow_amount_usd: 50000,
+      },
+    ];
+    const assetTransactions = new Map<AssetKey, CostBasisTxn[]>([
+      ["crypto:ca1", txns],
+    ]);
+
+    const result = aggregatePortfolio({
+      cryptoAssets: [{
+        id: "ca1", name: "BTC", ticker: "BTC", coingecko_id: "bitcoin",
+        image_url: null, chain: null, subcategory: null,
+        user_id: "u1", created_at: "",
+        positions: [cryptoPos(1, "ca1")],
+      }],
+      cryptoPrices: { bitcoin: { usd: 60000, eur: 54000, usd_24h_change: 0, eur_24h_change: 0 } },
+      stockAssets: [], stockPrices: {},
+      cashAccounts: [],
+      primaryCurrency: "EUR",
+      fxRates: { EUR: 1, USD: 1.11 },
+      fxRatesUsd: { USD: 1, EUR: 0.90 },
+      fxRatesEur: { EUR: 1, USD: 1.11 },
+      assetTransactions,
+    });
+
+    const pnl = result.pnlByAsset?.["crypto:ca1"];
+    expect(pnl).toBeDefined();
+    // EUR (authoritative): cost = 46000, value 54000 → unrealized 8000, no realized.
+    expect(pnl!.eur.costBasis).toBeCloseTo(46000, 6);
+    expect(pnl!.eur.realized).toBeCloseTo(0, 6);
+    expect(pnl!.eur.unrealized).toBeCloseTo(8000, 6);
+    expect(pnl!.eur.totalPnL).toBeCloseTo(8000, 6);
+    expect(pnl!.eur.avgCost).toBeCloseTo(46000, 6);
+    // USD pass: cost = 50000, value 60000 → unrealized 10000.
+    expect(pnl!.usd.costBasis).toBeCloseTo(50000, 6);
+    expect(pnl!.usd.unrealized).toBeCloseTo(10000, 6);
+  });
+
+  it("uses the SAME per-asset value the totals use (unrealized = cryptoValueEur − cost)", () => {
+    // No FX divergence: confirm the engine's currentMarketValue equals the
+    // aggregate's own per-asset valueEur/valueUsd (not a recomputed FX number).
+    const txns: CostBasisTxn[] = [
+      {
+        entity_type: "crypto_position",
+        action: "created",
+        after_snapshot: { quantity: 2 },
+        cashflow_amount_eur: 80000,
+        cashflow_amount_usd: 88000,
+      },
+    ];
+    const result = aggregatePortfolio({
+      cryptoAssets: [{
+        id: "ca1", name: "BTC", ticker: "BTC", coingecko_id: "bitcoin",
+        image_url: null, chain: null, subcategory: null,
+        user_id: "u1", created_at: "",
+        positions: [cryptoPos(2, "ca1")],
+      }],
+      cryptoPrices: { bitcoin: { usd: 60000, eur: 54000, usd_24h_change: 0, eur_24h_change: 0 } },
+      stockAssets: [], stockPrices: {},
+      cashAccounts: [],
+      primaryCurrency: "EUR",
+      fxRates: { EUR: 1, USD: 1.11 },
+      fxRatesUsd: { USD: 1, EUR: 0.90 },
+      fxRatesEur: { EUR: 1, USD: 1.11 },
+      assetTransactions: new Map<AssetKey, CostBasisTxn[]>([["crypto:ca1", txns]]),
+    });
+    const pnl = result.pnlByAsset?.["crypto:ca1"];
+    // 2 BTC × €54,000 = €108,000 (= result.cryptoValueEur). cost €80,000.
+    expect(result.cryptoValueEur).toBeCloseTo(108000, 6);
+    expect(pnl!.eur.unrealized).toBeCloseTo(result.cryptoValueEur - 80000, 6);
+    // 2 BTC × $60,000 = $120,000 (= result.cryptoValueUsd). cost $88,000.
+    expect(result.cryptoValueUsd).toBeCloseTo(120000, 6);
+    expect(pnl!.usd.unrealized).toBeCloseTo(result.cryptoValueUsd - 88000, 6);
+  });
+
+  it("sums per-asset P&L into costBasisTotals across crypto + cash", () => {
+    const cryptoTxns: CostBasisTxn[] = [
+      {
+        entity_type: "crypto_position",
+        action: "created",
+        after_snapshot: { quantity: 1 },
+        cashflow_amount_eur: 40000,
+        cashflow_amount_usd: 44000,
+      },
+    ];
+    // Cash deposit: €10,000 in, current balance €10,000 → unrealized 0.
+    const cashTxns: CostBasisTxn[] = [
+      {
+        entity_type: "cash_account",
+        action: "created",
+        after_snapshot: { balance: 10000 },
+        cashflow_amount_eur: 10000,
+        cashflow_amount_usd: 11000,
+      },
+    ];
+    const result = aggregatePortfolio({
+      cryptoAssets: [{
+        id: "ca1", name: "BTC", ticker: "BTC", coingecko_id: "bitcoin",
+        image_url: null, chain: null, subcategory: null,
+        user_id: "u1", created_at: "",
+        positions: [cryptoPos(1, "ca1")],
+      }],
+      cryptoPrices: { bitcoin: { usd: 60000, eur: 54000, usd_24h_change: 0, eur_24h_change: 0 } },
+      stockAssets: [], stockPrices: {},
+      cashAccounts: [{
+        id: "cash1", user_id: "u1", institution_id: null, name: "Bank",
+        currency: "EUR", balance: 10000, apy: 0, region: "EU",
+        wallet_id: null, broker_id: null,
+        last_was_adjustment: false, last_was_transfer: false,
+        created_at: "", updated_at: "", deleted_at: null,
+      }],
+      primaryCurrency: "EUR",
+      fxRates: { EUR: 1, USD: 1.11 },
+      fxRatesUsd: { USD: 1, EUR: 0.90 },
+      fxRatesEur: { EUR: 1, USD: 1.11 },
+      assetTransactions: new Map<AssetKey, CostBasisTxn[]>([
+        ["crypto:ca1", cryptoTxns],
+        ["cash:cash1", cashTxns],
+      ]),
+    });
+
+    const cryptoPnl = result.pnlByAsset?.["crypto:ca1"];
+    const cashPnl = result.pnlByAsset?.["cash:cash1"];
+    expect(cryptoPnl).toBeDefined();
+    expect(cashPnl).toBeDefined();
+
+    // Totals = sum of per-asset results, per currency.
+    expect(result.costBasisTotals).toBeDefined();
+    expect(result.costBasisTotals!.eur.costBasis).toBeCloseTo(
+      cryptoPnl!.eur.costBasis + cashPnl!.eur.costBasis,
+      6,
+    );
+    expect(result.costBasisTotals!.eur.unrealized).toBeCloseTo(
+      cryptoPnl!.eur.unrealized + cashPnl!.eur.unrealized,
+      6,
+    );
+    expect(result.costBasisTotals!.eur.totalPnL).toBeCloseTo(
+      cryptoPnl!.eur.totalPnL + cashPnl!.eur.totalPnL,
+      6,
+    );
+    expect(result.costBasisTotals!.usd.costBasis).toBeCloseTo(
+      cryptoPnl!.usd.costBasis + cashPnl!.usd.costBasis,
+      6,
+    );
+  });
+
+  it("skips assets with no matching transactions map entry (no P&L for them)", () => {
+    const result = aggregatePortfolio({
+      cryptoAssets: [
+        {
+          id: "ca1", name: "BTC", ticker: "BTC", coingecko_id: "bitcoin",
+          image_url: null, chain: null, subcategory: null,
+          user_id: "u1", created_at: "",
+          positions: [cryptoPos(1, "ca1")],
+        },
+        {
+          id: "ca2", name: "ETH", ticker: "ETH", coingecko_id: "ethereum",
+          image_url: null, chain: null, subcategory: null,
+          user_id: "u1", created_at: "",
+          positions: [cryptoPos(10, "ca2")],
+        },
+      ],
+      cryptoPrices: {
+        bitcoin: { usd: 60000, eur: 54000, usd_24h_change: 0, eur_24h_change: 0 },
+        ethereum: { usd: 3000, eur: 2700, usd_24h_change: 0, eur_24h_change: 0 },
+      },
+      stockAssets: [], stockPrices: {},
+      cashAccounts: [],
+      primaryCurrency: "EUR",
+      fxRates: { EUR: 1, USD: 1.11 },
+      fxRatesUsd: { USD: 1, EUR: 0.90 },
+      fxRatesEur: { EUR: 1, USD: 1.11 },
+      // Only ca1 has a map entry; ca2 is absent.
+      assetTransactions: new Map<AssetKey, CostBasisTxn[]>([
+        ["crypto:ca1", [{
+          entity_type: "crypto_position", action: "created",
+          after_snapshot: { quantity: 1 },
+          cashflow_amount_eur: 46000, cashflow_amount_usd: 50000,
+        }]],
+      ]),
+    });
+    expect(result.pnlByAsset?.["crypto:ca1"]).toBeDefined();
+    expect(result.pnlByAsset?.["crypto:ca2"]).toBeUndefined();
+  });
+
+  it("forwards engine anomalies to onPnlAnomaly (oversell)", () => {
+    const seen: string[] = [];
+    // Sell 5 with nothing held → oversell anomaly fires (per currency).
+    const txns: CostBasisTxn[] = [
+      {
+        entity_type: "crypto_position",
+        action: "removed",
+        before_snapshot: { quantity: 5 },
+        after_snapshot: { quantity: 0 },
+        cashflow_amount_eur: 5000,
+        cashflow_amount_usd: 5500,
+      },
+    ];
+    aggregatePortfolio({
+      cryptoAssets: [{
+        id: "ca1", name: "BTC", ticker: "BTC", coingecko_id: "bitcoin",
+        image_url: null, chain: null, subcategory: null,
+        user_id: "u1", created_at: "",
+        positions: [cryptoPos(0, "ca1")],
+      }],
+      cryptoPrices: { bitcoin: { usd: 60000, eur: 54000, usd_24h_change: 0, eur_24h_change: 0 } },
+      stockAssets: [], stockPrices: {},
+      cashAccounts: [],
+      primaryCurrency: "EUR",
+      fxRates: { EUR: 1, USD: 1.11 },
+      fxRatesUsd: { USD: 1, EUR: 0.90 },
+      fxRatesEur: { EUR: 1, USD: 1.11 },
+      assetTransactions: new Map<AssetKey, CostBasisTxn[]>([["crypto:ca1", txns]]),
+      onPnlAnomaly: (m) => seen.push(m),
+    });
+    // Fires once per currency pass (EUR + USD).
+    expect(seen.length).toBeGreaterThanOrEqual(1);
+    expect(seen[0]).toContain("oversell");
   });
 });

@@ -2,7 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createTestUser, getAdminClient } from "./setup";
-import { getAssetTransactions } from "@/lib/portfolio/asset-transactions";
+import {
+  getAssetTransactions,
+  getAllAssetTransactions,
+} from "@/lib/portfolio/asset-transactions";
 
 /**
  * Integration tests for Task 2.4a — getAssetTransactions (the asset-scoped read).
@@ -654,5 +657,325 @@ describe("getAssetTransactions — admin-client explicit-userId scoping (integra
     });
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.entity_id === userBPositionId)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. getAllAssetTransactions (Task 3.3a — the bulk read)
+//
+// The bulk read must return, per asset, EXACTLY what getAssetTransactions returns
+// for that asset (parity), enforce ownership with the admin client + explicit
+// userId scope (#97), and skip activity rows whose position was hard-deleted
+// (orphans) without throwing.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("getAllAssetTransactions — parity with getAssetTransactions (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  let cryptoAssetId: string;
+  let positionAId: string;
+  let positionBId: string;
+  let cashAccountId: string;
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+
+    // A 2-wallet crypto asset (so the merge path is exercised in the bulk read).
+    const { data: asset } = await client
+      .from("crypto_assets")
+      .insert({
+        user_id: userId,
+        name: "BulkCoin",
+        ticker: "BLK",
+        coingecko_id: `bulkcoin-${randomUUID()}`,
+      })
+      .select("id")
+      .single();
+    cryptoAssetId = asset!.id;
+
+    const { data: walletA } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Bulk Wallet A", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    const { data: walletB } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Bulk Wallet B", wallet_type: "non_custodial" })
+      .select("id")
+      .single();
+    const { data: posA } = await client
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: cryptoAssetId, wallet_id: walletA!.id, quantity: 1 })
+      .select("id")
+      .single();
+    const { data: posB } = await client
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: cryptoAssetId, wallet_id: walletB!.id, quantity: 2 })
+      .select("id")
+      .single();
+    positionAId = posA!.id;
+    positionBId = posB!.id;
+
+    await insertActivity(client, {
+      user_id: userId,
+      action: "created",
+      entity_type: "crypto_position",
+      entity_name: "BulkCoin (A)",
+      description: "Buy A",
+      entity_id: positionAId,
+      after_snapshot: { quantity: 1 },
+      cashflow_amount_usd: 1000,
+      cashflow_amount_eur: 910,
+      effective_date: "2026-01-01",
+    });
+    await insertActivity(client, {
+      user_id: userId,
+      action: "created",
+      entity_type: "crypto_position",
+      entity_name: "BulkCoin (B)",
+      description: "Buy B",
+      entity_id: positionBId,
+      after_snapshot: { quantity: 2 },
+      cashflow_amount_usd: 2000,
+      cashflow_amount_eur: 1820,
+      effective_date: "2026-01-02",
+    });
+
+    // A cash account with one row (so the cash key path is exercised too).
+    const { data: inst } = await client
+      .from("institutions")
+      .insert({ user_id: userId, name: "Bulk Bank" })
+      .select("id")
+      .single();
+    const { data: account } = await client
+      .from("cash_accounts")
+      .insert({
+        user_id: userId,
+        institution_id: inst!.id,
+        name: "Bulk Savings",
+        currency: "EUR",
+        balance: 5000,
+      })
+      .select("id")
+      .single();
+    cashAccountId = account!.id;
+    await insertActivity(client, {
+      user_id: userId,
+      action: "created",
+      entity_type: "cash_account",
+      entity_name: "Bulk Savings",
+      description: "Open",
+      entity_id: cashAccountId,
+      after_snapshot: { balance: 5000 },
+      cashflow_amount_usd: 5500,
+      cashflow_amount_eur: 5000,
+      effective_date: "2026-01-03",
+    });
+  });
+
+  afterAll(() => cleanup());
+
+  it("returns, per asset, the same rows getAssetTransactions returns (crypto + cash)", async () => {
+    const all = await getAllAssetTransactions(client, userId);
+
+    const cryptoKey = `crypto:${cryptoAssetId}` as const;
+    const cashKey = `cash:${cashAccountId}` as const;
+
+    const single = await getAssetTransactions(client, userId, {
+      class: "crypto",
+      assetId: cryptoAssetId,
+    });
+    const singleCash = await getAssetTransactions(client, userId, {
+      class: "cash",
+      accountId: cashAccountId,
+    });
+
+    // Parity: identical id sequence (proves same de-dup + same stable sort).
+    expect(all.get(cryptoKey)?.map((r) => r.id)).toEqual(single.map((r) => r.id));
+    expect(all.get(cashKey)?.map((r) => r.id)).toEqual(singleCash.map((r) => r.id));
+
+    // The crypto stream merged both wallets.
+    const cryptoEntityIds = new Set(all.get(cryptoKey)?.map((r) => r.entity_id));
+    expect(cryptoEntityIds.has(positionAId)).toBe(true);
+    expect(cryptoEntityIds.has(positionBId)).toBe(true);
+  });
+});
+
+describe("getAllAssetTransactions — ownership isolation via admin client (integration)", () => {
+  let userA: { client: SupabaseClient; userId: string; cleanup: () => void };
+  let userB: { client: SupabaseClient; userId: string; cleanup: () => void };
+  let adminClient: SupabaseClient;
+  let userBAssetId: string;
+
+  beforeAll(async () => {
+    userA = await createTestUser();
+    userB = await createTestUser();
+    adminClient = getAdminClient();
+
+    const { data: asset } = await userB.client
+      .from("crypto_assets")
+      .insert({
+        user_id: userB.userId,
+        name: "BulkPrivateCoin",
+        ticker: "BPV",
+        coingecko_id: `bulkprivate-${randomUUID()}`,
+      })
+      .select("id")
+      .single();
+    userBAssetId = asset!.id;
+
+    const { data: wallet } = await userB.client
+      .from("wallets")
+      .insert({ user_id: userB.userId, name: "BPV Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    const { data: pos } = await userB.client
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: userBAssetId, wallet_id: wallet!.id, quantity: 5 })
+      .select("id")
+      .single();
+
+    await insertActivity(userB.client, {
+      user_id: userB.userId,
+      action: "created",
+      entity_type: "crypto_position",
+      entity_name: "BulkPrivateCoin",
+      description: "userB buy",
+      entity_id: pos!.id,
+      after_snapshot: { quantity: 5 },
+      cashflow_amount_usd: 500,
+      cashflow_amount_eur: 455,
+      effective_date: "2026-01-01",
+    });
+  });
+
+  afterAll(() => {
+    userA.cleanup();
+    userB.cleanup();
+  });
+
+  it("admin client + userA scope sees NONE of userB's assets (RLS bypassed; only explicit scope guards)", async () => {
+    const all = await getAllAssetTransactions(adminClient, userA.userId);
+    // userA owns nothing → userB's asset key must be absent entirely.
+    expect(all.has(`crypto:${userBAssetId}` as const)).toBe(false);
+    expect(all.size).toBe(0);
+  });
+
+  it("admin client + userB scope sees userB's asset (positive control — share-page path)", async () => {
+    const all = await getAllAssetTransactions(adminClient, userB.userId);
+    expect(all.has(`crypto:${userBAssetId}` as const)).toBe(true);
+    expect(all.get(`crypto:${userBAssetId}` as const)!.length).toBeGreaterThan(0);
+  });
+});
+
+describe("getAllAssetTransactions — orphan rows skipped without throwing (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+  let adminClient: SupabaseClient;
+
+  let cryptoAssetId: string;
+  let livePositionId: string;
+  let orphanPositionId: string;
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+    adminClient = getAdminClient();
+
+    const { data: asset } = await client
+      .from("crypto_assets")
+      .insert({
+        user_id: userId,
+        name: "OrphanCoin",
+        ticker: "ORP",
+        coingecko_id: `orphancoin-${randomUUID()}`,
+      })
+      .select("id")
+      .single();
+    cryptoAssetId = asset!.id;
+
+    // Two wallets — the UNIQUE(crypto_asset_id, wallet_id) WHERE deleted_at IS
+    // NULL index forbids two live positions of one asset in the same wallet.
+    const { data: walletLive } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Orphan Live Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    const { data: walletOrphan } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Orphan Dead Wallet", wallet_type: "non_custodial" })
+      .select("id")
+      .single();
+
+    // A live position with a normal row.
+    const { data: livePos } = await client
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: cryptoAssetId, wallet_id: walletLive!.id, quantity: 1 })
+      .select("id")
+      .single();
+    livePositionId = livePos!.id;
+    await insertActivity(client, {
+      user_id: userId,
+      action: "created",
+      entity_type: "crypto_position",
+      entity_name: "OrphanCoin (live)",
+      description: "Live buy",
+      entity_id: livePositionId,
+      after_snapshot: { quantity: 1 },
+      cashflow_amount_usd: 1000,
+      cashflow_amount_eur: 910,
+      effective_date: "2026-01-01",
+    });
+
+    // A second position we will HARD-delete after writing its activity row,
+    // leaving the activity row pointing at a position absent from the meta map.
+    const { data: orphanPos } = await client
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: cryptoAssetId, wallet_id: walletOrphan!.id, quantity: 9 })
+      .select("id")
+      .single();
+    orphanPositionId = orphanPos!.id;
+    await insertActivity(client, {
+      user_id: userId,
+      action: "created",
+      entity_type: "crypto_position",
+      entity_name: "OrphanCoin (to-be-orphaned)",
+      description: "Orphan buy",
+      entity_id: orphanPositionId,
+      after_snapshot: { quantity: 9 },
+      cashflow_amount_usd: 9000,
+      cashflow_amount_eur: 8190,
+      effective_date: "2026-01-02",
+    });
+
+    // HARD delete (not soft) via admin client — the activity row survives but its
+    // position is gone from crypto_positions, so the meta map won't resolve it.
+    const { error: delErr } = await adminClient
+      .from("crypto_positions")
+      .delete()
+      .eq("id", orphanPositionId);
+    if (delErr) throw new Error("hard delete orphan position: " + delErr.message);
+  });
+
+  afterAll(() => cleanup());
+
+  it("skips the orphaned row, keeps the live one, and does not throw", async () => {
+    const all = await getAllAssetTransactions(client, userId);
+    const rows = all.get(`crypto:${cryptoAssetId}` as const) ?? [];
+
+    const ids = new Set(rows.map((r) => r.entity_id));
+    // Live position's row present.
+    expect(ids.has(livePositionId)).toBe(true);
+    // Orphan position's row dropped (position no longer in the meta map).
+    expect(ids.has(orphanPositionId)).toBe(false);
+    expect(rows).toHaveLength(1);
   });
 });

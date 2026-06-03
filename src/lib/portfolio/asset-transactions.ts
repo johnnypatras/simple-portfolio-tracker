@@ -20,6 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import type { AssetRef } from "@/lib/types";
 import { fetchAllPaginated } from "@/lib/supabase/pagination";
+import { CASH_ENTITY_TYPES } from "@/lib/deltas";
 import {
   classifyTransaction,
   quantityDelta,
@@ -189,21 +190,35 @@ export async function getAssetTransactions(
     );
   });
 
-  // 4. Split-orphan de-dup (audit-r6). A split inserts children then marks the
-  //    parent undone in a SEPARATE statement (not one transaction), so a crash
-  //    mid-split can leave a LIVE parent alongside its LIVE children — a
-  //    double-count. Defensively drop any row whose id is referenced as a
-  //    split_from_id by another live row in this set.
+  // 4. + 5. Split-orphan de-dup then stable ordering (shared with the bulk read).
+  return dedupeAndSortAssetRows(rows);
+}
+
+/**
+ * Split-orphan de-dup (audit-r6) + stable ordering, shared by
+ * {@link getAssetTransactions} (single asset) and {@link getAllAssetTransactions}
+ * (per-group, bulk). Extracted so the two read paths can never drift apart.
+ *
+ * De-dup: a split inserts children then marks the parent undone in a SEPARATE
+ * statement (not one transaction), so a crash mid-split can leave a LIVE parent
+ * alongside its LIVE children — a double-count. Drop any row whose id is
+ * referenced as a `split_from_id` by another live row in the SAME group. (The
+ * Set is rebuilt per group by the bulk caller so a child in one asset can never
+ * suppress a same-id parent in another — ids are UUIDs, so this is academic, but
+ * the per-group scope keeps the invariant local and obvious.)
+ *
+ * Sort: stable by COALESCE(effective_date, created_at) asc, tie-broken by
+ * created_at then id (deterministic). Within a single calendar day a date-only
+ * `effective_date` sorts before a same-day full-timestamp `created_at` row
+ * (lexical prefix); intentional — the cost engine relies only on day-granular
+ * ordering. Returns a NEW array (does not mutate the input).
+ */
+function dedupeAndSortAssetRows(rows: AssetTransactionRow[]): AssetTransactionRow[] {
   const childParentIds = new Set(
     rows.map((r) => r.split_from_id).filter((v): v is string => v != null),
   );
   const deduped = rows.filter((r) => !childParentIds.has(r.id));
 
-  // 5. Stable sort by COALESCE(effective_date, created_at) asc, tie-break by
-  //    created_at then id (deterministic). Within a single calendar day, a
-  //    date-only `effective_date` sorts before a same-day full-timestamp
-  //    `created_at` row (lexical prefix); this is intentional and the cost
-  //    engine relies only on day-granular ordering.
   deduped.sort((a, b) => {
     const da = a.effective_date ?? a.created_at;
     const db = b.effective_date ?? b.created_at;
@@ -213,6 +228,204 @@ export async function getAssetTransactions(
   });
 
   return deduped;
+}
+
+/**
+ * Stable per-asset key for the bulk transaction map. The string form (not an
+ * object) is deliberate: this Record/Map is keyed by it AND, once threaded onto
+ * the portfolio summary as `pnlByAsset`, serializes across the RSC boundary —
+ * an object key cannot. crypto/stock keys carry the ASSET id (positions merge
+ * into one asset stream); cash carries the account id (which IS the entity_id).
+ */
+export type AssetKey = `crypto:${string}` | `stock:${string}` | `cash:${string}`;
+
+/**
+ * position_id → asset_id for every crypto position owned by `userId`.
+ *
+ * Mirrors `loadCryptoPositionMeta` in historical-prices-augmentation.ts:
+ *   - `crypto_assets!inner(user_id)` + explicit `.eq("crypto_assets.user_id", userId)`
+ *     scopes to the owner (the admin client bypasses RLS — this is the only guard).
+ *   - NO `.is("deleted_at", null)`: a fully-sold position is soft-deleted but its
+ *     activity_log history still feeds the cost engine (realized P&L).
+ *   - Paginated past the PostgREST max_rows cap (silent truncation would drop part
+ *     of a heavy account's positions → orphaned rows → lost history).
+ */
+async function loadCryptoPositionAssetMap(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<string, string>> {
+  const rows = await fetchAllPaginated<{ id: string; crypto_asset_id: string }>(
+    (from, to) =>
+      supabase
+        .from("crypto_positions")
+        .select("id, crypto_asset_id, crypto_assets!inner(user_id)")
+        .eq("crypto_assets.user_id", userId) // explicit user scope — admin bypasses RLS
+        .order("id", { ascending: true })
+        .range(from, to),
+    1000,
+    { label: "all-asset-transactions:crypto_positions" },
+  ).catch((e: unknown) => {
+    throw new Error(
+      `Failed to load crypto position→asset map: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
+  const map = new Map<string, string>();
+  for (const r of rows) map.set(r.id, r.crypto_asset_id);
+  return map;
+}
+
+/** Stock counterpart of {@link loadCryptoPositionAssetMap}; see its doc comment. */
+async function loadStockPositionAssetMap(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<string, string>> {
+  const rows = await fetchAllPaginated<{ id: string; stock_asset_id: string }>(
+    (from, to) =>
+      supabase
+        .from("stock_positions")
+        .select("id, stock_asset_id, stock_assets!inner(user_id)")
+        .eq("stock_assets.user_id", userId) // explicit user scope — admin bypasses RLS
+        .order("id", { ascending: true })
+        .range(from, to),
+    1000,
+    { label: "all-asset-transactions:stock_positions" },
+  ).catch((e: unknown) => {
+    throw new Error(
+      `Failed to load stock position→asset map: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
+  const map = new Map<string, string>();
+  for (const r of rows) map.set(r.id, r.stock_asset_id);
+  return map;
+}
+
+/**
+ * Read EVERY relevant activity_log row for `userId` in ONE pass and group it by
+ * asset into the per-asset streams the cost engine consumes — the bulk
+ * counterpart of {@link getAssetTransactions}, for whole-portfolio aggregation
+ * (dashboard + share page) where issuing one read per asset would be N+1.
+ *
+ * Dual-client contract (identical to getAssetTransactions / #97):
+ *   - OWNER path: RLS-scoped server client + auth.uid().
+ *   - SHARE-PAGE path: service-role admin client + share.owner_id.
+ * The admin client BYPASSES RLS, so ownership is enforced EXPLICITLY everywhere:
+ * `.eq("user_id", userId)` on the activity read AND `.eq(..._assets.user_id, userId)`
+ * on the two position→asset joins. Never rely on RLS alone.
+ *
+ * Grouping:
+ *   - crypto/stock rows: entity_id (a position id) → asset id via the meta maps →
+ *     key `crypto:{assetId}` / `stock:{assetId}` (positions of one asset merge).
+ *     A row whose position is NOT in the meta map is an ORPHAN (the position was
+ *     hard-deleted, or belongs to another user) → SKIPPED, counted, and logged once.
+ *   - cash rows: entity_id IS the account id → key `cash:{entity_id}`.
+ *
+ * Each group is then run through the SAME {@link dedupeAndSortAssetRows} as the
+ * single-asset path, so a per-asset slice of this map is byte-for-byte what
+ * `getAssetTransactions` would have returned for that asset.
+ *
+ * Returns rows typed as {@link AssetTransactionRow} (assignable to the engine's
+ * CostBasisTxn — a `.test-d.ts` guards it).
+ */
+export async function getAllAssetTransactions(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<AssetKey, AssetTransactionRow[]>> {
+  // Per-entity-type paginated reads, mirroring fetchHistoricalPriceInputsFor:
+  // each read carries the SAME ACTIVITY_SELECT columns, the user scope, the
+  // undone filter, and a deterministic created_at,id order for page stability.
+  // `entity_type` is a typed PG enum — the parameter takes the generated enum
+  // type (CASH_ENTITY_TYPES is a subset of it) so `.eq` stays strongly typed.
+  type EntityType = Database["public"]["Enums"]["entity_type"];
+  const entityTypeRange =
+    (entityType: EntityType) => (from: number, to: number) =>
+      supabase
+        .from("activity_log")
+        .select(ACTIVITY_SELECT)
+        .eq("user_id", userId) // defense-in-depth — admin bypasses RLS
+        .eq("entity_type", entityType)
+        .is("undone_at", null)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true }) // stable secondary key for deterministic pages
+        .range(from, to);
+
+  const loadEntity = (entityType: EntityType, label: string) =>
+    fetchAllPaginated<AssetTransactionRow>(entityTypeRange(entityType), 1000, {
+      label,
+    }).catch((e: unknown) => {
+      throw new Error(
+        `Failed to load ${entityType} transactions: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
+    });
+
+  // Activity reads (per entity type) + the two position→asset meta maps, all in
+  // parallel — they are independent. Cash needs no meta map (entity_id IS the key).
+  const [cryptoRows, stockRows, cryptoAssetMap, stockAssetMap, ...cashRowsByType] =
+    await Promise.all([
+      loadEntity("crypto_position", "all-asset-transactions:crypto"),
+      loadEntity("stock_position", "all-asset-transactions:stock"),
+      loadCryptoPositionAssetMap(supabase, userId),
+      loadStockPositionAssetMap(supabase, userId),
+      ...CASH_ENTITY_TYPES.map((t) =>
+        loadEntity(t, `all-asset-transactions:${t}`),
+      ),
+    ]);
+
+  // Group raw rows by AssetKey (no de-dup/sort yet — done per group at the end).
+  const groups = new Map<AssetKey, AssetTransactionRow[]>();
+  const push = (key: AssetKey, row: AssetTransactionRow) => {
+    const arr = groups.get(key);
+    if (arr) arr.push(row);
+    else groups.set(key, [row]);
+  };
+
+  let cryptoOrphans = 0;
+  for (const row of cryptoRows) {
+    const assetId = row.entity_id ? cryptoAssetMap.get(row.entity_id) : undefined;
+    if (!assetId) {
+      cryptoOrphans++;
+      continue;
+    }
+    push(`crypto:${assetId}`, row);
+  }
+
+  let stockOrphans = 0;
+  for (const row of stockRows) {
+    const assetId = row.entity_id ? stockAssetMap.get(row.entity_id) : undefined;
+    if (!assetId) {
+      stockOrphans++;
+      continue;
+    }
+    push(`stock:${assetId}`, row);
+  }
+
+  // Cash: entity_id IS the account id; ownership already enforced by the
+  // .eq("user_id", userId) on the read. A null entity_id is skipped (cannot key).
+  for (const rows of cashRowsByType) {
+    for (const row of rows) {
+      if (!row.entity_id) continue;
+      push(`cash:${row.entity_id}`, row);
+    }
+  }
+
+  // Orphan rows mean a position was hard-deleted (or, with the admin client, a
+  // scoping bug). One aggregated warn per type — not per row — keeps the signal
+  // without flooding logs; the count is the actionable part.
+  if (cryptoOrphans > 0 || stockOrphans > 0) {
+    console.warn(
+      `[getAllAssetTransactions] skipped orphan activity rows (position not in meta map): crypto=${cryptoOrphans}, stock=${stockOrphans}`,
+    );
+  }
+
+  // De-dup + stable-sort each group exactly as the single-asset read does, so a
+  // per-asset slice equals getAssetTransactions(asset) for that asset.
+  const out = new Map<AssetKey, AssetTransactionRow[]>();
+  for (const [key, rows] of groups) {
+    out.set(key, dedupeAndSortAssetRows(rows));
+  }
+  return out;
 }
 
 /**

@@ -7,7 +7,10 @@
 
 import { convertToBase, fxChangeForCurrency as fxChangeFor } from "@/lib/prices/fx";
 import { isStablecoin } from "@/lib/cashflow";
+import { computeAssetPnL } from "@/lib/portfolio/cost-basis";
 import type { FXRates } from "@/lib/prices/fx";
+import type { AssetKey } from "@/lib/portfolio/asset-transactions";
+import type { CostBasisTxn, AssetPnL, CostBasisResult } from "@/lib/portfolio/cost-basis";
 import type {
   CryptoAssetWithPositions,
   CoinGeckoPriceData,
@@ -66,6 +69,33 @@ export interface PortfolioSummary {
   // EUR value of positions denominated in the user's home currency (zero FX sensitivity)
   stocksHomeCurrencyEur: number;
   cashHomeCurrencyEur: number;
+
+  // ── Cost-basis P&L (Task 3.3a) — present only when assetTransactions is passed ──
+  /**
+   * Per-asset P&L keyed by AssetKey string (e.g. "crypto:<id>", "cash:<id>").
+   * A plain Record (NOT a Map) so it serializes across the RSC boundary to the
+   * dashboard/share client. Each value is the engine's {@link AssetPnL}
+   * (EUR authoritative + USD secondary). Absent when no transaction map is
+   * supplied or graceful-degradation skipped the cost read.
+   */
+  pnlByAsset?: Record<string, AssetPnL>;
+  /**
+   * Portfolio-wide P&L totals, summed from {@link pnlByAsset} per currency.
+   * Only the additive fields are summed (avgCost is per-asset-only and has no
+   * portfolio-level meaning). Present iff {@link pnlByAsset} is.
+   */
+  costBasisTotals?: {
+    eur: CostBasisTotals;
+    usd: CostBasisTotals;
+  };
+}
+
+/** Additive subset of {@link CostBasisResult} that sums meaningfully across assets. */
+export interface CostBasisTotals {
+  costBasis: number;
+  realized: number;
+  unrealized: number;
+  totalPnL: number;
 }
 
 interface AggregateParams {
@@ -85,6 +115,23 @@ interface AggregateParams {
   /** 24h change in EUR/USD (% — e.g. +0.5 means EUR gained 0.5% vs USD).
    *  Used to include FX impact on foreign-currency stocks, cash, and stablecoins. */
   eurUsdChange24h?: number;
+  /**
+   * Per-asset transaction streams (the {@link getAllAssetTransactions} map), keyed
+   * by AssetKey. When supplied, per-asset cost-basis P&L is computed inside the
+   * existing dual-currency loops (reusing the very same per-asset valueEur/valueUsd
+   * that feed the totals) and surfaced on {@link PortfolioSummary.pnlByAsset} +
+   * {@link PortfolioSummary.costBasisTotals}. When ABSENT, no P&L is computed and
+   * every P&L field stays undefined — all legacy callers are unaffected.
+   */
+  assetTransactions?: Map<AssetKey, CostBasisTxn[]>;
+  /**
+   * Anomaly sink forwarded to the cost engine (fires on a genuine oversell — a
+   * disposal exceeding held units, only reachable from corrupt/backdated data).
+   * The aggregate stays SYNC and Sentry-free: the CALLER (assemblePortfolioView)
+   * owns this callback, collects messages, and fires ONE Sentry captureMessage
+   * after aggregation if any were collected.
+   */
+  onPnlAnomaly?: (msg: string) => void;
 }
 
 /**
@@ -107,6 +154,8 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     fxRatesUsd,
     fxRatesEur,
     eurUsdChange24h = 0,
+    assetTransactions,
+    onPnlAnomaly,
   } = params;
 
   const currencyKey = primaryCurrency.toLowerCase() as "usd" | "eur";
@@ -220,6 +269,31 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
         }
       : { crypto: 0, stocks: 0, cash: 0 };
 
+  // ── Cost-basis P&L accumulator (Task 3.3a) ─────────────
+  // Computed INLINE inside the dual-currency loops below so each asset's
+  // currentMarketValue is the SAME per-asset valueEur/valueUsd that feeds the
+  // snapshot totals — never a separately-recomputed FX number. Stays entirely
+  // dormant (no allocation, no engine calls) when no transaction map is supplied.
+  const pnlByAsset: Record<string, AssetPnL> | undefined = assetTransactions
+    ? {}
+    : undefined;
+  // Compute P&L for one asset given the per-asset values already derived above.
+  // Looks the asset's stream up by its AssetKey; a missing key → skip (no P&L).
+  const recordPnL = (
+    key: AssetKey,
+    valueEur: number,
+    valueUsd: number,
+  ): void => {
+    if (!assetTransactions || !pnlByAsset) return;
+    const txns = assetTransactions.get(key);
+    if (!txns) return; // asset has no transaction stream in the map → skip
+    pnlByAsset[key] = computeAssetPnL(
+      txns,
+      { valueEur, valueUsd },
+      { onAnomaly: onPnlAnomaly },
+    );
+  };
+
   // ── Dual-currency values for snapshot storage ─────────
   // The DB stores both USD and EUR. We compute both independently.
   // CoinGecko gives us both directly; for stocks/cash we convert from
@@ -234,13 +308,19 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     const price = cryptoPrices[asset.coingecko_id];
     if (!price) continue;
     const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
+    // Per-asset dual-currency value (the exact numbers summed into the totals).
+    const assetValueUsd = totalQty * (price.usd ?? 0);
+    const assetValueEur = totalQty * (price.eur ?? 0);
     if (isStablecoin(asset.subcategory)) {
-      stablecoinValueUsd += totalQty * (price.usd ?? 0);
-      stablecoinValueEur += totalQty * (price.eur ?? 0);
+      stablecoinValueUsd += assetValueUsd;
+      stablecoinValueEur += assetValueEur;
     } else {
-      cryptoValueUsd += totalQty * (price.usd ?? 0);
-      cryptoValueEur += totalQty * (price.eur ?? 0);
+      cryptoValueUsd += assetValueUsd;
+      cryptoValueEur += assetValueEur;
     }
+    // Stablecoins reclassify to cash for VALUE bucketing, but the asset is still
+    // one crypto_position stream keyed `crypto:<id>` — P&L books here regardless.
+    recordPnL(`crypto:${asset.id}`, assetValueEur, assetValueUsd);
   }
 
   // Stocks and cash: convert directly from native currency to USD and EUR.
@@ -261,18 +341,25 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
       if (!priceData) continue;
       const totalQty = asset.positions.reduce((sum, p) => sum + p.quantity, 0);
       const valueNative = totalQty * priceData.price;
-      stocksValueUsd += convertToBase(valueNative, asset.currency, "USD", fxRatesUsd);
-      stocksValueEur += convertToBase(valueNative, asset.currency, "EUR", fxRatesEur);
+      const assetValueUsd = convertToBase(valueNative, asset.currency, "USD", fxRatesUsd);
+      const assetValueEur = convertToBase(valueNative, asset.currency, "EUR", fxRatesEur);
+      stocksValueUsd += assetValueUsd;
+      stocksValueEur += assetValueEur;
       if (asset.currency === primaryCurrency) {
-        stocksHomeCurrencyEur += convertToBase(valueNative, asset.currency, "EUR", fxRatesEur);
+        stocksHomeCurrencyEur += assetValueEur;
       }
+      recordPnL(`stock:${asset.id}`, assetValueEur, assetValueUsd);
     }
     for (const cash of cashAccounts) {
-      fiatCashValueUsd += convertToBase(cash.balance, cash.currency, "USD", fxRatesUsd);
-      fiatCashValueEur += convertToBase(cash.balance, cash.currency, "EUR", fxRatesEur);
+      const accountValueUsd = convertToBase(cash.balance, cash.currency, "USD", fxRatesUsd);
+      const accountValueEur = convertToBase(cash.balance, cash.currency, "EUR", fxRatesEur);
+      fiatCashValueUsd += accountValueUsd;
+      fiatCashValueEur += accountValueEur;
       if (cash.currency === primaryCurrency) {
-        cashHomeCurrencyEur += convertToBase(cash.balance, cash.currency, "EUR", fxRatesEur);
+        cashHomeCurrencyEur += accountValueEur;
       }
+      // Cash account id IS the AssetKey suffix (entity_id == account id).
+      recordPnL(`cash:${cash.id}`, accountValueEur, accountValueUsd);
     }
   } else {
     // Legacy cross-conversion fallback (single FX rate set)
@@ -293,6 +380,30 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
 
   const cashValueUsd = fiatCashValueUsd + stablecoinValueUsd;
   const cashValueEur = fiatCashValueEur + stablecoinValueEur;
+
+  // ── Cost-basis totals (Task 3.3a) ──────────────────────
+  // Sum the additive per-asset P&L fields per currency. Undefined (alongside
+  // pnlByAsset) when no transaction map was supplied. avgCost is deliberately
+  // NOT summed — it is a per-asset ratio with no portfolio-level meaning.
+  let costBasisTotals: PortfolioSummary["costBasisTotals"];
+  if (pnlByAsset) {
+    const sum = (pick: (r: CostBasisResult) => number, cur: "eur" | "usd") =>
+      Object.values(pnlByAsset).reduce((acc, p) => acc + pick(p[cur]), 0);
+    costBasisTotals = {
+      eur: {
+        costBasis: sum((r) => r.costBasis, "eur"),
+        realized: sum((r) => r.realized, "eur"),
+        unrealized: sum((r) => r.unrealized, "eur"),
+        totalPnL: sum((r) => r.totalPnL, "eur"),
+      },
+      usd: {
+        costBasis: sum((r) => r.costBasis, "usd"),
+        realized: sum((r) => r.realized, "usd"),
+        unrealized: sum((r) => r.unrealized, "usd"),
+        totalPnL: sum((r) => r.totalPnL, "usd"),
+      },
+    };
+  }
 
   return {
     totalValue,
@@ -330,5 +441,8 @@ export function aggregatePortfolio(params: AggregateParams): PortfolioSummary {
     cashValueEur,
     stocksHomeCurrencyEur,
     cashHomeCurrencyEur,
+    // Cost-basis P&L — present iff a transaction map was supplied (else undefined,
+    // and these keys simply don't appear, satisfying the optional-field contract).
+    ...(pnlByAsset ? { pnlByAsset, costBasisTotals } : {}),
   };
 }
