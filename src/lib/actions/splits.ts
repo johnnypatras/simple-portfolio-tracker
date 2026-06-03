@@ -4,9 +4,11 @@ import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { validateUUID } from "@/lib/validation";
 import { isValidPastOrTodayDate, extractQuantity } from "@/lib/split-helpers";
-import type { ActivityLog, SplitLeg } from "@/lib/types";
+import type { ActivityLog, EntityType, SplitLeg } from "@/lib/types";
 import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
+import { CASHFLOW_PRODUCING_ENTITY_TYPES } from "@/lib/cashflow";
+import { computeDeltaFromSnapshots } from "@/lib/actions/activity-log";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -57,6 +59,60 @@ export async function backdateActivityEntry(
       .eq("id", entryId)
       .eq("user_id", user.id);
     if (updateErr) return { success: false, message: updateErr.message };
+  }
+
+  // ── Backdate-recompute: update cashflow_amount_* to historical price at new date ──
+  //
+  // Only applies when ALL of the following are true:
+  //   - effectiveDate is being SET (not cleared — no date → no price to look up)
+  //   - The entry is a real cash flow (not an adjustment — adjustments use delta_*)
+  //   - The cashflow amount was auto-computed, not user-supplied (cashflow_user_set=false)
+  //   - Not a yield/income row (is_yield=true → cost = 0 by definition, no recompute)
+  //   - The entity type produces cashflows (diary entries, etc. don't have cashflow_amount_*)
+  //
+  // Transfer legs are excluded by the is_adjustment check (both legs are is_adjustment=true).
+  // The recompute is best-effort: a price-fetch failure logs an error but does not fail the
+  // backdate operation itself (the effective_date update already succeeded).
+  const cashflowUserSet = (entry as Record<string, unknown>)["cashflow_user_set"] as boolean;
+  const isYield = (entry as Record<string, unknown>)["is_yield"] as boolean;
+  const isCashflowProducingEntity = (CASHFLOW_PRODUCING_ENTITY_TYPES as readonly string[]).includes(log.entity_type);
+
+  if (
+    effectiveDate !== null &&
+    !log.is_adjustment &&
+    !cashflowUserSet &&
+    !isYield &&
+    isCashflowProducingEntity
+  ) {
+    try {
+      const recomputed = await computeDeltaFromSnapshots(
+        log.entity_type as EntityType,
+        log.action,
+        effectiveDate,
+        log.before_snapshot,
+        log.after_snapshot,
+        supabase,
+      );
+      const { error: cfUpdateErr } = await supabase
+        .from("activity_log")
+        .update({
+          cashflow_amount_usd: round2(recomputed.usd),
+          cashflow_amount_eur: round2(recomputed.eur),
+        })
+        .eq("id", entryId)
+        .eq("user_id", user.id);
+      if (cfUpdateErr) {
+        console.error("[splits.backdateActivityEntry] Cashflow recompute write failed:", cfUpdateErr.message);
+      }
+    } catch (err) {
+      // Price fetch failed (API down, missing data, etc.). The effective_date change
+      // already succeeded — log the error but do not roll back or fail the operation.
+      // The stale cashflow_amount_* will self-heal if the user retries or the backfill runs.
+      console.error(
+        "[splits.backdateActivityEntry] Cashflow recompute failed (stale amount kept):",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   revalidateDashboard();

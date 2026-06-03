@@ -62,10 +62,20 @@ vi.mock("@/lib/prices/fx", () => ({
   getFXRatesSafe: vi.fn(async () => ({ USD: 1.10, EUR: 1 })),
 }));
 
+// Fixed historical price mock: BTC at $30,000 at backdated date
+// Used by backdateActivityEntry → computeDeltaFromSnapshots for crypto recompute.
+vi.mock("@/lib/prices/historical", () => ({
+  fetchYahooDailyHistory: vi.fn(async (_symbol: string, startDate: string) => [
+    { date: startDate, price: 30000 },
+  ]),
+  fetchFxUsdPivotHistory: vi.fn(async () => []),
+}));
+
 // ─── Imports after mocks ─────────────────────────────────────
 import { upsertPosition, createCryptoAsset } from "@/lib/actions/crypto";
 import { upsertStockPosition, createStockAsset } from "@/lib/actions/stocks";
 import { createCashAccount } from "@/lib/actions/cash-accounts";
+import { backdateActivityEntry } from "@/lib/actions/splits";
 
 // ─── Test suite ──────────────────────────────────────────────
 describe("cost-override threading (integration)", () => {
@@ -396,5 +406,142 @@ describe("cost-override threading (integration)", () => {
     expect(Number(log!.cashflow_amount_eur)).toBe(1000);
     expect(Number(log!.cashflow_amount_usd)).toBeCloseTo(1100, 1);
     expect(log!.cashflow_user_set).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 1.5 — backdate-recompute fix
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("backdateActivityEntry — cashflow recompute on backdate (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  let walletId: string;
+  let cryptoAssetId: string;
+  const coingeckoId = `bitcoin-backdate-test-${randomUUID()}`;
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+    hoisted.testClient = client;
+
+    // Create wallet
+    const { data: wallet, error: walletErr } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Backdate Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (walletErr) throw new Error("Failed to create wallet: " + walletErr.message);
+    walletId = wallet!.id;
+
+    // Create crypto asset
+    cryptoAssetId = await createCryptoAsset({
+      ticker: "BTC",
+      name: "Bitcoin Backdate Test",
+      coingecko_id: coingeckoId,
+    });
+  });
+
+  afterAll(() => cleanup());
+
+  it("auto-priced entry (cashflow_user_set=false): backdating recomputes cashflow_amount_* to historical price", async () => {
+    // Create a position with market price at write time: qty=0.1 @ $60,000 = $6,000
+    // cashflow_user_set defaults to false → no override
+    await upsertPosition(
+      { crypto_asset_id: cryptoAssetId, wallet_id: walletId, quantity: 0.1 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545 },
+    );
+
+    const { data: logBefore } = await client
+      .from("activity_log")
+      .select("id, cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
+      .eq("entity_type", "crypto_position")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    expect(logBefore).not.toBeNull();
+    // Before backdate: market price at upsert time
+    expect(Number(logBefore!.cashflow_amount_usd)).toBeCloseTo(6000, 0);
+    expect(logBefore!.cashflow_user_set).toBe(false);
+
+    const entryId = logBefore!.id;
+    const newDate = "2023-01-15";
+
+    // Backdate to 2023-01-15 — historical mock returns $30,000 at that date
+    // Expected recompute: qtyDelta=0.1, price=$30,000 → usd=3000
+    // EUR: 3000 × 0.9091 = 2727.27
+    const result = await backdateActivityEntry(entryId, newDate);
+    expect(result.success).toBe(true);
+
+    const { data: logAfter } = await client
+      .from("activity_log")
+      .select("cashflow_amount_usd, cashflow_amount_eur, effective_date, cashflow_user_set")
+      .eq("id", entryId)
+      .single();
+
+    expect(logAfter).not.toBeNull();
+    expect(logAfter!.effective_date).toBe(newDate);
+    // Recomputed: 0.1 × $30,000 = $3,000
+    expect(Number(logAfter!.cashflow_amount_usd)).toBeCloseTo(3000, 0);
+    // EUR: $3,000 × 0.9091 ≈ $2,727
+    expect(Number(logAfter!.cashflow_amount_eur)).toBeCloseTo(2727, 0);
+    // cashflow_user_set must remain false — we didn't flip provenance
+    expect(logAfter!.cashflow_user_set).toBe(false);
+  });
+
+  it("user-set entry (cashflow_user_set=true): backdating preserves cashflow_amount_* unchanged", async () => {
+    // Create a second wallet for a clean, isolated entry
+    const { data: wallet2, error: w2Err } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Override Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (w2Err) throw new Error("Failed to create wallet2: " + w2Err.message);
+
+    const override = { usd: 9999, eur: 8888 };
+
+    // Create with explicit override → cashflow_user_set=true
+    await upsertPosition(
+      { crypto_asset_id: cryptoAssetId, wallet_id: wallet2!.id, quantity: 0.5 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545, cashflowOverride: override },
+    );
+
+    const { data: logBefore } = await client
+      .from("activity_log")
+      .select("id, cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
+      .eq("entity_type", "crypto_position")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    expect(logBefore).not.toBeNull();
+    expect(Number(logBefore!.cashflow_amount_usd)).toBe(9999);
+    expect(Number(logBefore!.cashflow_amount_eur)).toBe(8888);
+    expect(logBefore!.cashflow_user_set).toBe(true);
+
+    const entryId = logBefore!.id;
+
+    // Backdate — cashflow_user_set=true → amounts must NOT change
+    const result = await backdateActivityEntry(entryId, "2023-06-01");
+    expect(result.success).toBe(true);
+
+    const { data: logAfter } = await client
+      .from("activity_log")
+      .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
+      .eq("id", entryId)
+      .single();
+
+    expect(logAfter).not.toBeNull();
+    // Must be unchanged — user's intentional cost basis preserved
+    expect(Number(logAfter!.cashflow_amount_usd)).toBe(9999);
+    expect(Number(logAfter!.cashflow_amount_eur)).toBe(8888);
+    expect(logAfter!.cashflow_user_set).toBe(true);
   });
 });
