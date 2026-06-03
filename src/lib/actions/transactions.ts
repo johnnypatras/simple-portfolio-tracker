@@ -15,6 +15,7 @@ import {
 import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { COST_COPY } from "@/lib/cost-basis-copy";
+import { quantityDelta } from "@/lib/transaction-kind";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssetRef, EntityType, FlowStatus, UsdEurAmount } from "@/lib/types";
 
@@ -536,5 +537,121 @@ export async function editTransaction(
 
     await revalidateDashboard();
     return { success: true };
+  });
+}
+
+// ─── markAsYield ───────────────────────────────────────────────────────────────
+
+export interface MarkAsYieldResult {
+  /** Rows that qualified at fetch time and were targeted for is_yield=true. */
+  updated: number;
+  /** How many ids were rejected: not found, wrong owner, or ineligible by guard. */
+  skipped: number;
+}
+
+/**
+ * BULK reclassify legacy interest / staking / airdrop entries as earned income
+ * by flipping `is_yield=true`. Yield = cost 0, excluded from the S&P benchmark —
+ * `is_yield` is the single source of truth; the cashflow amount is NEVER zeroed,
+ * so un-yield is lossless.
+ *
+ * Defensive by design — only an ACQUISITION (units ADDED, `quantityDelta > 0`)
+ * is eligible. A disposal (sell / withdrawal, `quantityDelta <= 0`) marked as
+ * yield would zero its cost at €0, book no realized P&L, AND drop a real outflow
+ * from the benchmark — so disposals are skipped even when every other predicate
+ * term passes (audit-r6 HIGH).
+ *
+ * SECURITY CONTRACT (do not weaken):
+ *   1. validateUUID on every id — reject malformed IDs before any DB contact.
+ *   2. Fetch candidates in ONE query scoped to `.eq("user_id", user.id)` via the
+ *      RLS server client — NEVER admin. `.select("*")` is MANDATORY: the
+ *      eligibility check reads before/after snapshots + details via
+ *      `quantityDelta`; without them every row computes delta 0 and is silently
+ *      skipped (audit-r7). Rows not returned (absent OR wrong owner) → skipped.
+ *   3. Bulk UPDATE scoped with `.in("id", eligibleIds)` AND `.eq("user_id",
+ *      user.id)` AND `.is("undone_at", null)` (TOCTOU guard).
+ *
+ * ELIGIBILITY (a row qualifies iff ALL hold — computed in JS over the fetched
+ * rows): is_adjustment=false, transfer_group_id null, split_from_id null,
+ * undone_at null, compensates_for null, cashflow_status='complete',
+ * is_yield=false (already-yield → skip, keeps `updated` honest), and
+ * `quantityDelta(row) > 0` (the acquisition guard).
+ */
+export async function markAsYield(ids: string[]): Promise<MarkAsYieldResult> {
+  return captureAction("transactions.markAsYield", async () => {
+    // 1. Validate every id before any DB contact. Empty list → no-op.
+    if (ids.length === 0) return { updated: 0, skipped: 0 };
+    const uniqueIds = [...new Set(ids)];
+    for (const id of uniqueIds) {
+      validateUUID(id, "Entry ID");
+    }
+
+    // 2. Auth — owner path (RLS server client, never admin).
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
+    // 3. Fetch ALL candidate rows in ONE query, scoped to the user. `.select("*")`
+    //    is required — quantityDelta reads before/after snapshots + details. Rows
+    //    not returned (not found OR wrong owner) implicitly count as skipped.
+    const { data: rows, error: fetchErr } = await supabase
+      .from("activity_log")
+      .select("*")
+      .in("id", uniqueIds)
+      .eq("user_id", user.id);
+    if (fetchErr) throw new Error(fetchErr.message);
+
+    // 4. Filter eligible rows IN JS. A disposal (quantityDelta <= 0) is rejected
+    //    even when every SQL predicate term passes — the acquisition guard.
+    const eligibleIds = (rows ?? [])
+      .filter((row) => {
+        if (row.is_adjustment !== false) return false;
+        if (row.transfer_group_id != null) return false;
+        if (row.split_from_id != null) return false;
+        if (row.undone_at != null) return false;
+        if (row.compensates_for != null) return false;
+        if (row.cashflow_status !== "complete") return false;
+        if (row.is_yield !== false) return false;
+
+        const qd = quantityDelta({
+          entity_type: row.entity_type,
+          action: row.action,
+          is_yield: row.is_yield,
+          is_adjustment: row.is_adjustment,
+          transfer_group_id: row.transfer_group_id,
+          split_from_id: row.split_from_id,
+          before_snapshot: row.before_snapshot as Record<string, unknown> | null,
+          after_snapshot: row.after_snapshot as Record<string, unknown> | null,
+          details: row.details as Record<string, unknown> | null,
+        });
+        return qd > 0;
+      })
+      .map((row) => row.id);
+
+    // 5. Bulk-update only the eligible ids in ONE statement. Touch ONLY is_yield —
+    //    cashflow_amount_* and every other column stay intact (lossless un-yield).
+    //    Skip entirely when nothing is eligible.
+    if (eligibleIds.length > 0) {
+      const { error: updateErr } = await supabase
+        .from("activity_log")
+        .update({ is_yield: true })
+        .in("id", eligibleIds)
+        .eq("user_id", user.id)
+        .is("undone_at", null);
+      if (updateErr) throw new Error(updateErr.message);
+
+      await revalidateDashboard();
+    }
+
+    // 6. Honest counts: updated = eligible, skipped = everything else.
+    //    `updated` reflects rows eligible at fetch time; a concurrent undo between
+    //    fetch and update can make the literal write smaller — the undo's state wins
+    //    (same stance as toggleActivityAdjustment).
+    return {
+      updated: eligibleIds.length,
+      skipped: uniqueIds.length - eligibleIds.length,
+    };
   });
 }

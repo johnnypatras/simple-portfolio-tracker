@@ -551,7 +551,7 @@ describe("backdateActivityEntry — cashflow recompute on backdate (integration)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Import after mocks (mocks are already declared at the top of this file)
-import { addTransaction, editTransaction } from "@/lib/actions/transactions";
+import { addTransaction, editTransaction, markAsYield } from "@/lib/actions/transactions";
 
 describe("addTransaction — cost capture (integration)", () => {
   let client: SupabaseClient;
@@ -1648,5 +1648,273 @@ describe("editTransaction — guarded 8-column amount edit (integration)", () =>
     expect(Number(after!.cashflow_amount_eur)).toBe(500);
     expect(Number(after!.cashflow_amount_usd)).toBe(round2(500 * 1.1));
     expect(after!.cashflow_user_set).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 2.6 — markAsYield: guarded bulk reclassify (acquisition-only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("markAsYield — guarded bulk reclassify (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  /**
+   * Insert an activity_log row directly with full control over the guard columns
+   * + snapshots — far cleaner than routing through a primitive for the edge
+   * cases. Defaults model an ELIGIBLE acquisition: a qty-UP crypto_position
+   * (before 1 → after 2 ⇒ quantityDelta = +1), is_adjustment=false, no
+   * transfer / split / undo / compensation, cashflow_status='complete',
+   * is_yield=false. Each test overrides only the column under test.
+   */
+  async function insertRow(
+    overrides: Record<string, unknown> = {},
+  ): Promise<string> {
+    const base = {
+      user_id: userId,
+      entity_type: "crypto_position",
+      entity_name: "MAY Test Asset",
+      action: "updated",
+      description: "markAsYield test row",
+      is_adjustment: false,
+      is_yield: false,
+      transfer_group_id: null,
+      split_from_id: null,
+      undone_at: null,
+      compensates_for: null,
+      cashflow_status: "complete",
+      cashflow_amount_usd: 1100,
+      cashflow_amount_eur: 1000,
+      before_snapshot: { quantity: 1 },
+      after_snapshot: { quantity: 2 },
+    };
+    const { data, error } = await client
+      .from("activity_log")
+      .insert({ ...base, ...overrides })
+      .select("id")
+      .single();
+    if (error) throw new Error("Failed to insert activity_log row: " + error.message);
+    return data!.id;
+  }
+
+  /** Reads is_yield, cashflow_amount_usd, cashflow_amount_eur for a row. */
+  async function readRow(id: string) {
+    const { data } = await client
+      .from("activity_log")
+      .select("is_yield, cashflow_amount_usd, cashflow_amount_eur")
+      .eq("id", id)
+      .single();
+    return data;
+  }
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+    hoisted.testClient = client;
+  });
+
+  afterAll(() => cleanup());
+
+  // ─── (1) Eligible acquisition → flipped; amount columns UNCHANGED (lossless) ─
+  it("(1) eligible interest row is flipped to is_yield=true; cashflow amount columns unchanged", async () => {
+    const id = await insertRow();
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 1, skipped: 0 });
+
+    const after = await readRow(id);
+    expect(after!.is_yield).toBe(true);
+    // Amount columns intact — un-yield is lossless, is_yield is the only SOT.
+    expect(Number(after!.cashflow_amount_usd)).toBe(1100);
+    expect(Number(after!.cashflow_amount_eur)).toBe(1000);
+  });
+
+  // ─── (2) THE audit-r6 case: a disposal (quantityDelta <= 0) is SKIPPED ───────
+  //
+  // This is the most important test. The row passes EVERY SQL predicate term
+  // (is_adjustment=false, no transfer/split/undo/compensation,
+  // cashflow_status='complete', is_yield=false) — the ONLY thing rejecting it is
+  // quantityDelta <= 0 (before 10 → after 7 ⇒ delta = −3). Without the
+  // `quantityDelta > 0` guard this sell would be wrongly marked as yield, zeroing
+  // its cost and dropping a real outflow from the S&P benchmark.
+  it("(2) a Sell/Withdrawal disposal (quantityDelta <= 0) is skipped; is_yield stays false", async () => {
+    const id = await insertRow({
+      before_snapshot: { quantity: 10 },
+      after_snapshot: { quantity: 7 }, // delta = 7 - 10 = -3 (a disposal)
+    });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+
+    const after = await readRow(id);
+    expect(after!.is_yield).toBe(false);
+  });
+
+  // ─── (2b) A "removed" full sell (null after_snapshot, delta < 0) is skipped ──
+  it("(2b) a 'removed' full disposal (null after_snapshot) is skipped", async () => {
+    const id = await insertRow({
+      action: "removed",
+      before_snapshot: { quantity: 5 },
+      after_snapshot: null, // val(after)=0 ⇒ delta = 0 - 5 = -5
+    });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    expect((await readRow(id))!.is_yield).toBe(false);
+  });
+
+  // ─── (3) Transfer leg (transfer_group_id set) → skipped ──────────────────────
+  it("(3) a transfer leg (transfer_group_id set) is skipped; is_yield unchanged", async () => {
+    const id = await insertRow({ transfer_group_id: randomUUID() });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    expect((await readRow(id))!.is_yield).toBe(false);
+  });
+
+  // ─── (4) Adjustment correction (is_adjustment=true) → skipped ────────────────
+  it("(4) an is_adjustment correction is skipped; is_yield unchanged", async () => {
+    const id = await insertRow({ is_adjustment: true });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    expect((await readRow(id))!.is_yield).toBe(false);
+  });
+
+  // ─── (5) Compensation row (compensates_for set) → skipped ────────────────────
+  it("(5) a compensation row (compensates_for set) is skipped; is_yield unchanged", async () => {
+    // compensates_for is a self-FK → point it at a real eligible row.
+    const targetId = await insertRow();
+    const id = await insertRow({ compensates_for: targetId });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    expect((await readRow(id))!.is_yield).toBe(false);
+  });
+
+  // ─── (6) Split child (split_from_id set) → skipped ───────────────────────────
+  it("(6) a split child (split_from_id set) is skipped; is_yield unchanged", async () => {
+    // split_from_id is a self-FK → point it at a real parent row.
+    const parentId = await insertRow();
+    const id = await insertRow({ split_from_id: parentId });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    expect((await readRow(id))!.is_yield).toBe(false);
+  });
+
+  // ─── (7) Already-yield row (is_yield=true) → skipped, not double-counted ──────
+  it("(7) an already-yield row is skipped (updated stays 0)", async () => {
+    const id = await insertRow({ is_yield: true });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    // Still yield (unchanged) — and crucially NOT counted toward `updated`.
+    expect((await readRow(id))!.is_yield).toBe(true);
+  });
+
+  // ─── (8) Undone row (undone_at set) → skipped ────────────────────────────────
+  it("(8) an undone row (undone_at set) is skipped; is_yield unchanged", async () => {
+    const id = await insertRow({ undone_at: new Date().toISOString() });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    expect((await readRow(id))!.is_yield).toBe(false);
+  });
+
+  // ─── (9) Non-complete cashflow (pending / null) → skipped ────────────────────
+  it("(9a) a pending-cashflow row (cashflow_status='pending') is skipped", async () => {
+    const id = await insertRow({ cashflow_status: "pending" });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    expect((await readRow(id))!.is_yield).toBe(false);
+  });
+
+  it("(9b) a null-cashflow-status row is skipped", async () => {
+    const id = await insertRow({ cashflow_status: null });
+
+    const result = await markAsYield([id]);
+    expect(result).toEqual({ updated: 0, skipped: 1 });
+    expect((await readRow(id))!.is_yield).toBe(false);
+  });
+
+  // ─── (10) Mixed batch → eligible flip, ineligible don't; counts are honest ───
+  it("(10) mixed batch [eligible, ineligible, eligible] → updated:2, skipped:1", async () => {
+    const eligibleA = await insertRow();
+    const ineligible = await insertRow({ is_adjustment: true }); // skipped
+    const eligibleB = await insertRow();
+
+    const result = await markAsYield([eligibleA, ineligible, eligibleB]);
+    expect(result).toEqual({ updated: 2, skipped: 1 });
+
+    expect((await readRow(eligibleA))!.is_yield).toBe(true);
+    expect((await readRow(eligibleB))!.is_yield).toBe(true);
+    expect((await readRow(ineligible))!.is_yield).toBe(false);
+  });
+
+  // ─── (11) Ownership (#97): A cannot mark B's row ─────────────────────────────
+  it("(11) user A calling markAsYield on user B's row → skipped; B's row unchanged", async () => {
+    // Create user B and an eligible row owned by B (direct insert as B).
+    const userB = await createTestUser();
+    try {
+      const { data: bRow, error: bErr } = await userB.client
+        .from("activity_log")
+        .insert({
+          user_id: userB.userId,
+          entity_type: "crypto_position",
+          entity_name: "B's Asset",
+          action: "updated",
+          description: "B's eligible row",
+          is_adjustment: false,
+          is_yield: false,
+          cashflow_status: "complete",
+          before_snapshot: { quantity: 1 },
+          after_snapshot: { quantity: 2 },
+        })
+        .select("id")
+        .single();
+      if (bErr) throw new Error("Failed to insert B's row: " + bErr.message);
+      const bId = bRow!.id;
+
+      // markAsYield runs as user A (hoisted.testClient is A's client). B's row is
+      // not returned by A's `.eq("user_id", A)` fetch → counted as skipped.
+      const result = await markAsYield([bId]);
+      expect(result).toEqual({ updated: 0, skipped: 1 });
+
+      // B's row must be untouched — verified via B's own RLS client.
+      const { data: bAfter } = await userB.client
+        .from("activity_log")
+        .select("is_yield")
+        .eq("id", bId)
+        .single();
+      expect(bAfter!.is_yield).toBe(false);
+    } finally {
+      userB.cleanup();
+    }
+  });
+
+  // ─── (12) Empty / malformed ──────────────────────────────────────────────────
+  it("(12a) empty ids → { updated: 0, skipped: 0 } (no DB contact)", async () => {
+    const result = await markAsYield([]);
+    expect(result).toEqual({ updated: 0, skipped: 0 });
+  });
+
+  it("(12b) a malformed UUID throws (validateUUID)", async () => {
+    await expect(markAsYield(["not-a-uuid"])).rejects.toThrow(/UUID/i);
+  });
+
+  // ─── (13) Duplicate ids collapse — counts are honest ─────────────────────────
+  it("(13) duplicate ids in input collapse to one; updated=1, skipped=0, is_yield=true", async () => {
+    const id = await insertRow();
+
+    const result = await markAsYield([id, id]);
+    expect(result).toEqual({ updated: 1, skipped: 0 });
+
+    const after = await readRow(id);
+    expect(after!.is_yield).toBe(true);
   });
 });
