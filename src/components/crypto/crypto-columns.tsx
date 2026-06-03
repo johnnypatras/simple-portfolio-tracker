@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Pencil, Trash2, History, ChevronDown, ChevronRight } from "lucide-react";
 import type { ColumnDef, SortDirection } from "@/lib/column-config";
 export type { SortDirection } from "@/lib/column-config";
 import type { CryptoAssetWithPositions, CoinGeckoPriceData } from "@/lib/types";
@@ -452,6 +452,8 @@ export function sortCryptoRows(
 export function getCryptoColumns(handlers: {
   onEdit: (asset: CryptoAssetWithPositions) => void;
   onDelete: (id: string, name: string) => void;
+  /** Open the transactions history drawer for this asset (owner view only). */
+  onHistory?: (asset: CryptoAssetWithPositions) => void;
   isExpanded: (id: string) => boolean;
   toggleExpand: (id: string) => void;
 }): ColumnDef<CryptoRow>[] {
@@ -656,6 +658,16 @@ export function getCryptoColumns(handlers: {
       width: "w-20",
       renderCell: (row) => (
         <div className="flex items-center justify-end gap-1">
+          {handlers.onHistory && (
+            <button
+              onClick={() => handlers.onHistory!(row.asset)}
+              aria-label={`Transactions for ${row.asset.name}`}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+              title="Transactions"
+            >
+              <History aria-hidden="true" className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={() => handlers.onEdit(row.asset)}
             aria-label={`Edit positions for ${row.asset.name}`}

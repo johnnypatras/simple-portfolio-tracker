@@ -448,6 +448,115 @@ describe("TransactionModal — isManualNav asset", () => {
   });
 });
 
+// ── Test Group 9b: Type select disabled in edit mode ─────────────────────────
+
+describe("TransactionModal — type select disabled in edit mode", () => {
+  it("edit mode (plain buy): the type select is disabled (editTransaction can't change type)", () => {
+    const edit: TransactionEditState = {
+      type: "buy",
+      quantity: 1,
+      amount: 1000,
+      amountCurrency: "EUR",
+      date: "2026-01-15",
+    };
+    renderOpen({ assetClass: "crypto", edit });
+    const typeSelect = screen.getByRole("combobox", { name: /type/i }) as HTMLSelectElement;
+    expect(typeSelect).toBeDisabled();
+  });
+
+  it("add mode: the type select is enabled", () => {
+    renderOpen({ assetClass: "crypto" });
+    const typeSelect = screen.getByRole("combobox", { name: /type/i }) as HTMLSelectElement;
+    expect(typeSelect).not.toBeDisabled();
+  });
+});
+
+// ── Test Group 9c: Wallet / broker selector (add-mode) ───────────────────────
+
+describe("TransactionModal — wallet / broker destination selector", () => {
+  it("add-mode crypto with 2 walletOptions renders a Wallet select", () => {
+    renderOpen({
+      assetClass: "crypto",
+      walletOptions: [
+        { id: "w1", name: "Ledger" },
+        { id: "w2", name: "Binance" },
+      ],
+    });
+    const walletSelect = screen.getByRole("combobox", { name: /wallet/i }) as HTMLSelectElement;
+    expect(walletSelect).toBeInTheDocument();
+    const options = Array.from(walletSelect.options).map((o) => o.value);
+    expect(options).toEqual(["w1", "w2"]);
+    // Defaults to the first option.
+    expect(walletSelect.value).toBe("w1");
+  });
+
+  it("add-mode crypto: submit payload carries the chosen walletId", () => {
+    const { onSubmit } = renderOpen({
+      assetClass: "crypto",
+      walletOptions: [
+        { id: "w1", name: "Ledger" },
+        { id: "w2", name: "Binance" },
+      ],
+    });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    // Pick the second wallet.
+    fireEvent.change(screen.getByRole("combobox", { name: /wallet/i }), {
+      target: { value: "w2" },
+    });
+    const form = document.querySelector("form")!;
+    fireEvent.submit(form);
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onSubmit.mock.calls[0][0].walletId).toBe("w2");
+  });
+
+  it("edit mode does NOT render the wallet selector", () => {
+    const edit: TransactionEditState = {
+      type: "buy",
+      quantity: 1,
+      amount: 1000,
+      amountCurrency: "EUR",
+      date: "2026-01-15",
+    };
+    renderOpen({
+      assetClass: "crypto",
+      edit,
+      walletOptions: [{ id: "w1", name: "Ledger" }],
+    });
+    expect(screen.queryByRole("combobox", { name: /wallet/i })).not.toBeInTheDocument();
+  });
+
+  it("add-mode stock with brokerOptions renders a Broker select and emits brokerId", () => {
+    const { onSubmit } = renderOpen({
+      assetClass: "stock",
+      brokerOptions: [
+        { id: "b1", name: "DEGIRO" },
+        { id: "b2", name: "IBKR" },
+      ],
+    });
+    const brokerSelect = screen.getByRole("combobox", { name: /broker/i }) as HTMLSelectElement;
+    expect(brokerSelect).toBeInTheDocument();
+    expect(brokerSelect.value).toBe("b1");
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "5" } });
+    fireEvent.change(brokerSelect, { target: { value: "b2" } });
+    const form = document.querySelector("form")!;
+    fireEvent.submit(form);
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onSubmit.mock.calls[0][0].brokerId).toBe("b2");
+  });
+
+  it("transfer type hides the wallet selector (transfer routes out, no destination here)", () => {
+    renderOpen({
+      assetClass: "crypto",
+      walletOptions: [{ id: "w1", name: "Ledger" }],
+      onContinueToTransfer: vi.fn(),
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "transfer" },
+    });
+    expect(screen.queryByRole("combobox", { name: /wallet/i })).not.toBeInTheDocument();
+  });
+});
+
 // ── Test Group 9: Double-submit guard (isSubmitting) ──────────────────────────
 
 describe("TransactionModal — double-submit guard", () => {

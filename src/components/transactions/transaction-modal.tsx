@@ -3,6 +3,7 @@
 import { useState, useEffect, useId } from "react";
 import { Modal } from "@/components/ui/modal";
 import { TYPE_GUIDANCE, COST_COPY } from "@/lib/cost-basis-copy";
+import type { TransactionKind } from "@/lib/transaction-kind";
 import {
   validateQuantity,
   validateAmount,
@@ -29,6 +30,10 @@ export interface TransactionSubmit {
    *  provenance gate for cashflow_user_set. */
   cashflowOverride?: { amount: number; currency: "EUR" | "USD" };
   amountUserSet: boolean; // === (cashflowOverride !== undefined)
+  /** Chosen destination wallet (crypto add-mode only — `addTransaction` needs it). */
+  walletId?: string;
+  /** Chosen destination broker (stock add-mode only — `addTransaction` needs it). */
+  brokerId?: string;
 }
 
 /** Edit-mode seed + lockdown flags. Omit/null = Add mode. */
@@ -43,6 +48,25 @@ export interface TransactionEditState {
   isUndone?: boolean; // → splitChildLocked (undone entries are not editable)
 }
 
+/**
+ * Map a drawer row's classified kind → the modal's `TransactionType` when
+ * seeding EDIT mode. buy/sell/yield/deposit/withdrawal/transfer pass through;
+ * an `adjustment` (which the modal has no type for) is rendered by SIGN +
+ * asset class — purely informational, since the type select is disabled in
+ * edit mode anyway. `signedQuantity` is the drawer row's signed quantity.
+ */
+export function kindToModalType(
+  kind: TransactionKind,
+  signedQuantity: number,
+  isCash: boolean,
+): TransactionType {
+  if (kind === "adjustment") {
+    if (signedQuantity > 0) return isCash ? "deposit" : "buy";
+    return isCash ? "withdrawal" : "sell";
+  }
+  return kind;
+}
+
 export interface TransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -50,6 +74,12 @@ export interface TransactionModalProps {
   assetName?: string; // for the title, e.g. "Add transaction — BTC"
   isManualNav?: boolean; // manual-NAV stock asset: amount = subscription
   edit?: TransactionEditState | null;
+  /** Crypto add-mode: the wallets this asset can be added to (defaults to the
+   *  first). Rendered as a "Wallet" select; the choice is emitted as walletId. */
+  walletOptions?: { id: string; name: string }[];
+  /** Stock add-mode: the brokers this asset can be added to (defaults to the
+   *  first). Rendered as a "Broker" select; the choice is emitted as brokerId. */
+  brokerOptions?: { id: string; name: string }[];
   onSubmit: (value: TransactionSubmit) => Promise<void> | void;
   onContinueToTransfer?: () => void;
   onUnsplit?: () => void;
@@ -127,6 +157,8 @@ export function TransactionModal({
   assetName,
   isManualNav = false,
   edit,
+  walletOptions,
+  brokerOptions,
   onSubmit,
   onContinueToTransfer,
   onUnsplit,
@@ -145,6 +177,10 @@ export function TransactionModal({
   const [amountCurrency, setAmountCurrency] = useState<"EUR" | "USD">(
     edit?.amountCurrency ?? "EUR",
   );
+  // Destination selection (add-mode only). Defaults to the first option the
+  // caller passed (the asset's existing position wallets/brokers).
+  const [walletId, setWalletId] = useState<string>(walletOptions?.[0]?.id ?? "");
+  const [brokerId, setBrokerId] = useState<string>(brokerOptions?.[0]?.id ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Reset state when modal re-opens
@@ -157,13 +193,30 @@ export function TransactionModal({
       setAmountDirty(false);
       setDateStr(edit?.date ?? "");
       setAmountCurrency(edit?.amountCurrency ?? "EUR");
+      setWalletId(walletOptions?.[0]?.id ?? "");
+      setBrokerId(brokerOptions?.[0]?.id ?? "");
       setIsSubmitting(false);
     }
-  }, [isOpen, edit, assetClass]);
+  }, [isOpen, edit, assetClass, walletOptions, brokerOptions]);
 
   // Lockdown flags
   const isTransferLeg = edit?.isTransferLeg === true;
   const isSplitLocked = edit?.isSplitChild === true || edit?.isUndone === true;
+
+  // Destination selector visibility: add-mode only (never edit — `editTransaction`
+  // can't move a row between positions), non-transfer, and only when the matching
+  // options prop is provided for this asset class.
+  const isEditing = !!edit;
+  const showWalletSelect =
+    !isEditing &&
+    assetClass === "crypto" &&
+    type !== "transfer" &&
+    (walletOptions?.length ?? 0) > 0;
+  const showBrokerSelect =
+    !isEditing &&
+    assetClass === "stock" &&
+    type !== "transfer" &&
+    (brokerOptions?.length ?? 0) > 0;
 
   // Computed validation
   const { quantityError, amountError, dateError } = validate(
@@ -183,7 +236,6 @@ export function TransactionModal({
   const showUserSetHint = !amountIsBlank && amountDirty;
 
   // Title
-  const isEditing = !!edit;
   const verb = isEditing ? "Edit transaction" : "Add transaction";
   const title = assetName ? `${verb} — ${assetName}` : verb;
 
@@ -201,6 +253,12 @@ export function TransactionModal({
       date: dateStr,
       amountUserSet: false,
     };
+
+    // Destination choice (add-mode only). When the selector is shown, a value is
+    // always present (it defaults to the first option), so the caller's
+    // addTransaction always gets the wallet/broker it requires.
+    if (showWalletSelect) payload.walletId = walletId;
+    if (showBrokerSelect) payload.brokerId = brokerId;
 
     // Provenance gate: only emit cashflowOverride when the user actually
     // typed/edited the amount (amountDirty=true) and it's a finite number.
@@ -277,7 +335,7 @@ export function TransactionModal({
             id={`${id}-type`}
             value={type}
             onChange={(e) => setType(e.target.value as TransactionType)}
-            disabled={isTransferLeg || isSplitLocked}
+            disabled={isTransferLeg || isSplitLocked || isEditing}
             className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {typeOptions.map((t) => (
@@ -306,6 +364,54 @@ export function TransactionModal({
         {/* ── Non-transfer fields ───────────────────────────────── */}
         {type !== "transfer" && !isSplitLocked && (
           <>
+            {/* Destination wallet (crypto add-mode) */}
+            {showWalletSelect && (
+              <div>
+                <label
+                  htmlFor={`${id}-wallet`}
+                  className="block text-xs text-zinc-400 mb-1"
+                >
+                  Wallet
+                </label>
+                <select
+                  id={`${id}-wallet`}
+                  value={walletId}
+                  onChange={(e) => setWalletId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                >
+                  {walletOptions!.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Destination broker (stock add-mode) */}
+            {showBrokerSelect && (
+              <div>
+                <label
+                  htmlFor={`${id}-broker`}
+                  className="block text-xs text-zinc-400 mb-1"
+                >
+                  Broker
+                </label>
+                <select
+                  id={`${id}-broker`}
+                  value={brokerId}
+                  onChange={(e) => setBrokerId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                >
+                  {brokerOptions!.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Quantity */}
             <div>
               <label

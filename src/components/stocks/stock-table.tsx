@@ -2,13 +2,14 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef, Fragment, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
+import { Plus, TrendingUp, Pencil, Trash2, History, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
 const AddStockModal = dynamic(() => import("./add-stock-modal").then(m => m.AddStockModal), { ssr: false });
 const AddManualNavModal = dynamic(() => import("./add-manual-nav-modal").then(m => m.AddManualNavModal), { ssr: false });
 const UpdateNavModal = dynamic(() => import("./update-nav-modal").then(m => m.UpdateNavModal), { ssr: false });
 import { StockPositionEditor } from "./stock-position-editor";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
+import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -128,6 +129,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
   );
   const [buyOpen, setBuyOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<StockAssetWithPositions | null>(null);
+  const [txnTarget, setTxnTarget] = useState<OpenTransactionsTarget | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState<StockGroupMode>("flat");
   const [sortKey, setSortKey] = useState<SortKey>("value");
@@ -175,6 +177,16 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
 
   const handleEdit = useCallback((asset: StockAssetWithPositions) => {
     setEditingAsset(asset);
+  }, []);
+
+  const handleHistory = useCallback((asset: StockAssetWithPositions) => {
+    setTxnTarget({
+      assetRef: { class: "stock", assetId: asset.id },
+      name: asset.name,
+      assetClass: "stock",
+      // Seed the add-mode broker picker with the asset's existing position brokers.
+      brokerOptions: asset.positions.map((p) => ({ id: p.broker_id, name: p.broker_name })),
+    });
   }, []);
 
   const handleDelete = useCallback(async (id: string, name: string) => {
@@ -396,11 +408,12 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
         // handler also hides the pen icon entirely (stock-columns renders
         // conditionally on `handlers.onEditNav`).
         onEditNav: isReadOnly ? undefined : (asset) => setEditingNavAsset(asset),
+        onHistory: isReadOnly ? undefined : handleHistory,
         isExpanded,
         toggleExpand,
         latestNavDates: latestNavDatesMap,
       }),
-    [handleEdit, handleDelete, isExpanded, toggleExpand, latestNavDatesMap, isReadOnly]
+    [handleEdit, handleDelete, handleHistory, isExpanded, toggleExpand, latestNavDatesMap, isReadOnly]
   );
 
   const {
@@ -705,6 +718,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                           toggleTickerGroupExpand={toggleTickerGroupExpand}
                           handleEdit={handleEdit}
                           handleDelete={handleDelete}
+                          handleHistory={handleHistory}
                           primaryCurrency={primaryCurrency}
                           fxRates={fxRates}
                           sortKey={sortKey}
@@ -762,6 +776,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                               toggleExpand={toggleExpand}
                               handleEdit={handleEdit}
                               handleDelete={handleDelete}
+                              handleHistory={handleHistory}
                               primaryCurrency={primaryCurrency}
                               fxRates={fxRates}
                               overrideQty={entry.groupQty}
@@ -821,6 +836,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                               toggleExpand={toggleExpand}
                               handleEdit={handleEdit}
                               handleDelete={handleDelete}
+                              handleHistory={handleHistory}
                               primaryCurrency={primaryCurrency}
                               fxRates={fxRates}
                             />
@@ -879,6 +895,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                               toggleExpand={toggleExpand}
                               handleEdit={handleEdit}
                               handleDelete={handleDelete}
+                              handleHistory={handleHistory}
                               primaryCurrency={primaryCurrency}
                               fxRates={fxRates}
                             />
@@ -897,6 +914,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                     toggleExpand={toggleExpand}
                     handleEdit={handleEdit}
                     handleDelete={handleDelete}
+                    handleHistory={handleHistory}
                     primaryCurrency={primaryCurrency}
                     fxRates={fxRates}
                   />
@@ -910,6 +928,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                     toggleExpand={toggleExpand}
                     handleEdit={handleEdit}
                     handleDelete={handleDelete}
+                    handleHistory={handleHistory}
                     primaryCurrency={primaryCurrency}
                     fxRates={fxRates}
                   />
@@ -1390,6 +1409,16 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               prices={prices}
             />
           )}
+          <TransactionsManager
+            target={txnTarget}
+            onClose={() => setTxnTarget(null)}
+            currency={primaryCurrency.toUpperCase() === "USD" ? "USD" : "EUR"}
+            onContinueToTransfer={() => {
+              setTxnTarget(null);
+              setBuyOpen(true);
+            }}
+            onMutated={() => router.refresh()}
+          />
         </>
       )}
     </div>
@@ -1404,6 +1433,7 @@ function MobileStockCard({
   toggleExpand,
   handleEdit,
   handleDelete,
+  handleHistory,
   primaryCurrency,
   fxRates,
   overrideQty,
@@ -1416,6 +1446,7 @@ function MobileStockCard({
   toggleExpand: (id: string) => void;
   handleEdit: (asset: StockAssetWithPositions) => void;
   handleDelete: (id: string, name: string) => void;
+  handleHistory: (asset: StockAssetWithPositions) => void;
   primaryCurrency: string;
   fxRates: FXRates;
   overrideQty?: number;
@@ -1525,6 +1556,14 @@ function MobileStockCard({
               >
                 <Pencil className="w-3 h-3" />
                 Edit positions
+              </button>
+              <button
+                onClick={() => handleHistory(row.asset)}
+                aria-label={`Transactions for ${row.asset.name}`}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+              >
+                <History className="w-3 h-3" />
+                Transactions
               </button>
               <ConfirmButton
                 onConfirm={() => handleDelete(row.asset.id, row.asset.name)}
@@ -1988,6 +2027,7 @@ function MobileTickerGroupCard({
   toggleExpand,
   handleEdit,
   handleDelete,
+  handleHistory,
   primaryCurrency,
   fxRates,
 }: {
@@ -1998,6 +2038,7 @@ function MobileTickerGroupCard({
   toggleExpand: (id: string) => void;
   handleEdit: (asset: StockAssetWithPositions) => void;
   handleDelete: (id: string, name: string) => void;
+  handleHistory: (asset: StockAssetWithPositions) => void;
   primaryCurrency: string;
   fxRates: FXRates;
 }) {
@@ -2048,6 +2089,7 @@ function MobileTickerGroupCard({
               toggleExpand={toggleExpand}
               handleEdit={handleEdit}
               handleDelete={handleDelete}
+              handleHistory={handleHistory}
               primaryCurrency={primaryCurrency}
               fxRates={fxRates}
               isVariant
@@ -2069,6 +2111,7 @@ function MobileTypeGroupInner({
   toggleTickerGroupExpand,
   handleEdit,
   handleDelete,
+  handleHistory,
   primaryCurrency,
   fxRates,
   sortKey: sk,
@@ -2081,6 +2124,7 @@ function MobileTypeGroupInner({
   toggleTickerGroupExpand: (ticker: string) => void;
   handleEdit: (asset: StockAssetWithPositions) => void;
   handleDelete: (id: string, name: string) => void;
+  handleHistory: (asset: StockAssetWithPositions) => void;
   primaryCurrency: string;
   fxRates: FXRates;
   sortKey: SortKey;
@@ -2101,6 +2145,7 @@ function MobileTypeGroupInner({
             toggleExpand={toggleExpand}
             handleEdit={handleEdit}
             handleDelete={handleDelete}
+            handleHistory={handleHistory}
             primaryCurrency={primaryCurrency}
             fxRates={fxRates}
           />
@@ -2126,6 +2171,7 @@ function MobileTypeGroupInner({
             toggleExpand={toggleExpand}
             handleEdit={handleEdit}
             handleDelete={handleDelete}
+            handleHistory={handleHistory}
             primaryCurrency={primaryCurrency}
             fxRates={fxRates}
           />
@@ -2139,6 +2185,7 @@ function MobileTypeGroupInner({
             toggleExpand={toggleExpand}
             handleEdit={handleEdit}
             handleDelete={handleDelete}
+            handleHistory={handleHistory}
             primaryCurrency={primaryCurrency}
             fxRates={fxRates}
           />

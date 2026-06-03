@@ -16,8 +16,13 @@ import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { quantityDelta } from "@/lib/transaction-kind";
+import {
+  getAssetTransactions,
+  toTransactionDisplayRows,
+} from "@/lib/portfolio/asset-transactions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssetRef, EntityType, FlowStatus, UsdEurAmount } from "@/lib/types";
+import type { TransactionDisplayRow } from "@/components/transactions/transactions-drawer";
 
 // ─── addTransaction ──────────────────────────────────────────────────────────
 
@@ -653,5 +658,66 @@ export async function markAsYield(ids: string[]): Promise<MarkAsYieldResult> {
       updated: eligibleIds.length,
       skipped: uniqueIds.length - eligibleIds.length,
     };
+  });
+}
+
+// ─── loadAssetTransactions ───────────────────────────────────────────────────
+
+/**
+ * A display row enriched with the two structural-lock flags the transaction
+ * modal needs when an entry is opened for edit. Both are read straight off the
+ * raw activity_log row (the display mapper drops them, so we zip them back in):
+ *   - `isTransferLeg` — `transfer_group_id` is set → the modal's transfer-leg
+ *     lock (edit routes to the Transfer screen instead).
+ *   - `isSplitChild`  — `split_from_id` is set → the modal's split-child lock
+ *     (unsplit first).
+ */
+export interface AssetTransactionDisplayRow extends TransactionDisplayRow {
+  isTransferLeg: boolean;
+  isSplitChild: boolean;
+}
+
+/**
+ * Owner-path read of a single asset's full transaction history, shaped for the
+ * transactions drawer. Thin client-callable wrapper over `getAssetTransactions`
+ * (the asset-level merge across all of the asset's wallet/broker positions) +
+ * `toTransactionDisplayRows` (the pure raw→display mapper).
+ *
+ * The mapper is 1:1 and order-preserving, so the raw rows and the display rows
+ * line up by index — we zip them to attach the two lock flags off the raw row.
+ *
+ * Auth: RLS server client + `getUser()` (THROWS if unauthenticated — a read of
+ * "my asset's transactions" has no anonymous meaning). This is the OWNER path
+ * only; the share-page read uses `getAssetTransactions` directly with the admin
+ * client + the share owner's id (see that module's dual-client contract).
+ *
+ * No revalidation — this is a pure read.
+ */
+export async function loadAssetTransactions(
+  assetRef: AssetRef,
+  currency: "EUR" | "USD",
+): Promise<AssetTransactionDisplayRow[]> {
+  return captureAction("transactions.loadAssetTransactions", async () => {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
+    const raw = await getAssetTransactions(supabase, user.id, assetRef);
+    const display = toTransactionDisplayRows(raw, currency);
+
+    if (display.length !== raw.length) {
+      throw new Error("toTransactionDisplayRows must be 1:1 with its input");
+    }
+
+    // The mapper is 1:1 and order-preserving — index i of `display` is the
+    // mapped form of index i of `raw`. Zip them, reading the lock flags off
+    // the raw row.
+    return display.map((row, i) => ({
+      ...row,
+      isTransferLeg: raw[i].transfer_group_id != null,
+      isSplitChild: raw[i].split_from_id != null,
+    }));
   });
 }

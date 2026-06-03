@@ -411,6 +411,47 @@ describe("TransactionsDrawer — onEdit callback", () => {
   });
 });
 
+// ── Test Group 5b: loading skeleton ───────────────────────────────────────────
+
+describe("TransactionsDrawer — loading state", () => {
+  it("loading renders the pulse skeleton and NOT the empty-state copy", () => {
+    const { container } = renderDrawer({ rows: [], loading: true });
+    // Skeleton present: animate-pulse blocks.
+    expect(container.querySelector(".animate-pulse")).not.toBeNull();
+    // Empty-state copy suppressed while loading.
+    expect(screen.queryByText(/No transactions yet/i)).not.toBeInTheDocument();
+  });
+
+  it("loading suppresses the normal row list", () => {
+    // Even with rows present, loading shows the skeleton, not the rows.
+    renderDrawer({ loading: true });
+    expect(screen.queryByRole("button", { name: /Edit transaction/i })).not.toBeInTheDocument();
+  });
+
+  it("not loading (default) shows the empty-state when rows=[]", () => {
+    renderDrawer({ rows: [] });
+    expect(screen.getByText(/No transactions yet/i)).toBeInTheDocument();
+  });
+});
+
+// ── Test Group 5c: header "+ Add" button ──────────────────────────────────────
+
+describe("TransactionsDrawer — header add button", () => {
+  it("renders the header '+ Add' button when onAdd is provided and fires it", () => {
+    const onAdd = vi.fn();
+    renderDrawer({ onAdd });
+    const addBtn = screen.getByRole("button", { name: /Add transaction/i });
+    expect(addBtn).toBeInTheDocument();
+    fireEvent.click(addBtn);
+    expect(onAdd).toHaveBeenCalledOnce();
+  });
+
+  it("does NOT render the header add button when onAdd is absent", () => {
+    renderDrawer({ onAdd: undefined });
+    expect(screen.queryByRole("button", { name: /Add transaction/i })).not.toBeInTheDocument();
+  });
+});
+
 // ── Test Group 6: a11y / UI properties ────────────────────────────────────────
 
 describe("TransactionsDrawer — accessibility", () => {

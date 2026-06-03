@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { Plus, Landmark, Coins, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Landmark, Coins, Pencil, Trash2, History, ChevronsDownUp, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
 import { useColumnConfig } from "@/lib/hooks/use-column-config";
@@ -12,6 +13,7 @@ import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import { deleteCashAccount } from "@/lib/actions/cash-accounts";
 import { CashAccountModal } from "@/components/cash/cash-account-modal";
+import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import {
   getCashColumns,
   buildCashGroupRows,
@@ -87,6 +89,7 @@ export function CashTable({
 }: CashTableProps) {
   const { isReadOnly } = useSharedView();
   const { openTooltip, tooltipRef, toggleTooltip } = useTooltipDismiss();
+  const router = useRouter();
 
   // ── Compute totals ──────────────────────────────────────
   const cashTotal = useMemo(
@@ -182,10 +185,20 @@ export function CashTable({
   // ── Unified cash handlers ─────────────────────────────────
   const [cashModalOpen, setCashModalOpen] = useState(false);
   const [editingCash, setEditingCash] = useState<CashAccount | null>(null);
+  const [txnTarget, setTxnTarget] = useState<OpenTransactionsTarget | null>(null);
 
   const openEditCash = useCallback((account: CashAccount) => {
     setEditingCash(account);
     setCashModalOpen(true);
+  }, []);
+
+  const openHistory = useCallback((account: CashAccount) => {
+    setTxnTarget({
+      assetRef: { class: "cash", accountId: account.id },
+      name: account.name ?? `${account.currency} deposit`,
+      assetClass: "cash",
+      // Cash has no wallet/broker picker — the account IS the destination.
+    });
   }, []);
 
   const handleDeleteCash = useCallback(async (id: string, opts?: { isAdjustment: boolean }) => {
@@ -463,6 +476,7 @@ export function CashTable({
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(acctValueBase, primaryCurrency)}</span>
                                     {!isReadOnly && (
                                       <>
+                                        <button type="button" aria-label={`Transactions for ${acct.name ?? acct.currency}`} onClick={() => openHistory(acct)} className="p-1 text-zinc-400 hover:text-blue-400"><History className="w-3 h-3" /></button>
                                         <button type="button" aria-label={`Edit ${acct.name ?? acct.currency}`} onClick={() => openEditCash(acct)} className="p-1 text-zinc-400 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
                                         <ConfirmButton showAdjustmentCheckbox onConfirm={(opts) => handleDeleteCash(acct.id, opts)} className="p-1 text-zinc-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                       </>
@@ -615,7 +629,7 @@ export function CashTable({
                         </tr>
                         {groupExpanded &&
                           row.data.accounts.map((acct) => (
-                            <ExpandedCashRow key={acct.id} account={acct} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditCash(acct)} onDelete={(opts) => handleDeleteCash(acct.id, opts)} />
+                            <ExpandedCashRow key={acct.id} account={acct} orderedColumns={orderedColumns} ctx={ctx} onEdit={() => openEditCash(acct)} onDelete={(opts) => handleDeleteCash(acct.id, opts)} onHistory={() => openHistory(acct)} />
                           ))}
                       </Fragment>
                     );
@@ -706,6 +720,20 @@ export function CashTable({
           brokerName={editingCash?.broker_name ?? undefined}
         />
       )}
+      {!isReadOnly && (
+        <TransactionsManager
+          target={txnTarget}
+          onClose={() => setTxnTarget(null)}
+          currency={primaryCurrency.toUpperCase() === "USD" ? "USD" : "EUR"}
+          // Cash has no in-table transfer dialog — route the user to the
+          // dedicated Transfer affordance instead of a silent dead end.
+          onContinueToTransfer={() => {
+            setTxnTarget(null);
+            toast("Use the Transfer button to record transfers between accounts.");
+          }}
+          onMutated={() => router.refresh()}
+        />
+      )}
     </div>
   );
 }
@@ -721,12 +749,14 @@ function ExpandedCashRow({
   ctx,
   onEdit,
   onDelete,
+  onHistory,
 }: {
   account: CashAccount;
   orderedColumns: ColumnDef<CashRow>[];
   ctx: RenderContext;
   onEdit: () => void;
   onDelete: (opts?: { isAdjustment: boolean }) => void;
+  onHistory: () => void;
 }) {
   const { isReadOnly } = useSharedView();
   const valueInBase = convertToBase(
@@ -822,6 +852,14 @@ function ExpandedCashRow({
             <td key={col.key} className={`px-4 py-2 text-right ${hidden}`}>
               {!isReadOnly && (
                 <div className="flex items-center justify-end gap-1">
+                  <button
+                    onClick={onHistory}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                    aria-label={`Transactions for ${displayName}`}
+                    title="Transactions"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={onEdit}
                     className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"

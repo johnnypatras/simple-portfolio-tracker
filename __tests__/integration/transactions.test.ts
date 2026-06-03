@@ -551,7 +551,12 @@ describe("backdateActivityEntry — cashflow recompute on backdate (integration)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Import after mocks (mocks are already declared at the top of this file)
-import { addTransaction, editTransaction, markAsYield } from "@/lib/actions/transactions";
+import {
+  addTransaction,
+  editTransaction,
+  markAsYield,
+  loadAssetTransactions,
+} from "@/lib/actions/transactions";
 
 describe("addTransaction — cost capture (integration)", () => {
   let client: SupabaseClient;
@@ -1916,5 +1921,133 @@ describe("markAsYield — guarded bulk reclassify (integration)", () => {
 
     const after = await readRow(id);
     expect(after!.is_yield).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 2.x (UI wiring) — loadAssetTransactions wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("loadAssetTransactions — owner read + lock-flag enrichment (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  let walletId: string;
+  let cryptoAssetId: string;
+  const coingeckoId = `bitcoin-load-txn-${randomUUID()}`;
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+    hoisted.testClient = client;
+
+    const { data: wallet, error: walletErr } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "LoadTxn Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (walletErr) throw new Error("Failed to create wallet: " + walletErr.message);
+    walletId = wallet!.id;
+
+    cryptoAssetId = await createCryptoAsset({
+      ticker: "BTC",
+      name: "Bitcoin LoadTxn Test",
+      coingecko_id: coingeckoId,
+    });
+  });
+
+  afterAll(() => cleanup());
+
+  it("returns a normal buy + a transfer-leg row, each with the correct lock flags + display fields", async () => {
+    // A normal buy with a user cost of €1000 → cashflow_user_set, not a leg/child.
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        type: "buy",
+        quantity: 1,
+        walletId,
+        cost: { amount: 1000, currency: "EUR" },
+        currentPriceUsd: 60000,
+        currentPriceEur: 54545,
+      },
+    );
+
+    // Grab the buy entry, then add a SECOND entry on the same position and tag it
+    // as a transfer leg (the direct-update idiom this file uses for guard tests).
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        type: "buy",
+        quantity: 0.5,
+        walletId,
+        cost: { amount: 500, currency: "EUR" },
+        currentPriceUsd: 60000,
+        currentPriceEur: 54545,
+      },
+    );
+    const { data: latest } = await client
+      .from("activity_log")
+      .select("id")
+      .eq("entity_type", "crypto_position")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    const legId = latest!.id;
+    await client
+      .from("activity_log")
+      .update({ transfer_group_id: randomUUID() })
+      .eq("id", legId);
+
+    // Read in EUR.
+    const rows = await loadAssetTransactions({ class: "crypto", assetId: cryptoAssetId }, "EUR");
+
+    // Both rows present.
+    expect(rows.length).toBe(2);
+
+    const legRow = rows.find((r) => r.id === legId);
+    const buyRow = rows.find((r) => r.id !== legId);
+    expect(legRow).toBeDefined();
+    expect(buyRow).toBeDefined();
+
+    // The transfer leg carries isTransferLeg=true; the buy has both flags false.
+    expect(legRow!.isTransferLeg).toBe(true);
+    expect(legRow!.isSplitChild).toBe(false);
+    expect(buyRow!.isTransferLeg).toBe(false);
+    expect(buyRow!.isSplitChild).toBe(false);
+
+    // Display fields are populated in the requested currency.
+    expect(buyRow!.kind).toBe("buy");
+    expect(buyRow!.currency).toBe("EUR");
+    expect(buyRow!.quantity).toBeGreaterThan(0); // signed +1 acquisition
+    expect(buyRow!.amount).toBe(1000); // EUR cost stored verbatim
+    expect(typeof buyRow!.date).toBe("string");
+  });
+
+  it("reflects the requested currency in the amount column (USD)", async () => {
+    const rows = await loadAssetTransactions({ class: "crypto", assetId: cryptoAssetId }, "USD");
+    const buyRow = rows.find((r) => r.amount != null && r.kind === "buy");
+    expect(buyRow).toBeDefined();
+    expect(buyRow!.currency).toBe("USD");
+    // USD leg was FX-derived at 1.10: €1000 → $1100.
+    expect(buyRow!.amount).toBe(1100);
+  });
+
+  it("throws when unauthenticated (owner path requires a user)", async () => {
+    // Swap the mock client to one whose auth.getUser() returns no user.
+    const prev = hoisted.testClient;
+    hoisted.testClient = {
+      auth: { getUser: async () => ({ data: { user: null }, error: null }) },
+    } as unknown as SupabaseClient;
+    try {
+      await expect(
+        loadAssetTransactions({ class: "crypto", assetId: cryptoAssetId }, "EUR"),
+      ).rejects.toThrow(/not authenticated/i);
+    } finally {
+      hoisted.testClient = prev;
+    }
   });
 });

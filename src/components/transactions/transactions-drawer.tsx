@@ -28,6 +28,10 @@ export interface TransactionsDrawerProps {
   rows: TransactionDisplayRow[];
   onEdit: (rowId: string) => void;
   onAddFirst?: () => void;
+  /** Header "+ Add" affordance (distinct from the empty-state `onAddFirst` CTA). */
+  onAdd?: () => void;
+  /** While true, the list area shows a pulse skeleton instead of rows/empty-state. */
+  loading?: boolean;
 }
 
 // ── Filter chip definitions ───────────────────────────────────────────────────
@@ -269,6 +273,8 @@ export function TransactionsDrawer({
   rows,
   onEdit,
   onAddFirst,
+  onAdd,
+  loading = false,
 }: TransactionsDrawerProps) {
   const titleId = useId();
   const [activeFilter, setActiveFilter] = useState<FilterChipKey>("all");
@@ -348,14 +354,26 @@ export function TransactionsDrawer({
             <h2 id={titleId} className="text-base font-semibold text-zinc-100">
               Transactions — {assetName}
             </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="p-1 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-            >
-              <X aria-hidden="true" className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              {onAdd && (
+                <button
+                  type="button"
+                  onClick={onAdd}
+                  aria-label="Add transaction"
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2.5 py-1 rounded-lg transition-colors"
+                >
+                  + Add
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              >
+                <X aria-hidden="true" className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* ── Filter chips ───────────────────────────────────────── */}
@@ -382,8 +400,24 @@ export function TransactionsDrawer({
 
           {/* ── Scrollable list ────────────────────────────────────── */}
           <div className="flex-1 overflow-y-auto">
+            {/* Loading skeleton: takes precedence over rows/empty-state */}
+            {loading && (
+              <div className="p-4 space-y-3" aria-hidden="true">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 animate-pulse"
+                  >
+                    <div className="h-4 w-12 rounded bg-zinc-800" />
+                    <div className="h-4 w-20 rounded bg-zinc-800 ml-auto" />
+                    <div className="h-4 w-16 rounded bg-zinc-900" />
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Empty state: no rows at all */}
-            {rows.length === 0 && (
+            {!loading && rows.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-4 py-16">
                 <p className="text-sm text-zinc-400">No transactions yet</p>
                 {onAddFirst && (
@@ -399,7 +433,7 @@ export function TransactionsDrawer({
             )}
 
             {/* No-match state: rows exist but filter returns nothing */}
-            {rows.length > 0 && filteredRows.length === 0 && (
+            {!loading && rows.length > 0 && filteredRows.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-4 py-16">
                 <p className="text-sm text-zinc-400">
                   No {activeChip.label} transactions
@@ -415,7 +449,7 @@ export function TransactionsDrawer({
             )}
 
             {/* Normal list */}
-            {filteredRows.length > 0 && (
+            {!loading && filteredRows.length > 0 && (
               <div>
                 {displayItems.map((item) => {
                   if (item.type === "row") {

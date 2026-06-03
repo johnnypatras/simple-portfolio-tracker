@@ -3,11 +3,12 @@
 import { useState, useMemo, useCallback, Fragment, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Plus, Bitcoin, TrendingUp, Pencil, Trash2, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
+import { Plus, Bitcoin, TrendingUp, Pencil, Trash2, History, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
 const AddCryptoModal = dynamic(() => import("./add-crypto-modal").then(m => m.AddCryptoModal), { ssr: false });
 import { PositionEditor } from "./position-editor";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
+import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -83,6 +84,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
   const [addOpen, setAddOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<CryptoAssetWithPositions | null>(null);
+  const [txnTarget, setTxnTarget] = useState<OpenTransactionsTarget | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState<CryptoGroupMode>("flat");
   const [sortKey, setSortKey] = useState<CryptoSortKey>(DEFAULT_SORT_KEY);
@@ -127,6 +129,16 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
 
   const handleEdit = useCallback((asset: CryptoAssetWithPositions) => {
     setEditingAsset(asset);
+  }, []);
+
+  const handleHistory = useCallback((asset: CryptoAssetWithPositions) => {
+    setTxnTarget({
+      assetRef: { class: "crypto", assetId: asset.id },
+      name: asset.name,
+      assetClass: "crypto",
+      // Seed the add-mode wallet picker with the asset's existing position wallets.
+      walletOptions: asset.positions.map((p) => ({ id: p.wallet_id, name: p.wallet_name })),
+    });
   }, []);
 
   const handleDelete = useCallback(async (id: string, name: string) => {
@@ -314,8 +326,14 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
 
   // Column definitions (stable via useMemo)
   const columns = useMemo(
-    () => getCryptoColumns({ onEdit: handleEdit, onDelete: handleDelete, isExpanded, toggleExpand }),
-    [handleEdit, handleDelete, isExpanded, toggleExpand]
+    () => getCryptoColumns({
+      onEdit: handleEdit,
+      onDelete: handleDelete,
+      onHistory: isReadOnly ? undefined : handleHistory,
+      isExpanded,
+      toggleExpand,
+    }),
+    [handleEdit, handleDelete, handleHistory, isReadOnly, isExpanded, toggleExpand]
   );
 
   const {
@@ -573,6 +591,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                               toggleExpand={toggleExpand}
                               handleEdit={handleEdit}
                               handleDelete={handleDelete}
+                              handleHistory={handleHistory}
                               primaryCurrency={primaryCurrency}
                               overrideQty={entry.groupQty}
                               overrideValue={entry.groupValue}
@@ -637,6 +656,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                 toggleExpand={toggleExpand}
                                 handleEdit={handleEdit}
                                 handleDelete={handleDelete}
+                                handleHistory={handleHistory}
                                 primaryCurrency={primaryCurrency}
                                 overrideQty={entry.groupQty}
                                 overrideValue={entry.groupValue}
@@ -697,6 +717,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                   toggleExpand={toggleExpand}
                                   handleEdit={handleEdit}
                                   handleDelete={handleDelete}
+                                  handleHistory={handleHistory}
                                   primaryCurrency={primaryCurrency}
                                   overrideQty={entry.groupQty}
                                   overrideValue={entry.groupValue}
@@ -755,6 +776,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                   toggleExpand={toggleExpand}
                                   handleEdit={handleEdit}
                                   handleDelete={handleDelete}
+                                  handleHistory={handleHistory}
                                   primaryCurrency={primaryCurrency}
                                 />
                               ))}
@@ -810,6 +832,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                                     toggleExpand={toggleExpand}
                                     handleEdit={handleEdit}
                                     handleDelete={handleDelete}
+                                    handleHistory={handleHistory}
                                     primaryCurrency={primaryCurrency}
                                   />
                                 ))}
@@ -826,6 +849,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                         toggleExpand={toggleExpand}
                         handleEdit={handleEdit}
                         handleDelete={handleDelete}
+                        handleHistory={handleHistory}
                         primaryCurrency={primaryCurrency}
                       />
                     ))}
@@ -1340,6 +1364,16 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
               prices={prices}
             />
           )}
+          <TransactionsManager
+            target={txnTarget}
+            onClose={() => setTxnTarget(null)}
+            currency={currencyKey === "eur" ? "EUR" : "USD"}
+            onContinueToTransfer={() => {
+              setTxnTarget(null);
+              setBuyOpen(true);
+            }}
+            onMutated={() => router.refresh()}
+          />
         </>
       )}
     </div>
@@ -1641,6 +1675,7 @@ function MobileCryptoCard({
   toggleExpand,
   handleEdit,
   handleDelete,
+  handleHistory,
   primaryCurrency,
   overrideQty,
   overrideValue,
@@ -1651,6 +1686,7 @@ function MobileCryptoCard({
   toggleExpand: (id: string) => void;
   handleEdit: (asset: CryptoAssetWithPositions) => void;
   handleDelete: (id: string, name: string) => void;
+  handleHistory: (asset: CryptoAssetWithPositions) => void;
   primaryCurrency: string;
   overrideQty?: number;
   overrideValue?: number;
@@ -1789,6 +1825,14 @@ function MobileCryptoCard({
               >
                 <Pencil className="w-3 h-3" />
                 Edit positions
+              </button>
+              <button
+                onClick={() => handleHistory(row.asset)}
+                aria-label={`Transactions for ${row.asset.name}`}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+              >
+                <History className="w-3 h-3" />
+                Transactions
               </button>
               <ConfirmButton
                 onConfirm={() => handleDelete(row.asset.id, row.asset.name)}

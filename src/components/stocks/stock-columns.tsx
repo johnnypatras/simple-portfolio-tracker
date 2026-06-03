@@ -1,4 +1,4 @@
-import { Pencil, Trash2, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Pencil, Trash2, History, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import { convertToBase } from "@/lib/prices/fx";
 import type { FXRates } from "@/lib/prices/fx";
 import type { ColumnDef, SortDirection } from "@/lib/column-config";
@@ -467,6 +467,8 @@ export function getStockColumns(handlers: {
   onEdit: (asset: StockAssetWithPositions) => void;
   onDelete: (id: string, name: string) => void;
   onEditNav?: (asset: StockAssetWithPositions) => void;
+  /** Open the transactions history drawer for this asset (owner view only). */
+  onHistory?: (asset: StockAssetWithPositions) => void;
   isExpanded: (id: string) => boolean;
   toggleExpand: (id: string) => void;
   latestNavDates?: LatestNavDateByAssetId;
@@ -733,6 +735,16 @@ export function getStockColumns(handlers: {
       width: "w-20",
       renderCell: (row) => (
         <div className="flex items-center justify-end gap-1">
+          {handlers.onHistory && (
+            <button
+              onClick={() => handlers.onHistory!(row.asset)}
+              aria-label={`Transactions for ${row.asset.name}`}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+              title="Transactions"
+            >
+              <History aria-hidden="true" className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={() => handlers.onEdit(row.asset)}
             aria-label={`Edit positions for ${row.asset.name}`}
