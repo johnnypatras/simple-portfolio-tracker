@@ -4,107 +4,310 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { upsertPosition } from "@/lib/actions/crypto";
 import { upsertStockPosition } from "@/lib/actions/stocks";
-import { validateUUID } from "@/lib/validation";
+import { updateCashAccount } from "@/lib/actions/cash-accounts";
+import { toUsdAndEur } from "@/lib/actions/activity-log";
+import {
+  validateUUID,
+  validateQuantity,
+  validateAmount,
+  validatePastOrTodayDate,
+} from "@/lib/validation";
+import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssetRef, UsdEurAmount } from "@/lib/types";
 
 // ─── addTransaction ──────────────────────────────────────────────────────────
 
+/**
+ * The transaction kinds `addTransaction` handles. This is intentionally the
+ * modal's `TransactionType` MINUS `transfer` — a transfer routes out at the UI
+ * layer as a two-legged sell/buy/move and never reaches this action. Kept
+ * module-private (not exported) so it can't be mistaken for the modal's
+ * 6-member `TransactionType`.
+ *
+ * Direction is derived from the type, never from the sign of `quantity`
+ * (which is always > 0): buy / deposit / yield ADD; sell / withdrawal SUBTRACT.
+ */
+type AddTransactionType = "buy" | "sell" | "yield" | "deposit" | "withdrawal";
+
 export interface AddTransactionParams {
-  /** "buy" increases quantity; "sell" decreases. Task 2.5 adds full action routing. */
-  action: "buy" | "sell";
+  /** The kind of transaction. Determines direction + yield/cost semantics. */
+  type: AddTransactionType;
+  /** Units TRANSACTED (a positive delta). For cash this IS the cash amount. */
   quantity: number;
-  /** Market price in USD — used as cashflow fallback when costAmount is absent. */
-  currentPriceUsd?: number;
-  /** Market price in EUR — used as cashflow fallback when costAmount is absent. */
-  currentPriceEur?: number;
   /**
-   * Caller-supplied cost basis. When present the primitive layer stores it
-   * verbatim (cashflow_user_set=true). When absent the action falls back to
-   * market-value (cashflow_user_set=false).
-   *
-   * Task 2.5 expands: single-currency input → FX-at-date derivation (so the
-   * caller can pass just EUR or just USD and have the other computed), full
-   * guard set, markAsYield, deposit/withdrawal/transfer/yield routing.
+   * Single-currency cost the user typed (incl. fees). When present, the other
+   * currency is derived via FX-at-date (`toUsdAndEur`, which THROWS on FX
+   * failure so a bad rate never silently writes a wrong cost) and the pair is
+   * stored verbatim (`cashflow_user_set=true`), bypassing qty × price.
+   * Absent → market-value fallback (`cashflow_user_set=false`).
    */
-  costAmount?: UsdEurAmount | null;
-  /** Effective date override (YYYY-MM-DD). */
+  cost?: { amount: number; currency: "EUR" | "USD" } | null;
+  /** Effective date (YYYY-MM-DD). Absent → today. */
   effectiveDate?: string;
   isAdjustment?: boolean;
-  /**
-   * The wallet that owns this crypto position (crypto writes only).
-   * Lives here — not in AssetRef — so AssetRef stays asset-level and
-   * `getAssetTransactions` can resolve all positions across wallets.
-   */
+  /** The wallet that owns this crypto position (required for crypto writes). */
   walletId?: string;
-  /**
-   * The broker that owns this stock position (stock writes only).
-   * Lives here — not in AssetRef — so AssetRef stays asset-level.
-   */
+  /** The broker that owns this stock position (required for stock writes). */
   brokerId?: string;
+  /** Market price in USD — used for the no-cost fallback (qty × price). */
+  currentPriceUsd?: number;
+  /** Market price in EUR — used for the no-cost fallback (qty × price). */
+  currentPriceEur?: number;
 }
 
 /**
- * Thin wrapper — routes a Buy/Sell on crypto or stock to the underlying
- * `upsertPosition` / `upsertStockPosition` primitive, threading through the
- * cashflowOverride when the caller supplies a cost amount.
+ * Signed direction for a transaction type. Buy / deposit / yield are
+ * acquisitions (+); sell / withdrawal are disposals (−). Yield is a
+ * quantity-UP acquisition (its cost is 0 — `is_yield` is the single source
+ * of truth, the amount is never zeroed so un-yield is lossless).
+ */
+function signedDelta(type: AddTransactionType, quantity: number): number {
+  return type === "sell" || type === "withdrawal" ? -quantity : quantity;
+}
+
+/**
+ * Routes a Buy / Sell / Yield / Deposit / Withdrawal on a crypto, stock, or
+ * cash asset to the underlying mutation primitive.
  *
- * Task 2.5 expands: full action routing (deposit/withdrawal/transfer/yield),
- * single-currency → FX-at-date derivation, markAsYield, all guards (transfer
- * leg, split child, compensation row), and the 8-column is_adjustment branch.
+ * The modal's "Quantity" is the units TRANSACTED (a delta), but the position
+ * primitives take the new ABSOLUTE quantity — so this action reads the current
+ * position quantity (RLS-scoped, owner-only) and resolves
+ * `newAbsolute = currentQty + signedDelta` before calling the primitive. A
+ * full sell that lands the absolute at exactly 0 soft-deletes the position
+ * (correct). A sell that would land it below 0 is rejected as an oversell.
+ *
+ * Cost capture: a single-currency `cost` is converted to a dual-currency
+ * { usd, eur } pair via `toUsdAndEur` (FX-at-date) and threaded as the
+ * primitive's `cashflowOverride` (stored verbatim, `cashflow_user_set=true`).
+ * Without a cost, the primitive computes market value from the prices passed.
+ *
+ * Error model: THROWS on failure (returns `Promise<void>`), consistent with
+ * `upsertPosition` / `upsertStockPosition`; the modal's `onSubmit` surfaces the
+ * message.
+ *
+ * `transfer` is NOT handled here — it routes out at the UI as a two-legged
+ * operation.
  */
 export async function addTransaction(
   assetRef: AssetRef,
   params: AddTransactionParams,
 ): Promise<void> {
   return captureAction("transactions.addTransaction", async () => {
-    const cashflowOverride = params.costAmount ?? undefined;
+    // ── Boundary validation ──────────────────────────────────────────────
+    validateQuantity(params.quantity, "Quantity");
+    if (params.effectiveDate !== undefined) {
+      validatePastOrTodayDate(params.effectiveDate, "Date");
+    }
+    if (params.cost != null) {
+      validateAmount(params.cost.amount, "Cost");
+    }
+
+    const isYield = params.type === "yield";
+
+    // ── Single-currency cost → dual-currency override (case-16 FX) ────────
+    // toUsdAndEur calls getFXRates, which THROWS on FX failure — a bad rate
+    // never silently writes a wrong cost. The user's typed currency is stored
+    // EXACTLY (preserving all decimals); only the cross-currency derived leg
+    // is rounded to 2 dp (round2 keeps the derived currency clean money, no
+    // float dust). Yield carries no override (cost 0).
+    let cashflowOverride: UsdEurAmount | undefined;
+    if (params.cost != null && !isYield) {
+      const derived = await toUsdAndEur(
+        params.cost.amount,
+        params.cost.currency,
+        params.effectiveDate,
+      );
+      cashflowOverride =
+        params.cost.currency === "EUR"
+          ? { eur: params.cost.amount, usd: round2(derived.usd) }
+          : { usd: params.cost.amount, eur: round2(derived.eur) };
+    }
 
     if (assetRef.class === "crypto") {
       if (!params.walletId) {
         throw new Error("walletId is required for a crypto transaction");
       }
+      const supabase = await createServerSupabaseClient();
+      const currentQty = await readCryptoQty(
+        supabase,
+        assetRef.assetId,
+        params.walletId,
+      );
+      const newAbsolute = currentQty + signedDelta(params.type, params.quantity);
+      if (newAbsolute < 0) {
+        throw new Error(
+          `Cannot sell ${params.quantity} — only ${currentQty} held in this wallet.`,
+        );
+      }
+
       await upsertPosition(
         {
           crypto_asset_id: assetRef.assetId,
           wallet_id: params.walletId,
-          quantity: params.quantity,
+          quantity: newAbsolute,
         },
         {
           currentPriceUsd: params.currentPriceUsd,
           currentPriceEur: params.currentPriceEur,
           cashflowOverride,
           isAdjustment: params.isAdjustment,
+          isYield,
           effectiveDate: params.effectiveDate,
-          // isYield threading: Task 2.5 adds markAsYield routing here
         },
       );
     } else if (assetRef.class === "stock") {
       if (!params.brokerId) {
         throw new Error("brokerId is required for a stock transaction");
       }
+      const supabase = await createServerSupabaseClient();
+      const currentQty = await readStockQty(
+        supabase,
+        assetRef.assetId,
+        params.brokerId,
+      );
+      const newAbsolute = currentQty + signedDelta(params.type, params.quantity);
+      if (newAbsolute < 0) {
+        throw new Error(
+          `Cannot sell ${params.quantity} — only ${currentQty} held in this broker.`,
+        );
+      }
+
+      // The native price is only needed for the no-cost fallback (the override
+      // bypasses qty × price). Fetch the asset's trading currency so the
+      // fallback converts correctly; pass currentPriceUsd as a best-effort
+      // native price only when the asset trades in USD, else leave the fallback
+      // to mark cashflow_status='pending' (the user should provide a cost).
+      let assetCurrency = "USD";
+      let currentPriceNative: number | undefined;
+      if (cashflowOverride == null) {
+        assetCurrency = await readStockCurrency(supabase, assetRef.assetId);
+        if (assetCurrency === "USD") currentPriceNative = params.currentPriceUsd;
+      }
+
       await upsertStockPosition(
         {
           stock_asset_id: assetRef.assetId,
           broker_id: params.brokerId,
-          quantity: params.quantity,
+          quantity: newAbsolute,
         },
         {
-          // currentPriceNative and assetCurrency are required by the stocks
-          // primitive for correct FX derivation. Task 2.5 provides these from
-          // the caller; for now fall back to currentPriceUsd if supplied.
-          currentPriceNative: params.currentPriceUsd,
-          assetCurrency: "USD",
+          currentPriceNative,
+          assetCurrency,
           cashflowOverride,
           isAdjustment: params.isAdjustment,
+          isYield,
           effectiveDate: params.effectiveDate,
         },
       );
+    } else {
+      // ── Cash: deposit / withdrawal / yield ──────────────────────────────
+      // quantity IS the cash amount. Read the current balance (RLS-scoped),
+      // resolve the new balance, and update only `balance` — partialUpdate()
+      // leaves currency / apy / name untouched.
+      const supabase = await createServerSupabaseClient();
+      const currentBalance = await readCashBalance(supabase, assetRef.accountId);
+      const newBalance =
+        currentBalance + signedDelta(params.type, params.quantity);
+      if (newBalance < 0) {
+        throw new Error(
+          `Cannot withdraw ${params.quantity} — only ${currentBalance} available.`,
+        );
+      }
+
+      await updateCashAccount(
+        assetRef.accountId,
+        { balance: newBalance },
+        {
+          cashflowOverride,
+          isYield,
+          effectiveDate: params.effectiveDate,
+          isAdjustment: params.isAdjustment,
+        },
+      );
     }
-    // Task 2.5 expands: cash deposit/withdrawal/transfer/yield routing.
 
     await revalidateDashboard();
   });
+}
+
+/**
+ * Read the current absolute quantity of a crypto position (RLS-scoped to the
+ * authenticated user via the server client). Returns 0 when no live position
+ * exists — the first buy then creates it at exactly the transacted quantity.
+ */
+async function readCryptoQty(
+  supabase: SupabaseClient,
+  assetId: string,
+  walletId: string,
+): Promise<number> {
+  const { data } = await supabase
+    .from("crypto_positions")
+    .select("quantity")
+    .eq("crypto_asset_id", assetId)
+    .eq("wallet_id", walletId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  return data ? Number(data.quantity) : 0;
+}
+
+/**
+ * Read the current absolute quantity of a stock position (RLS-scoped).
+ * Returns 0 when no live position exists.
+ */
+async function readStockQty(
+  supabase: SupabaseClient,
+  assetId: string,
+  brokerId: string,
+): Promise<number> {
+  const { data } = await supabase
+    .from("stock_positions")
+    .select("quantity")
+    .eq("stock_asset_id", assetId)
+    .eq("broker_id", brokerId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  return data ? Number(data.quantity) : 0;
+}
+
+/**
+ * Read a stock asset's native trading currency (RLS-scoped). Defaults to USD
+ * when the asset can't be resolved — the no-cost fallback path then converts
+ * using a sensible default rather than crashing.
+ */
+async function readStockCurrency(
+  supabase: SupabaseClient,
+  assetId: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from("stock_assets")
+    .select("currency")
+    .eq("id", assetId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  return data?.currency ? String(data.currency) : "USD";
+}
+
+/**
+ * Read a cash account's current balance (RLS-scoped). Throws if the account
+ * isn't found for this user — a deposit/withdrawal against a missing account
+ * is a hard error, not a silent no-op.
+ */
+async function readCashBalance(
+  supabase: SupabaseClient,
+  accountId: string,
+): Promise<number> {
+  validateUUID(accountId, "Cash account ID");
+  const { data, error } = await supabase
+    .from("cash_accounts")
+    .select("balance")
+    .eq("id", accountId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Cash account not found");
+  return Number(data.balance);
 }
 
 // ─── editTransaction ─────────────────────────────────────────────────────────

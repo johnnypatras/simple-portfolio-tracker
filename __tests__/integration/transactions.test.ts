@@ -558,9 +558,71 @@ describe("addTransaction — cost capture (integration)", () => {
   let userId: string;
   let cleanup: () => void;
 
+  // Crypto path
   let walletId: string;
   let cryptoAssetId: string;
   const coingeckoId = `bitcoin-add-txn-test-${randomUUID()}`;
+
+  // Stock path
+  let brokerId: string;
+  let stockAssetId: string;
+  const stockTicker = `ADD${randomUUID().slice(0, 4).toUpperCase()}`;
+
+  // Cash path
+  let institutionId: string;
+
+  /**
+   * Read the most-recent activity_log row for a given entity_type, scoped to
+   * the test user — the standard idiom this file uses to assert on the write.
+   */
+  async function latestLog(entityType: string) {
+    const { data } = await client
+      .from("activity_log")
+      .select(
+        "cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set, is_yield",
+      )
+      .eq("entity_type", entityType)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    return data;
+  }
+
+  /** Read a crypto position's current absolute quantity (RLS-scoped). */
+  async function cryptoQty(assetId: string, wallet: string): Promise<number | null> {
+    const { data } = await client
+      .from("crypto_positions")
+      .select("quantity")
+      .eq("crypto_asset_id", assetId)
+      .eq("wallet_id", wallet)
+      .is("deleted_at", null)
+      .maybeSingle();
+    return data ? Number(data.quantity) : null;
+  }
+
+  /** Read a stock position's current absolute quantity (RLS-scoped). */
+  async function stockQty(assetId: string, broker: string): Promise<number | null> {
+    const { data } = await client
+      .from("stock_positions")
+      .select("quantity")
+      .eq("stock_asset_id", assetId)
+      .eq("broker_id", broker)
+      .is("deleted_at", null)
+      .maybeSingle();
+    return data ? Number(data.quantity) : null;
+  }
+
+  /** Read a cash account's current balance (RLS-scoped). */
+  async function cashBalance(accountId: string): Promise<number | null> {
+    const { data } = await client
+      .from("cash_accounts")
+      .select("balance")
+      .eq("id", accountId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    return data ? Number(data.balance) : null;
+  }
 
   beforeAll(async () => {
     const result = await createTestUser();
@@ -577,97 +639,543 @@ describe("addTransaction — cost capture (integration)", () => {
     if (walletErr) throw new Error("Failed to create wallet: " + walletErr.message);
     walletId = wallet!.id;
 
+    const { data: broker, error: brokerErr } = await client
+      .from("brokers")
+      .insert({ user_id: userId, name: "AddTxn Broker" })
+      .select("id")
+      .single();
+    if (brokerErr) throw new Error("Failed to create broker: " + brokerErr.message);
+    brokerId = broker!.id;
+
+    const { data: inst, error: instErr } = await client
+      .from("institutions")
+      .insert({ user_id: userId, name: "AddTxn Bank" })
+      .select("id")
+      .single();
+    if (instErr) throw new Error("Failed to create institution: " + instErr.message);
+    institutionId = inst!.id;
+
     cryptoAssetId = await createCryptoAsset({
       ticker: "BTC",
       name: "Bitcoin AddTxn Test",
       coingecko_id: coingeckoId,
     });
+
+    stockAssetId = await createStockAsset({
+      ticker: stockTicker,
+      name: "AddTxn Stock Test",
+      kind: "yahoo",
+      currency: "USD",
+    });
   });
 
   afterAll(() => cleanup());
 
-  // (a) Buy WITH a user cost amount → stores override amounts, cashflow_user_set=true
-  it("(a) addTransaction Buy with costAmount stores override amounts and cashflow_user_set=true", async () => {
-    const cost = { usd: 7500, eur: 6818 };
+  // ─── (1) Delta-resolve a Buy on an EXISTING position ────────────────────────
+  //
+  // The MODAL emits the quantity TRANSACTED (a delta). A buy of +5 on a
+  // position of 10 must resolve to upsertPosition(quantity: 15) — NOT 5.
+  it("(1) Buy on an existing position delta-resolves to the new absolute (10 + 5 = 15)", async () => {
+    // Seed: position at qty 10 via a direct primitive call (market-priced).
+    await upsertPosition(
+      { crypto_asset_id: cryptoAssetId, wallet_id: walletId, quantity: 10 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545 },
+    );
+    expect(await cryptoQty(cryptoAssetId, walletId)).toBe(10);
 
+    // Buy +5 with a user cost of €1000.
     await addTransaction(
       { class: "crypto", assetId: cryptoAssetId },
       {
-        action: "buy",
-        quantity: 0.15,
-        currentPriceUsd: 60000, // market price — should be IGNORED
-        currentPriceEur: 54545,
-        costAmount: cost,
+        type: "buy",
+        quantity: 5,
         walletId,
+        cost: { amount: 1000, currency: "EUR" },
+        currentPriceUsd: 60000,
+        currentPriceEur: 54545,
       },
     );
 
-    const { data: log } = await client
-      .from("activity_log")
-      .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
-      .eq("entity_type", "crypto_position")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+    // The position is now 15 (10 + 5), NOT 5.
+    expect(await cryptoQty(cryptoAssetId, walletId)).toBe(15);
 
+    const log = await latestLog("crypto_position");
     expect(log).not.toBeNull();
-    // Must store the caller-supplied cost, NOT qty × price = 0.15 × 60000 = 9000
-    expect(Number(log!.cashflow_amount_usd)).toBe(7500);
-    expect(Number(log!.cashflow_amount_eur)).toBe(6818);
     expect(log!.cashflow_user_set).toBe(true);
+    // EUR is the input currency → stored verbatim.
+    expect(Number(log!.cashflow_amount_eur)).toBe(1000);
+    // USD is FX-derived: 1000 EUR × 1.10 USD/EUR = 1100.
+    expect(Number(log!.cashflow_amount_usd)).toBe(1100);
   });
 
-  // (b) Buy with BLANK/absent costAmount → market fallback, cashflow_user_set=false
-  it("(b) addTransaction Buy without costAmount uses market price and cashflow_user_set=false", async () => {
-    // Create a second wallet for a clean, isolated entry
+  // ─── (2) First Buy (no prior position) creates the position at qty=delta ────
+  it("(2) First Buy with no prior position creates the position at the transaction quantity", async () => {
     const { data: wallet2, error: w2Err } = await client
       .from("wallets")
-      .insert({ user_id: userId, name: "NoOverride Wallet", wallet_type: "custodial" })
+      .insert({ user_id: userId, name: "FirstBuy Wallet", wallet_type: "custodial" })
       .select("id")
       .single();
     if (w2Err) throw new Error("Failed to create wallet2: " + w2Err.message);
 
+    // No prior position in this wallet.
+    expect(await cryptoQty(cryptoAssetId, wallet2!.id)).toBeNull();
+
     await addTransaction(
       { class: "crypto", assetId: cryptoAssetId },
       {
-        action: "buy",
-        quantity: 0.1,
-        currentPriceUsd: 50000,
-        currentPriceEur: 45454,
+        type: "buy",
+        quantity: 0.3,
         walletId: wallet2!.id,
-        // costAmount deliberately absent
+        cost: { amount: 9000, currency: "USD" },
       },
     );
 
-    const { data: log } = await client
-      .from("activity_log")
-      .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
-      .eq("entity_type", "crypto_position")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+    // First buy → position created at exactly the transacted quantity.
+    expect(await cryptoQty(cryptoAssetId, wallet2!.id)).toBe(0.3);
+  });
 
+  // ─── (3) Sell reduces the absolute (10 − 3 = 7) ─────────────────────────────
+  it("(3) Sell delta-resolves down: position 10, sell 3 → 7", async () => {
+    const { data: wallet3, error: w3Err } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Sell Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (w3Err) throw new Error("Failed to create wallet3: " + w3Err.message);
+
+    await upsertPosition(
+      { crypto_asset_id: cryptoAssetId, wallet_id: wallet3!.id, quantity: 10 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545 },
+    );
+    expect(await cryptoQty(cryptoAssetId, wallet3!.id)).toBe(10);
+
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        type: "sell",
+        quantity: 3,
+        walletId: wallet3!.id,
+        currentPriceUsd: 60000,
+        currentPriceEur: 54545,
+      },
+    );
+
+    expect(await cryptoQty(cryptoAssetId, wallet3!.id)).toBe(7);
+  });
+
+  // ─── (3s) Stock Buy delta-resolves on an existing position (cost override) ───
+  it("(3s) Stock Buy delta-resolves the absolute and stores the cost override", async () => {
+    // Seed a stock position at 10 shares (market-priced).
+    await upsertStockPosition(
+      { stock_asset_id: stockAssetId, broker_id: brokerId, quantity: 10 },
+      { currentPriceNative: 100, assetCurrency: "USD" },
+    );
+    expect(await stockQty(stockAssetId, brokerId)).toBe(10);
+
+    // Buy +4 shares with a USD cost. The override bypasses qty × native price,
+    // so the native price is irrelevant here.
+    await addTransaction(
+      { class: "stock", assetId: stockAssetId },
+      {
+        type: "buy",
+        quantity: 4,
+        brokerId,
+        cost: { amount: 1000, currency: "USD" },
+      },
+    );
+
+    // 10 + 4 = 14, NOT 4.
+    expect(await stockQty(stockAssetId, brokerId)).toBe(14);
+
+    const log = await latestLog("stock_position");
     expect(log).not.toBeNull();
-    // Market fallback: qty=0.1, price=$50,000 → usd ≈ 5000
+    expect(log!.cashflow_user_set).toBe(true);
+    expect(Number(log!.cashflow_amount_usd)).toBe(1000);
+    // EUR derived: 1000 × 0.9091 = 909.1.
+    expect(Number(log!.cashflow_amount_eur)).toBe(909.1);
+  });
+
+  // ─── (4) case-16 FX derivation, both directions ─────────────────────────────
+  it("(4a) EUR cost → eur stored verbatim, usd = round2(amount × USD-per-EUR)", async () => {
+    const { data: w, error } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "FX-EUR Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (error) throw new Error("Failed to create wallet: " + error.message);
+
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        type: "buy",
+        quantity: 0.1,
+        walletId: w!.id,
+        cost: { amount: 1000, currency: "EUR" },
+      },
+    );
+
+    const log = await latestLog("crypto_position");
+    expect(log).not.toBeNull();
+    // EUR is the input → exact.
+    expect(Number(log!.cashflow_amount_eur)).toBe(1000);
+    // USD derived: 1000 × 1.10 = 1100 (mock EUR→USD rate is 1.10).
+    expect(Number(log!.cashflow_amount_usd)).toBe(1100);
+    // Relationship holds regardless of the specific rate.
+    expect(Number(log!.cashflow_amount_usd)).toBeGreaterThan(
+      Number(log!.cashflow_amount_eur),
+    );
+    expect(log!.cashflow_user_set).toBe(true);
+  });
+
+  it("(4b) USD cost → usd stored verbatim, eur = round2(amount × EUR-per-USD)", async () => {
+    const { data: w, error } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "FX-USD Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (error) throw new Error("Failed to create wallet: " + error.message);
+
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        type: "buy",
+        quantity: 0.1,
+        walletId: w!.id,
+        cost: { amount: 1000, currency: "USD" },
+      },
+    );
+
+    const log = await latestLog("crypto_position");
+    expect(log).not.toBeNull();
+    // USD is the input → exact.
+    expect(Number(log!.cashflow_amount_usd)).toBe(1000);
+    // EUR derived: 1000 × 0.9091 = 909.1 → round2 = 909.1.
+    expect(Number(log!.cashflow_amount_eur)).toBe(909.1);
+    expect(log!.cashflow_user_set).toBe(true);
+  });
+
+  // ─── (5) No cost → market fallback, cashflow_user_set=false ──────────────────
+  it("(5) Buy without a cost uses the market price and cashflow_user_set=false", async () => {
+    const { data: w, error } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "NoCost Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (error) throw new Error("Failed to create wallet: " + error.message);
+
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        type: "buy",
+        quantity: 0.1,
+        walletId: w!.id,
+        currentPriceUsd: 50000,
+        currentPriceEur: 45454,
+        // cost deliberately absent
+      },
+    );
+
+    const log = await latestLog("crypto_position");
+    expect(log).not.toBeNull();
+    // Market fallback: qty=0.1 × $50,000 = $5,000.
     expect(Number(log!.cashflow_amount_usd)).toBeCloseTo(5000, 0);
     expect(log!.cashflow_user_set).toBe(false);
   });
 
-  // (e) Missing walletId → throws before any DB write
-  it("(e) addTransaction with class=crypto and no walletId rejects with walletId error", async () => {
+  // ─── (6) Yield → quantity-UP, is_yield=true, NO cost override ────────────────
+  it("(6) Yield increases qty, sets is_yield=true, and does NOT set a cost override", async () => {
+    const { data: w, error } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Yield Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (error) throw new Error("Failed to create wallet: " + error.message);
+
+    // Seed position at 1.0.
+    await upsertPosition(
+      { crypto_asset_id: cryptoAssetId, wallet_id: w!.id, quantity: 1.0 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545 },
+    );
+
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        type: "yield",
+        quantity: 0.05,
+        walletId: w!.id,
+        currentPriceUsd: 60000,
+        currentPriceEur: 54545,
+      },
+    );
+
+    // Yield is a quantity-UP acquisition: 1.0 + 0.05 = 1.05.
+    expect(await cryptoQty(cryptoAssetId, w!.id)).toBe(1.05);
+
+    const log = await latestLog("crypto_position");
+    expect(log).not.toBeNull();
+    expect(log!.is_yield).toBe(true);
+    // Yield carries no cost override — amount is the market value, not user-set.
+    expect(log!.cashflow_user_set).toBe(false);
+  });
+
+  // ─── (7) Cash deposit → balance up, cost override carried ────────────────────
+  it("(7) Cash deposit raises the balance and records the cost override", async () => {
+    // Create the account at balance 500 (in EUR).
+    const { data: acct, error } = await client
+      .from("cash_accounts")
+      .insert({
+        user_id: userId,
+        institution_id: institutionId,
+        currency: "EUR",
+        balance: 500,
+        name: "Deposit Test Account",
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error("Failed to create cash account: " + error.message);
+
+    await addTransaction(
+      { class: "cash", accountId: acct!.id },
+      {
+        type: "deposit",
+        quantity: 200,
+        cost: { amount: 200, currency: "EUR" },
+      },
+    );
+
+    // Balance 500 + 200 = 700.
+    expect(await cashBalance(acct!.id)).toBe(700);
+
+    const log = await latestLog("cash_account");
+    expect(log).not.toBeNull();
+    expect(log!.cashflow_user_set).toBe(true);
+    expect(Number(log!.cashflow_amount_eur)).toBe(200);
+    // USD derived: 200 × 1.10 = 220.
+    expect(Number(log!.cashflow_amount_usd)).toBe(220);
+  });
+
+  // ─── (8) Ownership / validation guards ──────────────────────────────────────
+  it("(8a) Crypto buy with no walletId throws", async () => {
+    await expect(
+      addTransaction(
+        { class: "crypto", assetId: cryptoAssetId },
+        { type: "buy", quantity: 0.05, currentPriceUsd: 60000 },
+      ),
+    ).rejects.toThrow(/walletId/i);
+  });
+
+  it("(8c) Stock buy with no brokerId throws", async () => {
+    await expect(
+      addTransaction(
+        { class: "stock", assetId: stockAssetId },
+        { type: "buy", quantity: 1, cost: { amount: 100, currency: "USD" } },
+      ),
+    ).rejects.toThrow(/brokerId/i);
+  });
+
+  it("(8b) A future effectiveDate throws (validatePastOrTodayDate)", async () => {
+    const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+
     await expect(
       addTransaction(
         { class: "crypto", assetId: cryptoAssetId },
         {
-          action: "buy",
+          type: "buy",
           quantity: 0.05,
-          currentPriceUsd: 60000,
-          // walletId deliberately absent
+          walletId,
+          effectiveDate: future,
+          cost: { amount: 100, currency: "EUR" },
         },
       ),
-    ).rejects.toThrow(/walletId/i);
+    ).rejects.toThrow(/future/i);
+  });
+
+  // ─── H1 — Oversell guards ────────────────────────────────────────────────────
+
+  it("(H1-crypto) Oversell on a crypto position is rejected; position unchanged", async () => {
+    // Fresh wallet so the seed qty is known precisely.
+    const { data: wOvr, error: wOvrErr } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Oversell Crypto Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (wOvrErr) throw new Error("Failed to create wallet: " + wOvrErr.message);
+    const oversellWalletId = wOvr!.id;
+
+    // Seed the position at qty 10.
+    await upsertPosition(
+      { crypto_asset_id: cryptoAssetId, wallet_id: oversellWalletId, quantity: 10 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545 },
+    );
+    expect(await cryptoQty(cryptoAssetId, oversellWalletId)).toBe(10);
+
+    // Attempt to sell 15 (more than held) — must throw.
+    await expect(
+      addTransaction(
+        { class: "crypto", assetId: cryptoAssetId },
+        { type: "sell", quantity: 15, walletId: oversellWalletId, currentPriceUsd: 60000 },
+      ),
+    ).rejects.toThrow(/only 10 held/i);
+
+    // Position must be unchanged.
+    expect(await cryptoQty(cryptoAssetId, oversellWalletId)).toBe(10);
+  });
+
+  it("(H1-stock) Oversell on a stock position is rejected with 'broker' in message; position unchanged", async () => {
+    // Fresh broker so the seed qty is known precisely.
+    const { data: bOvr, error: bOvrErr } = await client
+      .from("brokers")
+      .insert({ user_id: userId, name: "Oversell Broker" })
+      .select("id")
+      .single();
+    if (bOvrErr) throw new Error("Failed to create broker: " + bOvrErr.message);
+    const oversellBrokerId = bOvr!.id;
+
+    // Seed the stock position at qty 10.
+    await upsertStockPosition(
+      { stock_asset_id: stockAssetId, broker_id: oversellBrokerId, quantity: 10 },
+      { currentPriceNative: 100, assetCurrency: "USD" },
+    );
+    expect(await stockQty(stockAssetId, oversellBrokerId)).toBe(10);
+
+    // Attempt to sell 15 (more than held) — must throw mentioning "broker".
+    await expect(
+      addTransaction(
+        { class: "stock", assetId: stockAssetId },
+        { type: "sell", quantity: 15, brokerId: oversellBrokerId },
+      ),
+    ).rejects.toThrow(/only 10 held.*broker|broker.*only 10 held/i);
+
+    // Position must be unchanged.
+    expect(await stockQty(stockAssetId, oversellBrokerId)).toBe(10);
+  });
+
+  it("(H1-zero) Full sell to exactly 0 is allowed (clean exit, no oversell guard)", async () => {
+    // Fresh wallet for a clean isolated test.
+    const { data: wExit, error: wExitErr } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Full Exit Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (wExitErr) throw new Error("Failed to create wallet: " + wExitErr.message);
+    const exitWalletId = wExit!.id;
+
+    // Seed at qty 10.
+    await upsertPosition(
+      { crypto_asset_id: cryptoAssetId, wallet_id: exitWalletId, quantity: 10 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545 },
+    );
+    expect(await cryptoQty(cryptoAssetId, exitWalletId)).toBe(10);
+
+    // Sell exactly 10 — must NOT throw; position is soft-deleted (reads null).
+    await expect(
+      addTransaction(
+        { class: "crypto", assetId: cryptoAssetId },
+        { type: "sell", quantity: 10, walletId: exitWalletId, currentPriceUsd: 60000 },
+      ),
+    ).resolves.not.toThrow();
+
+    // Soft-deleted position → returns null (no live row).
+    expect(await cryptoQty(cryptoAssetId, exitWalletId)).toBeNull();
+  });
+
+  // ─── M1 — Cash overdraft guard ──────────────────────────────────────────────
+
+  it("(M1-overdraft) Withdrawal exceeding balance is rejected; balance unchanged", async () => {
+    // Create cash account with balance 500.
+    const { data: acctOvr, error: acctOvrErr } = await client
+      .from("cash_accounts")
+      .insert({
+        user_id: userId,
+        institution_id: institutionId,
+        currency: "EUR",
+        balance: 500,
+        name: "Overdraft Test Account",
+      })
+      .select("id")
+      .single();
+    if (acctOvrErr) throw new Error("Failed to create cash account: " + acctOvrErr.message);
+    const overdraftAccountId = acctOvr!.id;
+
+    // Attempt to withdraw 600 from a 500-balance account — must throw.
+    await expect(
+      addTransaction(
+        { class: "cash", accountId: overdraftAccountId },
+        { type: "withdrawal", quantity: 600 },
+      ),
+    ).rejects.toThrow(/only 500 available/i);
+
+    // Balance must still be 500.
+    expect(await cashBalance(overdraftAccountId)).toBe(500);
+  });
+
+  it("(M1-zero) Withdrawal to exactly 0 is allowed (empty account, no overdraft guard)", async () => {
+    // Create cash account with balance 500.
+    const { data: acctZero, error: acctZeroErr } = await client
+      .from("cash_accounts")
+      .insert({
+        user_id: userId,
+        institution_id: institutionId,
+        currency: "EUR",
+        balance: 500,
+        name: "Empty Account Test",
+      })
+      .select("id")
+      .single();
+    if (acctZeroErr) throw new Error("Failed to create cash account: " + acctZeroErr.message);
+    const zeroAccountId = acctZero!.id;
+
+    // Withdraw exactly 500 — must NOT throw; balance becomes 0.
+    await expect(
+      addTransaction(
+        { class: "cash", accountId: zeroAccountId },
+        { type: "withdrawal", quantity: 500 },
+      ),
+    ).resolves.not.toThrow();
+
+    expect(await cashBalance(zeroAccountId)).toBe(0);
+  });
+
+  // ─── L1 — Cost provenance: verbatim input, rounded derived leg ───────────────
+
+  it("(L1) EUR cost: input leg NOT pre-rounded by code; derived USD leg = round2(verbatim × rate)", async () => {
+    // DB column cashflow_amount_* is NUMERIC(18,2) — it always stores 2 dp.
+    // L1's invariant is that the CODE does not call round2() on the EUR input
+    // before computing the USD derived leg, so the cross-currency result is
+    // round2(100.555 × 1.10) = round2(110.6105) = 110.61 — NOT the double-
+    // rounded value round2(round2(100.555) × 1.10) = round2(100.56 × 1.10)
+    //   = round2(110.616) = 110.62.
+    //
+    // FX mock: EUR→USD = 1.10.
+    const { data: wL1, error: wL1Err } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "L1 Provenance Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (wL1Err) throw new Error("Failed to create wallet: " + wL1Err.message);
+
+    await addTransaction(
+      { class: "crypto", assetId: cryptoAssetId },
+      {
+        type: "buy",
+        quantity: 0.01,
+        walletId: wL1!.id,
+        cost: { amount: 100.555, currency: "EUR" },
+      },
+    );
+
+    const log = await latestLog("crypto_position");
+    expect(log).not.toBeNull();
+    // DB rounds EUR to 2 dp: 100.555 → 100.56 (standard DB rounding).
+    // This confirms the code passed the verbatim value (not a pre-rounded one).
+    expect(Number(log!.cashflow_amount_eur)).toBe(100.56);
+    // USD = round2(100.555 × 1.10) = round2(110.6105) = 110.61.
+    // If code had pre-rounded EUR first: round2(100.56 × 1.10) = round2(110.616) = 110.62 — WRONG.
+    // 110.61 proves the verbatim 100.555 was used for the cross-rate computation.
+    expect(Number(log!.cashflow_amount_usd)).toBe(110.61);
+    expect(log!.cashflow_user_set).toBe(true);
   });
 });
 
