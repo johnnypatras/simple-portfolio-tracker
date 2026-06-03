@@ -16,4 +16,8 @@ describe("cost-basis copy", () => {
   it("multi-currency tooltip explains the EUR/USD divergence", () => {
     expect(COST_COPY.fxDivergenceTooltip).toMatch(/exchange.?rate/i);
   });
+  it("yieldHasNoCost copy exists and mentions earned income", () => {
+    expect(COST_COPY.yieldHasNoCost).toMatch(/earned income/i);
+    expect(COST_COPY.yieldHasNoCost).toMatch(/yield/i);
+  });
 });

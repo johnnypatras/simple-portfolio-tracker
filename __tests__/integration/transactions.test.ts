@@ -1235,20 +1235,418 @@ describe("editTransaction — cross-user ownership (integration)", () => {
     // Switch mock client to userB so editTransaction runs as userB
     hoisted.testClient = userB.client;
 
-    const result = await editTransaction(userAEntryId, { effectiveDate: "2024-01-01" });
+    // Snapshot the amount columns BEFORE the cross-user attempt so we can prove
+    // the guarded fetch rejected before any 8-column write touched the row.
+    const { data: before } = await userA.client
+      .from("activity_log")
+      .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
+      .eq("id", userAEntryId)
+      .single();
+
+    // A cost edit (not just a date edit) — the most damaging cross-user write.
+    const result = await editTransaction(userAEntryId, {
+      effectiveDate: "2024-01-01",
+      cost: { amount: 99999, currency: "USD" },
+    });
 
     // Must return a not-found result — no cross-user write
     expect(result.success).toBe(false);
     expect(result.notFound).toBe(true);
 
-    // Verify userA's row is unchanged
+    // Verify userA's row is unchanged — date AND amount columns intact.
     const { data: row } = await userA.client
       .from("activity_log")
-      .select("effective_date")
+      .select("effective_date, cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set")
       .eq("id", userAEntryId)
       .single();
 
     expect(row).not.toBeNull();
     expect(row!.effective_date).toBe(userAOriginalDate);
+    expect(Number(row!.cashflow_amount_usd)).toBe(Number(before!.cashflow_amount_usd));
+    expect(Number(row!.cashflow_amount_eur)).toBe(Number(before!.cashflow_amount_eur));
+    expect(row!.cashflow_user_set).toBe(before!.cashflow_user_set);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 2.5 — editTransaction: guarded 8-column amount edit
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { COST_COPY } from "@/lib/cost-basis-copy";
+import { round2 } from "@/lib/format";
+
+describe("editTransaction — guarded 8-column amount edit (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  let cryptoAssetId: string; // non-stable (BTC)
+  let stableAssetId: string; // subcategory = "stablecoin"
+  const coingeckoId = `bitcoin-edit-txn-${randomUUID()}`;
+  const stableCoingeckoId = `usdc-edit-txn-${randomUUID()}`;
+
+  /**
+   * Read the FULL set of amount/status columns for a row — the 8-column
+   * invariant is asserted against this shape repeatedly.
+   */
+  async function readAmounts(entryId: string) {
+    const { data } = await client
+      .from("activity_log")
+      .select(
+        "cashflow_amount_usd, cashflow_amount_eur, cashflow_status, cashflow_asset_class, cashflow_user_set, delta_usd, delta_eur, delta_status, effective_date, is_adjustment",
+      )
+      .eq("id", entryId)
+      .single();
+    return data;
+  }
+
+  /**
+   * Create the activity_log entry for a fresh crypto position and return its id.
+   * `isAdjustment` selects the real-flow (false) vs adjustment (true) branch.
+   * Each call uses a brand-new wallet so the "most recent" log row is
+   * unambiguously the one we just created.
+   */
+  async function seedCryptoEntry(opts: {
+    assetId: string;
+    isAdjustment?: boolean;
+  }): Promise<string> {
+    const { data: wallet, error } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: `Edit Wallet ${randomUUID()}`, wallet_type: "custodial" })
+      .select("id")
+      .single();
+    if (error) throw new Error("Failed to create wallet: " + error.message);
+
+    await upsertPosition(
+      { crypto_asset_id: opts.assetId, wallet_id: wallet!.id, quantity: 1.0 },
+      { currentPriceUsd: 60000, currentPriceEur: 54545, isAdjustment: opts.isAdjustment },
+    );
+
+    const { data: log } = await client
+      .from("activity_log")
+      .select("id")
+      .eq("entity_type", "crypto_position")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    if (!log) throw new Error("Failed to find seeded activity_log entry");
+    return log.id;
+  }
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+    hoisted.testClient = client;
+
+    cryptoAssetId = await createCryptoAsset({
+      ticker: "BTC",
+      name: "Bitcoin EditTxn Test",
+      coingecko_id: coingeckoId,
+    });
+
+    // Stablecoin asset — subcategory drives classifyAssetClass → "cash".
+    stableAssetId = await createCryptoAsset({
+      ticker: "USDC",
+      name: "USDC EditTxn Test",
+      coingecko_id: stableCoingeckoId,
+      subcategory: "stablecoin",
+    });
+  });
+
+  afterAll(() => cleanup());
+
+  // ─── (1) Real-flow amount edit — the 8-column invariant ─────────────────────
+  it("(1) real-flow edit writes cashflow side complete + nulls the delta side entirely", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+
+    const result = await editTransaction(entryId, {
+      cost: { amount: 1234, currency: "EUR" },
+    });
+    expect(result.success).toBe(true);
+
+    const a = await readAmounts(entryId);
+    expect(a).not.toBeNull();
+    // New side populated:
+    expect(Number(a!.cashflow_amount_eur)).toBe(1234); // EUR input verbatim
+    expect(Number(a!.cashflow_amount_usd)).toBe(round2(1234 * 1.1)); // FX-derived
+    expect(a!.cashflow_status).toBe("complete");
+    expect(a!.cashflow_asset_class).toBe("crypto"); // non-stable crypto
+    expect(a!.cashflow_user_set).toBe(true);
+    // Old side fully nulled — amount AND status (no phantom contribution):
+    expect(a!.delta_usd).toBeNull();
+    expect(a!.delta_eur).toBeNull();
+    expect(a!.delta_status).toBeNull();
+  });
+
+  // ─── (2) Adjustment amount edit — mirror invariant on the delta side ────────
+  it("(2) adjustment edit writes delta side complete + nulls the cashflow side entirely", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId, isAdjustment: true });
+
+    const result = await editTransaction(entryId, {
+      cost: { amount: 500, currency: "USD" },
+    });
+    expect(result.success).toBe(true);
+
+    const a = await readAmounts(entryId);
+    expect(a).not.toBeNull();
+    // Delta side populated:
+    expect(Number(a!.delta_usd)).toBe(500); // USD input verbatim
+    expect(Number(a!.delta_eur)).toBe(round2(500 * 0.9091)); // FX-derived = 454.55
+    expect(a!.delta_status).toBe("complete");
+    // Cashflow side fully nulled — amount AND status AND asset_class:
+    expect(a!.cashflow_amount_usd).toBeNull();
+    expect(a!.cashflow_amount_eur).toBeNull();
+    expect(a!.cashflow_status).toBeNull();
+    expect(a!.cashflow_asset_class).toBeNull();
+    // is_adjustment is NOT toggled by editTransaction:
+    expect(a!.is_adjustment).toBe(true);
+  });
+
+  // ─── (3) Stablecoin classification → "cash"; non-stable → "crypto" ──────────
+  it("(3) stablecoin crypto classifies cashflow_asset_class as 'cash'", async () => {
+    const entryId = await seedCryptoEntry({ assetId: stableAssetId });
+
+    const result = await editTransaction(entryId, {
+      cost: { amount: 100, currency: "USD" },
+    });
+    expect(result.success).toBe(true);
+
+    const a = await readAmounts(entryId);
+    expect(a!.cashflow_asset_class).toBe("cash");
+  });
+
+  it("(3b) non-stable crypto classifies cashflow_asset_class as 'crypto'", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+
+    const result = await editTransaction(entryId, {
+      cost: { amount: 100, currency: "USD" },
+    });
+    expect(result.success).toBe(true);
+
+    const a = await readAmounts(entryId);
+    expect(a!.cashflow_asset_class).toBe("crypto");
+  });
+
+  // ─── (4) Guards — each rejects BEFORE writing; row columns UNCHANGED ─────────
+
+  it("(4a) transfer leg (transfer_group_id set) is rejected; row unchanged", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    // Tag the row as a transfer leg.
+    await client
+      .from("activity_log")
+      .update({ transfer_group_id: randomUUID() })
+      .eq("id", entryId);
+    const before = await readAmounts(entryId);
+
+    const result = await editTransaction(entryId, { cost: { amount: 777, currency: "EUR" } });
+    expect(result.success).toBe(false);
+    expect(result.message).toBe(COST_COPY.transferLegLocked);
+
+    // Row's amount columns untouched (guard rejected before the write).
+    const after = await readAmounts(entryId);
+    expect(Number(after!.cashflow_amount_usd)).toBe(Number(before!.cashflow_amount_usd));
+    expect(Number(after!.cashflow_amount_eur)).toBe(Number(before!.cashflow_amount_eur));
+    expect(after!.cashflow_user_set).toBe(before!.cashflow_user_set);
+  });
+
+  it("(4b) split child (split_from_id set) is rejected; row unchanged", async () => {
+    // A split child references a parent activity_log row (self-FK).
+    const parentId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    const childId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    await client
+      .from("activity_log")
+      .update({ split_from_id: parentId })
+      .eq("id", childId);
+    const before = await readAmounts(childId);
+
+    const result = await editTransaction(childId, { cost: { amount: 777, currency: "EUR" } });
+    expect(result.success).toBe(false);
+    expect(result.message).toBe(COST_COPY.splitChildLocked);
+
+    const after = await readAmounts(childId);
+    expect(Number(after!.cashflow_amount_usd)).toBe(Number(before!.cashflow_amount_usd));
+    expect(Number(after!.cashflow_amount_eur)).toBe(Number(before!.cashflow_amount_eur));
+  });
+
+  it("(4c) undone row (undone_at set) is rejected; row unchanged", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    await client
+      .from("activity_log")
+      .update({ undone_at: new Date().toISOString() })
+      .eq("id", entryId);
+    const before = await readAmounts(entryId);
+
+    const result = await editTransaction(entryId, { cost: { amount: 777, currency: "EUR" } });
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/undone/i);
+
+    const after = await readAmounts(entryId);
+    expect(Number(after!.cashflow_amount_usd)).toBe(Number(before!.cashflow_amount_usd));
+    expect(Number(after!.cashflow_amount_eur)).toBe(Number(before!.cashflow_amount_eur));
+  });
+
+  it("(4d) compensation row (compensates_for set) is rejected; row unchanged", async () => {
+    // compensates_for references a parent activity_log row (self-FK).
+    const targetId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    const reversalId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    await client
+      .from("activity_log")
+      .update({ compensates_for: targetId })
+      .eq("id", reversalId);
+    const before = await readAmounts(reversalId);
+
+    const result = await editTransaction(reversalId, { cost: { amount: 777, currency: "EUR" } });
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/reversal/i);
+
+    const after = await readAmounts(reversalId);
+    expect(Number(after!.cashflow_amount_usd)).toBe(Number(before!.cashflow_amount_usd));
+    expect(Number(after!.cashflow_amount_eur)).toBe(Number(before!.cashflow_amount_eur));
+  });
+
+  // ─── (6) Date-only edit leaves ALL 8 amount/status columns untouched ────────
+  it("(6) date-only edit changes effective_date and touches no amount/status column", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    const before = await readAmounts(entryId);
+
+    const newDate = "2023-03-14";
+    const result = await editTransaction(entryId, { effectiveDate: newDate });
+    expect(result.success).toBe(true);
+
+    const after = await readAmounts(entryId);
+    expect(after!.effective_date).toBe(newDate);
+    // All 8 amount/status columns identical to before.
+    expect(Number(after!.cashflow_amount_usd)).toBe(Number(before!.cashflow_amount_usd));
+    expect(Number(after!.cashflow_amount_eur)).toBe(Number(before!.cashflow_amount_eur));
+    expect(after!.cashflow_status).toBe(before!.cashflow_status);
+    expect(after!.cashflow_asset_class).toBe(before!.cashflow_asset_class);
+    expect(after!.cashflow_user_set).toBe(before!.cashflow_user_set);
+    expect(after!.delta_usd).toBe(before!.delta_usd);
+    expect(after!.delta_eur).toBe(before!.delta_eur);
+    expect(after!.delta_status).toBe(before!.delta_status);
+  });
+
+  // ─── (7) case-16 in edit: EUR exact, USD FX-derived ─────────────────────────
+  it("(7) EUR cost stored verbatim; USD = round2(amount × USD-per-EUR)", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+
+    const result = await editTransaction(entryId, {
+      cost: { amount: 2500, currency: "EUR" },
+    });
+    expect(result.success).toBe(true);
+
+    const a = await readAmounts(entryId);
+    expect(Number(a!.cashflow_amount_eur)).toBe(2500); // exact
+    expect(Number(a!.cashflow_amount_usd)).toBe(round2(2500 * 1.1)); // = 2750
+    expect(Number(a!.cashflow_amount_usd)).toBeGreaterThan(
+      Number(a!.cashflow_amount_eur),
+    );
+  });
+
+  // ─── (8) Validation ─────────────────────────────────────────────────────────
+  it("(8a) malformed UUID is rejected by validateUUID", async () => {
+    await expect(
+      editTransaction("not-a-uuid", { cost: { amount: 100, currency: "USD" } }),
+    ).rejects.toThrow(/UUID/i);
+  });
+
+  it("(8b) a future effectiveDate is rejected; row unchanged", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    const before = await readAmounts(entryId);
+    const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+
+    await expect(
+      editTransaction(entryId, { effectiveDate: future }),
+    ).rejects.toThrow(/future/i);
+
+    const after = await readAmounts(entryId);
+    expect(after!.effective_date).toBe(before!.effective_date);
+  });
+
+  // ─── No-op: neither cost nor effectiveDate ──────────────────────────────────
+  it("(9) no-op edit (neither cost nor effectiveDate) returns 'Nothing to update'", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    const result = await editTransaction(entryId, {});
+    expect(result.success).toBe(true);
+    expect(result.message).toBe("Nothing to update");
+  });
+
+  // ─── H1 — Yield cost guard ───────────────────────────────────────────────────
+
+  it("(H1-yield-cost) cost edit on a yield row is rejected; amount columns unchanged", async () => {
+    // Seed a yield entry by upsertPosition with isYield=true.
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    // Mark the row as yield directly (simulates a prior markAsYield call).
+    await client.from("activity_log").update({ is_yield: true }).eq("id", entryId);
+
+    const before = await readAmounts(entryId);
+
+    const result = await editTransaction(entryId, {
+      cost: { amount: 100, currency: "EUR" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe(COST_COPY.yieldHasNoCost);
+
+    // Amount + provenance columns must be UNCHANGED.
+    const after = await readAmounts(entryId);
+    expect(Number(after!.cashflow_amount_usd)).toBe(Number(before!.cashflow_amount_usd));
+    expect(Number(after!.cashflow_amount_eur)).toBe(Number(before!.cashflow_amount_eur));
+    expect(after!.cashflow_user_set).toBe(before!.cashflow_user_set);
+  });
+
+  it("(H1-yield-date) date-only edit on a yield row succeeds (guard is cost-gated)", async () => {
+    // Seed another yield entry.
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    await client.from("activity_log").update({ is_yield: true }).eq("id", entryId);
+
+    // DATE-ONLY edit — no cost → guard must not fire.
+    const result = await editTransaction(entryId, { effectiveDate: "2026-01-15" });
+
+    expect(result.success).toBe(true);
+
+    const after = await readAmounts(entryId);
+    expect(after!.effective_date).toBe("2026-01-15");
+  });
+
+  // ─── H2 — Clear-date FX uses created_at ──────────────────────────────────────
+  //
+  // The FX mock returns a fixed EUR→USD rate of 1.10 regardless of the date
+  // argument, so we cannot differentiate "today" from "created_at" via the
+  // derived amount alone. Instead we assert that clearing the date + supplying
+  // a cost SUCCEEDS without throwing, and that the stored amounts are consistent
+  // with the mock rate (proving the FX path ran without error and the clear-date
+  // branch is exercised). If the bug were still present (fxDate=undefined →
+  // getFXRates called with undefined date) the real FX client would behave
+  // differently, but the mock is date-agnostic so we validate path correctness
+  // + amount consistency as the best feasible assertion in this harness.
+  it("(H2-clear-date) clearing effectiveDate + new cost succeeds; amounts consistent with mock FX", async () => {
+    const entryId = await seedCryptoEntry({ assetId: cryptoAssetId });
+    // Set an effective_date on the row first (so clearing it is meaningful).
+    await client
+      .from("activity_log")
+      .update({ effective_date: "2025-06-01" })
+      .eq("id", entryId);
+
+    // Clear the date (null) AND provide a cost — exercises the H2 branch.
+    const result = await editTransaction(entryId, {
+      effectiveDate: null,
+      cost: { amount: 500, currency: "EUR" },
+    });
+
+    expect(result.success).toBe(true);
+
+    const after = await readAmounts(entryId);
+    // effective_date cleared to null.
+    expect(after!.effective_date).toBeNull();
+    // EUR stored verbatim, USD = round2(500 × 1.10) = 550.
+    expect(Number(after!.cashflow_amount_eur)).toBe(500);
+    expect(Number(after!.cashflow_amount_usd)).toBe(round2(500 * 1.1));
+    expect(after!.cashflow_user_set).toBe(true);
   });
 });

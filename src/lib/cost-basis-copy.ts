@@ -14,4 +14,5 @@ export const COST_COPY = {
   markAsYieldConfirm:  "Mark these as Yield? They'll count as earned income (cost 0) and drop out of the S&P contributions.",
   transferLegLocked:   "This is part of a transfer — edit it from the Transfer screen so both sides stay in sync.",
   splitChildLocked:    "This entry was split into dated parts. Unsplit it first to edit the original.",
+  yieldHasNoCost:      "Yield entries have no cost — they're earned income. Unmark as yield first if you need to record a cost.",
 } as const;

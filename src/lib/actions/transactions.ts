@@ -14,8 +14,9 @@ import {
 } from "@/lib/validation";
 import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
+import { COST_COPY } from "@/lib/cost-basis-copy";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AssetRef, UsdEurAmount } from "@/lib/types";
+import type { AssetRef, EntityType, FlowStatus, UsdEurAmount } from "@/lib/types";
 
 // ─── addTransaction ──────────────────────────────────────────────────────────
 
@@ -314,11 +315,19 @@ async function readCashBalance(
 
 export interface EditTransactionPatch {
   /**
-   * Override the effective date (YYYY-MM-DD). Pass null to clear.
-   * Task 2.5 expands with: amount, is_adjustment, delta_* branch, markAsYield,
-   * transfer-leg guard, split-child guard, compensation-row guard.
+   * Override the effective date (YYYY-MM-DD). Pass null to clear (→ the entry
+   * falls back to `created_at` everywhere a date is read).
    */
   effectiveDate?: string | null;
+  /**
+   * New single-currency cost the user typed (incl. fees). When present, the
+   * other currency is derived via FX-at-the-entry's-date (`toUsdAndEur`, which
+   * THROWS on FX failure so a bad rate never silently writes a wrong cost) and
+   * the row's amount columns are rewritten. Pass null (or omit) to leave the
+   * amount untouched. `is_yield` is NOT toggled here — that goes through the
+   * separate guarded `markAsYield` action.
+   */
+  cost?: { amount: number; currency: "EUR" | "USD" } | null;
 }
 
 export interface EditTransactionResult {
@@ -333,28 +342,49 @@ export interface EditTransactionResult {
 }
 
 /**
- * Direct UPDATE on an activity_log entry owned by the authenticated user.
+ * Direct UPDATE on an activity_log entry owned by the authenticated user. Edits
+ * the entry's COST AMOUNT and/or effective date. `is_yield` is NOT toggled here
+ * — that goes through the guarded `markAsYield`.
  *
- * SECURITY CONTRACT (must be preserved when Task 2.5 expands this):
+ * SECURITY CONTRACT (do not weaken):
  *   1. validateUUID — reject malformed IDs before any DB contact.
- *   2. Fetch the entry scoped to `.eq("user_id", user.id)` via the RLS
- *      server client — never admin. Returns not-found if absent (404-equiv).
+ *   2. Fetch the entry (`.select("*")` — before/after snapshots + guard columns
+ *      are needed) scoped to `.eq("user_id", user.id)` via the RLS server
+ *      client — never admin. Returns not-found if absent (404-equiv; no leak of
+ *      another user's row).
  *   3. UPDATE scoped with BOTH `.eq("id", entryId)` AND `.eq("user_id",
  *      user.id)` AND `.is("undone_at", null)` (TOCTOU guard).
  *
- * Task 2.5 expands: full patch fields (amount, is_adjustment, delta_*,
- * markAsYield), transfer-leg guard (reject if transfer_group_id set),
- * split-child guard (reject if split_from_id set), compensation-row guard
- * (reject if compensates_for set), and the 8-column is_adjustment→delta_*
- * recompute branch.
+ * GUARDS (reject before computing any write — mirror `toggleActivityAdjustment`
+ * plus split-child + compensation): transfer leg (`transfer_group_id` set),
+ * split child (`split_from_id` set), undone tombstone (`undone_at` set),
+ * automatic reversal (`compensates_for` set).
+ *
+ * THE CASHFLOW/DELTA AMOUNT + STATUS BLOCK (the heart): when `patch.cost` is present, exactly
+ * ONE of {cashflow, delta} carries the new amount and the OTHER side's amount
+ * AND status are nulled — NEVER both populated. The benchmark's
+ * `deriveCashFlows` keys on `cashflow_status`; a stale status left behind would
+ * recreate a phantom contribution.
+ *   • is_adjustment=true  → write delta_*  + delta_status='complete', null all
+ *                           cashflow_* columns (amount + status + asset_class).
+ *   • is_adjustment=false → write cashflow_* + cashflow_status='complete' +
+ *                           cashflow_asset_class + cashflow_user_set=true, null
+ *                           all delta_* columns (amount + status).
+ * is_adjustment itself is NEVER toggled here (that's `toggleActivityAdjustment`).
  */
 export async function editTransaction(
   entryId: string,
   patch: EditTransactionPatch,
 ): Promise<EditTransactionResult> {
   return captureAction("transactions.editTransaction", async () => {
-    // 1. Validate ID format before any DB contact
+    // 1. Validate inputs before any DB contact.
     validateUUID(entryId, "Entry ID");
+    if (patch.cost != null) {
+      validateAmount(patch.cost.amount, "Cost");
+    }
+    if (patch.effectiveDate != null) {
+      validatePastOrTodayDate(patch.effectiveDate, "Date");
+    }
 
     const supabase = await createServerSupabaseClient();
     const {
@@ -362,38 +392,137 @@ export async function editTransaction(
     } = await supabase.auth.getUser();
     if (!user) return { success: false, message: "Not authenticated" };
 
-    // 2. Fetch the row scoped to the authenticated user (RLS + explicit user_id).
-    //    Not found OR wrong owner → indistinguishable not-found response.
-    const { data: entry, error: fetchErr } = await supabase
+    // 2. Fetch the FULL row scoped to the authenticated user (RLS + explicit
+    //    user_id). `.select("*")` because we need snapshots + the guard columns
+    //    + is_adjustment + crypto_asset_id (off the snapshot). Not found OR
+    //    wrong owner → indistinguishable not-found response (no ID leak).
+    const { data: row, error: fetchErr } = await supabase
       .from("activity_log")
-      .select("id, user_id, undone_at")
+      .select("*")
       .eq("id", entryId)
       .eq("user_id", user.id)
       .single();
 
-    if (fetchErr || !entry) {
+    if (fetchErr || !row) {
       return { success: false, notFound: true, message: "Entry not found" };
     }
 
-    // 3. Build the patch — only apply fields the caller explicitly provided.
-    //    We narrow the payload type to the activity_log Update shape so the
-    //    compiler can verify the column names and value types. Using a typed
-    //    intersection avoids the TS2345 "Record<string, …> not assignable"
-    //    error that generic index signatures trigger with Supabase's strict
-    //    RejectExcessProperties update type.
-    const updatePayload: { effective_date?: string | null } = {};
+    // 3. GUARDS — reject BEFORE computing any write. Order: structural locks
+    //    (transfer leg, split child) then tombstone/derived locks.
+    if (row.transfer_group_id != null) {
+      return { success: false, message: COST_COPY.transferLegLocked };
+    }
+    if (row.split_from_id != null) {
+      return { success: false, message: COST_COPY.splitChildLocked };
+    }
+    if (row.undone_at != null) {
+      return { success: false, message: "This entry was undone and can't be edited." };
+    }
+    if (row.compensates_for != null) {
+      return {
+        success: false,
+        message: "This is an automatic reversal entry and can't be edited.",
+      };
+    }
+    if (row.is_yield && patch.cost != null) {
+      return { success: false, message: COST_COPY.yieldHasNoCost };
+    }
+
+    // 4. No-op short-circuit: nothing to change.
+    if (patch.cost == null && patch.effectiveDate === undefined) {
+      return { success: true, message: "Nothing to update" };
+    }
+
+    // 5. Build the UPDATE payload. We narrow it to the exact column shape so the
+    //    compiler verifies column names + value types (a typed object avoids the
+    //    TS2345 "Record<string, …> not assignable" that an index signature
+    //    triggers against Supabase's RejectExcessProperties update type).
+    const updatePayload: {
+      effective_date?: string | null;
+      delta_usd?: number | null;
+      delta_eur?: number | null;
+      delta_status?: FlowStatus | null;
+      cashflow_amount_usd?: number | null;
+      cashflow_amount_eur?: number | null;
+      cashflow_status?: FlowStatus | null;
+      cashflow_asset_class?: string | null;
+      cashflow_user_set?: boolean;
+    } = {};
+
     if (patch.effectiveDate !== undefined) {
       updatePayload.effective_date = patch.effectiveDate ?? null;
     }
 
-    if (Object.keys(updatePayload).length === 0) {
-      return { success: true, message: "Nothing to update" };
+    // 6. THE CASHFLOW/DELTA AMOUNT + STATUS BLOCK — only when a new cost is supplied.
+    if (patch.cost != null) {
+      // Value the cost at the entry's date: the new effective date if the
+      // caller is also changing it, else the row's existing
+      // effective_date ?? created_at. toUsdAndEur THROWS on FX failure, so a
+      // bad rate never silently writes a wrong cost.
+      const fxDate =
+        patch.effectiveDate != null
+          ? patch.effectiveDate
+          : ((row.effective_date as string | null) ?? (row.created_at as string));
+      const derived = await toUsdAndEur(
+        patch.cost.amount,
+        patch.cost.currency,
+        fxDate,
+      );
+      // Preserve the typed leg verbatim (all decimals); round only the derived
+      // cross-currency leg to clean money (round2 — no float dust).
+      const dual: UsdEurAmount =
+        patch.cost.currency === "EUR"
+          ? { eur: patch.cost.amount, usd: round2(derived.usd) }
+          : { usd: patch.cost.amount, eur: round2(derived.eur) };
+
+      if (row.is_adjustment) {
+        // Adjustment → the amount is a delta. Write delta_*, null cashflow_*
+        // (amount + status + asset_class) so no stale cashflow_status survives.
+        updatePayload.delta_usd = dual.usd;
+        updatePayload.delta_eur = dual.eur;
+        updatePayload.delta_status = "complete";
+        updatePayload.cashflow_amount_usd = null;
+        updatePayload.cashflow_amount_eur = null;
+        updatePayload.cashflow_status = null;
+        updatePayload.cashflow_asset_class = null;
+      } else {
+        // Real flow → the amount is a cashflow contribution. Classify the asset
+        // class (stablecoin crypto → "cash", else the entity's class), mark
+        // cashflow_user_set (the user explicitly set this amount), and null
+        // delta_* (amount + status) so no stale delta survives.
+        const { classifyAssetClass, isStablecoin } = await import("@/lib/cashflow");
+        let isStable = false;
+        if (row.entity_type === "crypto_position") {
+          const snap = (row.after_snapshot ?? row.before_snapshot) as
+            | Record<string, unknown>
+            | null;
+          const assetId = snap?.crypto_asset_id as string | undefined;
+          if (assetId) {
+            const { data: asset } = await supabase
+              .from("crypto_assets")
+              .select("subcategory")
+              .eq("id", assetId)
+              .maybeSingle();
+            isStable = isStablecoin(asset?.subcategory);
+          }
+        }
+        updatePayload.cashflow_amount_usd = dual.usd;
+        updatePayload.cashflow_amount_eur = dual.eur;
+        updatePayload.cashflow_status = "complete";
+        updatePayload.cashflow_asset_class = classifyAssetClass(
+          row.entity_type as EntityType,
+          isStable,
+        );
+        updatePayload.cashflow_user_set = true;
+        updatePayload.delta_usd = null;
+        updatePayload.delta_eur = null;
+        updatePayload.delta_status = null;
+      }
     }
 
-    // 4. UPDATE scoped with id + user_id + undone_at IS NULL (TOCTOU guard).
-    //    If the row was undone between the fetch and the update the write is
-    //    a no-op (0 rows affected) which is acceptable; a future expansion can
-    //    add a rowCount check here.
+    // 7. UPDATE scoped with id + user_id + undone_at IS NULL (TOCTOU guard). If
+    //    the row was undone between the fetch and the update the write matches
+    //    0 rows (the undo's tombstone wins) — acceptable, no throw needed.
     const { error: updateErr } = await supabase
       .from("activity_log")
       .update(updatePayload)
