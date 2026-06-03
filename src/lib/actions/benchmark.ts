@@ -50,6 +50,7 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
     entity_name: string | null;
     created_at: string;
     effective_date: string | null;
+    is_yield: boolean;
   };
   let data: CashflowRow[];
   try {
@@ -59,8 +60,9 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
       // user_id scope is part of the filter set on the non-admin path.
       const base = supabase
         .from("activity_log")
-        .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_asset_class, entity_name, created_at, effective_date")
+        .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_asset_class, entity_name, created_at, effective_date, is_yield")
         .eq("cashflow_status", "complete")
+        .eq("is_yield", false)
         .is("undone_at", null);
       const scoped = resolvedUserId ? base.eq("user_id", resolvedUserId) : base;
       return scoped
