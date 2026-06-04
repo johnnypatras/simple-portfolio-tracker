@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { enrichChartData } from "@/lib/portfolio/chart-enrichment";
+import { enrichChartData, lookupCostAtOrBefore } from "@/lib/portfolio/chart-enrichment";
 import type {
   ChartPoint,
   EnrichChartDataInput,
+  CostBasisSeriesPoint,
 } from "@/lib/portfolio/chart-enrichment";
 import type { CashFlowEvent } from "@/lib/types";
 
@@ -33,6 +34,17 @@ function makeInput(overrides: Partial<EnrichChartDataInput>): EnrichChartDataInp
     sp500History: SP500_HISTORY,
     cashFlows: [],
     snapshotRatios: null,
+    ...overrides,
+  };
+}
+
+function makeCostPoint(
+  overrides: Partial<CostBasisSeriesPoint> & { date: string },
+): CostBasisSeriesPoint {
+  return {
+    cryptoGapUsd: 0,
+    stocksGapUsd: 0,
+    cashGapUsd: 0,
     ...overrides,
   };
 }
@@ -401,5 +413,273 @@ describe("enrichChartData — S&P forward-fill", () => {
     expect(result[3].sp500Value).toBeCloseTo(10100, 0); // Thu: 2 × 5050
     expect(result[5].sp500Value).toBeCloseTo(10200, 0); // Sat: 2 × 5100
     expect(result[6].sp500Value).toBeCloseTo(10200, 0); // Sun: 2 × 5100
+  });
+});
+
+// ── lookupCostAtOrBefore — per-viewMode gap summation (Task 3.4c) ──
+
+describe("lookupCostAtOrBefore — per-viewMode gap summation", () => {
+  const series: CostBasisSeriesPoint[] = [
+    makeCostPoint({ date: "2026-01-01", cryptoGapUsd: 100, stocksGapUsd: 200, cashGapUsd: 5 }),
+    makeCostPoint({ date: "2026-01-10", cryptoGapUsd: 300, stocksGapUsd: 400, cashGapUsd: 7 }),
+    makeCostPoint({ date: "2026-02-01", cryptoGapUsd: 999, stocksGapUsd: 999, cashGapUsd: 999 }),
+  ];
+
+  it("crypto → cryptoGapUsd at the latest point on-or-before chartStart", () => {
+    expect(lookupCostAtOrBefore(series, "2026-01-15", "crypto")).toBe(300);
+  });
+
+  it("stocks → stocksGapUsd", () => {
+    expect(lookupCostAtOrBefore(series, "2026-01-15", "stocks")).toBe(400);
+  });
+
+  it("cash → cashGapUsd", () => {
+    expect(lookupCostAtOrBefore(series, "2026-01-15", "cash")).toBe(7);
+  });
+
+  it("investments → crypto + stocks (NOT cash)", () => {
+    expect(lookupCostAtOrBefore(series, "2026-01-15", "investments")).toBe(300 + 400);
+  });
+
+  it("total → crypto + stocks + cash", () => {
+    expect(lookupCostAtOrBefore(series, "2026-01-15", "total")).toBe(300 + 400 + 7);
+  });
+
+  it("picks the LATEST point with date <= chartStart (exact boundary)", () => {
+    // chartStart exactly on a point's date → that point is included.
+    expect(lookupCostAtOrBefore(series, "2026-01-10", "total")).toBe(300 + 400 + 7);
+    // One day before → the earlier point.
+    expect(lookupCostAtOrBefore(series, "2026-01-09", "total")).toBe(100 + 200 + 5);
+  });
+
+  it("returns 0 when the series is empty", () => {
+    expect(lookupCostAtOrBefore([], "2026-01-15", "total")).toBe(0);
+  });
+
+  it("returns 0 when no point is at-or-before chartStart", () => {
+    expect(lookupCostAtOrBefore(series, "2025-12-31", "total")).toBe(0);
+  });
+
+  it("reads the PRE-COMPUTED gap columns verbatim (never recomputes from cost)", () => {
+    // A point whose gap columns are explicitly authoritative — even a NEGATIVE
+    // gap (market below cost) must pass through unchanged, proving we read the
+    // column rather than re-deriving market−cost.
+    const negSeries: CostBasisSeriesPoint[] = [
+      makeCostPoint({ date: "2026-01-01", cryptoGapUsd: -1500, stocksGapUsd: 0, cashGapUsd: 0 }),
+    ];
+    expect(lookupCostAtOrBefore(negSeries, "2026-06-01", "crypto")).toBe(-1500);
+    expect(lookupCostAtOrBefore(negSeries, "2026-06-01", "total")).toBe(-1500);
+  });
+});
+
+// ── Seed re-anchor to cost (Task 3.4e/f) ──────────────────
+
+describe("enrichChartData — S&P seed re-anchor to cost basis", () => {
+  /**
+   * Scenario 1 — a user-costed backdated lot, cost < market at chartStart.
+   * cost 5,000, market 8,000 → gap 3,000. The S&P line anchors at the COST
+   * (market − gap), the portfolio line stays at market truth. The 3,000 gap
+   * SURVIVES at chartStart: the divergence is exactly the gap.
+   *
+   * USD-primary so firstSliceVal == firstSliceUsd and the gap maps 1:1 with no
+   * FX rounding — the divergence assertion is exact.
+   */
+  it("anchors the S&P to cost while the portfolio stays at market (gap survives)", () => {
+    const points = [
+      makePoint({ date: "2026-01-01", value: 8000, valueUsd: 8000, cryptoUsd: 8000 }),
+      makePoint({ date: "2026-01-02", value: 8000, valueUsd: 8000, cryptoUsd: 8000 }),
+    ];
+    const costBasisSeries: CostBasisSeriesPoint[] = [
+      // gap = market(8000) − cost(5000) = 3000
+      makeCostPoint({ date: "2026-01-01", cryptoGapUsd: 3000 }),
+    ];
+    const out = enrichChartData(
+      makeInput({
+        points,
+        viewMode: "crypto",
+        primaryCurrency: "USD",
+        sp500History: [
+          { date: "2026-01-01", close: 5000 },
+          { date: "2026-01-02", close: 5000 },
+        ],
+        // A backdated benchmark cash flow at the lot's market value (the
+        // synthetic-flow path), so the seed re-anchor is exercised, not naive.
+        cashFlows: [{ date: "2026-01-01", amount_usd: 8000, asset_class: "crypto" }],
+        snapshotRatios: null,
+        costBasisSeries,
+      }),
+    );
+    // Portfolio line = literal market truth.
+    expect(out[0].value).toBe(8000);
+    // S&P seed = firstSliceUsd(8000) − gap(3000) = 5000 (cost-equivalent).
+    expect(out[0].sp500Value).toBeCloseTo(5000, 6);
+    // The gap survives: portfolio − S&P at chartStart == the 3,000 gap exactly.
+    expect(out[0].value - out[0].sp500Value!).toBeCloseTo(3000, 6);
+  });
+
+  /**
+   * Scenario 2 — a NON-backdated user-costed lot predating a short-period
+   * chartStart. The widened price coverage feeds its gap into the series, so it
+   * applies at chartStart even though it is not a backdated lot. EPS tolerance
+   * is allowed on THIS branch only (reconstructed market vs snapshot may differ
+   * by FX/forward-fill ULPs); here the fixture is exact so we assert tightly.
+   */
+  it("applies the gap of a non-backdated user-costed lot predating chartStart", () => {
+    const points = [
+      makePoint({ date: "2026-03-10", value: 12000, valueUsd: 12000, stocksUsd: 12000 }),
+      makePoint({ date: "2026-03-11", value: 12000, valueUsd: 12000, stocksUsd: 12000 }),
+    ];
+    const costBasisSeries: CostBasisSeriesPoint[] = [
+      // The lot was bought 2026-01-15 (before the 7D window). Its gap is carried
+      // forward on the daily spine; the latest point on-or-before chartStart is
+      // 2026-03-10 with a running gap of 2,000 (market 12,000 − cost 10,000).
+      makeCostPoint({ date: "2026-01-15", stocksGapUsd: 1000 }),
+      makeCostPoint({ date: "2026-03-10", stocksGapUsd: 2000 }),
+    ];
+    const out = enrichChartData(
+      makeInput({
+        points,
+        viewMode: "stocks",
+        primaryCurrency: "USD",
+        sp500History: [
+          { date: "2026-03-10", close: 4000 },
+          { date: "2026-03-11", close: 4000 },
+        ],
+        cashFlows: [{ date: "2026-03-10", amount_usd: 12000, asset_class: "stocks" }],
+        snapshotRatios: null,
+        costBasisSeries,
+      }),
+    );
+    // seed = 12000 − 2000 = 10000 → divergence == 2000 at chartStart.
+    expect(out[0].value).toBe(12000);
+    expect(out[0].sp500Value!).toBeCloseTo(10000, 6);
+    expect(out[0].value - out[0].sp500Value!).toBeCloseTo(2000, 6);
+  });
+
+  /**
+   * Control 1 — NO user cost (empty series). The enriched output must be
+   * BYTE-IDENTICAL to a run WITHOUT the series prop. Exact deep-equality, not EPS.
+   * This proves the seed is a pure delta: gap=0 → the SAME code path → identical bytes.
+   */
+  it("Control 1: empty series → byte-identical to no-series run", () => {
+    const points = [
+      makePoint({ date: "2026-01-01", value: 60000, valueUsd: 60000, cryptoUsd: 60000 }),
+      makePoint({ date: "2026-02-01", value: 72000, valueUsd: 72000, cryptoUsd: 72000 }),
+    ];
+    const base = {
+      points,
+      viewMode: "total" as const,
+      primaryCurrency: "USD" as const,
+      sp500History: [
+        { date: "2026-01-01", close: 5000 },
+        { date: "2026-02-01", close: 5500 },
+      ],
+      cashFlows: [{ date: "2026-01-01", amount_usd: 60000, asset_class: "crypto" as const }],
+      snapshotRatios: null,
+    };
+    const without = enrichChartData(makeInput({ ...base }));
+    const withEmpty = enrichChartData(makeInput({ ...base, costBasisSeries: [] }));
+    expect(withEmpty).toEqual(without);
+  });
+
+  /**
+   * Control 2 (the REAL guard) — a POPULATED series whose gap is 0 (a backdated
+   * lot is present, cost == market). STILL byte-identical. This proves the
+   * benchmark is unchanged by GAP-SUBTRACTION reaching zero — not by the series
+   * being empty (an accident Control 1 alone cannot rule out).
+   */
+  it("Control 2: populated series, gap == 0 → byte-identical to no-series run", () => {
+    const points = [
+      makePoint({ date: "2026-01-01", value: 60000, valueUsd: 60000, cryptoUsd: 60000 }),
+      makePoint({ date: "2026-02-01", value: 72000, valueUsd: 72000, cryptoUsd: 72000 }),
+    ];
+    const base = {
+      points,
+      viewMode: "total" as const,
+      primaryCurrency: "USD" as const,
+      sp500History: [
+        { date: "2026-01-01", close: 5000 },
+        { date: "2026-02-01", close: 5500 },
+      ],
+      cashFlows: [{ date: "2026-01-01", amount_usd: 60000, asset_class: "crypto" as const }],
+      snapshotRatios: null,
+    };
+    const without = enrichChartData(makeInput({ ...base }));
+    // Populated: a real point at chartStart, but cost == market → every gap 0.
+    const populated: CostBasisSeriesPoint[] = [
+      makeCostPoint({ date: "2026-01-01", cryptoGapUsd: 0, stocksGapUsd: 0, cashGapUsd: 0 }),
+      makeCostPoint({ date: "2026-02-01", cryptoGapUsd: 0, stocksGapUsd: 0, cashGapUsd: 0 }),
+    ];
+    const withZeroGap = enrichChartData(makeInput({ ...base, costBasisSeries: populated }));
+    expect(withZeroGap).toEqual(without);
+  });
+
+  /**
+   * Scenario 5 — an is_adjustment lot at chartStart is NEVER user-costed, so it
+   * never enters the gap (its series gap columns stay 0). Byte-identical.
+   * Modeled as a populated series with 0 gaps + an adjustment-style synthetic
+   * cash flow at chartStart.
+   */
+  it("is_adjustment lot at chartStart → not in the gap → byte-identical", () => {
+    const points = [
+      makePoint({ date: "2026-01-01", value: 40000, valueUsd: 40000, stocksUsd: 40000 }),
+      makePoint({ date: "2026-02-01", value: 44000, valueUsd: 44000, stocksUsd: 44000 }),
+    ];
+    const base = {
+      points,
+      viewMode: "stocks" as const,
+      primaryCurrency: "USD" as const,
+      sp500History: [
+        { date: "2026-01-01", close: 5000 },
+        { date: "2026-02-01", close: 5200 },
+      ],
+      cashFlows: [{ date: "2026-01-01", amount_usd: 40000, asset_class: "stocks" as const }],
+      snapshotRatios: null,
+    };
+    const without = enrichChartData(makeInput({ ...base }));
+    // The adjustment lot contributes to COST columns upstream but its GAP is 0
+    // (user-cost gate excludes is_adjustment). The series the seed reads has 0 gap.
+    const adjSeries: CostBasisSeriesPoint[] = [
+      makeCostPoint({ date: "2026-01-01", stocksGapUsd: 0 }),
+    ];
+    const withAdj = enrichChartData(makeInput({ ...base, costBasisSeries: adjSeries }));
+    expect(withAdj).toEqual(without);
+  });
+
+  /**
+   * Empty-slice skip guard — when firstSliceUsd <= 0 (the tier-2/3/4 fallback,
+   * e.g. an all-adjustment import backdated before any position existed), today's
+   * skip-seeding MUST be preserved EVEN when a gap exists. The series must NOT
+   * cause seeding from firstSliceUsd=0.
+   */
+  it("preserves the empty-slice skip even when a gap is present", () => {
+    // stocks slice is 0 at chartStart (firstSliceUsd === 0), portfolio non-zero.
+    const points = [
+      makePoint({
+        date: "2026-01-01",
+        value: 30500,
+        valueUsd: 36000,
+        stocksUsd: 0,
+        cryptoUsd: 20000,
+        cashUsd: 16000,
+      }),
+    ];
+    const base = {
+      points,
+      viewMode: "stocks" as const,
+      primaryCurrency: "EUR" as const,
+      cashFlows: [{ date: "2025-12-01", amount_usd: 100 }],
+      snapshotRatios: [{ date: "2026-01-01", ratio: 0 }],
+    };
+    const without = enrichChartData(makeInput({ ...base }));
+    // A gap exists for stocks, but firstSliceUsd === 0 → seeding stays skipped,
+    // so the output is unchanged by the series.
+    const withGap = enrichChartData(
+      makeInput({
+        ...base,
+        costBasisSeries: [makeCostPoint({ date: "2026-01-01", stocksGapUsd: 4000 })],
+      }),
+    );
+    expect(withGap).toEqual(without);
   });
 });

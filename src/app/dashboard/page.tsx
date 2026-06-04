@@ -161,6 +161,7 @@ export default async function DashboardPage() {
           primaryCurrency={primaryCurrency}
           sp500History={sp500TRHistory}
           cashFlows={cashFlows}
+          costBasisSeries={benchmarkExtension.costBasisSeries}
           liveSlicesUsd={{
             crypto: summary.cryptoValueUsd,
             stocks: summary.stocksValueUsd,

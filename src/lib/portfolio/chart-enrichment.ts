@@ -31,6 +31,25 @@ export interface EnrichedChartPoint extends ChartPoint {
   sp500Value?: number;
 }
 
+/**
+ * One point on the portfolio-wide cost-basis series, narrowed to the columns
+ * the seed re-anchor reads. This is a CLIENT-SAFE structural subset of the
+ * server-side `CostBasisSeriesPoint` (in `historical-prices-augmentation.ts`,
+ * which carries the full cost + EUR-gap columns and pulls in server-only
+ * imports). The wider server type is structurally assignable to this one, so
+ * the pages thread their `costBasisSeries` through with no cast.
+ *
+ * Only the USD per-class GAP columns are consumed here (GAP = Σ market−userCost
+ * over user-costed, non-yield lots at `date`). The EUR gaps are reserved for the
+ * Phase-5 overlay and intentionally absent from this view.
+ */
+export interface CostBasisSeriesPoint {
+  date: string; // YYYY-MM-DD
+  cryptoGapUsd: number;
+  stocksGapUsd: number;
+  cashGapUsd: number;
+}
+
 export interface EnrichChartDataInput {
   points: ChartPoint[];
   viewMode: ChartViewMode;
@@ -39,6 +58,13 @@ export interface EnrichChartDataInput {
   cashFlows: CashFlowEvent[];
   /** Snapshot ratios for per-class S&P scaling (null = total mode, no scaling). */
   snapshotRatios: { date: string; ratio: number }[] | null;
+  /**
+   * Portfolio-wide running cost-basis series (Task 3.4c). When present, the S&P
+   * benchmark seed is re-anchored to the user's COST (not market) at chartStart
+   * by subtracting the view-mode's pre-computed GAP. Absent/empty → behavior is
+   * byte-identical to before (the seed is a pure delta from `firstSliceUsd`).
+   */
+  costBasisSeries?: CostBasisSeriesPoint[];
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -64,6 +90,46 @@ function toDisplayFromUsd(
 function getSliceValue(p: ChartPoint, viewMode: ChartViewMode, primaryCurrency: BaseCurrency): number {
   if (viewMode === "total") return p.value;
   return toDisplayFromUsd(getSliceValueUsd(p, viewMode), p, primaryCurrency);
+}
+
+/**
+ * Sum the view-mode's pre-computed USD GAP columns from the LATEST cost-basis
+ * series point with `date <= chartStartDate`. The gap (Σ market−userCost over
+ * user-costed, non-yield lots) is READ verbatim from the series — NEVER
+ * recomputed from cost totals here (audit-r5 F1: the series is the single source
+ * of truth for the gap; reconstructing it would risk drift).
+ *
+ * View-mode mapping mirrors `getSliceValueUsd`:
+ *   crypto → cryptoGapUsd · stocks → stocksGapUsd · cash → cashGapUsd
+ *   investments → crypto + stocks · total → crypto + stocks + cash
+ *
+ * Returns 0 when the series is empty, has no point at-or-before chartStartDate,
+ * or no lot is user-costed (all gaps 0) — the seed then stays at market truth.
+ */
+export function lookupCostAtOrBefore(
+  series: CostBasisSeriesPoint[],
+  chartStartDate: string,
+  viewMode: ChartViewMode,
+): number {
+  let chosen: CostBasisSeriesPoint | null = null;
+  for (const point of series) {
+    if (point.date <= chartStartDate) chosen = point;
+    else break;
+  }
+  if (chosen === null) return 0;
+
+  switch (viewMode) {
+    case "crypto":
+      return chosen.cryptoGapUsd;
+    case "stocks":
+      return chosen.stocksGapUsd;
+    case "cash":
+      return chosen.cashGapUsd;
+    case "investments":
+      return chosen.cryptoGapUsd + chosen.stocksGapUsd;
+    case "total":
+      return chosen.cryptoGapUsd + chosen.stocksGapUsd + chosen.cashGapUsd;
+  }
 }
 
 function getSliceRatio(
@@ -115,6 +181,7 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
     sp500History,
     cashFlows,
     snapshotRatios,
+    costBasisSeries,
   } = input;
 
   if (points.length === 0) return [];
@@ -155,7 +222,7 @@ export function enrichChartData(input: EnrichChartDataInput): EnrichedChartPoint
   if (hasCashFlows) {
     return enrichWithSp500Benchmark(
       points, viewMode, primaryCurrency, sp500Map,
-      cashFlows, snapshotRatios, chartStart,
+      cashFlows, snapshotRatios, chartStart, costBasisSeries,
     );
   }
 
@@ -209,6 +276,7 @@ function enrichWithSp500Benchmark(
   cashFlows: CashFlowEvent[],
   snapshotRatios: { date: string; ratio: number }[] | null,
   chartStart: string,
+  costBasisSeries?: CostBasisSeriesPoint[],
 ): EnrichedChartPoint[] {
   let sp500Units = 0;
   let preChartUnits = 0;
@@ -263,7 +331,17 @@ function enrichWithSp500Benchmark(
     }
 
     if (fxRatioUsdPerDisp !== null && fxRatioUsdPerDisp > 0) {
-      const seedUsd = seedDisp * fxRatioUsdPerDisp;
+      // Cost-basis re-anchor (Task 3.4f): subtract the view-mode's pre-computed
+      // USD GAP so the S&P seeds off the user's COST, not market. The seed is a
+      // pure DELTA from the market-USD seed — gap=0 (or no series) → byte-
+      // identical to before via the SAME arithmetic. Gated on firstSliceUsd > 0
+      // (tier-1 only, where `seedDisp * fxRatioUsdPerDisp === firstSliceUsd`):
+      // the tier-2/3/4 empty-slice fallback MUST keep today's skip-seeding even
+      // when a gap exists — never seed off a 0 slice (audit-derived constraint).
+      const gapUsd = firstSliceUsd > 0 && costBasisSeries
+        ? lookupCostAtOrBefore(costBasisSeries, chartStart, viewMode)
+        : 0;
+      const seedUsd = seedDisp * fxRatioUsdPerDisp - gapUsd;
       const neededUnits = seedUsd / sp500StartPrice;
       // Baseline against the units actually present at chartStart. A cash flow
       // dated exactly at chartStart lands in unitsByDate (the partition uses

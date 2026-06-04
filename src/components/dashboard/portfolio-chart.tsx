@@ -15,7 +15,7 @@ import { Layers, TrendingUp, Info, BarChart3, Percent } from "lucide-react";
 import type { PortfolioSnapshot, CashFlowEvent, BaseCurrency } from "@/lib/types";
 import { fmtCurrencyCompact } from "@/lib/format";
 import { enrichChartData } from "@/lib/portfolio/chart-enrichment";
-import type { ChartViewMode, ChartPoint } from "@/lib/portfolio/chart-enrichment";
+import type { ChartViewMode, ChartPoint, CostBasisSeriesPoint } from "@/lib/portfolio/chart-enrichment";
 import { ChartWarningBanner } from "./chart-warning-banner";
 import { StaleSnapshotBanner } from "./stale-snapshot-banner";
 
@@ -27,6 +27,12 @@ interface PortfolioChartProps {
   sp500History?: { date: string; close: number }[];
   cashFlows?: CashFlowEvent[];
   liveSlicesUsd?: { crypto: number; stocks: number; cash: number };
+  /**
+   * Portfolio-wide running cost-basis series. Threaded into `enrichChartData`
+   * to re-anchor the S&P benchmark seed to the user's cost (not market) at
+   * chartStart. Optional — absent/empty leaves the benchmark byte-identical.
+   */
+  costBasisSeries?: CostBasisSeriesPoint[];
   /** When true, chart defaults to cumulative % return mode */
   defaultReturnMode?: boolean;
   pendingCount?: number;
@@ -115,6 +121,7 @@ export function PortfolioChart({
   sp500History = [],
   cashFlows = [],
   liveSlicesUsd,
+  costBasisSeries,
   defaultReturnMode = false,
   pendingCount = 0,
   failedCount = 0,
@@ -206,8 +213,9 @@ export function PortfolioChart({
       sp500History,
       cashFlows,
       snapshotRatios,
+      costBasisSeries,
     });
-  }, [snapshots, liveValue, liveValueUsd, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, viewMode]);
+  }, [snapshots, liveValue, liveValueUsd, liveSlicesUsd, valueKey, primaryCurrency, period.days, sp500History, cashFlows, viewMode, costBasisSeries]);
 
   // Use the active dataKey for y-axis domain.
   // Note: uses a reduce loop instead of `Math.min(...arr)` spread to avoid
