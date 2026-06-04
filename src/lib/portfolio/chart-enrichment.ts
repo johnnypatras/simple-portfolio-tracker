@@ -29,22 +29,36 @@ export interface ChartPoint {
 /** Chart data point after enrichment with S&P benchmark value. */
 export interface EnrichedChartPoint extends ChartPoint {
   sp500Value?: number;
+  /**
+   * Cost-basis overlay value in the display currency (EUR or USD), derived from
+   * the running-cost series at the latest point on-or-before this date. Absent
+   * when no series is provided or the series has no point before this date.
+   */
+  costBasis?: number;
 }
 
 /**
  * One point on the portfolio-wide cost-basis series, narrowed to the columns
- * the seed re-anchor reads. This is a CLIENT-SAFE structural subset of the
+ * the client chart consumes. This is a CLIENT-SAFE structural subset of the
  * server-side `CostBasisSeriesPoint` (in `historical-prices-augmentation.ts`,
- * which carries the full cost + EUR-gap columns and pulls in server-only
- * imports). The wider server type is structurally assignable to this one, so
- * the pages thread their `costBasisSeries` through with no cast.
+ * which pulls in server-only imports). The wider server type is structurally
+ * assignable to this one, so the pages thread their `costBasisSeries` through
+ * with no cast.
  *
- * Only the USD per-class GAP columns are consumed here (GAP = Σ market−userCost
- * over user-costed, non-yield lots at `date`). The EUR gaps are reserved for the
- * Phase-5 overlay and intentionally absent from this view.
+ * Cost columns: running cost basis per class at `date` (what the user put in).
+ * Gap columns: market-minus-cost for user-costed, non-yield lots only. USD gaps
+ * power the S&P seed re-anchor; EUR gaps support the overlay currency conversion.
  */
 export interface CostBasisSeriesPoint {
   date: string; // YYYY-MM-DD
+  // ── Cost columns (what the user put in) ──
+  cryptoCostUsd: number;
+  stocksCostUsd: number;
+  cashCostUsd: number;
+  cryptoCostEur: number;
+  stocksCostEur: number;
+  cashCostEur: number;
+  // ── Gap columns (market − user-cost, user-costed lots only) ──
   cryptoGapUsd: number;
   stocksGapUsd: number;
   cashGapUsd: number;
@@ -130,6 +144,123 @@ export function lookupCostAtOrBefore(
     case "total":
       return chosen.cryptoGapUsd + chosen.stocksGapUsd + chosen.cashGapUsd;
   }
+}
+
+/**
+ * Read the cost-basis value for a single `date` from the series, in the
+ * requested `currency` and for the given `viewMode`.
+ *
+ * Uses the same at-or-before idiom as `lookupCostAtOrBefore` — the series is a
+ * sparse daily spine and chart points may land between spine dates.
+ *
+ * Returns undefined when the series is absent/empty or has no point at-or-before
+ * `date` (the chart point predates any cost entry — no overlay is drawn).
+ */
+export function lookupCostValueAtOrBefore(
+  series: CostBasisSeriesPoint[],
+  date: string,
+  viewMode: ChartViewMode,
+  currency: BaseCurrency,
+): number | undefined {
+  let chosen: CostBasisSeriesPoint | null = null;
+  for (const point of series) {
+    if (point.date <= date) chosen = point;
+    else break;
+  }
+  if (chosen === null) return undefined;
+
+  switch (viewMode) {
+    case "crypto":
+      return currency === "EUR" ? chosen.cryptoCostEur : chosen.cryptoCostUsd;
+    case "stocks":
+      return currency === "EUR" ? chosen.stocksCostEur : chosen.stocksCostUsd;
+    case "cash":
+      return currency === "EUR" ? chosen.cashCostEur : chosen.cashCostUsd;
+    case "investments":
+      return currency === "EUR"
+        ? chosen.cryptoCostEur + chosen.stocksCostEur
+        : chosen.cryptoCostUsd + chosen.stocksCostUsd;
+    case "total":
+      return currency === "EUR"
+        ? chosen.cryptoCostEur + chosen.stocksCostEur + chosen.cashCostEur
+        : chosen.cryptoCostUsd + chosen.stocksCostUsd + chosen.cashCostUsd;
+  }
+}
+
+/**
+ * Compute the [min, max] extension needed for the cost-basis overlay to stay
+ * within the chart's Y domain.
+ *
+ * Problem: `mergeCostBasisIntoChart` carries the LAST pre-window cost forward
+ * onto every visible point via at-or-before lookup. When the most recent series
+ * entry PRE-dates `chartStart` (e.g. a 30D view of an old position), its carried-
+ * forward value is only present on visible chart points — not in the `series` array
+ * at a visible date. A loop that skips `series[i].date < chartStart` therefore
+ * MISSES it, and the Y domain clips the line.
+ *
+ * Fix: look up the at-or-before cost AT `chartStart` first (which replicates the
+ * exact value that `mergeCostBasisIntoChart` will carry forward), then include it
+ * in the min/max scan alongside the visible-window series entries.
+ *
+ * Returns `{ min, max }` candidates to fold into the caller's running min/max.
+ * Pure function — no side effects, safe in useMemo.
+ */
+export function computeCostBasisYDomainExpansion(
+  series: CostBasisSeriesPoint[],
+  chartStart: string,
+  chartEnd: string,
+  viewMode: ChartViewMode,
+  currency: BaseCurrency,
+): { min: number; max: number } {
+  if (series.length === 0) return { min: Infinity, max: -Infinity };
+
+  let min = Infinity;
+  let max = -Infinity;
+
+  // Seed with the carried-forward cost at chartStart (at-or-before lookup).
+  // This is the value `mergeCostBasisIntoChart` will assign to every visible
+  // point that precedes the next series entry — it MUST enter the domain scan.
+  const seed = lookupCostValueAtOrBefore(series, chartStart, viewMode, currency);
+  if (seed !== undefined) {
+    if (seed < min) min = seed;
+    if (seed > max) max = seed;
+  }
+
+  // Also scan series entries that fall INSIDE the visible window.
+  for (const cp of series) {
+    if (cp.date > chartEnd) break;
+    if (cp.date < chartStart) continue;
+    const v = lookupCostValueAtOrBefore(series, cp.date, viewMode, currency);
+    if (v === undefined) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+
+  return { min, max };
+}
+
+/**
+ * Merge the cost-basis overlay value into a sequence of enriched chart points.
+ * For each point, looks up the at-or-before cost value from `series` and sets
+ * `costBasis` on the point. Returns a NEW array — does not mutate `points`.
+ *
+ * The result carries `costBasis` on points where the series has coverage, and
+ * leaves `costBasis` absent (undefined) on points that predate the series.
+ *
+ * Pure function, no I/O — safe to use in a `useMemo` call.
+ */
+export function mergeCostBasisIntoChart(
+  points: EnrichedChartPoint[],
+  series: CostBasisSeriesPoint[],
+  viewMode: ChartViewMode,
+  currency: BaseCurrency,
+): EnrichedChartPoint[] {
+  if (series.length === 0) return points;
+  return points.map((p) => {
+    const costBasis = lookupCostValueAtOrBefore(series, p.date, viewMode, currency);
+    if (costBasis === undefined) return p;
+    return { ...p, costBasis };
+  });
 }
 
 function getSliceRatio(

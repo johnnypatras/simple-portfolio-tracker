@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { enrichChartData, lookupCostAtOrBefore } from "@/lib/portfolio/chart-enrichment";
+import {
+  enrichChartData,
+  lookupCostAtOrBefore,
+  lookupCostValueAtOrBefore,
+  mergeCostBasisIntoChart,
+  computeCostBasisYDomainExpansion,
+} from "@/lib/portfolio/chart-enrichment";
 import type {
   ChartPoint,
+  EnrichedChartPoint,
   EnrichChartDataInput,
   CostBasisSeriesPoint,
 } from "@/lib/portfolio/chart-enrichment";
@@ -42,6 +49,12 @@ function makeCostPoint(
   overrides: Partial<CostBasisSeriesPoint> & { date: string },
 ): CostBasisSeriesPoint {
   return {
+    cryptoCostUsd: 0,
+    stocksCostUsd: 0,
+    cashCostUsd: 0,
+    cryptoCostEur: 0,
+    stocksCostEur: 0,
+    cashCostEur: 0,
     cryptoGapUsd: 0,
     stocksGapUsd: 0,
     cashGapUsd: 0,
@@ -681,5 +694,207 @@ describe("enrichChartData — S&P seed re-anchor to cost basis", () => {
       }),
     );
     expect(withGap).toEqual(without);
+  });
+});
+
+// ── mergeCostBasisIntoChart — cost overlay data merge (Task 5.2) ──
+
+function makeEnrichedPoint(
+  overrides: Partial<EnrichedChartPoint> & { date: string },
+): EnrichedChartPoint {
+  return {
+    value: 0,
+    valueUsd: 0,
+    cryptoUsd: 0,
+    stocksUsd: 0,
+    cashUsd: 0,
+    cryptoPct: 0,
+    stocksPct: 0,
+    cashPct: 0,
+    ...overrides,
+  };
+}
+
+describe("mergeCostBasisIntoChart — cost overlay data merge", () => {
+  const series: CostBasisSeriesPoint[] = [
+    makeCostPoint({
+      date: "2026-01-01",
+      cryptoCostUsd: 5000, cryptoCostEur: 4500,
+      stocksCostUsd: 3000, stocksCostEur: 2700,
+      cashCostUsd: 1000,  cashCostEur: 900,
+    }),
+    makeCostPoint({
+      date: "2026-02-01",
+      cryptoCostUsd: 6000, cryptoCostEur: 5400,
+      stocksCostUsd: 4000, stocksCostEur: 3600,
+      cashCostUsd: 1200,  cashCostEur: 1080,
+    }),
+  ];
+
+  it("viewMode=crypto, USD → reads cryptoCostUsd at the at-or-before point", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 8000 })];
+    const result = mergeCostBasisIntoChart(points, series, "crypto", "USD");
+    expect(result[0].costBasis).toBe(5000);
+  });
+
+  it("viewMode=crypto, EUR → reads cryptoCostEur", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 7000 })];
+    const result = mergeCostBasisIntoChart(points, series, "crypto", "EUR");
+    expect(result[0].costBasis).toBe(4500);
+  });
+
+  it("viewMode=stocks, USD → reads stocksCostUsd", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 5000 })];
+    const result = mergeCostBasisIntoChart(points, series, "stocks", "USD");
+    expect(result[0].costBasis).toBe(3000);
+  });
+
+  it("viewMode=cash, EUR → reads cashCostEur", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 1000 })];
+    const result = mergeCostBasisIntoChart(points, series, "cash", "EUR");
+    expect(result[0].costBasis).toBe(900);
+  });
+
+  it("viewMode=investments, USD → crypto + stocks", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 10000 })];
+    const result = mergeCostBasisIntoChart(points, series, "investments", "USD");
+    expect(result[0].costBasis).toBe(5000 + 3000); // 8000
+  });
+
+  it("viewMode=total, EUR → crypto + stocks + cash EUR", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 10000 })];
+    const result = mergeCostBasisIntoChart(points, series, "total", "EUR");
+    expect(result[0].costBasis).toBe(4500 + 2700 + 900); // 8100
+  });
+
+  it("picks the LATER series point when chart date advances past it", () => {
+    const points = [makeEnrichedPoint({ date: "2026-02-15", value: 15000 })];
+    const result = mergeCostBasisIntoChart(points, series, "crypto", "USD");
+    expect(result[0].costBasis).toBe(6000); // from 2026-02-01 entry
+  });
+
+  it("costBasis is undefined when chart point predates all series entries", () => {
+    const points = [makeEnrichedPoint({ date: "2025-12-31", value: 0 })];
+    const result = mergeCostBasisIntoChart(points, series, "total", "USD");
+    expect(result[0].costBasis).toBeUndefined();
+  });
+
+  it("empty series → points returned unchanged (costBasis absent)", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 8000 })];
+    const result = mergeCostBasisIntoChart(points, [], "crypto", "USD");
+    expect(result).toHaveLength(1);
+    expect(result[0].costBasis).toBeUndefined();
+    // Returned array is the same reference (no copy when series empty).
+    expect(result).toBe(points);
+  });
+
+  it("does not mutate the input points array", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 8000 })];
+    const pointsBefore = JSON.stringify(points);
+    mergeCostBasisIntoChart(points, series, "crypto", "USD");
+    expect(JSON.stringify(points)).toBe(pointsBefore);
+  });
+
+  // FIX 4: missing investments, EUR case
+  it("viewMode=investments, EUR → cryptoCostEur + stocksCostEur", () => {
+    const points = [makeEnrichedPoint({ date: "2026-01-15", value: 10000 })];
+    const result = mergeCostBasisIntoChart(points, series, "investments", "EUR");
+    expect(result[0].costBasis).toBe(4500 + 2700); // 7200
+  });
+});
+
+// ── computeCostBasisYDomainExpansion — FIX 1 domain clipping guard ──────────
+
+describe("computeCostBasisYDomainExpansion — domain clipping for short periods", () => {
+  /**
+   * FIX 1 regression: a series whose only entry PRE-dates chartStart carries
+   * its value forward onto every visible point via at-or-before lookup.
+   * The domain expansion must include that carried-forward cost even when no
+   * series entry falls inside [chartStart, chartEnd].
+   *
+   * Setup: cost entry on 2026-01-01, chart window is 2026-02-01 → 2026-03-01.
+   * The cost value (9000) exceeds all visible portfolio values — without the
+   * seed lookup, the domain would miss it and the cost line would be clipped.
+   */
+  it("includes the carried-forward pre-window cost in the domain", () => {
+    const series: CostBasisSeriesPoint[] = [
+      makeCostPoint({
+        date: "2026-01-01",
+        cryptoCostUsd: 9000, cryptoCostEur: 8000,
+        stocksCostUsd: 0, stocksCostEur: 0,
+        cashCostUsd: 0, cashCostEur: 0,
+      }),
+    ];
+    // chartStart is 2026-02-01, which is AFTER the only series entry.
+    const { min, max } = computeCostBasisYDomainExpansion(
+      series, "2026-02-01", "2026-03-01", "crypto", "USD",
+    );
+    // The carried-forward value (9000) must appear in the domain.
+    expect(max).toBe(9000);
+    expect(min).toBe(9000);
+  });
+
+  it("includes in-window entries when they exist alongside a pre-window seed", () => {
+    const series: CostBasisSeriesPoint[] = [
+      makeCostPoint({ date: "2026-01-01", cryptoCostUsd: 5000, cryptoCostEur: 0, stocksCostUsd: 0, stocksCostEur: 0, cashCostUsd: 0, cashCostEur: 0 }),
+      makeCostPoint({ date: "2026-02-15", cryptoCostUsd: 7000, cryptoCostEur: 0, stocksCostUsd: 0, stocksCostEur: 0, cashCostUsd: 0, cashCostEur: 0 }),
+    ];
+    // Seed (at chartStart 2026-02-01) → carried-forward from 2026-01-01 → 5000.
+    // In-window entry 2026-02-15 → 7000.
+    const { min, max } = computeCostBasisYDomainExpansion(
+      series, "2026-02-01", "2026-03-01", "crypto", "USD",
+    );
+    expect(min).toBe(5000);
+    expect(max).toBe(7000);
+  });
+
+  it("returns Infinity/-Infinity sentinel for empty series", () => {
+    const { min, max } = computeCostBasisYDomainExpansion(
+      [], "2026-02-01", "2026-03-01", "total", "USD",
+    );
+    expect(min).toBe(Infinity);
+    expect(max).toBe(-Infinity);
+  });
+
+  it("returns undefined sentinel when no entry is at-or-before chartStart", () => {
+    const series: CostBasisSeriesPoint[] = [
+      makeCostPoint({ date: "2026-05-01", cryptoCostUsd: 1000, cryptoCostEur: 0, stocksCostUsd: 0, stocksCostEur: 0, cashCostUsd: 0, cashCostEur: 0 }),
+    ];
+    // chartStart is before the only series entry → seed returns undefined.
+    // In-window scan: no entry falls inside [2026-01-01, 2026-03-01].
+    const { min, max } = computeCostBasisYDomainExpansion(
+      series, "2026-01-01", "2026-03-01", "crypto", "USD",
+    );
+    // No candidates found — sentinels passed through unchanged.
+    expect(min).toBe(Infinity);
+    expect(max).toBe(-Infinity);
+  });
+});
+
+// ── lookupCostValueAtOrBefore — direct export smoke tests ───────────────────
+
+describe("lookupCostValueAtOrBefore — exported for testability", () => {
+  const series: CostBasisSeriesPoint[] = [
+    makeCostPoint({
+      date: "2026-01-01",
+      cryptoCostUsd: 1000, cryptoCostEur: 900,
+      stocksCostUsd: 2000, stocksCostEur: 1800,
+      cashCostUsd: 500, cashCostEur: 450,
+    }),
+  ];
+
+  it("returns undefined when date is before all series entries", () => {
+    const result = lookupCostValueAtOrBefore(series, "2025-12-31", "total", "USD");
+    expect(result).toBeUndefined();
+  });
+
+  it("total, USD → sum of all three USD cost columns", () => {
+    const result = lookupCostValueAtOrBefore(series, "2026-03-01", "total", "USD");
+    expect(result).toBe(1000 + 2000 + 500);
+  });
+
+  it("investments, EUR → cryptoCostEur + stocksCostEur (not cash)", () => {
+    const result = lookupCostValueAtOrBefore(series, "2026-03-01", "investments", "EUR");
+    expect(result).toBe(900 + 1800);
   });
 });

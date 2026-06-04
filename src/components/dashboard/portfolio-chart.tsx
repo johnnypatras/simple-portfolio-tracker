@@ -14,7 +14,7 @@ import {
 import { Layers, TrendingUp, Info, BarChart3, Percent } from "lucide-react";
 import type { PortfolioSnapshot, CashFlowEvent, BaseCurrency } from "@/lib/types";
 import { fmtCurrencyCompact } from "@/lib/format";
-import { enrichChartData } from "@/lib/portfolio/chart-enrichment";
+import { enrichChartData, mergeCostBasisIntoChart, computeCostBasisYDomainExpansion } from "@/lib/portfolio/chart-enrichment";
 import type { ChartViewMode, ChartPoint, CostBasisSeriesPoint } from "@/lib/portfolio/chart-enrichment";
 import { ChartWarningBanner } from "./chart-warning-banner";
 import { StaleSnapshotBanner } from "./stale-snapshot-banner";
@@ -233,15 +233,28 @@ export function PortfolioChart({
         if (d.sp500Value > maxValue) maxValue = d.sp500Value;
       }
     }
+    // Extend domain for the cost-basis overlay. Uses computeCostBasisYDomainExpansion
+    // which seeds from the at-or-before lookup at chartStart before scanning the
+    // in-window entries. This ensures the carried-forward cost (from a pre-window
+    // series entry) is included even when no entry falls inside the visible range.
+    if (costBasisSeries && costBasisSeries.length > 0) {
+      const chartStart = data[0].date;
+      const chartEnd = data[data.length - 1].date;
+      const { min: costMin, max: costMax } = computeCostBasisYDomainExpansion(
+        costBasisSeries, chartStart, chartEnd, viewMode, primaryCurrency,
+      );
+      if (costMin < minValue) minValue = costMin;
+      if (costMax > maxValue) maxValue = costMax;
+    }
     return [Math.floor(minValue * 0.99), Math.ceil(maxValue * 1.01)] as const;
-  }, [data, showBenchmark]);
+  }, [data, showBenchmark, costBasisSeries, viewMode, primaryCurrency]);
 
   // Compute allocation area fields relative to yDomain baseline.
   // Uses overlapping (non-stacked) areas: each fills from yDomain[0] to its value.
   // Render order: crypto (behind) → stocks → cash (front) creates visual bands.
   const chartData = useMemo(() => {
     const base = yDomain[0];
-    return data.map((p) => {
+    const withAlloc = data.map((p) => {
       const range = Math.max(p.value - base, 0);
       return {
         ...p,
@@ -250,7 +263,11 @@ export function PortfolioChart({
         allocCash: base + range * p.cashPct / 100,
       };
     });
-  }, [data, yDomain]);
+    // Merge cost-basis overlay values (at-or-before lookup per point).
+    // Returns the same array reference when series is absent/empty (no copy).
+    if (!costBasisSeries || costBasisSeries.length === 0) return withAlloc;
+    return mergeCostBasisIntoChart(withAlloc, costBasisSeries, viewMode, primaryCurrency);
+  }, [data, yDomain, costBasisSeries, viewMode, primaryCurrency]);
 
   // ── % Return mode transformation ──
   // Converts absolute values to cumulative % return from the first visible point.
@@ -278,10 +295,13 @@ export function PortfolioChart({
         ...p,
         value: pctReturn,
         sp500Value: sp500Pct,
-        // Allocation areas not meaningful as percentages
+        // Allocation areas not meaningful as percentages; cost basis has no
+        // return-mode meaning (the gap to the value line is the unrealized
+        // gain in absolute terms, not as a % return). Hide it in return mode.
         allocCrypto: 0,
         allocStocks: 0,
         allocCash: 0,
+        costBasis: undefined,
       };
     });
 
@@ -474,6 +494,7 @@ export function PortfolioChart({
                   date: string;
                   value: number;
                   sp500Value?: number;
+                  costBasis?: number;
                   cryptoPct: number;
                   stocksPct: number;
                   cashPct: number;
@@ -507,6 +528,11 @@ export function PortfolioChart({
                     {showBenchmark && point.sp500Value != null && (
                       <p className="text-xs text-zinc-400 mt-0.5">
                         S&P 500 TR {fmtVal(point.sp500Value)}
+                      </p>
+                    )}
+                    {!returnMode && point.costBasis != null && (
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        Cost basis {fmtCurrencyCompact(point.costBasis, primaryCurrency)}
                       </p>
                     )}
                     {showAllocation && (
@@ -591,10 +617,24 @@ export function PortfolioChart({
                 connectNulls
               />
             )}
+            {!returnMode && costBasisSeries && costBasisSeries.length > 0 && (
+              <Line
+                yAxisId="value"
+                type="monotone"
+                dataKey="costBasis"
+                stroke={VIEW_MODE_COLORS[viewMode]}
+                strokeOpacity={0.4}
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+            )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      {(showAllocation || showBenchmark) && (
+      {(showAllocation || showBenchmark || (!returnMode && costBasisSeries && costBasisSeries.length > 0)) && (
         <div className="flex items-center justify-center gap-4 mt-2">
           {showBenchmark && (
             <>
@@ -609,6 +649,17 @@ export function PortfolioChart({
                     ? "\"What if I\u2019d put every dollar into the S&P 500 instead?\" Each deposit, purchase, and withdrawal is replayed at the S&P price on that day. Accuracy improves over time as more changes are tracked."
                     : "Simple comparison \u2014 both lines start at the same value. Does not account for the timing of deposits or withdrawals, so differences may be misleading."
                   }
+                </span>
+              </span>
+            </>
+          )}
+          {!returnMode && costBasisSeries && costBasisSeries.length > 0 && (
+            <>
+              <LegendItem viewModeColor={VIEW_MODE_COLORS[viewMode]} label="Cost basis" dashed />
+              <span className="relative group">
+                <Info className="w-3 h-3 text-zinc-400 cursor-help" />
+                <span className="absolute bottom-full right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mb-1.5 w-56 max-w-[calc(100vw-3rem)] px-2.5 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-[10px] leading-relaxed text-zinc-300 shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
+                  What you&apos;ve put in \u2014 the gap between this and the value line is your unrealized gain (or loss).
                 </span>
               </span>
             </>
@@ -659,16 +710,35 @@ function PeriodSelector({
 
 // ── Legend item ──────────────────────────────────────────
 
-function LegendItem({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+/**
+ * `color` = Tailwind bg class (e.g. "bg-zinc-500") — used for S&P/allocation items.
+ * `viewModeColor` = inline CSS color value (e.g. "#f97316", "var(--chart-stroke)") —
+ * used for the cost-basis overlay whose color matches the active view mode and is
+ * not a static Tailwind class.
+ * Exactly one of `color` or `viewModeColor` must be provided.
+ */
+function LegendItem({
+  color,
+  viewModeColor,
+  label,
+  dashed,
+}: {
+  color?: string;
+  viewModeColor?: string;
+  label: string;
+  dashed?: boolean;
+}) {
+  const swatchStyle = viewModeColor ? { backgroundColor: viewModeColor, opacity: 0.5 } : undefined;
+  const swatchClass = color ? `${color}` : "";
   return (
     <div className="flex items-center gap-1.5">
       {dashed ? (
         <div className="flex gap-[2px]">
-          <div className={`w-1 h-0.5 rounded-full ${color}`} />
-          <div className={`w-1 h-0.5 rounded-full ${color}`} />
+          <div className={`w-1 h-0.5 rounded-full ${swatchClass}`} style={swatchStyle} />
+          <div className={`w-1 h-0.5 rounded-full ${swatchClass}`} style={swatchStyle} />
         </div>
       ) : (
-        <div className={`w-2.5 h-0.5 rounded-full ${color}`} />
+        <div className={`w-2.5 h-0.5 rounded-full ${swatchClass}`} style={swatchStyle} />
       )}
       <span className="text-[10px] text-zinc-400">{label}</span>
     </div>
