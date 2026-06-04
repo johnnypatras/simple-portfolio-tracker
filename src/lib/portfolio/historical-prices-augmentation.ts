@@ -17,6 +17,7 @@ import {
   type CostFoldState,
 } from "@/lib/portfolio/cost-basis";
 import { quantityDelta, type TransactionRow } from "@/lib/transaction-kind";
+import { splitSignWithLegacyFallback } from "@/lib/split-helpers";
 import {
   getAllAssetTransactions,
   type AssetKey,
@@ -992,10 +993,10 @@ export async function fetchHistoricalPriceInputsFor(
     const before = r.before_snapshot as { quantity?: number } | null;
     const after = r.after_snapshot as { quantity?: number } | null;
     const splitFromId = r.split_from_id;
-    const details = r.details as { split_quantity?: number } | null;
+    const details = r.details as { split_quantity?: number; split_direction?: number } | null;
     const qtyOverride =
       splitFromId && details?.split_quantity != null
-        ? (r.action === "removed" ? -1 : 1) * Number(details.split_quantity)
+        ? splitSignWithLegacyFallback(details.split_direction, r.action) * Number(details.split_quantity)
         : undefined;
     // Mirror aggregate.ts:135 reclassification: stablecoin crypto_positions
     // contribute to cash_value_* in snapshots, NOT crypto_value_*. Without
@@ -1031,10 +1032,10 @@ export async function fetchHistoricalPriceInputsFor(
     const before = r.before_snapshot as { quantity?: number } | null;
     const after = r.after_snapshot as { quantity?: number } | null;
     const splitFromId = r.split_from_id;
-    const details = r.details as { split_quantity?: number } | null;
+    const details = r.details as { split_quantity?: number; split_direction?: number } | null;
     const qtyOverride =
       splitFromId && details?.split_quantity != null
-        ? (r.action === "removed" ? -1 : 1) * Number(details.split_quantity)
+        ? splitSignWithLegacyFallback(details.split_direction, r.action) * Number(details.split_quantity)
         : undefined;
     activity.push({
       entity_id: r.entity_id,

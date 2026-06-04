@@ -732,6 +732,14 @@ export interface HoldingItem {
 export interface SplitLeg {
   effective_date: string;
   quantity: number;
+  /**
+   * Optional real cost the user paid for THIS leg (DCA). When present, the
+   * child's `cashflow_amount_*` is set to this amount (the cross-currency leg
+   * derived via FX-at-`effective_date`) and `cashflow_user_set=true`. Absent →
+   * the leg falls back to the proportional split of the parent's amounts.
+   * Legs are always positive; cost is always a positive magnitude.
+   */
+  cost?: { amount: number; currency: "EUR" | "USD" };
 }
 
 /** Persistent share link record. Consumed by sharing-settings UI. */

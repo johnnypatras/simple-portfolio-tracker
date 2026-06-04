@@ -23,7 +23,13 @@ interface SplitModalProps {
   onClose: () => void;
   onSplit: (
     parentId: string,
-    legs: { effective_date: string; quantity: number }[],
+    legs: {
+      effective_date: string;
+      quantity: number;
+      // Optional per-leg cost (DCA). The UI field that populates this is Task 4.2;
+      // the type lives here now so the server-action contract is type-complete.
+      cost?: { amount: number; currency: "EUR" | "USD" };
+    }[],
   ) => Promise<{ success: boolean; message: string }>;
 }
 

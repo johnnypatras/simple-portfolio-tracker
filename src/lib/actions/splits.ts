@@ -2,13 +2,14 @@
 
 import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { validateUUID } from "@/lib/validation";
-import { isValidPastOrTodayDate, extractQuantity } from "@/lib/split-helpers";
+import { validateUUID, validateAmount } from "@/lib/validation";
+import { isValidPastOrTodayDate, extractQuantity, splitDirectionForParent } from "@/lib/split-helpers";
 import type { ActivityLog, EntityType, SplitLeg } from "@/lib/types";
 import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { CASHFLOW_PRODUCING_ENTITY_TYPES } from "@/lib/cashflow";
-import { computeDeltaFromSnapshots } from "@/lib/actions/activity-log";
+import { computeDeltaFromSnapshots, toUsdAndEur } from "@/lib/actions/activity-log";
+import { COST_COPY } from "@/lib/cost-basis-copy";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -160,7 +161,12 @@ export async function splitActivityEntry(
 
   if (legs.length < 2) return { success: false, message: "Need at least 2 date allocations" };
 
-  // Validate dates
+  // Inherited cost-basis flags. These columns are not on the ActivityLog
+  // interface (UI-shape type); read them off the raw row like backdate does.
+  const parentIsYield = (entry as Record<string, unknown>)["is_yield"] === true;
+  const parentCashflowUserSet = (entry as Record<string, unknown>)["cashflow_user_set"] === true;
+
+  // Validate dates, quantities, and per-leg costs
   const dates = new Set<string>();
   for (const leg of legs) {
     if (!isValidPastOrTodayDate(leg.effective_date)) {
@@ -173,7 +179,25 @@ export async function splitActivityEntry(
     if (leg.quantity <= 0) {
       return { success: false, message: "All quantities must be positive" };
     }
+    if (leg.cost != null) {
+      // Yield has no cost (earned income, cost 0) — reject an explicit leg-cost
+      // on a yield parent, mirroring the addTransaction yield contract.
+      if (parentIsYield) {
+        return { success: false, message: COST_COPY.yieldHasNoCost };
+      }
+      // Adjustments carry delta_*, not cashflow_amount_* — a per-leg cost is
+      // only meaningful for real (non-adjustment) cash flows.
+      if (isAdj) {
+        return { success: false, message: "Cannot set a per-leg cost on an adjustment split" };
+      }
+      validateAmount(leg.cost.amount, "Cost");
+    }
   }
+
+  // Parent-derived split direction stored on EVERY child (legs are always
+  // positive; the disposal/acquisition sign comes from the parent). A SELL
+  // parent → -1 so the cost engine's quantityDelta keeps each child a disposal.
+  const splitDirection = splitDirectionForParent(parent);
 
   // Extract original quantity
   const totalQty = extractQuantity(parent);
@@ -187,43 +211,113 @@ export async function splitActivityEntry(
     return { success: false, message: `Leg quantities (${legSum}) must equal original quantity (${Math.abs(totalQty)})` };
   }
 
+  // ── Per-leg cost overrides (DCA) ──
+  // Resolve the dual-currency cost for each leg that carries an explicit cost
+  // BEFORE the synchronous distribution pass. The user's typed currency is
+  // stored EXACTLY (all decimals preserved); only the cross-currency derived
+  // leg is round2'd — the addTransaction case-16 pattern. toUsdAndEur THROWS on
+  // FX failure (never silently writes a 1:1 rate); captureAction surfaces it.
+  // Cost-bearing legs are EXCLUDED from the proportional pool below.
+  const legCostOverrides = new Array<{ usd: number; eur: number } | null>(legs.length).fill(null);
+  for (let i = 0; i < legs.length; i++) {
+    const cost = legs[i].cost;
+    if (cost == null) continue;
+    const derived = await toUsdAndEur(cost.amount, cost.currency, legs[i].effective_date);
+    legCostOverrides[i] =
+      cost.currency === "EUR"
+        ? { eur: cost.amount, usd: round2(derived.usd) }
+        : { usd: cost.amount, eur: round2(derived.eur) };
+  }
+
+  // The proportional remainder ("last child absorbs the rounding penny") is
+  // distributed across the legs that DON'T carry an explicit cost. When no leg
+  // carries a cost this is exactly the legs array, so the distribution — and
+  // hence every child amount — stays byte-identical to the pre-cost behavior.
+  const lastNoCostIdx = (() => {
+    for (let i = legs.length - 1; i >= 0; i--) {
+      if (legCostOverrides[i] == null) return i;
+    }
+    return -1; // every leg carries an explicit cost (non-adjustment only)
+  })();
+
+  // Pre-compute the no-cost pool: parent amount minus what costed legs claim,
+  // clamped ≥ 0 so a costed-over-budget entry can't produce negative children.
+  // Σ(children) == parent in BOTH currencies (last no-cost leg absorbs rounding).
+  // When NO leg is costed noCostBaseUsd/Eur equals the full parent → identical to
+  // the old behavior byte-for-byte.
+  const noCostBaseUsd = Math.max(
+    0,
+    (parent.cashflow_amount_usd ?? 0) -
+      legCostOverrides.reduce((s, o) => s + (o != null ? o.usd : 0), 0),
+  );
+  const noCostBaseEur = Math.max(
+    0,
+    (parent.cashflow_amount_eur ?? 0) -
+      legCostOverrides.reduce((s, o) => s + (o != null ? o.eur : 0), 0),
+  );
+  // Fractions for no-cost legs are proportional to their share of the NO-COST
+  // quantity total (not the overall totalQty which includes costed legs).
+  const noCostQtyTotal = legs.reduce(
+    (s, leg, i) => s + (legCostOverrides[i] == null ? leg.quantity : 0),
+    0,
+  );
+
   // ── Create children ──
   const children = [];
   let runningDeltaUsd = 0;
   let runningDeltaEur = 0;
-  let runningCashflowUsd = 0;
-  let runningCashflowEur = 0;
+  let runningNoCostUsd = 0;
+  let runningNoCostEur = 0;
 
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i];
     const isLast = i === legs.length - 1;
-    const fraction = leg.quantity / Math.abs(totalQty);
+    const costOverride = legCostOverrides[i];
 
     // Rounding safety: last child gets the remainder
     let childDeltaUsd: number | null = null;
     let childDeltaEur: number | null = null;
     let childCashflowUsd: number | null = null;
     let childCashflowEur: number | null = null;
+    // Children inherit the parent's cashflow_user_set; an explicit leg-cost
+    // overrides it to true (audit-3: a split yield/user-costed lot must not
+    // silently become a market-value buy the benchmark re-counts).
+    let childCashflowUserSet = parentCashflowUserSet;
 
     if (isAdj) {
+      // Adjustments never carry a per-leg cost (rejected above) — proportional
+      // delta distribution, unchanged.
+      const adjFraction = leg.quantity / Math.abs(totalQty);
       if (isLast) {
         childDeltaUsd = (parent.delta_usd ?? 0) - runningDeltaUsd;
         childDeltaEur = (parent.delta_eur ?? 0) - runningDeltaEur;
       } else {
-        childDeltaUsd = round2((parent.delta_usd ?? 0) * fraction);
-        childDeltaEur = round2((parent.delta_eur ?? 0) * fraction);
+        childDeltaUsd = round2((parent.delta_usd ?? 0) * adjFraction);
+        childDeltaEur = round2((parent.delta_eur ?? 0) * adjFraction);
         runningDeltaUsd += childDeltaUsd;
         runningDeltaEur += childDeltaEur;
       }
+    } else if (costOverride != null) {
+      // Explicit per-leg cost: store the entered amount verbatim. Excluded from
+      // the proportional pool, so it does NOT touch the running totals.
+      childCashflowUsd = costOverride.usd;
+      childCashflowEur = costOverride.eur;
+      childCashflowUserSet = true;
     } else {
-      if (isLast) {
-        childCashflowUsd = (parent.cashflow_amount_usd ?? 0) - runningCashflowUsd;
-        childCashflowEur = (parent.cashflow_amount_eur ?? 0) - runningCashflowEur;
+      // No-cost leg: proportional split of the NO-COST pool (noCostBaseUsd/Eur =
+      // parent minus costed legs' amounts, clamped ≥ 0). Fractions are over the
+      // NO-COST quantity total so Σ(no-cost children) === noCostBase. The LAST
+      // no-cost leg absorbs the rounding remainder, guaranteeing Σ(all children)
+      // === parent in BOTH currencies.
+      const noCostFraction = noCostQtyTotal > 0 ? leg.quantity / noCostQtyTotal : 0;
+      if (i === lastNoCostIdx) {
+        childCashflowUsd = noCostBaseUsd - runningNoCostUsd;
+        childCashflowEur = noCostBaseEur - runningNoCostEur;
       } else {
-        childCashflowUsd = round2((parent.cashflow_amount_usd ?? 0) * fraction);
-        childCashflowEur = round2((parent.cashflow_amount_eur ?? 0) * fraction);
-        runningCashflowUsd += childCashflowUsd;
-        runningCashflowEur += childCashflowEur;
+        childCashflowUsd = round2(noCostBaseUsd * noCostFraction);
+        childCashflowEur = round2(noCostBaseEur * noCostFraction);
+        runningNoCostUsd += childCashflowUsd;
+        runningNoCostEur += childCashflowEur;
       }
     }
 
@@ -235,8 +329,14 @@ export async function splitActivityEntry(
       entity_table: parent.entity_table,
       entity_name: parent.entity_name,
       description: `Split: ${leg.quantity} effective ${leg.effective_date}`,
-      details: { split_quantity: leg.quantity },
+      // split_quantity STAYS POSITIVE; split_direction carries the sign so the
+      // cost engine (quantityDelta) and #94 augmentation reconstruct disposals.
+      details: { split_quantity: leg.quantity, split_direction: splitDirection },
       is_adjustment: parent.is_adjustment,
+      // Children inherit is_yield: a split of a yield lot stays earned income
+      // (cost 0), never a cost-bearing buy the benchmark counts as a contribution.
+      is_yield: parentIsYield,
+      cashflow_user_set: isAdj ? false : childCashflowUserSet,
       effective_date: leg.effective_date,
       split_from_id: parent.id,
       delta_usd: childDeltaUsd,

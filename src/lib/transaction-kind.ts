@@ -62,6 +62,13 @@ export function quantityDelta(row: TransactionRow): number {
   if (isSplitChild) {
     const sq = row.details!["split_quantity"] as number;
     const sdRaw = row.details!["split_direction"];
+    // Default +1 when split_direction is absent (legacy #94 children). Note: a
+    // legacy child whose parent action is "removed" would get +1 here, while the
+    // augmentation (splitSignWithLegacyFallback in split-helpers.ts) returns −1 via
+    // the old formula. This is an intentional divergence — the "removed" parent
+    // path is UNREACHABLE via splitActivityEntry (verified through git history), and
+    // the augmentation is bound by #94 byte-identity. See split-helpers.ts for the
+    // full rationale.
     const sd = typeof sdRaw === "number" ? Math.sign(sdRaw) || 1 : 1;
     return sq * sd;
   }

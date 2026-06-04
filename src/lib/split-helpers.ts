@@ -43,3 +43,51 @@ export function extractQuantity(log: ActivityLog): number | null {
   }
   return null;
 }
+
+/**
+ * Derive the single, parent-level split direction stored on every child of a
+ * split (`details.split_direction`). Legs are always positive (splits.ts rejects
+ * `leg.quantity <= 0`), so the disposal/acquisition sign comes from the parent:
+ * splitting a SELL (negative qty delta) → -1, so the cost engine's
+ * `quantityDelta` (split_direction × split_quantity) keeps each child a disposal.
+ *
+ * Zero-quantity guard: `Math.sign(0) = 0` and a null parent quantity (e.g. a
+ * "removed" parent extractQuantity can't resolve) both resolve to +1 — the safe
+ * "buy" default. In practice splitActivityEntry already rejects a 0/null parent
+ * quantity before any child is created, so the guard is defensive belt-and-braces.
+ */
+export function splitDirectionForParent(log: ActivityLog): 1 | -1 {
+  const qty = extractQuantity(log);
+  if (qty == null) return 1;
+  return Math.sign(qty) < 0 ? -1 : 1;
+}
+
+/**
+ * Resolve the literal split sign for an activity-log row at augmentation read
+ * time. New children carry an explicit `details.split_direction` (1 or -1);
+ * legacy #94 children carry NONE. For those legacy rows the fallback
+ * `(action === "removed" ? -1 : 1)` replicates the OLD augmentation formula
+ * EXACTLY, guaranteeing byte-identical lot deltas for every pre-Task-4.1 child
+ * (including the theoretical removed-action child). An explicit split_direction
+ * always wins over the action-derived legacy default.
+ *
+ * INTENTIONAL ENGINE/AUGMENTATION DIVERGENCE: for a hypothetical legacy child
+ * whose parent action is "removed" and that carries NO `split_direction` (this
+ * path is UNREACHABLE via splitActivityEntry — verified through git history;
+ * splitActivityEntry only ever creates children from "created"/"updated" parents),
+ * the cost engine (`transaction-kind.ts:quantityDelta`) defaults split_direction
+ * to +1 (via `Math.sign(sdRaw) || 1` when sdRaw is undefined), while THIS
+ * augmentation function returns −1 via the legacy `removed → −1` fallback.
+ * This divergence is intentional and safe: the engine row is unreachable in
+ * practice, and the augmentation is bound by #94 byte-identity which requires
+ * replicating the old formula. See also `quantityDelta` in transaction-kind.ts.
+ */
+export function splitSignWithLegacyFallback(
+  splitDirection: number | null | undefined,
+  action: string | null | undefined,
+): 1 | -1 {
+  if (typeof splitDirection === "number") {
+    return Math.sign(splitDirection) < 0 ? -1 : 1;
+  }
+  return action === "removed" ? -1 : 1;
+}
