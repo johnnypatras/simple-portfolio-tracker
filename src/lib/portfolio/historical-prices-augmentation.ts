@@ -501,21 +501,25 @@ async function readAllHistoricalPrices(
 }
 
 /**
- * Distinct cached `${asset_kind}:${asset_key}` keys among `candidateKeys`,
- * paging past the max_rows cap. Used by the cache-coverage skip-check and the
- * augmentation eligibility gate — both must NOT under-detect coverage (a missed
- * key → wasteful re-fetch, or worse, a lot incorrectly synthesized with $0
- * prices). Selecting only the two key columns keeps pages dense, but the server
- * still caps row COUNT (one row per date), so paging is required.
+ * `${asset_kind}:${asset_key}` → EARLIEST cached price_date among `candidateKeys`,
+ * paging past the max_rows cap. The price-fetch coverage gate: a coarse "is this
+ * key cached at all?" check under-detects when an asset was cached for a NARROWER
+ * (later-starting) window than a new consumer needs — the deeper `[neededStart…]`
+ * range would be skipped, leaving null prices at the deep dates (a silent gap).
+ * Tracking the MIN(price_date) per key lets the caller re-fetch only when the
+ * needed start precedes what's already cached (audit-r6 MEDIUM). Callers that
+ * only need "is this cached?" can read `.has(key)`. Selecting just the three key
+ * columns keeps pages dense, but the server still caps row COUNT (one row per
+ * date), so paging is required. Rows arrive ordered ascending by
+ * (asset_kind, asset_key, price_date), so the FIRST row seen for each key is its
+ * earliest date.
  */
-export async function readHistoricalCoverageKeys(
+export async function readHistoricalCoverageStarts(
   client: SupabaseClient<Database>,
   candidateKeys: string[],
-): Promise<Set<string>> {
-  const covered = new Set<string>();
-  if (candidateKeys.length === 0) return covered;
-  // Single-source pagination via fetchAllPaginated. The ordering matches
-  // readAllHistoricalPrices for parity (same table, same composite key).
+): Promise<Map<string, string>> {
+  const starts = new Map<string, string>();
+  if (candidateKeys.length === 0) return starts;
   type Row = { asset_kind: string; asset_key: string; price_date: string };
   const rows = await fetchAllPaginated<Row>((from, to) =>
     client
@@ -528,12 +532,16 @@ export async function readHistoricalCoverageKeys(
       .range(from, to),
   ).catch((e: unknown) => {
     throw new Error(
-      `historical_prices coverage read failed: ${e instanceof Error ? e.message : String(e)}`,
+      `historical_prices coverage-start read failed: ${e instanceof Error ? e.message : String(e)}`,
       { cause: e },
     );
   });
-  for (const r of rows) covered.add(`${r.asset_kind}:${r.asset_key}`);
-  return covered;
+  for (const r of rows) {
+    const key = `${r.asset_kind}:${r.asset_key}`;
+    // Ascending order guarantees the first row per key is its earliest date.
+    if (!starts.has(key)) starts.set(key, r.price_date);
+  }
+  return starts;
 }
 
 /** One activity-log row joined with its asset metadata, for lot building. */
@@ -548,6 +556,10 @@ export type ActivityForLot = {
   /** Override for split-child rows + cash entries (cash uses balance via cashDelta). */
   qty_delta_override?: number;
   is_adjustment: boolean;
+  /** Cost-basis seed (3.4a-pre): user explicitly typed the cashflow amount.
+   *  Consumed ONLY to widen extra PRICE coverage (NOT by buildHistoricalLots →
+   *  the value line is unaffected). Defaults false for rows that predate cost-basis. */
+  cashflow_user_set?: boolean;
   asset_kind: "crypto" | "stock" | "cash";
   asset_key: string;       // coingecko_id | yahoo_ticker | cash_account.id
   fetch_symbol: string;    // `${ticker}-USD` | yahoo_ticker | "" (unused for cash)
@@ -615,72 +627,181 @@ export function buildHistoricalLots(rows: ActivityForLot[]): HistoricalLot[] {
 }
 
 /**
+ * One asset whose PRICE coverage must be ensured WITHOUT it being a value-line
+ * lot — the cost-basis seed pre-step (Task 3.4a-pre). User-costed lots
+ * (`cashflow_user_set=true`) are usually NON-backdated normal buys, so they are
+ * dropped by buildHistoricalLots (not backdated → not a value line lot). The
+ * seed still needs each costed asset's market price back to the chart's earliest
+ * start to compute `marketAtChartStart`. We thread these as a SEPARATE input so
+ * the returned `prices` index widens WITHOUT adding the asset to `lots` — the
+ * value line is lot-driven and ignores unreferenced price-index entries, so a
+ * costed asset's prices are inert to the truth line (audit-r6 HIGH).
+ *
+ * Cash is intentionally excluded: cash uses face value (no Yahoo asset price);
+ * its native currency's FX series is covered via `coverageCurrencies` instead.
+ */
+export type PriceCoverageAsset = {
+  asset_kind: "crypto" | "stock";
+  asset_key: string;
+  /** Yahoo symbol (`${TICKER}-USD` for crypto, yahoo_ticker for stock). */
+  fetch_symbol: string;
+  /** The cache row's stored currency: "USD" for crypto, native for stock. */
+  native_currency: string;
+};
+
+/**
+ * Extra price coverage for the cost-basis seed: assets (+ their native
+ * currencies) to cache back to `coverageStart`, independent of the value-line
+ * lots. `coverageStart` is the chart's earliest possible start (the All-period
+ * start — see fetchHistoricalPriceInputsFor); the fetch is server-side and
+ * userId-keyed (no per-period client chartStart), so we cover from the user's
+ * earliest relevant date once and the per-period seed lookup slices later.
+ */
+export type ExtraPriceCoverage = {
+  assets: PriceCoverageAsset[];
+  /** Foreign (non-USD) native currencies among `assets`, needing an FX series. */
+  coverageCurrencies: string[];
+  coverageStart: string;
+};
+
+/**
  * Ensure the cache holds prices for every lot's asset over [earliestEffective,
  * captureEnd], plus USD-pivot FX for every native currency + EUR. Fetches only
- * MISSING (asset_key) series (coarse, idempotent — re-fetch is harmless thanks
- * to the UNIQUE constraint), upserts via the service-role admin client (the
- * only role allowed to write), and returns ALL relevant cached rows. Network
+ * series MISSING the needed start (idempotent — re-fetch is harmless thanks to
+ * the UNIQUE constraint), upserts via the service-role admin client (the only
+ * role allowed to write), and returns ALL relevant cached rows. Network
  * failures degrade gracefully (the lot simply won't be in the returned set →
  * caller treats it as ineligible for augmentation; it contributes $0).
+ *
+ * `extraPriceCoverage` (Task 3.4a-pre) widens the RETURNED `prices` to cover
+ * user-costed assets back to `coverageStart` WITHOUT making them value-line lots
+ * (they are not in `lots`). The value line stays lot-driven and unaffected.
+ *
+ * Range threading (audit-r7 F1): each series fetches an EXPLICIT [start, end]
+ * range — value-line assets from `rangeStart`, extra-coverage assets from
+ * `coverageStart`, an asset in both from `min(...)`. The coverage gate is
+ * per-date (audit-r6 MEDIUM): a series is (re)fetched when it is uncached OR its
+ * earliest cached date is LATER than the needed start, so a narrower prior cache
+ * no longer hides the deeper range.
  *
  * Cache invariant: exactly one currency per (asset_kind, asset_key) — crypto is
  * USD (Yahoo {SYM}-USD), stock is its native currency, fx is USD-per-unit.
  */
 export async function ensureHistoricalPricesCached(
   lots: HistoricalLot[],
+  extraPriceCoverage?: ExtraPriceCoverage,
 ): Promise<HistoricalPriceRow[]> {
-  if (lots.length === 0) return [];
+  const hasExtra = (extraPriceCoverage?.assets.length ?? 0) > 0;
+  // Nothing to do when there are neither value-line lots nor extra coverage.
+  if (lots.length === 0 && !hasExtra) return [];
   const admin = createAdminClient();
 
-  let rangeStart = lots[0].deltas[0].effective_date;
-  let rangeEnd = lots[0].capture_date;
-  const currencies = new Set<string>(["EUR"]); // always need EUR for the mirror
+  // rangeEnd is the common upper bound for every fetch in this call:
+  //   • Pure value-line (no extra coverage): max capture_date among lots.
+  //   • Extra coverage present: max(lot capture_dates, today) — coverage assets
+  //     are usually non-backdated holdings whose relevant tail is the present day,
+  //     so the fetch window must reach today even when all lots are in the past.
+  //   • Extra-coverage-only (lots empty): today.
+  const today = new Date().toISOString().slice(0, 10);
+  let rangeEnd = lots.length > 0 ? lots[0].capture_date : today;
+
+  // value-line earliest start (the synthesized/augmented range). Undefined when
+  // there are no value-line lots (extra-coverage-only call).
+  let rangeStart: string | null = lots.length > 0 ? lots[0].deltas[0].effective_date : null;
+
+  // assetKey -> { kind, symbol, currency, neededStart }. neededStart is the
+  // earliest date this series must cover; an asset present as BOTH a value-line
+  // lot and extra coverage takes the min.
   const assetSeries = new Map<
     string,
-    { kind: "crypto" | "stock"; symbol: string; currency: string }
+    { kind: "crypto" | "stock"; symbol: string; currency: string; neededStart: string }
   >();
+  // currency -> earliest date its FX series must cover. EUR is always required.
+  const currencyStarts = new Map<string, string>();
+
+  const minDate = (a: string, b: string): string => (a <= b ? a : b);
+  const requireCurrency = (currency: string, start: string): void => {
+    if (currency === "USD") return; // pivot — never fetched/stored
+    const existing = currencyStarts.get(currency);
+    currencyStarts.set(currency, existing ? minDate(existing, start) : start);
+  };
+
   for (const lot of lots) {
     for (const d of lot.deltas) {
-      if (d.effective_date < rangeStart) rangeStart = d.effective_date;
+      if (rangeStart === null || d.effective_date < rangeStart) rangeStart = d.effective_date;
     }
     if (lot.capture_date > rangeEnd) rangeEnd = lot.capture_date;
-    // Cash lots: face value — no Yahoo asset fetch — but their native currency
-    // still needs an FX series for the USD/EUR mirror at synthesized dates.
-    if (lot.native_currency !== "USD") currencies.add(lot.native_currency);
-    if (lot.asset_kind === "cash") continue;
-    assetSeries.set(`${lot.asset_kind}:${lot.asset_key}`, {
-      kind: lot.asset_kind,
-      symbol: lot.fetch_symbol,
-      currency: lot.native_currency,
-    });
+  }
+  // When extra coverage exists, raise rangeEnd to today so coverage assets
+  // (which are non-backdated holdings) get prices through the present day.
+  if (hasExtra && rangeEnd < today) rangeEnd = today;
+  // The value-line span needs EUR (mirror) + every lot's native currency back to
+  // rangeStart. (rangeStart is non-null whenever lots is non-empty.)
+  if (rangeStart !== null) {
+    requireCurrency("EUR", rangeStart);
+    for (const lot of lots) {
+      requireCurrency(lot.native_currency, rangeStart);
+      // Cash lots: face value — no Yahoo asset fetch — only the FX above.
+      if (lot.asset_kind === "cash") continue;
+      const key = `${lot.asset_kind}:${lot.asset_key}`;
+      const existing = assetSeries.get(key);
+      const neededStart = existing ? minDate(existing.neededStart, rangeStart) : rangeStart;
+      assetSeries.set(key, {
+        kind: lot.asset_kind,
+        symbol: lot.fetch_symbol,
+        currency: lot.native_currency,
+        neededStart,
+      });
+    }
+  }
+
+  // ── Extra (user-costed) coverage: widen back to coverageStart ───────────────
+  if (hasExtra) {
+    const { assets, coverageCurrencies, coverageStart } = extraPriceCoverage!;
+    requireCurrency("EUR", coverageStart); // the seed's EUR mirror needs it too
+    for (const cur of coverageCurrencies) requireCurrency(cur, coverageStart);
+    for (const a of assets) {
+      const key = `${a.asset_kind}:${a.asset_key}`;
+      const existing = assetSeries.get(key);
+      const neededStart = existing ? minDate(existing.neededStart, coverageStart) : coverageStart;
+      assetSeries.set(key, {
+        kind: a.asset_kind,
+        symbol: a.fetch_symbol,
+        currency: a.native_currency,
+        neededStart,
+      });
+    }
   }
 
   const relevantKeys = [
     ...new Set([
       ...[...assetSeries.keys()].map((k) => k.slice(k.indexOf(":") + 1)),
-      ...currencies,
+      ...currencyStarts.keys(),
     ]),
   ];
-  const cachedKeys = await readHistoricalCoverageKeys(admin, relevantKeys);
+  // Per-date gate: earliest cached price_date per key. A key absent here is
+  // uncached; a key whose earliest date is LATER than the needed start must be
+  // re-fetched for the deeper range (defeats the coarse per-asset_key gate).
+  const coverageStarts = await readHistoricalCoverageStarts(admin, relevantKeys);
+  const needsFetch = (key: string, neededStart: string): boolean => {
+    const cachedStart = coverageStarts.get(key);
+    return cachedStart === undefined || cachedStart > neededStart;
+  };
 
   const toUpsert: Array<Database["public"]["Tables"]["historical_prices"]["Insert"]> = [];
 
-  // Collect every missing-series fetch as a task, then run them with bounded
+  // Collect every needed fetch as a task, then run them with bounded
   // concurrency. Pushing to the shared `toUpsert` array from concurrent task
   // callbacks is safe — JS is single-threaded, so the synchronous push runs
   // atomically between awaits.
   const fetchTasks: Array<() => Promise<void>> = [];
 
   for (const [key, meta] of assetSeries) {
-    // NOTE: coarse per-asset_key coverage gate. If an asset was previously
-    // cached for a later date range and a NEW lot needs earlier dates, the
-    // earlier range won't be re-fetched (those synthesized dates get no price
-    // → graceful no-contribution, not wrong data). Acceptable for Phase 1
-    // (single-user, rare); a future fix tracks MIN(price_date) per asset_key.
-    if (cachedKeys.has(key)) continue;
+    if (!needsFetch(key, meta.neededStart)) continue;
     const assetKey = key.slice(key.indexOf(":") + 1);
+    const start = meta.neededStart;
     fetchTasks.push(async () => {
-      const points = await fetchYahooDailyHistory(meta.symbol, rangeStart, rangeEnd);
+      const points = await fetchYahooDailyHistory(meta.symbol, start, rangeEnd);
       for (const p of points) {
         toUpsert.push({
           asset_kind: meta.kind,
@@ -693,10 +814,10 @@ export async function ensureHistoricalPricesCached(
     });
   }
 
-  for (const cur of currencies) {
-    if (cachedKeys.has(`fx:${cur}`)) continue;
+  for (const [cur, start] of currencyStarts) {
+    if (!needsFetch(`fx:${cur}`, start)) continue;
     fetchTasks.push(async () => {
-      const points = await fetchFxUsdPivotHistory(cur, rangeStart, rangeEnd);
+      const points = await fetchFxUsdPivotHistory(cur, start, rangeEnd);
       for (const p of points) {
         toUpsert.push({
           asset_kind: "fx",
@@ -727,7 +848,7 @@ export async function ensureHistoricalPricesCached(
   }
 
   const assetKeys = [...assetSeries.keys()].map((k) => k.slice(k.indexOf(":") + 1));
-  const allKeys = [...new Set([...assetKeys, ...currencies])];
+  const allKeys = [...new Set([...assetKeys, ...currencyStarts.keys()])];
   try {
     return await readAllHistoricalPrices(admin, allKeys);
   } catch (err) {
@@ -760,7 +881,7 @@ export async function fetchHistoricalPriceInputsFor(
     supabase
       .from("activity_log")
       .select(
-        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id, is_adjustment",
+        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id, is_adjustment, cashflow_user_set",
       )
       .eq("user_id", userId)
       .eq("entity_type", "crypto_position")
@@ -772,7 +893,7 @@ export async function fetchHistoricalPriceInputsFor(
     supabase
       .from("activity_log")
       .select(
-        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id, is_adjustment",
+        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, details, split_from_id, is_adjustment, cashflow_user_set",
       )
       .eq("user_id", userId)
       .eq("entity_type", "stock_position")
@@ -784,7 +905,7 @@ export async function fetchHistoricalPriceInputsFor(
     supabase
       .from("activity_log")
       .select(
-        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, is_adjustment",
+        "entity_id, action, effective_date, created_at, before_snapshot, after_snapshot, is_adjustment, cashflow_user_set",
       )
       .eq("user_id", userId)
       .eq("entity_type", "cash_account")
@@ -811,6 +932,7 @@ export async function fetchHistoricalPriceInputsFor(
     details: unknown;
     split_from_id: string | null;
     is_adjustment: boolean;
+    cashflow_user_set: boolean;
   };
   type CashActivityRow = {
     entity_id: string | null;
@@ -820,6 +942,7 @@ export async function fetchHistoricalPriceInputsFor(
     before_snapshot: unknown;
     after_snapshot: unknown;
     is_adjustment: boolean;
+    cashflow_user_set: boolean;
   };
   const [cryptoRows, stockRows, cashRows] = await Promise.all([
     fetchAllPaginated<CryptoOrStockActivityRow>(cryptoActivityRange, 1000, { label: "activity:crypto" }).catch((e: unknown) => {
@@ -880,6 +1003,7 @@ export async function fetchHistoricalPriceInputsFor(
       after_quantity: after?.quantity ?? null,
       qty_delta_override: qtyOverride,
       is_adjustment: r.is_adjustment,
+      cashflow_user_set: r.cashflow_user_set,
       asset_kind: "crypto",
       asset_key: meta.coingecko_id,
       fetch_symbol: `${meta.ticker.toUpperCase()}-USD`,
@@ -910,6 +1034,7 @@ export async function fetchHistoricalPriceInputsFor(
       after_quantity: after?.quantity ?? null,
       qty_delta_override: qtyOverride,
       is_adjustment: r.is_adjustment,
+      cashflow_user_set: r.cashflow_user_set,
       asset_kind: "stock",
       asset_key: meta.yahoo_ticker,
       fetch_symbol: meta.yahoo_ticker,
@@ -941,6 +1066,7 @@ export async function fetchHistoricalPriceInputsFor(
       after_quantity: null,
       qty_delta_override: qtyDelta,
       is_adjustment: r.is_adjustment,
+      cashflow_user_set: r.cashflow_user_set,
       asset_kind: "cash",
       asset_key: r.entity_id,           // synthetic; never stored in historical_prices
       fetch_symbol: "",                 // unused — cash never goes to Yahoo
@@ -951,18 +1077,73 @@ export async function fetchHistoricalPriceInputsFor(
 
   const lots = buildHistoricalLots(activity);
 
+  // ── Cost-basis seed pre-step (Task 3.4a-pre): widen PRICE coverage ──────────
+  // The seed computes `marketAtChartStart` for USER-COSTED lots
+  // (cashflow_user_set=true), which are usually NON-backdated normal buys →
+  // buildHistoricalLots DROPS them (not backdated) → #94 caches no price for
+  // them. We widen the RETURNED `prices` to cover their assets back to the
+  // chart's earliest start, WITHOUT adding them to `lots` (the value line stays
+  // backdated-only and byte-identical). Cash is excluded — face value, no Yahoo
+  // price; its FX is already covered when it is a value-line lot, and the seed
+  // values cash at face value too, so no asset-price coverage is needed.
+  const coveredAssetKeys = new Set<string>();
+  const coverageAssets: PriceCoverageAsset[] = [];
+  const coverageCurrencies = new Set<string>();
+  for (const a of activity) {
+    if (a.cashflow_user_set !== true) continue;
+    if (a.asset_kind === "cash") continue; // face value — no asset price needed
+    const key = `${a.asset_kind}:${a.asset_key}`;
+    if (coveredAssetKeys.has(key)) continue;
+    coveredAssetKeys.add(key);
+    coverageAssets.push({
+      asset_kind: a.asset_kind,
+      asset_key: a.asset_key,
+      fetch_symbol: a.fetch_symbol,
+      native_currency: a.native_currency,
+    });
+    if (a.native_currency !== "USD") coverageCurrencies.add(a.native_currency);
+  }
+
+  // "All-period start": the fetch is server-side and React-cache()-keyed on
+  // userId only — there is NO client chartStart here (the per-period seed lookup
+  // slices client-side later). So cover from the user's EARLIEST relevant date:
+  // the min COALESCE(effective_date, created_at-date) across ALL their activity
+  // rows — the earliest x-position any series can occupy on the All-period
+  // chart. This is <= the value-line rangeStart (a min over a superset of the
+  // backdated effective_dates), so the existing value-line coverage is never
+  // narrowed. Floored by MAX_SYNTHESIS_DAYS for the same pathological-input
+  // reason synthesis is floored (a mistyped year must not fan out a 25y+ fetch).
+  let coverageStart: string | null = null;
+  if (coverageAssets.length > 0) {
+    for (const a of activity) {
+      const day = a.effective_date ?? a.created_at.slice(0, 10);
+      if (coverageStart === null || day < coverageStart) coverageStart = day;
+    }
+    const floor = isoDaysAgo(MAX_SYNTHESIS_DAYS);
+    if (coverageStart !== null && coverageStart < floor) coverageStart = floor;
+  }
+
+  const extraCoverage: ExtraPriceCoverage | undefined =
+    coverageAssets.length > 0 && coverageStart !== null
+      ? { assets: coverageAssets, coverageCurrencies: [...coverageCurrencies], coverageStart }
+      : undefined;
+
   Sentry.addBreadcrumb({
     category: "historical-prices",
     message: "Historical price inputs fetched",
-    data: { backdatedLots: lots.length },
-    level: lots.length > 0 ? "info" : "debug",
+    data: { backdatedLots: lots.length, costedCoverageAssets: coverageAssets.length },
+    level: lots.length > 0 || coverageAssets.length > 0 ? "info" : "debug",
   });
 
-  if (lots.length === 0) return { lots: [], prices: [] };
-  const prices = await ensureHistoricalPricesCached(lots);
+  // No value-line lots AND no user-costed assets → nothing to fetch/return.
+  if (lots.length === 0 && extraCoverage === undefined) return { lots: [], prices: [] };
+
+  const prices = await ensureHistoricalPricesCached(lots, extraCoverage);
 
   // Cash lots have no Yahoo asset-price coverage (face value); they always pass.
-  // Crypto/stock lots stay gated by the cache-coverage check.
+  // Crypto/stock lots stay gated by the cache-coverage check. NOTE: this filters
+  // ONLY the value-line `lots` (backdated) — the widened user-costed coverage
+  // lives in `prices`, never in `lots`, so the value line is unchanged.
   const pricedKeys = new Set(prices.map((p) => `${p.asset_kind}:${p.asset_key}`));
   const pricedLots = lots.filter((l) =>
     l.asset_kind === "cash" || pricedKeys.has(`${l.asset_kind}:${l.asset_key}`),
