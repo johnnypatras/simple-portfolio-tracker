@@ -48,6 +48,10 @@ export interface AssetTransactionRow {
   cashflow_amount_eur: number | null;
   delta_usd: number | null;
   delta_eur: number | null;
+  /** True when the user explicitly typed the cashflow amount. Inert to the cost
+   *  engine + drawer (both read only their own field subsets); consumed by the
+   *  cost-basis SERIES (buildCostBasisSeries) as the market-minus-cost GAP gate. */
+  cashflow_user_set: boolean;
   before_snapshot: unknown; // Json column — keep unknown, narrow at use-site
   after_snapshot: unknown;
   details: unknown;
@@ -57,7 +61,7 @@ export interface AssetTransactionRow {
 
 /** Columns selected for the activity_log read — kept in one place for parity. */
 const ACTIVITY_SELECT =
-  "id, entity_id, entity_type, action, is_yield, is_adjustment, transfer_group_id, split_from_id, cashflow_amount_usd, cashflow_amount_eur, delta_usd, delta_eur, before_snapshot, after_snapshot, details, effective_date, created_at";
+  "id, entity_id, entity_type, action, is_yield, is_adjustment, transfer_group_id, split_from_id, cashflow_amount_usd, cashflow_amount_eur, delta_usd, delta_eur, cashflow_user_set, before_snapshot, after_snapshot, details, effective_date, created_at";
 
 /**
  * Resolve a crypto AssetRef to the position ids that belong to `userId`.

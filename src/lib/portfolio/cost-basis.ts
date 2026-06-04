@@ -96,12 +96,28 @@ export interface CostBasisOptions {
 }
 
 /** A stream entry after the transfer-netting pre-step: the original row's
- * classification flags + its resolved per-currency `value` and `qtyDelta`. */
-interface StreamEntry {
+ * classification flags + its resolved per-currency `value` and `qtyDelta`.
+ *
+ * Exported so the running-cost series (buildCostBasisSeries in
+ * historical-prices-augmentation.ts) can fold the SAME stream the headline P&L
+ * folds — the series and the headline must never diverge in how they net
+ * transfers or resolve the C3 value source. */
+export interface StreamEntry {
   qtyDelta: number;
   value: number;
   isYield: boolean;
   isCorrection: boolean;
+}
+
+/**
+ * The running average-cost accumulator state: held `units`, their remaining
+ * `cost`, and cumulative `realized` P&L. `cost` IS the running cost basis — the
+ * exact quantity the series emits at each transaction date.
+ */
+export interface CostFoldState {
+  units: number;
+  cost: number;
+  realized: number;
 }
 
 /** Read a numeric column, treating null/undefined/NaN as 0. */
@@ -150,7 +166,7 @@ function toTxnRow(txn: CostBasisTxn): TransactionRow {
  * transfer group collapses to zero or one synthetic entry placed at its first leg's
  * position.
  */
-function buildStream(txnsAsc: CostBasisTxn[], currency: "usd" | "eur"): StreamEntry[] {
+export function buildStream(txnsAsc: CostBasisTxn[], currency: "usd" | "eur"): StreamEntry[] {
   // First pass: index transfer-group members by id, preserving first-seen position.
   const groupMembers = new Map<string, number[]>(); // group id → indices in txnsAsc
   txnsAsc.forEach((txn, i) => {
@@ -242,59 +258,81 @@ export function computeCostBasis(
   const currency = opts?.currency ?? "eur";
   const stream = buildStream(txnsAsc, currency);
 
-  let units = 0;
-  let cost = 0;
-  let realized = 0;
-
+  const state: CostFoldState = { units: 0, cost: 0, realized: 0 };
   for (const entry of stream) {
-    const qtyDelta = entry.qtyDelta;
-    if (qtyDelta === 0) continue;
-    const value = entry.value;
-
-    if (entry.isYield) {
-      // Earned units — cost += 0, lowers average cost.
-      units += qtyDelta;
-    } else if (qtyDelta > 0) {
-      // Acquisition.
-      if (entry.isCorrection) {
-        units += qtyDelta; // balance-up restatement → zero cost
-      } else {
-        units += qtyDelta; // BUY / TRANSFER-IN
-        cost += value;
-      }
-    } else {
-      // Disposal (qtyDelta < 0).
-      const avg = units > 0 ? cost / units : 0;
-      const out = Math.min(-qtyDelta, units); // oversell clamp (H4)
-      if (-qtyDelta > units + EPS) {
-        // Only reachable from corrupt/backdated data (a buy backdated after a sell).
-        opts?.onAnomaly?.(
-          `cost-basis oversell: tried to dispose ${(-qtyDelta).toFixed(8)} but only ${units.toFixed(8)} units held`,
-        );
-      }
-      if (entry.isCorrection) {
-        cost -= avg * out; // balance-down restatement → no realized
-        units -= out;
-      } else {
-        realized += value - avg * out; // SELL / TRANSFER-OUT
-        cost -= avg * out;
-        units -= out;
-      }
-      // Snap to a clean zero so cent-rounded drift can't survive and a re-buy
-      // restarts from 0/0.
-      if (Math.abs(units) < EPS) {
-        units = 0;
-        cost = 0;
-      }
-    }
+    foldCostStep(state, entry, opts?.onAnomaly);
   }
 
-  const costBasis = cost;
-  const avgCost = units > 0 ? cost / units : 0;
+  const costBasis = state.cost;
+  const avgCost = state.units > 0 ? state.cost / state.units : 0;
   const unrealized = currentMarketValue - costBasis;
-  const totalPnL = realized + unrealized;
+  const totalPnL = state.realized + unrealized;
 
-  return { avgCost, costBasis, realized, unrealized, totalPnL };
+  return { avgCost, costBasis, realized: state.realized, unrealized, totalPnL };
+}
+
+/**
+ * Apply ONE stream entry to the running average-cost accumulator, mutating
+ * `state` in place. This is the verified per-transaction fold extracted verbatim
+ * from computeCostBasis's loop — the SINGLE source of cost arithmetic. The
+ * running-cost series (buildCostBasisSeries) walks each asset's stream once,
+ * calling this per entry and reading `state.cost` at each transaction date, so
+ * the series can NEVER drift from the headline P&L.
+ *
+ * Semantics (unchanged from the inline loop):
+ *   - yield        → units += qtyDelta, cost unchanged (lowers average cost)
+ *   - acquisition  → units += qtyDelta; cost += value unless a balance-up
+ *                    correction (zero cost)
+ *   - disposal     → realized += value − avg×out (skipped for a balance-down
+ *                    correction); cost -= avg×out; units -= out; oversell clamped
+ *                    (H4, fires onAnomaly); snap units/cost to 0 within EPS so a
+ *                    re-buy restarts cleanly.
+ */
+export function foldCostStep(
+  state: CostFoldState,
+  entry: StreamEntry,
+  onAnomaly?: (msg: string) => void,
+): void {
+  const qtyDelta = entry.qtyDelta;
+  if (qtyDelta === 0) return;
+  const value = entry.value;
+
+  if (entry.isYield) {
+    // Earned units — cost += 0, lowers average cost.
+    state.units += qtyDelta;
+  } else if (qtyDelta > 0) {
+    // Acquisition.
+    if (entry.isCorrection) {
+      state.units += qtyDelta; // balance-up restatement → zero cost
+    } else {
+      state.units += qtyDelta; // BUY / TRANSFER-IN
+      state.cost += value;
+    }
+  } else {
+    // Disposal (qtyDelta < 0).
+    const avg = state.units > 0 ? state.cost / state.units : 0;
+    const out = Math.min(-qtyDelta, state.units); // oversell clamp (H4)
+    if (-qtyDelta > state.units + EPS) {
+      // Only reachable from corrupt/backdated data (a buy backdated after a sell).
+      onAnomaly?.(
+        `cost-basis oversell: tried to dispose ${(-qtyDelta).toFixed(8)} but only ${state.units.toFixed(8)} units held`,
+      );
+    }
+    if (entry.isCorrection) {
+      state.cost -= avg * out; // balance-down restatement → no realized
+      state.units -= out;
+    } else {
+      state.realized += value - avg * out; // SELL / TRANSFER-OUT
+      state.cost -= avg * out;
+      state.units -= out;
+    }
+    // Snap to a clean zero so cent-rounded drift can't survive and a re-buy
+    // restarts from 0/0.
+    if (Math.abs(state.units) < EPS) {
+      state.units = 0;
+      state.cost = 0;
+    }
+  }
 }
 
 /**

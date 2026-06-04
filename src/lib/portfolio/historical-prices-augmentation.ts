@@ -10,6 +10,18 @@ import {
   fetchYahooDailyHistory,
   fetchFxUsdPivotHistory,
 } from "@/lib/prices/historical";
+import {
+  buildStream,
+  foldCostStep,
+  type CostBasisTxn,
+  type CostFoldState,
+} from "@/lib/portfolio/cost-basis";
+import { quantityDelta, type TransactionRow } from "@/lib/transaction-kind";
+import {
+  getAllAssetTransactions,
+  type AssetKey,
+  type AssetTransactionRow,
+} from "@/lib/portfolio/asset-transactions";
 import type {
   ActionType,
   AssetClass,
@@ -1339,4 +1351,535 @@ export function buildBenchmarkCashFlows(
     }
   }
   return events;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cost-basis series (Task 3.4a) — per-class running COST + market-minus-cost GAP
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One point on the portfolio-wide per-class cost-basis series.
+ *
+ * COST columns = running cost basis per class at `date` (the avg-cost engine's
+ * `cost` accumulator). GAP columns = market-minus-cost for USER-COSTED lots only
+ * (`cashflow_user_set=true AND NOT is_yield`). USD gaps power the chart-enrichment
+ * seed; EUR gaps are reserved for the Phase-5 overlay (audit-r5 F1 — emitted now
+ * so the seam never needs a shape migration).
+ */
+export interface CostBasisSeriesPoint {
+  date: string; // YYYY-MM-DD
+  cryptoCostUsd: number;
+  stocksCostUsd: number;
+  cashCostUsd: number;
+  cryptoCostEur: number;
+  stocksCostEur: number;
+  cashCostEur: number;
+  cryptoGapUsd: number;
+  stocksGapUsd: number;
+  cashGapUsd: number;
+  cryptoGapEur: number;
+  stocksGapEur: number;
+  cashGapEur: number;
+}
+
+/**
+ * One transaction in an asset's stream, paired with the per-row `cashflow_user_set`
+ * flag the engine's `CostBasisTxn` does not carry (it drives the GAP gate, not the
+ * cost arithmetic). The txn itself feeds `buildStream`/`foldCostStep` unchanged.
+ */
+export interface CostBasisSeriesTxn {
+  txn: CostBasisTxn;
+  /** True when the user explicitly typed the cashflow amount (GAP gate). */
+  cashflow_user_set: boolean;
+}
+
+/**
+ * One portfolio asset's full input to the cost-basis series.
+ *
+ *   - txns:           the asset's COMPLETE transaction stream, sorted ascending by
+ *                     COALESCE(effective_date, created_at) (the caller's job —
+ *                     identical ordering to getAssetTransactions). Each entry is
+ *                     dated by `date` (the COALESCE'd day) so the running cost can
+ *                     be emitted onto the daily spine.
+ *   - asset_kind / asset_key / native_currency: identify the price series for
+ *                     market valuation (stablecoins keep asset_kind "crypto" +
+ *                     coingecko_id key — the price cache stores them by coingecko_id).
+ *                     Cash uses face value (no price lookup).
+ *   - asset_class:    destination columns. ALREADY stablecoin-reclassified to "cash"
+ *                     by the caller (mirrors the value line ~aggregate.ts:135).
+ *
+ * `date` per txn is carried separately from the `CostBasisTxn` (which is date-free)
+ * so the engine input shape is untouched.
+ */
+export interface CostBasisSeriesAsset {
+  asset_kind: "crypto" | "stock" | "cash";
+  asset_key: string;
+  native_currency: string;
+  asset_class: AssetClass;
+  txns: Array<CostBasisSeriesTxn & { date: string }>;
+}
+
+/** Full input to {@link buildCostBasisSeries}. */
+export interface CostBasisSeriesInput {
+  assets: CostBasisSeriesAsset[];
+  /** Cached historical prices + USD-pivot FX (same rows the value line uses). */
+  prices: HistoricalPriceRow[];
+  /** The daily date spine (ascending YYYY-MM-DD) — match the augmentation spine. */
+  dates: string[];
+  /** Optional sink fired once per (lot, date) the GAP could not price (visibility). */
+  onAnomaly?: (msg: string) => void;
+}
+
+/** Result: the series + the count of (user-costed lot × date) pairs the GAP could
+ * not price (a market value was unavailable, so that pair contributed 0). Never
+ * silently wrong — a non-zero count means the seed under-covers somewhere. */
+export interface CostBasisSeriesResult {
+  series: CostBasisSeriesPoint[];
+  uncoveredGapLots: number;
+}
+
+/** Add `usd`/`eur` to the COST columns of `p` for `assetClass`. */
+function addCost(p: CostBasisSeriesPoint, assetClass: AssetClass, usd: number, eur: number): void {
+  if (assetClass === "crypto") {
+    p.cryptoCostUsd += usd;
+    p.cryptoCostEur += eur;
+  } else if (assetClass === "stocks") {
+    p.stocksCostUsd += usd;
+    p.stocksCostEur += eur;
+  } else if (assetClass === "cash") {
+    p.cashCostUsd += usd;
+    p.cashCostEur += eur;
+  } else {
+    const _exhaustive: never = assetClass;
+    throw new Error(`Unhandled asset class: ${String(_exhaustive)}`);
+  }
+}
+
+/** Add `usd`/`eur` to the GAP columns of `p` for `assetClass`. */
+function addGap(p: CostBasisSeriesPoint, assetClass: AssetClass, usd: number, eur: number): void {
+  if (assetClass === "crypto") {
+    p.cryptoGapUsd += usd;
+    p.cryptoGapEur += eur;
+  } else if (assetClass === "stocks") {
+    p.stocksGapUsd += usd;
+    p.stocksGapEur += eur;
+  } else if (assetClass === "cash") {
+    p.cashGapUsd += usd;
+    p.cashGapEur += eur;
+  } else {
+    const _exhaustive: never = assetClass;
+    throw new Error(`Unhandled asset class: ${String(_exhaustive)}`);
+  }
+}
+
+/** A fresh all-zero series point for `date`. */
+function emptyPoint(date: string): CostBasisSeriesPoint {
+  return {
+    date,
+    cryptoCostUsd: 0, stocksCostUsd: 0, cashCostUsd: 0,
+    cryptoCostEur: 0, stocksCostEur: 0, cashCostEur: 0,
+    cryptoGapUsd: 0, stocksGapUsd: 0, cashGapUsd: 0,
+    cryptoGapEur: 0, stocksGapEur: 0, cashGapEur: 0,
+  };
+}
+
+/**
+ * Running cost basis (the engine's `cost` accumulator) for `txns` over EVERY day
+ * in `dates`, per currency. Reuses the VERIFIED engine verbatim — `buildStream`
+ * (transfer netting + C3 value resolution) then `foldCostStep` — over the prefix
+ * of txns with `date <= D`. The prefix-per-distinct-date fold is the explicitly
+ * sanctioned reuse (faithful: identical netting/arithmetic to the headline P&L);
+ * O(distinctDates × txns) is trivial for portfolio-scale streams (<5k rows).
+ *
+ * Returns a Map<spineDate, cost> for each currency. A day before the first txn
+ * folds an empty prefix → cost 0 (the "$0 before purchase" invariant).
+ */
+function runningCostByDate(
+  txnsWithDate: Array<{ txn: CostBasisTxn; date: string }>,
+  dates: string[],
+  currency: "usd" | "eur",
+  onAnomaly?: (msg: string) => void,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (txnsWithDate.length === 0) {
+    for (const d of dates) out.set(d, 0);
+    return out;
+  }
+  // buildStream nets transfer groups ACROSS the whole stream, so a transfer leg's
+  // cost effect can't be folded incrementally leg-by-leg without re-netting.
+  // Instead: walk the date-sorted spine, advancing a cursor over the date-sorted
+  // txns; whenever the prefix [..<=D] grows, re-net + re-fold that prefix via the
+  // VERIFIED engine (buildStream + foldCostStep, verbatim — never re-deriving the
+  // cost arithmetic) and cache its cost for every spine day until the prefix grows
+  // again. The fold runs at most once per distinct txn date, so the whole pass is
+  // O(dates + txns × prefix) — trivial for portfolio-scale streams.
+  const sortedTxns = [...txnsWithDate].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const sortedDates = [...dates].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  let cursor = 0;
+  let foldedThrough = -1;
+  let cachedCost = 0;
+  for (const d of sortedDates) {
+    while (cursor < sortedTxns.length && sortedTxns[cursor].date <= d) cursor++;
+    if (cursor !== foldedThrough) {
+      const prefix = sortedTxns.slice(0, cursor).map((t) => t.txn);
+      const stream = buildStream(prefix, currency);
+      const state: CostFoldState = { units: 0, cost: 0, realized: 0 };
+      for (const entry of stream) foldCostStep(state, entry, onAnomaly);
+      cachedCost = state.cost;
+      foldedThrough = cursor;
+    }
+    out.set(d, cachedCost);
+  }
+  return out;
+}
+
+/**
+ * Build a synthetic {@link HistoricalLot} from a subset of an asset's txns, so
+ * {@link lotContributionAtDate} can market-value exactly that quantity over time.
+ * Quantity per txn = `quantityDelta` (entity-aware), dated by the carried `date`.
+ * Used for BOTH the adjustment-cost contribution and the GAP's user-costed sub-lot.
+ */
+function syntheticLot(
+  asset: CostBasisSeriesAsset,
+  subset: Array<CostBasisSeriesTxn & { date: string }>,
+): HistoricalLot {
+  const deltas: QtyDelta[] = [];
+  for (const t of subset) {
+    const qd = quantityDelta(toClassifierRow(t.txn));
+    if (qd === 0) continue;
+    deltas.push({ effective_date: t.date, qty_delta: qd });
+  }
+  return {
+    position_id: `cb-series:${asset.asset_kind}:${asset.asset_key}`,
+    asset_kind: asset.asset_kind,
+    asset_key: asset.asset_key,
+    fetch_symbol: "", // unused at read time (only price lookups, keyed by asset_key)
+    native_currency: asset.native_currency,
+    asset_class: asset.asset_class,
+    capture_date: "9999-12-31", // unused by lotContributionAtDate
+    deltas,
+  };
+}
+
+/** Adapt a CostBasisTxn to the quantityDelta classifier-row shape (Json → object). */
+function toClassifierRow(txn: CostBasisTxn): TransactionRow {
+  const asObj = (v: unknown): Record<string, unknown> | null =>
+    v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  return {
+    entity_type: txn.entity_type,
+    action: txn.action,
+    is_yield: txn.is_yield,
+    is_adjustment: txn.is_adjustment,
+    transfer_group_id: txn.transfer_group_id,
+    split_from_id: txn.split_from_id,
+    before_snapshot: asObj(txn.before_snapshot),
+    after_snapshot: asObj(txn.after_snapshot),
+    details: asObj(txn.details),
+  };
+}
+
+/**
+ * Portfolio-wide, per-class running cost-basis + market-minus-cost gap series
+ * over the daily `dates` spine (Task 3.4a). PURE — no DB, no Sentry, no wall
+ * clock; every input is injected.
+ *
+ * Per asset, at each date D (cumulative over txns with date <= D):
+ *   COST  = running cost basis per the avg-cost engine. REAL lots contribute their
+ *           cost (|cashflow_amount_{cur}|, folded — buys add, sells release at avg
+ *           cost); YIELD contributes 0; `is_adjustment` lots are MARKET-valued at D
+ *           (lotContributionAtDate — the byte-identity scope bound: corrections /
+ *           synthetic flows stay market-valued, NOT folded as cost corrections).
+ *   GAP   = Σ over user-costed (cashflow_user_set=true AND NOT is_yield) lots of
+ *           (market value at D − running user cost at D). A lot with no cached
+ *           price at D contributes 0 AND increments `uncoveredGapLots` (visibility).
+ *
+ * Stablecoin reclass is the caller's responsibility (asset_class already "cash").
+ */
+export function buildCostBasisSeries(input: CostBasisSeriesInput): CostBasisSeriesResult {
+  const { assets, prices, dates, onAnomaly } = input;
+  const series = dates.map(emptyPoint);
+  const byDate = new Map<string, CostBasisSeriesPoint>();
+  for (const p of series) byDate.set(p.date, p);
+
+  const priceIndex = buildPriceIndex(prices);
+  const fxIndex = priceIndex; // fx rows share the index under "fx:<cur>"
+  let uncoveredGapLots = 0;
+
+  for (const asset of assets) {
+    if (asset.txns.length === 0) continue;
+    const cls = asset.asset_class;
+
+    // ── COST: non-adjustment running cost (folded) + adjustment market value ──
+    const nonAdj = asset.txns.filter((t) => t.txn.is_adjustment !== true);
+    const adj = asset.txns.filter((t) => t.txn.is_adjustment === true);
+
+    if (nonAdj.length > 0) {
+      const costUsd = runningCostByDate(nonAdj, dates, "usd", onAnomaly);
+      const costEur = runningCostByDate(nonAdj, dates, "eur", onAnomaly);
+      for (const d of dates) {
+        const usd = costUsd.get(d) ?? 0;
+        const eur = costEur.get(d) ?? 0;
+        if (usd !== 0 || eur !== 0) addCost(byDate.get(d)!, cls, usd, eur);
+      }
+    }
+
+    if (adj.length > 0) {
+      // Adjustment legs are market-valued (correction/synthetic-flow scope bound).
+      const adjLot = syntheticLot(asset, adj);
+      for (const d of dates) {
+        const c = lotContributionAtDate(adjLot, d, priceIndex, fxIndex);
+        if (c === null) continue; // no price → contributes 0 (cost is never fabricated)
+        if (c.usd === 0 && c.eur === 0) continue;
+        addCost(byDate.get(d)!, cls, c.usd, c.eur);
+      }
+    }
+
+    // ── GAP: user-costed (NOT yield) lots — market value minus running user cost ──
+    const costed = asset.txns.filter(
+      (t) => t.cashflow_user_set === true && t.txn.is_yield !== true,
+    );
+    if (costed.length > 0) {
+      const costedLot = syntheticLot(asset, costed);
+      const userCostUsd = runningCostByDate(costed, dates, "usd", onAnomaly);
+      const userCostEur = runningCostByDate(costed, dates, "eur", onAnomaly);
+      for (const d of dates) {
+        const market = lotContributionAtDate(costedLot, d, priceIndex, fxIndex);
+        const uCostUsd = userCostUsd.get(d) ?? 0;
+        const uCostEur = userCostEur.get(d) ?? 0;
+        if (market === null) {
+          // Only an UNCOVERED lot is one that SHOULD have a value: it holds a
+          // non-zero quantity at D (qty 0 → no gap, no anomaly). cumulativeAtDate
+          // over the costed deltas tells us if the lot is live at D.
+          if (cumulativeAtDate(costedLot.deltas, d) > 0) {
+            uncoveredGapLots++;
+            onAnomaly?.(
+              `cost-basis gap uncovered: ${asset.asset_kind}:${asset.asset_key} has no market price at ${d}`,
+            );
+          }
+          continue; // no market price → 0 gap contribution
+        }
+        const gapUsd = market.usd - uCostUsd;
+        const gapEur = market.eur - uCostEur;
+        if (gapUsd !== 0 || gapEur !== 0) addGap(byDate.get(d)!, cls, gapUsd, gapEur);
+      }
+    }
+  }
+
+  return { series, uncoveredGapLots };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cost-basis series I/O (Task 3.4b) — read + map to buildCostBasisSeries input
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * crypto_asset.id → { coingecko_id, subcategory } for every crypto asset owned
+ * by `userId`. ASSET-id keyed (not position-id), to match getAllAssetTransactions'
+ * `crypto:{assetId}` grouping. `subcategory` drives the stablecoin → cash reclass
+ * (same rule the value line uses). Paginated past the max_rows cap.
+ */
+async function loadCryptoAssetMeta(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<string, { coingecko_id: string; subcategory: string | null }>> {
+  const rows = await fetchAllPaginated<{
+    id: string;
+    coingecko_id: string;
+    subcategory: string | null;
+  }>((from, to) =>
+    supabase
+      .from("crypto_assets")
+      .select("id, coingecko_id, subcategory")
+      .eq("user_id", userId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(
+      `Failed to load crypto asset meta (cost-basis series): ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
+  const map = new Map<string, { coingecko_id: string; subcategory: string | null }>();
+  for (const r of rows) map.set(r.id, { coingecko_id: r.coingecko_id, subcategory: r.subcategory ?? null });
+  return map;
+}
+
+/**
+ * stock_asset.id → { yahoo_ticker, currency } for every stock asset owned by
+ * `userId`. ASSET-id keyed. A manual-NAV asset (`yahoo_ticker` null) yields no
+ * price series — its cost still folds, but market valuation (adjustment cost +
+ * gap) can't price it, so those contribute 0 (the same honest no-fabrication the
+ * value line applies). Paginated past the max_rows cap.
+ */
+async function loadStockAssetMeta(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<string, { yahoo_ticker: string | null; currency: string }>> {
+  const rows = await fetchAllPaginated<{
+    id: string;
+    yahoo_ticker: string | null;
+    currency: string;
+  }>((from, to) =>
+    supabase
+      .from("stock_assets")
+      .select("id, yahoo_ticker, currency")
+      .eq("user_id", userId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(
+      `Failed to load stock asset meta (cost-basis series): ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
+  const map = new Map<string, { yahoo_ticker: string | null; currency: string }>();
+  for (const r of rows) map.set(r.id, { yahoo_ticker: r.yahoo_ticker, currency: r.currency });
+  return map;
+}
+
+/** cash_account.id → currency for every cash account owned by `userId`. */
+async function loadCashAccountCurrency(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<Map<string, string>> {
+  const rows = await fetchAllPaginated<{ id: string; currency: string }>((from, to) =>
+    supabase
+      .from("cash_accounts")
+      .select("id, currency")
+      .eq("user_id", userId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  ).catch((e: unknown) => {
+    throw new Error(
+      `Failed to load cash account currency (cost-basis series): ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  });
+  const map = new Map<string, string>();
+  for (const r of rows) map.set(r.id, r.currency);
+  return map;
+}
+
+/** The COALESCE(effective_date, created_at-date) day for a row. */
+function rowDate(row: AssetTransactionRow): string {
+  return row.effective_date ?? row.created_at.slice(0, 10);
+}
+
+/** Map one AssetTransactionRow → the series txn shape (CostBasisTxn + flags + date). */
+function toSeriesTxn(row: AssetTransactionRow): CostBasisSeriesTxn & { date: string } {
+  return {
+    txn: {
+      entity_type: row.entity_type,
+      action: row.action,
+      is_yield: row.is_yield,
+      is_adjustment: row.is_adjustment,
+      transfer_group_id: row.transfer_group_id,
+      split_from_id: row.split_from_id,
+      cashflow_amount_usd: row.cashflow_amount_usd,
+      cashflow_amount_eur: row.cashflow_amount_eur,
+      delta_usd: row.delta_usd,
+      delta_eur: row.delta_eur,
+      before_snapshot: row.before_snapshot,
+      after_snapshot: row.after_snapshot,
+      details: row.details,
+    },
+    date: rowDate(row),
+    cashflow_user_set: row.cashflow_user_set === true,
+  };
+}
+
+/**
+ * Build the per-asset {@link CostBasisSeriesAsset} list for `userId` — the bulk
+ * grouped activity stream ({@link getAllAssetTransactions}, reused verbatim so the
+ * series sees byte-identical streams to the headline P&L) joined with asset-id-keyed
+ * metadata (price key + native currency + stablecoin-reclassified class).
+ *
+ * Dual-client contract identical to getAllAssetTransactions: RLS-scoped server
+ * client + auth.uid() (owner) or service-role admin + owner_id (share/comparison).
+ *
+ * Skips a group whose asset metadata is missing (a hard-deleted asset, or the
+ * cross-user scoping bug guard) — it cannot be priced or classified, so it is left
+ * out rather than mis-bucketed.
+ */
+export async function fetchCostBasisSeriesAssets(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<CostBasisSeriesAsset[]> {
+  const [byAsset, cryptoMeta, stockMeta, cashCur] = await Promise.all([
+    getAllAssetTransactions(supabase, userId),
+    loadCryptoAssetMeta(supabase, userId),
+    loadStockAssetMeta(supabase, userId),
+    loadCashAccountCurrency(supabase, userId),
+  ]);
+
+  const assets: CostBasisSeriesAsset[] = [];
+  for (const [key, rows] of byAsset) {
+    if (rows.length === 0) continue;
+    const txns = rows.map(toSeriesTxn);
+    const { kind, id } = parseAssetKey(key);
+
+    if (kind === "crypto") {
+      const meta = cryptoMeta.get(id);
+      if (!meta) continue; // unknown asset → can't price/classify; skip (never mis-bucket)
+      const isStable = isStablecoin(meta.subcategory);
+      assets.push({
+        asset_kind: "crypto",
+        asset_key: meta.coingecko_id,
+        native_currency: "USD",
+        asset_class: isStable ? "cash" : "crypto",
+        txns,
+      });
+    } else if (kind === "stock") {
+      const meta = stockMeta.get(id);
+      if (!meta) continue;
+      assets.push({
+        asset_kind: "stock",
+        // Manual-NAV (null ticker): keep a synthetic non-matching key so cost still
+        // folds; market lookups simply miss (contribute 0 — honest no-fabrication).
+        asset_key: meta.yahoo_ticker ?? `__manual__:${id}`,
+        native_currency: meta.currency || "USD",
+        asset_class: "stocks",
+        txns,
+      });
+    } else {
+      // cash: the AssetKey id IS the account id; face value (no price lookup).
+      const currency = cashCur.get(id);
+      if (!currency) continue;
+      assets.push({
+        asset_kind: "cash",
+        asset_key: id,
+        native_currency: currency,
+        asset_class: "cash",
+        txns,
+      });
+    }
+  }
+  return assets;
+}
+
+/** Parse an {@link AssetKey} (`crypto:{id}` | `stock:{id}` | `cash:{id}`). */
+function parseAssetKey(key: AssetKey): { kind: "crypto" | "stock" | "cash"; id: string } {
+  const i = key.indexOf(":");
+  return { kind: key.slice(0, i) as "crypto" | "stock" | "cash", id: key.slice(i + 1) };
+}
+
+/**
+ * The daily date spine for the cost-basis series: every day from the earliest
+ * transaction date across all assets to `today` inclusive (ascending YYYY-MM-DD).
+ * Matches the augmentation's daily granularity. Floored by MAX_SYNTHESIS_DAYS so a
+ * mistyped-year effective_date can't fan out a 25-year+ spine (same guard as
+ * synthesis). Returns [] when there are no transactions.
+ */
+export function buildCostBasisDateSpine(assets: CostBasisSeriesAsset[], today: string): string[] {
+  let earliest: string | null = null;
+  for (const a of assets) {
+    for (const t of a.txns) {
+      if (earliest === null || t.date < earliest) earliest = t.date;
+    }
+  }
+  if (earliest === null) return [];
+  const floor = isoDaysAgo(MAX_SYNTHESIS_DAYS);
+  if (earliest < floor) earliest = floor;
+  if (earliest > today) return []; // all activity in the future (shouldn't happen)
+  return [...eachDay(earliest, today)];
 }

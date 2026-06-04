@@ -10,7 +10,14 @@ import { fetchAllPaginated } from "@/lib/supabase/pagination";
 // ─── Cash Flow Event ─────────────────────────────────────
 
 import type { AssetClass, CashFlowEvent } from "@/lib/types";
-import { buildBenchmarkCashFlows } from "@/lib/portfolio/historical-prices-augmentation";
+import {
+  buildBenchmarkCashFlows,
+  buildCostBasisSeries,
+  buildCostBasisDateSpine,
+  fetchCostBasisSeriesAssets,
+  type CostBasisSeriesPoint,
+  type HistoricalPriceRow,
+} from "@/lib/portfolio/historical-prices-augmentation";
 import {
   getHistoricalPriceInputs,
   getHistoricalPriceInputsForOwner,
@@ -132,30 +139,41 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
 });
 
 /**
- * Phase 2: inputs for extending the S&P benchmark back over Phase 1's
- * synthesized range.
+ * Phase 2 + cost-basis seed (Task 3.4b): inputs for extending the S&P benchmark
+ * back over Phase 1's synthesized range, PLUS the portfolio-wide per-class
+ * running cost-basis series the chart-enrichment seed re-anchor consumes.
  *   - earliestDate: the earliest backdated effective_date (null if none) — the
  *     caller sizes the ^SP500TR history fetch to reach it.
  *   - syntheticCashFlows: benchmark-only cash flows for is_adjustment backdated
  *     lots (absent from deriveCashFlows). Merge into the chart's cashFlows.
+ *   - costBasisSeries: per-class running COST + market-minus-cost GAP over the
+ *     daily spine (Task 3.4a). Computed over ALL the user's positions —
+ *     INDEPENDENT of the backdated-lot gate below, so a user with only
+ *     non-backdated user-costed buys still gets a series (the seed needs it).
  *
  * Client selection mirrors deriveCashFlows: explicit userId → admin client
  * (cross-user share/comparison); omitted → authenticated server client (RLS).
- * Prices are already cached by Phase 1's getSnapshots on the same render, so
- * this is a cheap cache read in the common case.
+ * Prices are already cached by Phase 1's getSnapshots on the same render, so the
+ * price read is a cheap cache hit; the series reuses that SAME `prices` index
+ * (it already carries the widened user-costed coverage from fetchHistoricalPriceInputsFor).
  */
 export async function getHistoricalBenchmarkExtension(
   userId?: string,
-): Promise<{ earliestDate: string | null; syntheticCashFlows: CashFlowEvent[]; sp500Days: number }> {
+): Promise<{
+  earliestDate: string | null;
+  syntheticCashFlows: CashFlowEvent[];
+  sp500Days: number;
+  costBasisSeries: CostBasisSeriesPoint[];
+}> {
   if (userId) validateUUID(userId, "User ID");
   // Resolve the user. On the current-user path we read the session via the
   // server client; on the share/comparison path the caller-supplied userId is
-  // authoritative and the historical inputs are fetched through the admin-
-  // backed wrapper below (which owns its own admin client), so no client is
-  // constructed here.
+  // authoritative.
   const resolvedUserId =
     userId ?? (await (await createServerSupabaseClient()).auth.getUser()).data.user?.id;
-  if (!resolvedUserId) return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS };
+  if (!resolvedUserId) {
+    return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS, costBasisSeries: [] };
+  }
 
   // Route both paths through request-cached + graceful wrappers so a single
   // render shares ONE fetchHistoricalPriceInputsFor execution per user (React
@@ -170,7 +188,19 @@ export async function getHistoricalBenchmarkExtension(
   const { lots, prices } = userId
     ? await getHistoricalPriceInputsForOwner(resolvedUserId)
     : await getHistoricalPriceInputs(resolvedUserId);
-  if (lots.length === 0) return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS };
+
+  // ── Cost-basis series (Task 3.4b) — computed INDEPENDENTLY of the backdated
+  // lot gate. A user with only non-backdated user-costed buys has lots.length===0
+  // but still needs the series for the seed. Own try/catch so a series failure
+  // never breaks the synthetic-flows path (and vice versa). Same dual-client
+  // contract: explicit userId → admin (share/comparison); else server (RLS).
+  const costBasisSeries = await buildCostBasisSeriesFor(resolvedUserId, !!userId, prices);
+
+  // ── Synthetic benchmark cash flows + sp500Days — KEEP the backdated-lot gate.
+  // Without backdated lots there is nothing to back-extend the S&P over.
+  if (lots.length === 0) {
+    return { earliestDate: null, syntheticCashFlows: [], sp500Days: ALL_SNAPSHOTS_DAYS, costBasisSeries };
+  }
 
   let earliestDate: string | null = null;
   for (const lot of lots) {
@@ -196,5 +226,47 @@ export async function getHistoricalBenchmarkExtension(
     earliestDate,
     syntheticCashFlows: buildBenchmarkCashFlows(lots, prices),
     sp500Days,
+    costBasisSeries,
   };
+}
+
+/**
+ * Build the per-class cost-basis series for `userId`, degrading to [] on any
+ * failure (a series hiccup must never break the benchmark or, on the share path,
+ * error-pin the public link). `isOwnerPath` selects the client: admin (explicit
+ * owner_id from a verified share token / comparison) vs RLS-scoped server client.
+ *
+ * Reuses the SAME `prices` index the value line fetched (already widened to cover
+ * user-costed assets back to the chart start), so no extra price fetch happens.
+ */
+async function buildCostBasisSeriesFor(
+  userId: string,
+  isOwnerPath: boolean,
+  prices: HistoricalPriceRow[],
+): Promise<CostBasisSeriesPoint[]> {
+  try {
+    const client = isOwnerPath ? createAdminClient() : await createServerSupabaseClient();
+    const assets = await fetchCostBasisSeriesAssets(client, userId);
+    const today = new Date().toISOString().slice(0, 10);
+    const dates = buildCostBasisDateSpine(assets, today);
+    if (dates.length === 0) return [];
+    const { series, uncoveredGapLots } = buildCostBasisSeries({ assets, prices, dates });
+    if (uncoveredGapLots > 0) {
+      // Visibility: the seed under-covers somewhere (a user-costed lot had no
+      // cached price on some day). Not fatal — the gap simply reads 0 there.
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureMessage("cost-basis series: uncovered gap lots", {
+        level: "warning",
+        extra: { userId, uncoveredGapLots, spineDays: dates.length },
+      });
+    }
+    return series;
+  } catch (err) {
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.captureException(
+      err instanceof Error ? err : new Error(`cost-basis series build failed: ${String(err)}`),
+      { tags: { context: "benchmark.buildCostBasisSeriesFor" } },
+    );
+    return [];
+  }
 }

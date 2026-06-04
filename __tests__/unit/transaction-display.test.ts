@@ -35,6 +35,7 @@ function makeRow(overrides: Partial<AssetTransactionRow>): AssetTransactionRow {
     cashflow_amount_eur: null,
     delta_usd: null,
     delta_eur: null,
+    cashflow_user_set: false,
     before_snapshot: null,
     after_snapshot: null,
     details: null,
