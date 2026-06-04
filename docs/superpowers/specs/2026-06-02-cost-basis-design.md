@@ -531,7 +531,14 @@ Per-asset, in the holdings table and/or the drawer summary:
      `buildHistoricalLots` drops every non-backdated position, and its lot inputs carry **quantity only, never
      cost**, so it cannot produce a full-portfolio cost basis. So `buildCostBasisSeries` needs the **per-asset
      cost + `delta` streams** (the engine's real input), with each real lot valued at its **cost** (user amount,
-     else market fallback) and each `is_adjustment` lot at **market** (`lotContributionAtDate`). Apply the **same
+     else market fallback) and each `is_adjustment` lot at **market** (`lotContributionAtDate`).
+     **⚠ Amendment (2026-06-04 — overlay uniformity with sells):** only a **BARE** correction (`is_adjustment`
+     AND `transfer_group_id IS NULL`) stays market-valued. **TRANSFER legs** (`is_adjustment` AND
+     `transfer_group_id` present) are instead **folded through the engine** (`buildStream` + `foldCostStep`) like
+     a sell — so a crypto→cash transfer-OUT **releases** the crypto cost line instead of leaving it flat and
+     inflating the total. The fold is the existing series machinery (`runningCostByDate`); only the partition
+     predicate changed from `is_adjustment !== true` to "bare-correction only". The seed/gap columns are
+     **unaffected** (transfer legs are `cashflow_user_set=false` → never in the gap). Apply the **same
      stablecoin crypto→cash reclassification** the value line uses (`aggregate.ts` / augmentation ~865-887) so
      the per-class cost split matches the per-class value split. **Shape (audit-r5 F1):** emit BOTH absolute
      per-class **cost** columns `{ cryptoCostUsd, … }` (for the Phase-5 overlay) AND explicit per-class **gap**
@@ -589,6 +596,9 @@ Per-asset, in the holdings table and/or the drawer summary:
     regressed the anchor even at cost==market. The gap-subtraction sidesteps it entirely.)* A user cost on a lot
     subtracts exactly `(market − cost)` for **that lot only** → the gap appears only where it should.
     Corrections/synthetic `is_adjustment` flows are never user-costed → never in the gap → keep market valuation.
+    *(Amendment 2026-06-04: "corrections kept at market" now means **BARE** corrections only — transfer legs are
+    engine-folded; either way they are `cashflow_user_set=false` so the gap and this byte-identical guard are
+    unchanged.)*
     The control test must include a **populated** series (a backdated lot present, cost == market → gap 0 → still
     byte-identical), not merely an empty one.
   - **Sequencing:** the series builder is built in **Phase 3** (with the engine), *not* Phase 5 — this resolves

@@ -27,11 +27,13 @@ function txn(
     date: string;
     cashflowUsd?: number;
     cashflowEur?: number;
-    deltaUsd?: number;
-    deltaEur?: number;
+    deltaUsd?: number | null;
+    deltaEur?: number | null;
     is_yield?: boolean;
     is_adjustment?: boolean;
     cashflow_user_set?: boolean;
+    /** Transfer-group id; when set the leg folds through the engine (netting + C3). */
+    transfer_group_id?: string | null;
   },
 ): CostBasisSeriesTxn & { date: string } {
   const useDelta = opts.deltaUsd !== undefined || opts.deltaEur !== undefined;
@@ -40,7 +42,7 @@ function txn(
     action: beforeQty === null ? "created" : "updated",
     is_yield: opts.is_yield ?? false,
     is_adjustment: opts.is_adjustment ?? false,
-    transfer_group_id: null,
+    transfer_group_id: opts.transfer_group_id ?? null,
     split_from_id: null,
     cashflow_amount_usd: useDelta ? null : opts.cashflowUsd ?? null,
     cashflow_amount_eur: useDelta ? null : opts.cashflowEur ?? null,
@@ -51,6 +53,40 @@ function txn(
     details: null,
   };
   return { txn: t, date: opts.date, cashflow_user_set: opts.cashflow_user_set ?? false };
+}
+
+/**
+ * A cash_account txn with `balance` snapshots (quantityDelta reads `balance`, not
+ * `quantity`, for cash entities). The transfer-IN leg of a crypto→cash transfer
+ * lives here: `is_adjustment=true`, value carried in `delta_{cur}`.
+ */
+function cashTxn(
+  beforeBal: number | null,
+  afterBal: number,
+  opts: {
+    date: string;
+    deltaUsd?: number | null;
+    deltaEur?: number | null;
+    is_adjustment?: boolean;
+    transfer_group_id?: string | null;
+  },
+): CostBasisSeriesTxn & { date: string } {
+  const t: CostBasisTxn = {
+    entity_type: "cash_account",
+    action: beforeBal === null ? "created" : "updated",
+    is_yield: false,
+    is_adjustment: opts.is_adjustment ?? false,
+    transfer_group_id: opts.transfer_group_id ?? null,
+    split_from_id: null,
+    cashflow_amount_usd: null,
+    cashflow_amount_eur: null,
+    delta_usd: opts.deltaUsd ?? null,
+    delta_eur: opts.deltaEur ?? null,
+    before_snapshot: beforeBal === null ? null : { balance: beforeBal },
+    after_snapshot: { balance: afterBal },
+    details: null,
+  };
+  return { txn: t, date: opts.date, cashflow_user_set: false };
 }
 
 /** Price rows for a crypto asset over the given (date→price) pairs, plus EUR=1 FX. */
@@ -102,14 +138,18 @@ describe("buildCostBasisSeries (Task 3.4a)", () => {
     expect(uncoveredGapLots).toBe(0);
   });
 
-  // 2. An is_adjustment lot → its MARKET value at each date (changes with price), NOT its cost/0.
-  it("2. is_adjustment lot is market-valued at each date (not folded to cost)", () => {
+  // 2. A BARE correction (is_adjustment, NO transfer_group_id) → its MARKET value at
+  //    each date (changes with price), NOT its cost/0. Transfer legs fold through the
+  //    engine instead (test 10+); only bare corrections keep market valuation
+  //    (product decision 2026-06-04).
+  it("2. bare correction (no transfer group) is market-valued at each date (not folded to cost)", () => {
     const asset: CostBasisSeriesAsset = {
       asset_kind: "crypto",
       asset_key: "eth",
       native_currency: "USD",
       asset_class: "crypto",
-      // Adjustment: +2 units on 2023-01-01, value carried in delta (cashflow null).
+      // Bare correction: +2 units on 2023-01-01, value carried in delta (cashflow null),
+      // transfer_group_id null → market-valued (the txn() helper defaults the group to null).
       txns: [
         txn(null, 2, { date: "2023-01-01", deltaUsd: 1234, deltaEur: 1234, is_adjustment: true }),
       ],
@@ -333,5 +373,206 @@ describe("buildCostBasisSeries (Task 3.4a)", () => {
   it("handles an empty date spine without throwing", () => {
     const { series } = buildCostBasisSeries({ assets: [], prices: [], dates: [] });
     expect(series).toEqual([]);
+  });
+
+  // ── Transfer-leg folding (product decision 2026-06-04: overlay uniform with sells) ──
+  // Transfer legs (is_adjustment AND transfer_group_id != null) fold through the
+  // engine (buildStream netting + foldCostStep), NOT the market-valued adj bucket.
+  // Bare corrections (is_adjustment, NO transfer_group_id) keep market valuation (test 2).
+
+  // 10. THE UNIFORMITY CASE (the user's example): a crypto→cash transfer.
+  //     Two assets, each sees exactly ONE leg of group "g1" (the cross-asset path).
+  //     Crypto OUT: avg-cost released from the crypto cost line (uniform with a sell).
+  //     Cash IN: the transfer value booked onto the cash cost line.
+  it("10. cross-asset transfer leg folds through the engine (crypto cost released, cash cost added)", () => {
+    const crypto: CostBasisSeriesAsset = {
+      asset_kind: "crypto",
+      asset_key: "btc",
+      native_currency: "USD",
+      asset_class: "crypto",
+      txns: [
+        // Buy 1 @ cost 30000 (both currencies) on day 1.
+        txn(null, 1, { date: "2023-01-01", cashflowUsd: 30000, cashflowEur: 30000 }),
+        // Transfer OUT 0.5 on day 2: is_adjustment + group g1, value in delta (25000).
+        txn(1, 0.5, {
+          date: "2023-01-02",
+          deltaUsd: 25000,
+          deltaEur: 25000,
+          is_adjustment: true,
+          transfer_group_id: "g1",
+        }),
+      ],
+    };
+    const cash: CostBasisSeriesAsset = {
+      asset_kind: "cash",
+      asset_key: "wallet-eur",
+      native_currency: "USD", // keep arithmetic trivial (FX=1); face value used for any market lookup
+      asset_class: "cash",
+      txns: [
+        // Transfer IN: balance +25000 on day 2, is_adjustment + matching group g1.
+        cashTxn(0, 25000, {
+          date: "2023-01-02",
+          deltaUsd: 25000,
+          deltaEur: 25000,
+          is_adjustment: true,
+          transfer_group_id: "g1",
+        }),
+      ],
+    };
+    const { series } = buildCostBasisSeries({
+      assets: [crypto, cash],
+      prices: prices("btc", [
+        ["2023-01-01", 60000],
+        ["2023-01-02", 60000],
+      ], SPINE),
+      dates: SPINE,
+    });
+
+    // Crypto cost: 30000 before the transfer; avg released on the OUT leg → 15000.
+    //   avg = 30000/1; out = 0.5; cost -= 30000×0.5 = 15000.
+    expect(series[0].cryptoCostUsd).toBe(30000); // before the transfer
+    expect(series[0].cryptoCostEur).toBe(30000);
+    expect(series[1].cryptoCostUsd).toBeCloseTo(15000, 6); // OUT leg folded (uniform with a sell)
+    expect(series[1].cryptoCostEur).toBeCloseTo(15000, 6);
+    expect(series[2].cryptoCostUsd).toBeCloseTo(15000, 6); // forward-filled
+
+    // Cash cost: the IN leg books the transfer value (25000) onto the cash cost line.
+    expect(series[0].cashCostUsd).toBe(0); // before the transfer
+    expect(series[1].cashCostUsd).toBeCloseTo(25000, 6); // IN leg folded
+    expect(series[1].cashCostEur).toBeCloseTo(25000, 6);
+    expect(series[2].cashCostUsd).toBeCloseTo(25000, 6); // forward-filled
+  });
+
+  // 11. WALLET↔WALLET: BOTH legs of the same group live in ONE crypto asset's stream
+  //     (−1 / +1, net 0). buildStream nets them to zero → SKIP → cost unchanged.
+  //     Previously this came from the adj bucket contributing 0; it must now come from
+  //     the engine's netting skip.
+  it("11. wallet↔wallet transfer (both legs same asset, net 0) leaves cost unchanged", () => {
+    const asset: CostBasisSeriesAsset = {
+      asset_kind: "crypto",
+      asset_key: "btc",
+      native_currency: "USD",
+      asset_class: "crypto",
+      txns: [
+        // Buy 2 @ 20000 on day 1.
+        txn(null, 2, { date: "2023-01-01", cashflowUsd: 20000, cashflowEur: 20000 }),
+        // Move out of wallet A (−1) and into wallet B (+1), same group g2, day 2.
+        txn(2, 1, {
+          date: "2023-01-02",
+          deltaUsd: 12000,
+          deltaEur: 12000,
+          is_adjustment: true,
+          transfer_group_id: "g2",
+        }),
+        txn(1, 2, {
+          date: "2023-01-02",
+          deltaUsd: 12000,
+          deltaEur: 12000,
+          is_adjustment: true,
+          transfer_group_id: "g2",
+        }),
+      ],
+    };
+    const { series } = buildCostBasisSeries({
+      assets: [asset],
+      prices: prices("btc", [
+        ["2023-01-01", 30000],
+        ["2023-01-02", 30000],
+      ], SPINE),
+      dates: SPINE,
+    });
+
+    expect(series[0].cryptoCostUsd).toBe(20000); // after the buy
+    expect(series[1].cryptoCostUsd).toBeCloseTo(20000, 6); // net-0 move → unchanged
+    expect(series[1].cryptoCostEur).toBeCloseTo(20000, 6);
+    expect(series[2].cryptoCostUsd).toBeCloseTo(20000, 6); // forward-filled
+  });
+
+  // 12. FEE REMAINDER: legs −1.000 / +0.999 (same asset, same group, net −0.001).
+  //     buildStream emits ONE synthetic value-0 disposal of the net magnitude → cost
+  //     drops by avg×0.001 (a fee books a realized loss, never a spurious gain).
+  it("12. same-asset transfer fee remainder drops cost by avg × net (value-0 disposal)", () => {
+    const asset: CostBasisSeriesAsset = {
+      asset_kind: "crypto",
+      asset_key: "btc",
+      native_currency: "USD",
+      asset_class: "crypto",
+      txns: [
+        // Buy 2 @ 20000 on day 1 → avg 10000/unit.
+        txn(null, 2, { date: "2023-01-01", cashflowUsd: 20000, cashflowEur: 20000 }),
+        // OUT 1.000, IN 0.999 (net −0.001 lost to fee), same group g3, day 2.
+        txn(2, 1, {
+          date: "2023-01-02",
+          deltaUsd: 10000,
+          deltaEur: 10000,
+          is_adjustment: true,
+          transfer_group_id: "g3",
+        }),
+        txn(1, 1.999, {
+          date: "2023-01-02",
+          deltaUsd: 10000,
+          deltaEur: 10000,
+          is_adjustment: true,
+          transfer_group_id: "g3",
+        }),
+      ],
+    };
+    const { series } = buildCostBasisSeries({
+      assets: [asset],
+      prices: prices("btc", [
+        ["2023-01-01", 30000],
+        ["2023-01-02", 30000],
+      ], SPINE),
+      dates: SPINE,
+    });
+
+    // avg = 20000/2 = 10000; cost drops by avg × 0.001 = 10 → 19990.
+    expect(series[0].cryptoCostUsd).toBe(20000);
+    expect(series[1].cryptoCostUsd).toBeCloseTo(19990, 6);
+    expect(series[1].cryptoCostEur).toBeCloseTo(19990, 6);
+  });
+
+  // 13. NULL-delta transfer leg (pending FX): a transfer OUT whose delta_{cur} is null
+  //     still RELEASES avg×out from the cost line (value only affects realized, which the
+  //     series does not track). No NaN.
+  it("13. transfer leg with NULL delta still releases avg cost (no NaN)", () => {
+    const asset: CostBasisSeriesAsset = {
+      asset_kind: "crypto",
+      asset_key: "btc",
+      native_currency: "USD",
+      asset_class: "crypto",
+      txns: [
+        // Buy 1 @ 30000 on day 1.
+        txn(null, 1, { date: "2023-01-01", cashflowUsd: 30000, cashflowEur: 30000 }),
+        // Transfer OUT 0.5 on day 2, group g4, delta NULL (pending FX) → value 0.
+        txn(1, 0.5, {
+          date: "2023-01-02",
+          deltaUsd: null,
+          deltaEur: null,
+          is_adjustment: true,
+          transfer_group_id: "g4",
+        }),
+      ],
+    };
+    const { series } = buildCostBasisSeries({
+      assets: [asset],
+      prices: prices("btc", [
+        ["2023-01-01", 60000],
+        ["2023-01-02", 60000],
+      ], SPINE),
+      dates: SPINE,
+    });
+
+    // avg = 30000/1; out = 0.5; cost -= 30000×0.5 = 15000 (value 0 only zeroes realized).
+    expect(series[0].cryptoCostUsd).toBe(30000);
+    expect(series[1].cryptoCostUsd).toBeCloseTo(15000, 6);
+    expect(series[1].cryptoCostEur).toBeCloseTo(15000, 6);
+    // No NaN anywhere.
+    for (const p of series) {
+      for (const [k, v] of Object.entries(p)) {
+        if (k === "date") continue;
+        expect(Number.isNaN(v as number)).toBe(false);
+      }
+    }
   });
 });

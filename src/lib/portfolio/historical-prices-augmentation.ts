@@ -1585,14 +1585,24 @@ function toClassifierRow(txn: CostBasisTxn): TransactionRow {
  * clock; every input is injected.
  *
  * Per asset, at each date D (cumulative over txns with date <= D):
- *   COST  = running cost basis per the avg-cost engine. REAL lots contribute their
- *           cost (|cashflow_amount_{cur}|, folded — buys add, sells release at avg
- *           cost); YIELD contributes 0; `is_adjustment` lots are MARKET-valued at D
- *           (lotContributionAtDate — the byte-identity scope bound: corrections /
- *           synthetic flows stay market-valued, NOT folded as cost corrections).
+ *   COST  = running cost basis per the avg-cost engine. REAL flows + YIELD + TRANSFER
+ *           LEGS are FOLDED through the engine (buildStream nets transfer groups, then
+ *           foldCostStep): buys add cost, sells/transfers-OUT release at avg cost,
+ *           transfers-IN add the moved value, yield adds 0. ONLY a BARE correction
+ *           (`is_adjustment` AND NO `transfer_group_id`) is MARKET-valued at D
+ *           (lotContributionAtDate) — a bare correction is a balance restatement with
+ *           no cost economics, so market-at-date avoids fabricating gains on a restated
+ *           balance. TRANSFER legs are NOT market-valued: they fold like sells so the
+ *           cost line moves uniformly with a sale (product decision 2026-06-04 —
+ *           overlay uniformity with sells; a crypto→cash transfer-OUT must release the
+ *           crypto cost, not leave it flat). The fold is faithful to the headline P&L:
+ *           buildStream nets wallet↔wallet moves to a no-op and resolves the C3 value
+ *           source (|delta_{cur}|) for cross-asset legs.
  *   GAP   = Σ over user-costed (cashflow_user_set=true AND NOT is_yield) lots of
  *           (market value at D − running user cost at D). A lot with no cached
  *           price at D contributes 0 AND increments `uncoveredGapLots` (visibility).
+ *           The gap gate is independent of the cost partition above — transfer legs are
+ *           cashflow_user_set=false, so they never enter the gap (the seed is untouched).
  *
  * Stablecoin reclass is the caller's responsibility (asset_class already "cash").
  */
@@ -1610,13 +1620,21 @@ export function buildCostBasisSeries(input: CostBasisSeriesInput): CostBasisSeri
     if (asset.txns.length === 0) continue;
     const cls = asset.asset_class;
 
-    // ── COST: non-adjustment running cost (folded) + adjustment market value ──
-    const nonAdj = asset.txns.filter((t) => t.txn.is_adjustment !== true);
-    const adj = asset.txns.filter((t) => t.txn.is_adjustment === true);
+    // ── COST: folded stream (real flows + yield + TRANSFER legs) + bare-correction
+    //    market value. Scope bound (product decision 2026-06-04 — uniform with sells):
+    //    a BARE correction (is_adjustment AND NO transfer_group_id) has no cost
+    //    economics → market-valued at D (avoids fictional gains on a restated balance).
+    //    EVERYTHING ELSE — real buys/sells, yield, AND transfer legs — folds through the
+    //    VERIFIED engine (buildStream nets transfer groups + resolves the C3 value
+    //    source; foldCostStep releases avg cost on a transfer-OUT exactly like a sell).
+    const isBareCorrection = (t: CostBasisSeriesTxn & { date: string }): boolean =>
+      t.txn.is_adjustment === true && t.txn.transfer_group_id == null;
+    const folded = asset.txns.filter((t) => !isBareCorrection(t));
+    const bareCorrections = asset.txns.filter(isBareCorrection);
 
-    if (nonAdj.length > 0) {
-      const costUsd = runningCostByDate(nonAdj, dates, "usd", onAnomaly);
-      const costEur = runningCostByDate(nonAdj, dates, "eur", onAnomaly);
+    if (folded.length > 0) {
+      const costUsd = runningCostByDate(folded, dates, "usd", onAnomaly);
+      const costEur = runningCostByDate(folded, dates, "eur", onAnomaly);
       for (const d of dates) {
         const usd = costUsd.get(d) ?? 0;
         const eur = costEur.get(d) ?? 0;
@@ -1624,9 +1642,9 @@ export function buildCostBasisSeries(input: CostBasisSeriesInput): CostBasisSeri
       }
     }
 
-    if (adj.length > 0) {
-      // Adjustment legs are market-valued (correction/synthetic-flow scope bound).
-      const adjLot = syntheticLot(asset, adj);
+    if (bareCorrections.length > 0) {
+      // Bare corrections are market-valued (no cost economics — restated balance).
+      const adjLot = syntheticLot(asset, bareCorrections);
       for (const d of dates) {
         const c = lotContributionAtDate(adjLot, d, priceIndex, fxIndex);
         if (c === null) continue; // no price → contributes 0 (cost is never fabricated)
