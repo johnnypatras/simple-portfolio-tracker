@@ -10,13 +10,16 @@ import type { ActivityLog } from "@/lib/types";
 
 /**
  * Form state for one split leg. Distinct from the server-action `SplitLeg`
- * in `@/lib/types`: here `quantity` is the raw controlled-input string;
+ * in `@/lib/types`: here `quantity` and `cost` are raw controlled-input strings;
  * the server-side `SplitLeg.quantity` is a validated number.
  */
 interface SplitLegDraft {
   effective_date: string;
   quantity: string; // string for controlled input
+  cost: string;     // string for controlled input; blank → no cost emitted
 }
+
+type CostCurrency = "EUR" | "USD";
 
 interface SplitModalProps {
   entry: ActivityLog | null;
@@ -34,6 +37,23 @@ interface SplitModalProps {
 }
 
 // ─── Helpers ─────────────────────────────────────────────
+
+/**
+ * Returns true when the entry is a yield entry (earned income; cost = 0
+ * by definition; excluded from S&P benchmark).
+ */
+function isYieldEntry(entry: ActivityLog): boolean {
+  return entry.is_yield;
+}
+
+/**
+ * Returns true when the parent should hide the cost fields. Two cases:
+ * 1. Yield entries — cost is 0 by definition; server rejects a per-leg cost.
+ * 2. Adjustment entries — carry delta_* not cashflow_amount_*; server rejects.
+ */
+function hideCostFields(entry: ActivityLog): boolean {
+  return isYieldEntry(entry) || entry.is_adjustment;
+}
 
 const CRYPTO_ENTITY_TYPES = new Set([
   "crypto_asset",
@@ -63,18 +83,20 @@ function formatOriginalDate(entry: ActivityLog): string {
 
 export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
   const id = useId();
-  const [legs, setLegs] = useState<SplitLegDraft[]>([{ effective_date: "", quantity: "" }]);
+  const [legs, setLegs] = useState<SplitLegDraft[]>([{ effective_date: "", quantity: "", cost: "" }]);
+  const [costCurrency, setCostCurrency] = useState<CostCurrency>("EUR");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const originalQty = entry ? extractQuantity(entry) : null;
   const absOriginalQty = originalQty !== null ? Math.abs(originalQty) : null;
   const today = new Date().toISOString().split("T")[0];
+  const showCostFields = entry !== null && !hideCostFields(entry);
 
   // Reset state when entry changes
   useEffect(() => {
     if (entry) {
-      setLegs([{ effective_date: "", quantity: "" }]);
+      setLegs([{ effective_date: "", quantity: "", cost: "" }]);
       setError(null);
       setLoading(false);
     }
@@ -89,7 +111,7 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
   }, []);
 
   const addLeg = useCallback(() => {
-    setLegs((prev) => [...prev, { effective_date: "", quantity: "" }]);
+    setLegs((prev) => [...prev, { effective_date: "", quantity: "", cost: "" }]);
   }, []);
 
   // ── Derived values ──
@@ -104,11 +126,28 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
     ? entry.effective_date ?? entry.created_at.split("T")[0]
     : "";
 
+  // ── Cost-related derived values ──
+  // parsedLegCosts[i]: the number if leg i's cost is non-blank and finite; null otherwise.
+  const parsedLegCosts = legs.map((l) => {
+    if (l.cost.trim() === "") return null;
+    const n = parseFloat(l.cost);
+    return n; // may be NaN — we check below
+  });
+  const hasCostNaN = showCostFields && parsedLegCosts.some((c) => c !== null && isNaN(c));
+  const filledCosts = parsedLegCosts.filter((c): c is number => c !== null && !isNaN(c));
+  const costSum = filledCosts.reduce((a, b) => a + b, 0);
+  const hasSomeCost = filledCosts.length > 0;
+
   // ── Validation ──
 
   function validate(): string | null {
     if (absOriginalQty === null || absOriginalQty === 0) {
       return "Cannot determine original quantity from snapshots";
+    }
+
+    // NaN cost blocks save
+    if (hasCostNaN) {
+      return "Amount paid must be a valid number";
     }
 
     // All leg quantities must be positive
@@ -162,10 +201,18 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
 
     try {
       // Build final legs array
-      const finalLegs: { effective_date: string; quantity: number }[] = legs.map((l, i) => ({
-        effective_date: l.effective_date,
-        quantity: parsedLegQuantities[i],
-      }));
+      const finalLegs: { effective_date: string; quantity: number; cost?: { amount: number; currency: "EUR" | "USD" } }[] = legs.map((l, i) => {
+        const parsedCost = parsedLegCosts[i];
+        const base = {
+          effective_date: l.effective_date,
+          quantity: parsedLegQuantities[i],
+        };
+        // Only emit cost when the field is non-blank and a valid finite number
+        if (showCostFields && parsedCost !== null && !isNaN(parsedCost) && isFinite(parsedCost)) {
+          return { ...base, cost: { amount: parsedCost, currency: costCurrency } };
+        }
+        return base;
+      });
 
       // Add remainder leg if there is leftover quantity
       if (remaining > absOriginalQty * 0.0001) {
@@ -214,7 +261,23 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
 
         {/* Allocations */}
         <div>
-          <label className="block text-xs text-zinc-400 mb-1">Allocations</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs text-zinc-400">Allocations</label>
+            {showCostFields && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-zinc-400">Currency:</span>
+                <select
+                  value={costCurrency}
+                  onChange={(e) => setCostCurrency(e.target.value as CostCurrency)}
+                  aria-label="Cost currency"
+                  className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                >
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+            )}
+          </div>
           <div className="space-y-2">
             {legs.map((leg, i) => (
               <div key={i} className="flex items-center gap-2">
@@ -239,6 +302,18 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
                   className="w-28 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   required
                 />
+                {showCostFields && (
+                  <input
+                    id={`${id}-cost-${i}`}
+                    type="text"
+                    inputMode="decimal"
+                    value={leg.cost}
+                    onChange={(e) => updateLeg(i, "cost", e.target.value)}
+                    placeholder="Amount paid"
+                    aria-label={`Allocation ${i + 1} amount paid`}
+                    className="w-28 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  />
+                )}
                 {legs.length > 1 && (
                   <button
                     type="button"
@@ -273,6 +348,25 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
             ) : (
               <span className="text-emerald-400">Fully allocated</span>
             )}
+          </p>
+        )}
+
+        {/* Cost hint — shown when at least one leg has a cost; NOT blocking */}
+        {showCostFields && hasSomeCost && !hasCostNaN && (
+          <p className="text-xs text-zinc-400">
+            Costs entered:{" "}
+            <span className="text-zinc-200 font-medium">
+              {costCurrency === "EUR" ? "€" : "$"}
+              {costSum.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </span>
+            {" "}— costs should sum to what you actually paid
+          </p>
+        )}
+
+        {/* NaN cost alert */}
+        {hasCostNaN && (
+          <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+            Amount paid must be a valid number
           </p>
         )}
 

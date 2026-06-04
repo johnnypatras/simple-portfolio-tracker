@@ -28,6 +28,8 @@ function makeEntry(overrides: Partial<ActivityLog> = {}): ActivityLog {
     after_snapshot: { quantity: 0.5, price_usd: 60000 },
     undone_at: null,
     is_adjustment: false,
+    is_yield: false,
+    cashflow_user_set: false,
     delta_usd: null,
     delta_eur: null,
     transfer_group_id: null,
@@ -269,5 +271,145 @@ describe("SplitModal", () => {
     await user.type(qtyInput, "0.5");
 
     expect(screen.getByText("Fully allocated")).toBeInTheDocument();
+  });
+
+  // ── Task 4.2: per-leg cost fields ──────────────────────
+
+  it("renders a cost input per leg", async () => {
+    const user = userEvent.setup();
+    render(
+      <SplitModal entry={makeEntry()} onClose={vi.fn()} onSplit={vi.fn()} />,
+    );
+
+    // initial single leg should have a cost field
+    expect(screen.getByLabelText("Allocation 1 amount paid")).toBeInTheDocument();
+
+    // add a second leg — second cost field appears
+    await user.click(screen.getByText("Add date"));
+    expect(screen.getByLabelText("Allocation 2 amount paid")).toBeInTheDocument();
+  });
+
+  it("blank cost field emits no cost; filled field emits cost with currency", async () => {
+    const user = userEvent.setup();
+    const onSplit = vi.fn().mockResolvedValue({ success: true, message: "" });
+
+    render(
+      <SplitModal entry={makeEntry()} onClose={onSplit} onSplit={onSplit} />,
+    );
+
+    // Add second leg so modal accepts the submit
+    await user.click(screen.getByText("Add date"));
+
+    // Fill quantities and dates
+    fireEvent.change(screen.getByLabelText("Allocation 1 date"), { target: { value: "2026-01-05" } });
+    await user.clear(screen.getByLabelText("Allocation 1 quantity"));
+    await user.type(screen.getByLabelText("Allocation 1 quantity"), "0.2");
+    fireEvent.change(screen.getByLabelText("Allocation 2 date"), { target: { value: "2026-01-08" } });
+    await user.clear(screen.getByLabelText("Allocation 2 quantity"));
+    await user.type(screen.getByLabelText("Allocation 2 quantity"), "0.3");
+
+    // Fill cost ONLY for leg 1 — leave leg 2 blank
+    await user.clear(screen.getByLabelText("Allocation 1 amount paid"));
+    await user.type(screen.getByLabelText("Allocation 1 amount paid"), "5000");
+
+    await user.click(screen.getByRole("button", { name: "Split" }));
+
+    expect(onSplit).toHaveBeenCalledWith("log-1", [
+      { effective_date: "2026-01-05", quantity: 0.2, cost: { amount: 5000, currency: "EUR" } },
+      { effective_date: "2026-01-08", quantity: 0.3 }, // no cost key
+    ]);
+  });
+
+  it("Σ(cost) hint shows running total and does NOT block save when qty Σ matches", async () => {
+    const user = userEvent.setup();
+    render(
+      <SplitModal entry={makeEntry()} onClose={vi.fn()} onSplit={vi.fn()} />,
+    );
+
+    // Two legs, full quantity allocated
+    await user.click(screen.getByText("Add date"));
+    fireEvent.change(screen.getByLabelText("Allocation 1 date"), { target: { value: "2026-01-05" } });
+    await user.clear(screen.getByLabelText("Allocation 1 quantity"));
+    await user.type(screen.getByLabelText("Allocation 1 quantity"), "0.2");
+    fireEvent.change(screen.getByLabelText("Allocation 2 date"), { target: { value: "2026-01-08" } });
+    await user.clear(screen.getByLabelText("Allocation 2 quantity"));
+    await user.type(screen.getByLabelText("Allocation 2 quantity"), "0.3");
+
+    // Enter costs on both legs
+    await user.type(screen.getByLabelText("Allocation 1 amount paid"), "3000");
+    await user.type(screen.getByLabelText("Allocation 2 amount paid"), "2000");
+
+    // Hint line should appear showing the sum
+    expect(screen.getByText(/Costs entered/)).toBeInTheDocument();
+
+    // Save button should NOT be disabled just because cost sum doesn't equal anything
+    const submitButton = screen.getByRole("button", { name: "Split" });
+    expect(submitButton).not.toBeDisabled();
+  });
+
+  it("NaN cost (non-numeric) shows alert and disables Save", async () => {
+    const user = userEvent.setup();
+    render(
+      <SplitModal entry={makeEntry()} onClose={vi.fn()} onSplit={vi.fn()} />,
+    );
+
+    await user.type(screen.getByLabelText("Allocation 1 amount paid"), "abc");
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Split" })).toBeDisabled();
+  });
+
+  it("yield parent hides all cost fields", () => {
+    render(
+      <SplitModal
+        entry={makeEntry({ is_adjustment: false, is_yield: true })}
+        onClose={vi.fn()}
+        onSplit={vi.fn()}
+      />,
+    );
+
+    // No cost inputs should be present
+    expect(screen.queryByLabelText("Allocation 1 amount paid")).not.toBeInTheDocument();
+  });
+
+  it("adjustment parent hides all cost fields", () => {
+    render(
+      <SplitModal
+        entry={makeEntry({ is_adjustment: true })}
+        onClose={vi.fn()}
+        onSplit={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Allocation 1 amount paid")).not.toBeInTheDocument();
+  });
+
+  it("existing qty-Σ lockdown unchanged — disabled when qty sum mismatches", async () => {
+    const user = userEvent.setup();
+    render(
+      <SplitModal entry={makeEntry()} onClose={vi.fn()} onSplit={vi.fn()} />,
+    );
+
+    // Add a second leg to show two rows (to get past the ≥2 dates rule)
+    await user.click(screen.getByText("Add date"));
+
+    // Fill dates but quantities don't sum to 0.5
+    fireEvent.change(screen.getByLabelText("Allocation 1 date"), { target: { value: "2026-01-05" } });
+    await user.clear(screen.getByLabelText("Allocation 1 quantity"));
+    await user.type(screen.getByLabelText("Allocation 1 quantity"), "0.1");
+    fireEvent.change(screen.getByLabelText("Allocation 2 date"), { target: { value: "2026-01-08" } });
+    await user.clear(screen.getByLabelText("Allocation 2 quantity"));
+    await user.type(screen.getByLabelText("Allocation 2 quantity"), "0.1");
+
+    // 0.1+0.1 = 0.2, remaining 0.3 → valid (remainder stays at original date) —
+    // but we only have 2 legs here and both sum to 0.2, remainder = 0.3 → valid split
+    // Let's make qty exceed to force an error
+    await user.clear(screen.getByLabelText("Allocation 1 quantity"));
+    await user.type(screen.getByLabelText("Allocation 1 quantity"), "0.4");
+    await user.clear(screen.getByLabelText("Allocation 2 quantity"));
+    await user.type(screen.getByLabelText("Allocation 2 quantity"), "0.4");
+    // sum = 0.8 > 0.5 → over-allocated
+    expect(screen.getByText(/Over-allocated by/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Split" })).toBeDisabled();
   });
 });

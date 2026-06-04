@@ -74,8 +74,8 @@ export async function backdateActivityEntry(
   // Transfer legs are excluded by the is_adjustment check (both legs are is_adjustment=true).
   // The recompute is best-effort: a price-fetch failure logs an error but does not fail the
   // backdate operation itself (the effective_date update already succeeded).
-  const cashflowUserSet = (entry as Record<string, unknown>)["cashflow_user_set"] as boolean;
-  const isYield = (entry as Record<string, unknown>)["is_yield"] as boolean;
+  const cashflowUserSet = log.cashflow_user_set;
+  const isYield = log.is_yield;
   const isCashflowProducingEntity = (CASHFLOW_PRODUCING_ENTITY_TYPES as readonly string[]).includes(log.entity_type);
 
   if (
@@ -161,10 +161,9 @@ export async function splitActivityEntry(
 
   if (legs.length < 2) return { success: false, message: "Need at least 2 date allocations" };
 
-  // Inherited cost-basis flags. These columns are not on the ActivityLog
-  // interface (UI-shape type); read them off the raw row like backdate does.
-  const parentIsYield = (entry as Record<string, unknown>)["is_yield"] === true;
-  const parentCashflowUserSet = (entry as Record<string, unknown>)["cashflow_user_set"] === true;
+  // Inherited cost-basis flags — now typed directly on ActivityLog.
+  const parentIsYield = parent.is_yield;
+  const parentCashflowUserSet = parent.cashflow_user_set;
 
   // Validate dates, quantities, and per-leg costs
   const dates = new Set<string>();

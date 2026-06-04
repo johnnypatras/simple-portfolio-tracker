@@ -62,6 +62,8 @@ function makeActivityLog(overrides: Partial<ActivityLog> = {}): ActivityLog {
     after_snapshot: null,
     undone_at: null,
     is_adjustment: false,
+    is_yield: false,
+    cashflow_user_set: false,
     delta_usd: null,
     delta_eur: null,
     transfer_group_id: null,

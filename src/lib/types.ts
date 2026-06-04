@@ -660,6 +660,10 @@ export interface ActivityLog {
   after_snapshot: Record<string, unknown> | null;
   undone_at: string | null;
   is_adjustment: boolean;
+  /** Earned income (staking reward, dividend, etc.); cost is 0 by definition; excluded from S&P benchmark. */
+  is_yield: boolean;
+  /** True when the cashflow amount was explicitly authored by the user rather than derived from qty × price. */
+  cashflow_user_set: boolean;
   delta_usd: number | null;
   delta_eur: number | null;
   transfer_group_id: string | null;
