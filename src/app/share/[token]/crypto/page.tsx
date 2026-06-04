@@ -7,6 +7,8 @@ import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { safeGetAllAssetTransactions } from "@/lib/portfolio/owner-pnl";
 import { CryptoTable } from "@/components/crypto/crypto-table";
 
 export default async function SharedCryptoPage({
@@ -23,17 +25,24 @@ export default async function SharedCryptoPage({
   const { cryptoAssets, wallets, profile, share } = data;
   const cur = profile.primary_currency;
 
+  // Service-role admin client for the cross-user cost-basis transaction read.
+  // The viewer is not the asset owner so RLS would scope to the viewer's
+  // auth.uid() and return zero rows. Admin bypasses RLS but we pass the
+  // share's verified owner_id explicitly — that is the ONLY scope guard here.
+  const admin = createAdminClient();
+
   // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
   // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
   const coinIds = cryptoAssets.map((a) => a.coingecko_id);
   const allCurrencies = ["USD", "EUR"];
-  const [prices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch, cashFlowResult] = await Promise.all([
+  const [prices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch, cashFlowResult, assetTransactions] = await Promise.all([
     getPrices(coinIds),
     getFXRatesSafe(cur, allCurrencies),
     getFXRatesSafe("USD", allCurrencies.filter((c) => c !== "USD")),
     getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
     getStockPrices(["EURUSD=X"]),
     deriveCashFlows(share.owner_id),
+    safeGetAllAssetTransactions(admin, share.owner_id, "share:crypto:getAssetTransactions"),
   ]);
 
   const cashFlows = cashFlowResult.events;
@@ -50,6 +59,8 @@ export default async function SharedCryptoPage({
     fxRatesUsd,
     fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    // null → no P&L computed (graceful degradation already logged in the helper).
+    assetTransactions: assetTransactions ?? undefined,
   });
 
   const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
@@ -69,6 +80,7 @@ export default async function SharedCryptoPage({
         fxValueChange24h={summary.cryptoFxValueChange24h}
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
+        pnlByAsset={summary.pnlByAsset}
       />
     </div>
   );

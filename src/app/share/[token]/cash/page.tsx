@@ -7,6 +7,8 @@ import { getFXRatesSafe } from "@/lib/prices/fx";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { safeGetAllAssetTransactions } from "@/lib/portfolio/owner-pnl";
 import { CashTable } from "@/components/cash/cash-table";
 import { isStablecoin } from "@/lib/cashflow";
 
@@ -24,6 +26,12 @@ export default async function SharedCashPage({
   const { cashAccounts, cryptoAssets, profile, share } = data;
   const cur = profile.primary_currency;
 
+  // Service-role admin client for the cross-user cost-basis transaction read.
+  // The viewer is not the asset owner so RLS would scope to the viewer's
+  // auth.uid() and return zero rows. Admin bypasses RLS but we pass the
+  // share's verified owner_id explicitly — that is the ONLY scope guard here.
+  const admin = createAdminClient();
+
   // Stablecoins are reclassified as cash
   const stablecoins = cryptoAssets.filter((a) => isStablecoin(a.subcategory));
 
@@ -36,7 +44,7 @@ export default async function SharedCashPage({
 
   // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
   // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
-  const [stablecoinPrices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch, cashFlowResult] = await Promise.all([
+  const [stablecoinPrices, fxRates, fxRatesUsd, fxRatesEur, eurUsdBatch, cashFlowResult, assetTransactions] = await Promise.all([
     stablecoins.length > 0
       ? getPrices(stablecoins.map((a) => a.coingecko_id))
       : Promise.resolve({}),
@@ -45,6 +53,9 @@ export default async function SharedCashPage({
     getFXRatesSafe("EUR", allCurrencies.filter((c) => c !== "EUR")),
     getStockPrices(["EURUSD=X"]),
     deriveCashFlows(share.owner_id),
+    // Admin client + verified owner_id: admin bypasses RLS; explicit userId is the
+    // only scope guard (mirroring the manual-NAV read in stocks/page.tsx).
+    safeGetAllAssetTransactions(admin, share.owner_id, "share:cash:getAssetTransactions"),
   ]);
 
   const cashFlows = cashFlowResult.events;
@@ -61,6 +72,8 @@ export default async function SharedCashPage({
     fxRatesUsd,
     fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    // null → no P&L computed (graceful degradation already logged in the helper).
+    assetTransactions: assetTransactions ?? undefined,
   });
 
   const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
@@ -85,6 +98,7 @@ export default async function SharedCashPage({
         fxValueChange24h={summary.cashTotalFxValueChange24h}
         deposits={dep.total}
         depositBreakdown={dep.breakdown}
+        pnlByAsset={summary.pnlByAsset}
       />
     </div>
   );

@@ -8,6 +8,7 @@ import { aggregatePortfolio } from "@/lib/portfolio/aggregate";
 import { computeDeposits } from "@/lib/portfolio/dashboard-changes";
 import { StockTable } from "@/components/stocks/stock-table";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { safeGetAllAssetTransactions } from "@/lib/portfolio/owner-pnl";
 import {
   getLatestManualNavsAt,
   partitionStockAssetsForPricing,
@@ -42,7 +43,7 @@ export default async function SharedStocksPage({
   // fxRatesUsd/fxRatesEur enable direct (not 2-legged cross) conversion for the
   // USD/EUR snapshot sub-lines in aggregatePortfolio — see assemble.ts.
   const uniqueCurrencies = [...new Set(["USD", "EUR", ...stockAssets.map((a) => a.currency)])];
-  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, cashFlowResult, manualNavs] = await Promise.all([
+  const [{ stockPrices: prices, indexPrices, dividends }, fxRates, fxRatesUsd, fxRatesEur, cashFlowResult, manualNavs, assetTransactions] = await Promise.all([
     getStockAndIndexPrices(yahooTickers),
     getFXRatesSafe(cur, uniqueCurrencies),
     getFXRatesSafe("USD", uniqueCurrencies.filter((c) => c !== "USD")),
@@ -51,6 +52,9 @@ export default async function SharedStocksPage({
     manualStockAssets.length > 0
       ? getLatestManualNavsAt(admin, today, share.owner_id)
       : Promise.resolve([]),
+    // Admin client + verified owner_id: admin bypasses RLS; explicit userId is the
+    // only scope guard (mirroring the manual-NAV read above).
+    safeGetAllAssetTransactions(admin, share.owner_id, "share:stocks:getAssetTransactions"),
   ]);
   injectManualNavPrices(manualStockAssets, manualNavs, prices);
 
@@ -68,6 +72,8 @@ export default async function SharedStocksPage({
     fxRatesUsd,
     fxRatesEur,
     eurUsdChange24h: eurUsdData?.change24h ?? 0,
+    // null → no P&L computed (graceful degradation already logged in the helper).
+    assetTransactions: assetTransactions ?? undefined,
   });
 
   const fxMul = cur === "USD" || summary.totalValueUsd === 0 ? 1 : summary.totalValue / summary.totalValueUsd;
@@ -91,6 +97,7 @@ export default async function SharedStocksPage({
         latestManualNavDates={Object.fromEntries(
           manualNavs.map((n) => [n.asset_id, n.effective_date])
         )}
+        pnlByAsset={summary.pnlByAsset}
       />
     </div>
   );
