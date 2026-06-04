@@ -25,6 +25,7 @@ import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/types";
 import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
+import { COST_COPY } from "@/lib/cost-basis-copy";
 import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { useSharedView } from "@/components/shared-view-context";
 import { ChangeTooltip } from "@/components/ui/change-tooltip";
@@ -264,6 +265,38 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                   <span className="text-sm text-zinc-400">—</span>
                 )}
               </div>
+            );
+          })()}
+
+          {/* ── Total P&L stat (cost-basis) ── */}
+          {summary.costBasisTotals && (() => {
+            const { totalPnL, costBasis, unrealized, realized } = summary.costBasisTotals.eur;
+            const pct = costBasis > 0 ? totalPnL / costBasis : null;
+            return (
+              <p className="text-[11px] mt-1 tabular-nums">
+                <span className="text-zinc-400">Total P&amp;L </span>
+                <span
+                  className={changeColorClass(totalPnL)}
+                  {...(cur === "USD" ? { title: COST_COPY.fxDivergenceTooltip } : {})}
+                >
+                  {totalPnL >= 0 ? "+" : ""}{fmtCurrency(totalPnL, "EUR")}
+                  {pct !== null && (
+                    <span className="ml-1 font-normal">
+                      ({totalPnL >= 0 ? "+" : ""}{fmtPct(pct * 100)})
+                    </span>
+                  )}
+                </span>
+                <span className="text-zinc-500" aria-hidden="true"> · </span>
+                <span className="text-zinc-400">Unrealized </span>
+                <span className={changeColorClass(unrealized)}>
+                  {unrealized >= 0 ? "+" : ""}{fmtCurrency(unrealized, "EUR")}
+                </span>
+                <span className="text-zinc-500" aria-hidden="true"> · </span>
+                <span className="text-zinc-400">Realized </span>
+                <span className={changeColorClass(realized)}>
+                  {realized >= 0 ? "+" : ""}{fmtCurrency(realized, "EUR")}
+                </span>
+              </p>
             );
           })()}
 
