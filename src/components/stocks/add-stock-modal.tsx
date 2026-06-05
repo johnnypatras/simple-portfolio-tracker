@@ -10,6 +10,7 @@ import type {
   YahooSearchResult,
   Broker,
 } from "@/lib/types";
+import { COST_COPY } from "@/lib/cost-basis-copy";
 import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 
 interface AddStockModalProps {
@@ -106,6 +107,12 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionBrokerId, setPositionBrokerId] = useState("");
   const [positionQuantity, setPositionQuantity] = useState("");
+  // Amount paid (incl. fees) — the cost spine. Dirty-tracked: an untouched field
+  // emits NO cost (the position falls back to market value). Mirrors the
+  // manual-NAV modal's provenance gate.
+  const [positionCost, setPositionCost] = useState("");
+  const [positionCostDirty, setPositionCostDirty] = useState(false);
+  const [positionCostCurrency, setPositionCostCurrency] = useState<"EUR" | "USD">("EUR");
 
   // ─── Debounced search ────────────────────────────────────
   useEffect(() => {
@@ -159,6 +166,9 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
       setPositionOpen(false);
       setPositionBrokerId("");
       setPositionQuantity("");
+      setPositionCost("");
+      setPositionCostDirty(false);
+      setPositionCostCurrency("EUR");
       setIsAdjustment(false);
       setEffectiveDate("");
     }
@@ -210,6 +220,14 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
       // If user filled in an initial position, create it too
       const qty = parseFloat(positionQuantity);
       if (positionBrokerId && qty > 0) {
+        // Provenance gate (mirrors the manual-NAV modal): emit a cost ONLY when
+        // the user actually typed a finite, non-blank amount. An untouched field
+        // passes no cost → the position falls back to market value.
+        const costNum = parseFloat(positionCost);
+        const cost =
+          positionCostDirty && positionCost.trim() !== "" && Number.isFinite(costNum)
+            ? { amount: costNum, currency: positionCostCurrency }
+            : undefined;
         await upsertStockPosition({
           stock_asset_id: assetId,
           broker_id: positionBrokerId,
@@ -219,6 +237,7 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
           ...dateOpts,
           currentPriceNative: selected?.price,
           assetCurrency: selected?.currency,
+          ...(cost ? { cost } : {}),
         });
       }
 
@@ -662,6 +681,37 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
                           className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums"
                         />
                       </div>
+                    </div>
+                    {/* Amount paid (incl. fees) — optional cost spine. Blank → market fallback. */}
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <label htmlFor={`${id}-cost`} className="block text-xs text-zinc-400">
+                          Amount paid (incl. fees)
+                        </label>
+                        <select
+                          id={`${id}-cost-currency`}
+                          value={positionCostCurrency}
+                          onChange={(e) => setPositionCostCurrency(e.target.value as "EUR" | "USD")}
+                          className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70"
+                          aria-label="Amount paid currency"
+                        >
+                          <option value="EUR">EUR</option>
+                          <option value="USD">USD</option>
+                        </select>
+                      </div>
+                      <input
+                        id={`${id}-cost`}
+                        type="text"
+                        inputMode="decimal"
+                        value={positionCost}
+                        onChange={(e) => {
+                          setPositionCost(e.target.value);
+                          setPositionCostDirty(true);
+                        }}
+                        placeholder="Leave blank to use market value"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums"
+                      />
+                      <p className="text-xs text-zinc-400 mt-1">{COST_COPY.amountOptionalHint}</p>
                     </div>
                   </div>
                 )}
