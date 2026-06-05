@@ -5,7 +5,10 @@ import type { FXRates } from "@/lib/prices/fx";
 import { getLatestManualNavsAt, partitionStockAssetsForPricing, injectManualNavPrices } from "@/lib/manual-nav";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAllAssetTransactions } from "./asset-transactions";
+import {
+  getAllAssetTransactionsCached,
+  getAllAssetTransactionsForOwner,
+} from "./asset-transactions-cache";
 import type { AssetKey } from "./asset-transactions";
 import type { CostBasisTxn } from "./cost-basis";
 import { aggregatePortfolio } from "./aggregate";
@@ -82,18 +85,21 @@ export async function assemblePortfolioView(
   // For share-page reads (ownerUserId provided), use the admin client + explicit
   // user_id arg so the SQL function still scopes correctly. RLS bypass is safe:
   // shared-portfolio.ts already gates which fields the viewer sees; manual NAV
-  // values just complete that picture. The cost-basis transaction read shares
-  // this exact client (same dual-client #97 contract).
+  // values just complete that picture.
   const navClient = options?.ownerUserId ? createAdminClient() : supabase;
-  const txnClient = navClient;
 
   // Per-asset transaction streams for cost-basis P&L. Kept fully PARALLEL with the
   // price fetches: the user resolution (share page → ownerUserId; owner dashboard
   // → session) happens INSIDE this promise so nothing is awaited before the batch
   // below. If no user resolves (unauthenticated edge case), skip the read (P&L is
-  // purely additive). GRACEFUL DEGRADATION: a thrown read is logged + Sentry-
-  // captured and yields `null` — the dashboard must never 500 because cost data
-  // failed; aggregatePortfolio then computes no P&L from `null`.
+  // purely additive). The bulk read goes through the request-cached wrapper
+  // (asset-transactions-cache.ts) so this and the cost-basis series
+  // (fetchCostBasisSeriesAssets, via the benchmark extension) share ONE execution
+  // per render instead of issuing the 8+ paginated round-trips twice; the wrapper
+  // builds its own client per path (server/RLS vs admin) and OWNS graceful
+  // degradation (never throws — empty map on failure + one Sentry capture). The
+  // outer try/catch here still guards the auth.getUser() resolution. A failed read
+  // yields `null` so aggregatePortfolio computes no P&L (every P&L cell shows "—").
   const assetTransactionsPromise: Promise<Map<AssetKey, CostBasisTxn[]> | null> =
     (async () => {
       try {
@@ -102,7 +108,9 @@ export async function assemblePortfolioView(
           (await supabase.auth.getUser()).data.user?.id ??
           null;
         if (!effectiveUserId) return null;
-        return await getAllAssetTransactions(txnClient, effectiveUserId);
+        return options?.ownerUserId
+          ? await getAllAssetTransactionsForOwner(effectiveUserId)
+          : await getAllAssetTransactionsCached(effectiveUserId);
       } catch (e: unknown) {
         console.error("[assemble] getAllAssetTransactions failed:", e);
         void import("@sentry/nextjs")

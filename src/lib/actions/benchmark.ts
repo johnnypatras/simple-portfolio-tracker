@@ -255,8 +255,13 @@ async function buildCostBasisSeriesFor(
   prices: HistoricalPriceRow[],
 ): Promise<CostBasisSeriesPoint[]> {
   try {
+    // The bulk transaction read inside fetchCostBasisSeriesAssets is request-cached
+    // (asset-transactions-cache.ts) and keyed on userId, so it dedups with
+    // assemblePortfolioView's read in the same render — pass isOwnerPath so it
+    // picks the matching cached wrapper. This `client` still serves the asset-meta
+    // loads inside that function.
     const client = isOwnerPath ? createAdminClient() : await createServerSupabaseClient();
-    const assets = await fetchCostBasisSeriesAssets(client, userId);
+    const assets = await fetchCostBasisSeriesAssets(client, userId, isOwnerPath);
     const today = new Date().toISOString().slice(0, 10);
     const dates = buildCostBasisDateSpine(assets, today);
     if (dates.length === 0) return [];

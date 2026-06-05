@@ -19,10 +19,13 @@ import {
 import { quantityDelta, type TransactionRow } from "@/lib/transaction-kind";
 import { splitSignWithLegacyFallback } from "@/lib/split-helpers";
 import {
-  getAllAssetTransactions,
   type AssetKey,
   type AssetTransactionRow,
 } from "@/lib/portfolio/asset-transactions";
+import {
+  getAllAssetTransactionsCached,
+  getAllAssetTransactionsForOwner,
+} from "@/lib/portfolio/asset-transactions-cache";
 import type {
   ActionType,
   AssetClass,
@@ -1834,9 +1837,20 @@ function toSeriesTxn(row: AssetTransactionRow): CostBasisSeriesTxn & { date: str
 export async function fetchCostBasisSeriesAssets(
   supabase: SupabaseClient<Database>,
   userId: string,
+  isOwnerPath: boolean,
 ): Promise<CostBasisSeriesAsset[]> {
+  // The bulk transaction read goes through the request-cached wrapper so it
+  // dedups with assemblePortfolioView's pnlByAsset read in the SAME render (both
+  // keyed on userId — one execution instead of 8+ paginated round-trips twice).
+  // `isOwnerPath` picks the matching wrapper (admin/owner vs server/RLS); the
+  // wrapper builds its own client. The three asset-meta loads stay on the passed
+  // `supabase` client — they're single reads, not the dedup target. The wrapper
+  // never throws (empty map on failure); the caller's try/catch still guards the
+  // meta loads + this transform.
   const [byAsset, cryptoMeta, stockMeta, cashCur] = await Promise.all([
-    getAllAssetTransactions(supabase, userId),
+    isOwnerPath
+      ? getAllAssetTransactionsForOwner(userId)
+      : getAllAssetTransactionsCached(userId),
     loadCryptoAssetMeta(supabase, userId),
     loadStockAssetMeta(supabase, userId),
     loadCashAccountCurrency(supabase, userId),
