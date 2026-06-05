@@ -414,8 +414,10 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
 
       const qty = (existing.quantity as number) ?? 0;
       const deltaNative = -(qty * (opts?.currentPriceNative ?? 0));
+      // The removed branch disposes the ENTIRE position → direction −1 by
+      // construction (an override is a magnitude; sign comes from the op).
       const fx = (opts?.currentPriceNative != null || cashflowOverride != null)
-        ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: cashflowOverride })
+        ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: cashflowOverride, direction: -1 })
         : emptyFx();
 
       await logActivity({
@@ -500,8 +502,11 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
     const afterQty = input.quantity;
     const qtyDelta = afterQty - beforeQty;
     const deltaNative = qtyDelta * (opts?.currentPriceNative ?? 0);
+    // Override direction comes from the qty delta: a share DROP is a disposal
+    // (−1), a rise an acquisition (+1). qtyDelta is never 0 on this path.
+    const direction: 1 | -1 = qtyDelta < 0 ? -1 : 1;
     const fx = (opts?.currentPriceNative != null || cashflowOverride != null)
-      ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: cashflowOverride })
+      ? await computeActivityFxWithConversion({ valueNative: deltaNative, currency: opts?.assetCurrency ?? "USD", effectiveDate: opts?.effectiveDate, isAdjustment: opts?.isAdjustment, entityType: "stock_position", amountOverride: cashflowOverride, direction })
       : emptyFx();
 
     await logActivity({

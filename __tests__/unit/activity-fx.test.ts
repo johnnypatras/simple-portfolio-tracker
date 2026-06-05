@@ -103,6 +103,119 @@ describe("computeActivityFx", () => {
       expect(result.cashflowAssetClass).toBeNull();
     });
   });
+
+  // ── THE SIGN CONTRACT: override × direction matrix (cashflow branch) ────────
+  describe("amountOverride sign (cashflow branch)", () => {
+    it("acquisition override (direction +1) → stored POSITIVE", () => {
+      const result = computeActivityFx({
+        valUsd: 0,
+        valEur: 0,
+        entityType: "crypto_position",
+        amountOverride: { usd: 1760, eur: 1600 },
+        direction: 1,
+      });
+      expect(result.cashflowUsd).toBe(1760);
+      expect(result.cashflowEur).toBe(1600);
+      expect(result.cashflowUserSet).toBe(true);
+      expect(result.cashflowStatus).toBe("complete");
+    });
+
+    it("disposal override (direction −1) → stored NEGATIVE", () => {
+      const result = computeActivityFx({
+        valUsd: 0,
+        valEur: 0,
+        entityType: "crypto_position",
+        amountOverride: { usd: 1760, eur: 1600 },
+        direction: -1,
+      });
+      expect(result.cashflowUsd).toBe(-1760);
+      expect(result.cashflowEur).toBe(-1600);
+      expect(result.cashflowUserSet).toBe(true);
+    });
+
+    it("THE TRAP: zero-val disposal (no prices) STILL stores negative", () => {
+      // The transaction manager passes NO prices for a cost-only write → valUsd
+      // is 0/-0. Math.sign(valUsd || 1) would flip this positive — forbidden.
+      const result = computeActivityFx({
+        valUsd: -0,
+        valEur: -0,
+        entityType: "crypto_position",
+        amountOverride: { usd: 1760, eur: 1600 },
+        direction: -1,
+      });
+      expect(result.cashflowUsd).toBe(-1760);
+      expect(result.cashflowEur).toBe(-1600);
+    });
+
+    it("override magnitude with stray negative sign is normalized then re-signed (no double-negate)", () => {
+      // A future signed caller must not double-negate: Math.abs collapses any
+      // sign on the incoming magnitude, then direction is applied once.
+      const result = computeActivityFx({
+        valUsd: 0,
+        valEur: 0,
+        entityType: "crypto_position",
+        amountOverride: { usd: -1760, eur: -1600 },
+        direction: -1,
+      });
+      expect(result.cashflowUsd).toBe(-1760);
+      expect(result.cashflowEur).toBe(-1600);
+    });
+
+    it("override with no direction defaults to +1 (acquisition)", () => {
+      const result = computeActivityFx({
+        valUsd: 0,
+        valEur: 0,
+        entityType: "crypto_position",
+        amountOverride: { usd: 500, eur: 460 },
+      });
+      expect(result.cashflowUsd).toBe(500);
+      expect(result.cashflowEur).toBe(460);
+    });
+
+    it("no override → val* used verbatim, direction ignored, cashflowUserSet false", () => {
+      const result = computeActivityFx({
+        valUsd: -1760,
+        valEur: -1600,
+        entityType: "crypto_position",
+        direction: 1, // ignored on the no-override path
+      });
+      expect(result.cashflowUsd).toBe(-1760);
+      expect(result.cashflowEur).toBe(-1600);
+      expect(result.cashflowUserSet).toBe(false);
+    });
+  });
+
+  // ── THE SIGN CONTRACT: override × direction matrix (adjustment branch) ──────
+  describe("amountOverride sign (adjustment branch)", () => {
+    it("disposal override (direction −1) → delta stored NEGATIVE", () => {
+      const result = computeActivityFx({
+        valUsd: 0,
+        valEur: 0,
+        isAdjustment: true,
+        entityType: "crypto_position",
+        amountOverride: { usd: 1760, eur: 1600 },
+        direction: -1,
+      });
+      expect(result.deltaUsd).toBe(-1760);
+      expect(result.deltaEur).toBe(-1600);
+      expect(result.deltaStatus).toBe("complete");
+      // cashflowUserSet is a cashflow-branch concept — never set in adjustment mode.
+      expect(result.cashflowUserSet).toBe(false);
+    });
+
+    it("acquisition override (direction +1) → delta stored POSITIVE", () => {
+      const result = computeActivityFx({
+        valUsd: 0,
+        valEur: 0,
+        isAdjustment: true,
+        entityType: "crypto_position",
+        amountOverride: { usd: 1760, eur: 1600 },
+        direction: 1,
+      });
+      expect(result.deltaUsd).toBe(1760);
+      expect(result.deltaEur).toBe(1600);
+    });
+  });
 });
 
 // ─── Tests: computeActivityFxWithConversion (async) ──────────────────────────
@@ -176,6 +289,77 @@ describe("computeActivityFxWithConversion", () => {
       expect(result.cashflowEur).toBeNull();
       expect(result.cashflowStatus).toBeNull();
       expect(result.cashflowAssetClass).toBeNull();
+    });
+  });
+
+  // ── THE SIGN CONTRACT: override × direction (skips FX conversion) ──────────
+  describe("amountOverride sign — non-adjustment", () => {
+    it("disposal override (direction −1) → stored NEGATIVE, toUsdAndEur NOT called", async () => {
+      const result = await computeActivityFxWithConversion({
+        valueNative: 0,
+        currency: "USD",
+        entityType: "stock_position",
+        amountOverride: { usd: 1760, eur: 1600 },
+        direction: -1,
+      });
+      expect(result.cashflowUsd).toBe(-1760);
+      expect(result.cashflowEur).toBe(-1600);
+      expect(result.cashflowUserSet).toBe(true);
+      expect(result.cashflowStatus).toBe("complete");
+      // The override path bypasses qty × price — FX conversion is never invoked.
+      expect(hoisted.toUsdAndEur).not.toHaveBeenCalled();
+    });
+
+    it("acquisition override (direction +1) → stored POSITIVE", async () => {
+      const result = await computeActivityFxWithConversion({
+        valueNative: 0,
+        currency: "USD",
+        entityType: "stock_position",
+        amountOverride: { usd: 1760, eur: 1600 },
+        direction: 1,
+      });
+      expect(result.cashflowUsd).toBe(1760);
+      expect(result.cashflowEur).toBe(1600);
+    });
+
+    it("THE TRAP: zero-val disposal (no native price) STILL stores negative", async () => {
+      const result = await computeActivityFxWithConversion({
+        valueNative: -0,
+        currency: "USD",
+        entityType: "stock_position",
+        amountOverride: { usd: 900, eur: 818.18 },
+        direction: -1,
+      });
+      expect(result.cashflowUsd).toBe(-900);
+      expect(result.cashflowEur).toBe(-818.18);
+    });
+
+    it("override with no direction defaults to +1", async () => {
+      const result = await computeActivityFxWithConversion({
+        valueNative: 0,
+        currency: "USD",
+        entityType: "stock_position",
+        amountOverride: { usd: 300, eur: 272 },
+      });
+      expect(result.cashflowUsd).toBe(300);
+      expect(result.cashflowEur).toBe(272);
+    });
+  });
+
+  describe("amountOverride sign — adjustment", () => {
+    it("disposal override (direction −1) → delta stored NEGATIVE", async () => {
+      const result = await computeActivityFxWithConversion({
+        valueNative: 0,
+        currency: "USD",
+        isAdjustment: true,
+        entityType: "stock_position",
+        amountOverride: { usd: 1760, eur: 1600 },
+        direction: -1,
+      });
+      expect(result.deltaUsd).toBe(-1760);
+      expect(result.deltaEur).toBe(-1600);
+      expect(result.deltaStatus).toBe("complete");
+      expect(hoisted.toUsdAndEur).not.toHaveBeenCalled();
     });
   });
 

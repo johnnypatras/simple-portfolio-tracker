@@ -228,6 +228,66 @@ describe("splitActivityEntry — per-leg cost + split_direction (Task 4.1)", () 
     expect(kids.every((k) => (k.details as { split_quantity: number }).split_quantity > 0)).toBe(true);
   });
 
+  // THE SIGN CONTRACT for splits (see @/lib/activity-fx): a real SELL parent now
+  // stores NEGATIVE cashflow amounts. The leg-cost feature IS reachable on a
+  // disposal parent (the split modal only hides cost fields for yield +
+  // adjustment), so the pool math must run in the MAGNITUDE domain and reapply
+  // the parent's sign — children INHERIT the parent's negative direction.
+  it("a NEGATIVE-cashflow SELL parent with per-leg costs → children NEGATIVE, Σ === parent (no clamp wipeout)", async () => {
+    // Real disposal shape: proceeds left the portfolio → −€54,000 / −$59,400.
+    // The split modal allows leg costs here (not yield, not adjustment).
+    const { data: sellParent, error } = await client
+      .from("activity_log")
+      .insert({
+        user_id: userId,
+        action: "updated",
+        entity_type: "crypto_position",
+        entity_id: positionId,
+        entity_name: "Bitcoin DCA",
+        description: "Sold 2 BTC (signed)",
+        is_adjustment: false,
+        cashflow_user_set: true,
+        cashflow_amount_usd: -59400,
+        cashflow_amount_eur: -54000,
+        cashflow_asset_class: "crypto",
+        cashflow_status: "complete",
+        before_snapshot: { quantity: 2 },
+        after_snapshot: { quantity: 0 },
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error("signed sell parent: " + error.message);
+
+    // Leg 1 costed €30,000 (a positive MAGNITUDE the user types); leg 2 absorbs
+    // the no-cost remainder = |−54,000| − 30,000 = €24,000. Both inherit the
+    // parent's −1 direction → stored NEGATIVE. Pre-fix the clamp Math.max(0,
+    // −54,000 − 30,000) wiped leg 2 to 0 and leg 1 stored +30,000 (wrong sign).
+    const res = await splitActivityEntry(sellParent!.id, [
+      { effective_date: "2024-04-01", quantity: 1.2, cost: { amount: 30000, currency: "EUR" } },
+      { effective_date: "2024-05-01", quantity: 0.8 },
+    ]);
+    expect(res.success).toBe(true);
+
+    const kids = await childrenOf(sellParent!.id);
+    expect(kids).toHaveLength(2);
+    // Costed leg: −€30,000 (entered magnitude × parent sign); USD −30,000×1.10.
+    expect(Number(kids[0].cashflow_amount_eur)).toBe(-30000);
+    expect(Number(kids[0].cashflow_amount_usd)).toBe(-33000);
+    expect(kids[0].cashflow_user_set).toBe(true);
+    // No-cost leg: −€24,000 remainder (|parent| − |costed| = 54,000 − 30,000),
+    // signed. USD remainder = −(59,400 − 33,000) = −26,400.
+    expect(Number(kids[1].cashflow_amount_eur)).toBe(-24000);
+    expect(Number(kids[1].cashflow_amount_usd)).toBe(-26400);
+    // Children carry the parent's −1 direction; split_quantity stays positive.
+    expect(kids.every((k) => (k.details as { split_direction?: number }).split_direction === -1)).toBe(true);
+    expect(kids.every((k) => (k.details as { split_quantity: number }).split_quantity > 0)).toBe(true);
+    // Σ(children) === parent in BOTH currencies (a disposal stays a disposal).
+    const sumEur = kids.reduce((s, k) => s + Number(k.cashflow_amount_eur), 0);
+    const sumUsd = kids.reduce((s, k) => s + Number(k.cashflow_amount_usd), 0);
+    expect(sumEur).toBe(-54000);
+    expect(sumUsd).toBe(-59400);
+  });
+
   it("a yield parent's children inherit is_yield=true and an explicit leg-cost is REJECTED", async () => {
     const yieldParent = await insertBuyParent({
       qty: 2,

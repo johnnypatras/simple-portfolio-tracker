@@ -377,8 +377,10 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       const qty = (existing.quantity as number) ?? 0;
       const valUsd = -(qty * (opts?.currentPriceUsd ?? 0));
       const valEur = -(qty * (opts?.currentPriceEur ?? 0));
+      // The removed branch disposes the ENTIRE position → direction is −1 by
+      // construction (an override is a magnitude; the sign comes from the op).
       const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || cashflowOverride != null)
-        ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: cashflowOverride })
+        ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: cashflowOverride, direction: -1 })
         : emptyFx();
 
       await logActivity({
@@ -473,8 +475,12 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
     const qtyDelta = afterQty - beforeQty;
     const valUsd = qtyDelta * (opts?.currentPriceUsd ?? 0);
     const valEur = qtyDelta * (opts?.currentPriceEur ?? 0);
+    // Override direction comes from the qty delta (sign of the operation): a
+    // quantity DROP is a disposal (−1), a rise is an acquisition (+1). qtyDelta
+    // is never 0 here (a no-op write produces no qty change to log a cost on).
+    const direction: 1 | -1 = qtyDelta < 0 ? -1 : 1;
     const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || cashflowOverride != null)
-      ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: cashflowOverride })
+      ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: cashflowOverride, direction })
       : emptyFx();
 
     await logActivity({

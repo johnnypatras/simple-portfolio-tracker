@@ -46,11 +46,14 @@ export interface AddTransactionParams {
   /** Units TRANSACTED (a positive delta). For cash this IS the cash amount. */
   quantity: number;
   /**
-   * Single-currency cost the user typed (incl. fees). When present, the other
-   * currency is derived via FX-at-date (`toUsdAndEur`, which THROWS on FX
-   * failure so a bad rate never silently writes a wrong cost) and the pair is
-   * stored verbatim (`cashflow_user_set=true`), bypassing qty × price.
-   * Absent → market-value fallback (`cashflow_user_set=false`).
+   * Single-currency cost the user typed (incl. fees) — a MAGNITUDE. When
+   * present, the other currency is derived via FX-at-date (`toUsdAndEur`, which
+   * THROWS on FX failure so a bad rate never silently writes a wrong cost) and
+   * the pair is stored (`cashflow_user_set=true`), bypassing qty × price. The
+   * stored SIGN comes from the transaction TYPE (buy/deposit/yield → +,
+   * sell/withdrawal → −), applied at the signing locus in @/lib/activity-fx —
+   * never from the amount itself. Absent → market-value fallback
+   * (`cashflow_user_set=false`).
    */
   cost?: { amount: number; currency: "EUR" | "USD" } | null;
   /** Effective date (YYYY-MM-DD). Absent → today. */
@@ -379,6 +382,15 @@ export interface EditTransactionResult {
  *                           cashflow_asset_class + cashflow_user_set=true, null
  *                           all delta_* columns (amount + status).
  * is_adjustment itself is NEVER toggled here (that's `toggleActivityAdjustment`).
+ *
+ * SIGN (THE SIGN CONTRACT, see @/lib/activity-fx): `patch.cost` is a MAGNITUDE.
+ * The stored amount keeps the SIGN OF THE ROW so editing the cost of a SELL never
+ * flips it into a phantom positive contribution. Direction precedence:
+ *   1. `quantityDelta(row)` sign (the operation: disposal → −, acquisition → +).
+ *   2. When that's 0/indeterminate (e.g. a row whose snapshots can't resolve a
+ *      delta), preserve the sign of the EXISTING stored amount on the side being
+ *      written (cashflow for a real flow, delta for an adjustment).
+ *   3. If neither yields a sign (both 0) → +1 (the safe acquisition default).
  */
 export async function editTransaction(
   entryId: string,
@@ -477,11 +489,39 @@ export async function editTransaction(
         fxDate,
       );
       // Preserve the typed leg verbatim (all decimals); round only the derived
-      // cross-currency leg to clean money (round2 — no float dust).
-      const dual: UsdEurAmount =
+      // cross-currency leg to clean money (round2 — no float dust). This is a
+      // MAGNITUDE — the sign is applied below from the row's own direction.
+      const magnitude: UsdEurAmount =
         patch.cost.currency === "EUR"
           ? { eur: patch.cost.amount, usd: round2(derived.usd) }
           : { usd: patch.cost.amount, eur: round2(derived.eur) };
+
+      // THE SIGN CONTRACT: keep the row's existing direction. Precedence:
+      //   1. quantityDelta(row) sign (the operation — disposal − / acquisition +).
+      //   2. fall back to the sign of the EXISTING stored amount on the side being
+      //      written (cashflow for a real flow, delta for an adjustment) when the
+      //      qty delta is 0/indeterminate.
+      //   3. +1 when neither resolves a sign.
+      const qd = quantityDelta({
+        entity_type: row.entity_type,
+        action: row.action,
+        is_yield: row.is_yield,
+        is_adjustment: row.is_adjustment,
+        transfer_group_id: row.transfer_group_id,
+        split_from_id: row.split_from_id,
+        before_snapshot: row.before_snapshot as Record<string, unknown> | null,
+        after_snapshot: row.after_snapshot as Record<string, unknown> | null,
+        details: row.details as Record<string, unknown> | null,
+      });
+      const existingSigned = row.is_adjustment
+        ? (row.delta_usd as number | null) ?? (row.delta_eur as number | null)
+        : (row.cashflow_amount_usd as number | null) ?? (row.cashflow_amount_eur as number | null);
+      const direction: 1 | -1 =
+        qd < 0 ? -1 : qd > 0 ? 1 : (existingSigned ?? 0) < 0 ? -1 : 1;
+      const dual: UsdEurAmount = {
+        usd: direction * Math.abs(magnitude.usd),
+        eur: direction * Math.abs(magnitude.eur),
+      };
 
       if (row.is_adjustment) {
         // Adjustment → the amount is a delta. Write delta_*, null cashflow_*

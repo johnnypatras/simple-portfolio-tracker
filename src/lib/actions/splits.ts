@@ -256,20 +256,24 @@ export async function splitActivityEntry(
     return -1; // every leg carries an explicit cost (non-adjustment only)
   })();
 
-  // Pre-compute the no-cost pool: parent amount minus what costed legs claim,
-  // clamped ≥ 0 so a costed-over-budget entry can't produce negative children.
-  // Σ(children) == parent in BOTH currencies (last no-cost leg absorbs rounding).
-  // When NO leg is costed noCostBaseUsd/Eur equals the full parent → identical to
-  // the old behavior byte-for-byte.
+  // THE SIGN CONTRACT (see @/lib/activity-fx): the parent's stored
+  // cashflow_amount_* is SIGNED — negative for a SELL parent (the leg-cost
+  // feature is reachable on a disposal: the split modal only hides cost fields
+  // for yield + adjustment parents). Per-leg costs are entered as POSITIVE
+  // magnitudes, and children INHERIT the parent's sign (split_direction). So the
+  // pool math runs in the MAGNITUDE domain: |parent| − Σ|costed legs|, clamped
+  // ≥ 0, then the parent's sign is reapplied per child below. For an acquisition
+  // parent (splitDirection = +1) this is byte-identical to the old positive-only
+  // arithmetic; for a disposal it keeps every child negative.
   const noCostBaseUsd = Math.max(
     0,
-    (parent.cashflow_amount_usd ?? 0) -
-      legCostOverrides.reduce((s, o) => s + (o != null ? o.usd : 0), 0),
+    Math.abs(parent.cashflow_amount_usd ?? 0) -
+      legCostOverrides.reduce((s, o) => s + (o != null ? Math.abs(o.usd) : 0), 0),
   );
   const noCostBaseEur = Math.max(
     0,
-    (parent.cashflow_amount_eur ?? 0) -
-      legCostOverrides.reduce((s, o) => s + (o != null ? o.eur : 0), 0),
+    Math.abs(parent.cashflow_amount_eur ?? 0) -
+      legCostOverrides.reduce((s, o) => s + (o != null ? Math.abs(o.eur) : 0), 0),
   );
   // Fractions for no-cost legs are proportional to their share of the NO-COST
   // quantity total (not the overall totalQty which includes costed legs).
@@ -314,27 +318,35 @@ export async function splitActivityEntry(
         runningDeltaEur += childDeltaEur;
       }
     } else if (costOverride != null) {
-      // Explicit per-leg cost: store the entered amount verbatim. Excluded from
-      // the proportional pool, so it does NOT touch the running totals.
-      childCashflowUsd = costOverride.usd;
-      childCashflowEur = costOverride.eur;
+      // Explicit per-leg cost (a positive magnitude): apply the parent's sign so
+      // a disposal-parent leg stays negative (children inherit split_direction).
+      // Excluded from the proportional pool, so it does NOT touch the running
+      // totals. For an acquisition parent (splitDirection +1) this is the entered
+      // amount verbatim — byte-identical to the old behavior.
+      childCashflowUsd = splitDirection * Math.abs(costOverride.usd);
+      childCashflowEur = splitDirection * Math.abs(costOverride.eur);
       childCashflowUserSet = true;
     } else {
-      // No-cost leg: proportional split of the NO-COST pool (noCostBaseUsd/Eur =
-      // parent minus costed legs' amounts, clamped ≥ 0). Fractions are over the
-      // NO-COST quantity total so Σ(no-cost children) === noCostBase. The LAST
-      // no-cost leg absorbs the rounding remainder, guaranteeing Σ(all children)
-      // === parent in BOTH currencies.
+      // No-cost leg: proportional split of the NO-COST pool (|parent| minus
+      // costed legs' magnitudes, clamped ≥ 0). The pool + running totals live in
+      // the MAGNITUDE domain; the parent's sign is reapplied at assignment. The
+      // LAST no-cost leg absorbs the rounding remainder, guaranteeing
+      // Σ(|children|) === |parent| in BOTH currencies. For an acquisition parent
+      // splitDirection is +1, so this is byte-identical to the old arithmetic.
       const noCostFraction = noCostQtyTotal > 0 ? leg.quantity / noCostQtyTotal : 0;
+      let magUsd: number;
+      let magEur: number;
       if (i === lastNoCostIdx) {
-        childCashflowUsd = noCostBaseUsd - runningNoCostUsd;
-        childCashflowEur = noCostBaseEur - runningNoCostEur;
+        magUsd = noCostBaseUsd - runningNoCostUsd;
+        magEur = noCostBaseEur - runningNoCostEur;
       } else {
-        childCashflowUsd = round2(noCostBaseUsd * noCostFraction);
-        childCashflowEur = round2(noCostBaseEur * noCostFraction);
-        runningNoCostUsd += childCashflowUsd;
-        runningNoCostEur += childCashflowEur;
+        magUsd = round2(noCostBaseUsd * noCostFraction);
+        magEur = round2(noCostBaseEur * noCostFraction);
+        runningNoCostUsd += magUsd;
+        runningNoCostEur += magEur;
       }
+      childCashflowUsd = splitDirection * magUsd;
+      childCashflowEur = splitDirection * magEur;
     }
 
     children.push({

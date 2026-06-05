@@ -700,8 +700,11 @@ export async function mergeCashAccounts(
 
 /**
  * Unified FX computation: routes to adjustment delta or cashflow based on opts.
- * When opts.cashflowOverride is present and the action is not an adjustment,
- * the override amounts are used directly (balance-delta computation is skipped).
+ * When opts.cashflowOverride is present and the action is not an adjustment, the
+ * override MAGNITUDE is signed by the balance delta (`afterBal - beforeBal`) and
+ * stored directly — the balance-delta MONEY computation is skipped, but its SIGN
+ * still governs the override (a withdrawal stores negative). See THE SIGN
+ * CONTRACT in @/lib/activity-fx.
  */
 async function computeFx(
   action: ActionType,
@@ -722,10 +725,15 @@ async function computeFx(
     fx.deltaEur = delta.deltaEur;
     fx.deltaStatus = delta.deltaStatus;
   } else if (opts?.cashflowOverride != null) {
-    // User-supplied amount: skip balance-delta computation entirely.
+    // User-supplied amount: skip balance-delta computation entirely. The override
+    // is a MAGNITUDE — its sign comes from the balance delta (the operation):
+    // a withdrawal (balance DOWN) stores a negative cashflow, a deposit positive.
+    // Normalize with Math.abs (single signing locus) then apply the direction.
+    // A 0 delta (no real movement) defaults to +1 — harmless, no flow to mis-sign.
     const { classifyAssetClass } = await import("@/lib/cashflow");
-    fx.cashflowUsd = opts.cashflowOverride.usd;
-    fx.cashflowEur = opts.cashflowOverride.eur;
+    const dir = afterBal - beforeBal < 0 ? -1 : 1;
+    fx.cashflowUsd = dir * Math.abs(opts.cashflowOverride.usd);
+    fx.cashflowEur = dir * Math.abs(opts.cashflowOverride.eur);
     fx.cashflowAssetClass = classifyAssetClass("cash_account");
     fx.cashflowStatus = "complete";
     fx.cashflowUserSet = true;
