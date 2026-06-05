@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AssetRef } from "@/lib/types";
+import type { AssetRef, TransferInput, TransferSide } from "@/lib/types";
 import {
   loadAssetTransactions,
   addTransaction,
@@ -10,12 +10,16 @@ import {
   markAsYield,
   type AssetTransactionDisplayRow,
 } from "@/lib/actions/transactions";
+import { executeTransfer } from "@/lib/actions/transfers";
+import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { TransactionsDrawer } from "@/components/transactions/transactions-drawer";
+import type { InitialSide } from "@/components/ui/transfer-dialog";
 import {
   TransactionModal,
   kindToModalType,
   type TransactionSubmit,
   type TransactionEditState,
+  type CashAccountOption,
 } from "@/components/transactions/transaction-modal";
 
 /**
@@ -23,6 +27,11 @@ import {
  * read/write actions; `name` titles the drawer/modal; `assetClass` shapes the
  * modal; `walletOptions`/`brokerOptions` seed the add-mode destination select
  * (crypto/stock respectively — cash passes neither).
+ *
+ * `moveSource` is the prefilled source for a MOVE transfer (C2a move-only): the
+ * Transfer option in the modal now means "relocate this asset", so the table
+ * builds the source side (first position + live price) when it opens the drawer
+ * and the manager hands it back via `onContinueToTransfer`.
  */
 export interface OpenTransactionsTarget {
   assetRef: AssetRef;
@@ -30,6 +39,7 @@ export interface OpenTransactionsTarget {
   assetClass: "crypto" | "stock" | "cash";
   walletOptions?: { id: string; name: string }[];
   brokerOptions?: { id: string; name: string }[];
+  moveSource?: InitialSide;
 }
 
 interface TransactionsManagerProps {
@@ -40,10 +50,12 @@ interface TransactionsManagerProps {
   /** Display currency the table is showing — amounts render in this currency. */
   currency: "EUR" | "USD";
   /**
-   * Route a transfer out. The tables wire this to their existing Transfer
-   * dialog; when absent the modal still surfaces a non-dead-end message.
+   * Route the modal's Transfer (move) option out. The tables wire this to a
+   * move-mode Transfer dialog, prefilled from `moveSource`. When absent the
+   * modal still surfaces a non-dead-end message. The manager forwards the open
+   * target's `moveSource` so the table can prefill without re-deriving it.
    */
-  onContinueToTransfer?: () => void;
+  onContinueToTransfer?: (moveSource?: InitialSide) => void;
   /** Refresh the underlying table after a successful write (qty/balance moved). */
   onMutated?: () => void;
 }
@@ -53,6 +65,57 @@ type ModalState =
   | null
   | { mode: "add" }
   | { mode: "edit"; rowId: string; edit: TransactionEditState };
+
+/**
+ * Build the `TransferInput` for a money-flow "tracked account" Buy/Sell (C2a).
+ *
+ * Buy  → source = the chosen cash account, destination = the crypto/stock
+ *        position (S&P-neutral; the user paid with money already inside).
+ * Sell → source = the position, destination = the chosen cash account.
+ *
+ * The cash leg's `amount` is the modal's Amount, already locked to the account's
+ * currency and required (the modal blocks Save until it's a positive number), so
+ * it arrives here via `cashflowOverride.amount`. The position side's wallet/broker
+ * id comes from the modal's mandatory destination select. Returns null only if a
+ * required field is missing (defensive — the modal's guards make that unreachable).
+ */
+function buildTrackedTransferInput(
+  submit: TransactionSubmit,
+  assetRef: AssetRef,
+): TransferInput | null {
+  if (submit.moneyFlow?.route !== "tracked") return null;
+  if (assetRef.class === "cash") return null; // cash never shows the question
+  const accountId = submit.moneyFlow.accountId;
+  const amount = submit.cashflowOverride?.amount;
+  if (!accountId || amount == null || !Number.isFinite(amount) || amount <= 0) return null;
+
+  // Position side (destination for Buy, source for Sell).
+  let position: TransferSide;
+  if (assetRef.class === "crypto") {
+    if (!submit.walletId) return null;
+    position = {
+      type: "crypto_position",
+      assetId: assetRef.assetId,
+      walletId: submit.walletId,
+      quantity: submit.quantity,
+    };
+  } else {
+    if (!submit.brokerId) return null;
+    position = {
+      type: "stock_position",
+      assetId: assetRef.assetId,
+      brokerId: submit.brokerId,
+      quantity: submit.quantity,
+    };
+  }
+
+  const cash: TransferSide = { type: "cash_account", accountId, amount };
+  const effectiveDate = submit.date || undefined;
+
+  return submit.type === "buy"
+    ? { mode: "buy", source: cash, destination: position, effectiveDate }
+    : { mode: "sell", source: position, destination: cash, effectiveDate };
+}
 
 /**
  * The shared "Transactions" surface (history drawer + add/edit modal) wired to
@@ -134,18 +197,95 @@ export function TransactionsManager({
   const rows = loadedRows ?? [];
   const loading = target !== null && loadedRows === null;
 
+  // ── Cash accounts for the Buy/Sell money-flow question (C2a) ──────────────
+  // Fetched lazily when a crypto/stock target opens (cash assets never show the
+  // question). Failure → empty list, so the modal auto-falls-back to external-
+  // only (graceful degradation). Async setState only (no sync set in the effect
+  // body), keyed on target identity via a generation ref like the rows fetch.
+  const [cashAccounts, setCashAccounts] = useState<CashAccountOption[]>([]);
+  const cashGenRef = useRef(0);
+  useEffect(() => {
+    if (!target || target.assetClass === "cash") {
+      // No fetch for cash/closed. Leave the stale list as-is — it's never read
+      // for cash (the render passes `undefined` for cash) and is overwritten on
+      // the next crypto/stock open, so clearing it would only add a render.
+      return;
+    }
+    const gen = ++cashGenRef.current;
+    getCashAccounts()
+      .then((accounts) => {
+        if (cashGenRef.current !== gen) return;
+        setCashAccounts(
+          accounts.map((a) => ({
+            id: a.id,
+            // Prefer the explicit account name; fall back to the joined location
+            // (wallet/broker/institution) so the option is never blank.
+            name:
+              a.name ??
+              a.wallet_name ??
+              a.broker_name ??
+              a.institution_name ??
+              `${a.currency} account`,
+            balance: a.balance,
+            currency: a.currency,
+          })),
+        );
+      })
+      .catch(() => {
+        // Degrade gracefully: external-only. Bump nothing — leave the list empty.
+        if (cashGenRef.current === gen) setCashAccounts([]);
+      });
+  }, [target]);
+
   const assetRef = target?.assetRef ?? null;
 
   // ── Add flow ────────────────────────────────────────────────────────────
   const handleSubmitAdd = useCallback(
     async (submit: TransactionSubmit) => {
       if (!assetRef) return;
-      // Transfer routes out at the UI — it never reaches addTransaction. Narrow
-      // the type with a real guard (no `as` cast) before the call.
+      // Transfer (move) routes out at the UI — it never reaches addTransaction.
+      // Narrow the type with a real guard (no `as` cast) and hand the table the
+      // move source so it can prefill the move-mode Transfer dialog.
       if (submit.type === "transfer") {
-        onContinueToTransfer?.();
+        onContinueToTransfer?.(target?.moveSource);
         return;
       }
+
+      // ── Money-flow "tracked account" route (C2a) ──────────────────────────
+      // The user answered Buy "paid with a tracked account" / Sell "proceeds
+      // went to a tracked account". Instead of a plain addTransaction (which
+      // would book an S&P contribution/withdrawal), build the two-legged
+      // transfer (both legs is_adjustment=true → S&P-neutral) and run it through
+      // the SAME machinery the Transfer dialog uses. assetRef is crypto/stock
+      // here (cash never shows the question), so the position side has a wallet/
+      // broker id from the modal's mandatory destination select.
+      if (submit.moneyFlow?.route === "tracked") {
+        const input = buildTrackedTransferInput(submit, assetRef);
+        if (!input) {
+          // Should be unreachable — the modal blocks Save until the amount and
+          // account are present. Surface rather than fail silently.
+          toast.error("Couldn't build the transfer — check the amount and account.");
+          return;
+        }
+        try {
+          const result = await executeTransfer(input);
+          if (result.success) {
+            toast.success(submit.type === "buy" ? "Buy recorded" : "Sell recorded");
+            setModal(null);
+            onMutated?.();
+            refetch();
+          } else {
+            // executeTransfer returns {success:false} instead of throwing —
+            // surface the server message; keep the modal open (no silent loss).
+            toast.error(result.error);
+          }
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Failed to record transfer");
+        }
+        return;
+      }
+
+      // ── External route (new money in / proceeds left) — unchanged ─────────
       try {
         await addTransaction(assetRef, {
           type: submit.type,
@@ -168,7 +308,7 @@ export function TransactionsManager({
         toast.error(err instanceof Error ? err.message : "Failed to add transaction");
       }
     },
-    [assetRef, onContinueToTransfer, onMutated, refetch],
+    [assetRef, target, onContinueToTransfer, onMutated, refetch],
   );
 
   // ── Edit flow ───────────────────────────────────────────────────────────
@@ -264,7 +404,16 @@ export function TransactionsManager({
         edit={editState}
         walletOptions={target.assetClass === "crypto" ? target.walletOptions : undefined}
         brokerOptions={target.assetClass === "stock" ? target.brokerOptions : undefined}
-        onContinueToTransfer={onContinueToTransfer}
+        // Money-flow question (C2a) — crypto/stock only. Empty for cash (and on
+        // a failed fetch), so the modal never shows the question for cash.
+        cashAccountOptions={target.assetClass === "cash" ? undefined : cashAccounts}
+        // Forward the move source so the table prefills the move-mode dialog.
+        // The modal invokes this with no args; the manager injects moveSource.
+        onContinueToTransfer={
+          onContinueToTransfer
+            ? () => onContinueToTransfer(target.moveSource)
+            : undefined
+        }
         onSubmit={(submit) =>
           modal?.mode === "edit"
             ? handleSubmitEdit(modal.rowId, submit)

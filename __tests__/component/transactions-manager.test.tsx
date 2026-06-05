@@ -21,6 +21,8 @@ const hoisted = vi.hoisted(() => ({
   addTransaction: vi.fn(),
   editTransaction: vi.fn(),
   markAsYield: vi.fn(),
+  executeTransfer: vi.fn(),
+  getCashAccounts: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -30,6 +32,14 @@ vi.mock("@/lib/actions/transactions", () => ({
   addTransaction: hoisted.addTransaction,
   editTransaction: hoisted.editTransaction,
   markAsYield: hoisted.markAsYield,
+}));
+
+vi.mock("@/lib/actions/transfers", () => ({
+  executeTransfer: hoisted.executeTransfer,
+}));
+
+vi.mock("@/lib/actions/cash-accounts", () => ({
+  getCashAccounts: hoisted.getCashAccounts,
 }));
 
 vi.mock("sonner", () => ({
@@ -50,6 +60,7 @@ import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 import { TransactionsManager } from "@/components/transactions/transactions-manager";
 import type { OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import type { AssetTransactionDisplayRow } from "@/lib/actions/transactions";
+import type { CashAccount } from "@/lib/types";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -114,6 +125,27 @@ beforeEach(() => {
   hoisted.addTransaction.mockResolvedValue(undefined);
   hoisted.editTransaction.mockResolvedValue({ success: true });
   hoisted.markAsYield.mockResolvedValue({ updated: 1, skipped: 0 });
+  hoisted.executeTransfer.mockResolvedValue({ success: true, transferGroupId: "tg-1" });
+  // One EUR cash account so the money-flow tracked option is available.
+  hoisted.getCashAccounts.mockResolvedValue([
+    {
+      id: "acc-eur",
+      user_id: "u1",
+      institution_id: null,
+      name: "Revolut EUR",
+      currency: "EUR",
+      balance: 5000,
+      apy: 0,
+      region: null,
+      wallet_id: null,
+      broker_id: null,
+      last_was_adjustment: false,
+      last_was_transfer: false,
+      created_at: "2026-01-01",
+      updated_at: "2026-01-01",
+      deleted_at: null,
+    },
+  ]);
 });
 
 // ── Test 1: Stale-response race ───────────────────────────────────────────────
@@ -223,6 +255,13 @@ describe("TransactionsManager — refetch after add (FIX 1+2)", () => {
     const qtyInput = await screen.findByLabelText(/quantity/i);
     fireEvent.change(qtyInput, { target: { value: "1" } });
 
+    // Crypto buy now shows the money-flow question (C2a); the mocked
+    // getCashAccounts makes tracked the default. This test exercises the plain
+    // addTransaction refetch path, so route via "new money" (external).
+    fireEvent.click(
+      screen.getByRole("radio", { name: /new money entering the portfolio/i }),
+    );
+
     const saveBtn = screen.getByRole("button", { name: /save/i });
     fireEvent.click(saveBtn);
 
@@ -325,5 +364,277 @@ describe("TransactionsManager — markAsYield rejection → toast.error", () => 
     await waitFor(() => {
       expect(hoisted.toastError).toHaveBeenCalledWith("Failed to mark as yield");
     });
+  });
+});
+
+// ── Test 6: Money-flow routing (C2a) ──────────────────────────────────────────
+
+describe("TransactionsManager — money-flow tracked routing (C2a)", () => {
+  // A crypto target carrying a wallet option so the modal emits walletId (the
+  // position side of the routed transfer).
+  const CRYPTO_WITH_WALLET: OpenTransactionsTarget = {
+    assetRef: { class: "crypto", assetId: "asset-a" },
+    name: "Bitcoin",
+    assetClass: "crypto",
+    walletOptions: [{ id: "wallet-1", name: "Ledger" }],
+  };
+  const STOCK_WITH_BROKER: OpenTransactionsTarget = {
+    assetRef: { class: "stock", assetId: "stock-a" },
+    name: "VWCE",
+    assetClass: "stock",
+    brokerOptions: [{ id: "broker-1", name: "DEGIRO" }],
+  };
+
+  /** Open the add modal from an empty drawer and wait for the account select. */
+  async function openAddModal(target: OpenTransactionsTarget) {
+    hoisted.loadAssetTransactions.mockResolvedValue([]);
+    render(<TransactionsManager target={target} onClose={vi.fn()} currency="EUR" />);
+    const addFirstBtn = await screen.findByRole("button", { name: /add the first one/i });
+    fireEvent.click(addFirstBtn);
+    // The account select appears once getCashAccounts resolves + tracked default.
+    await screen.findByRole("combobox", { name: /tracked account/i });
+  }
+
+  it("tracked BUY → executeTransfer called ONCE with the exact TransferInput; addTransaction NOT called", async () => {
+    await openAddModal(CRYPTO_WITH_WALLET);
+
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "0.5" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    // Within the 5000 EUR balance (amount > balance would overdraw → Save blocked).
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "4000" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(hoisted.executeTransfer).toHaveBeenCalledTimes(1);
+    });
+    expect(hoisted.executeTransfer).toHaveBeenCalledWith({
+      mode: "buy",
+      source: { type: "cash_account", accountId: "acc-eur", amount: 4000 },
+      destination: {
+        type: "crypto_position",
+        assetId: "asset-a",
+        walletId: "wallet-1",
+        quantity: 0.5,
+      },
+      effectiveDate: undefined,
+    });
+    expect(hoisted.addTransaction).not.toHaveBeenCalled();
+  });
+
+  it("tracked SELL → executeTransfer called with position source + cash destination", async () => {
+    await openAddModal(CRYPTO_WITH_WALLET);
+
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "sell" },
+    });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "0.25" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "9000" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(hoisted.executeTransfer).toHaveBeenCalledTimes(1);
+    });
+    expect(hoisted.executeTransfer).toHaveBeenCalledWith({
+      mode: "sell",
+      source: {
+        type: "crypto_position",
+        assetId: "asset-a",
+        walletId: "wallet-1",
+        quantity: 0.25,
+      },
+      destination: { type: "cash_account", accountId: "acc-eur", amount: 9000 },
+      effectiveDate: undefined,
+    });
+    expect(hoisted.addTransaction).not.toHaveBeenCalled();
+  });
+
+  it("tracked BUY for a STOCK → destination uses brokerId", async () => {
+    await openAddModal(STOCK_WITH_BROKER);
+
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "10" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1000" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(hoisted.executeTransfer).toHaveBeenCalledTimes(1);
+    });
+    expect(hoisted.executeTransfer).toHaveBeenCalledWith({
+      mode: "buy",
+      source: { type: "cash_account", accountId: "acc-eur", amount: 1000 },
+      destination: {
+        type: "stock_position",
+        assetId: "stock-a",
+        brokerId: "broker-1",
+        quantity: 10,
+      },
+      effectiveDate: undefined,
+    });
+  });
+
+  it("external BUY → addTransaction only, executeTransfer NOT called", async () => {
+    await openAddModal(CRYPTO_WITH_WALLET);
+
+    // Switch to external (new money entering).
+    fireEvent.click(
+      screen.getByRole("radio", { name: /new money entering the portfolio/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "30000" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(hoisted.addTransaction).toHaveBeenCalledTimes(1);
+    });
+    expect(hoisted.executeTransfer).not.toHaveBeenCalled();
+    // addTransaction got the external cost + walletId, unchanged from today.
+    const [, opts] = hoisted.addTransaction.mock.calls[0];
+    expect(opts).toMatchObject({
+      type: "buy",
+      quantity: 1,
+      walletId: "wallet-1",
+      cost: { amount: 30000, currency: "EUR" },
+    });
+  });
+
+  it("executeTransfer {success:false} → toast.error with the server message, no success toast", async () => {
+    hoisted.executeTransfer.mockResolvedValue({
+      success: false,
+      error: "Insufficient balance in Revolut EUR",
+    });
+    await openAddModal(CRYPTO_WITH_WALLET);
+
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "0.5" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "4000" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(hoisted.toastError).toHaveBeenCalledWith("Insufficient balance in Revolut EUR");
+    });
+    // No success toast — the modal stays open (no silent loss).
+    expect(hoisted.toastSuccess).not.toHaveBeenCalledWith(expect.stringMatching(/recorded/i));
+  });
+
+  it("executeTransfer throws → toast.error with the thrown message", async () => {
+    hoisted.executeTransfer.mockRejectedValue(new Error("network down"));
+    await openAddModal(CRYPTO_WITH_WALLET);
+
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "0.5" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "4000" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(hoisted.toastError).toHaveBeenCalledWith("network down");
+    });
+  });
+
+  it("getCashAccounts failure → external-only (no account select), buy routes via addTransaction", async () => {
+    hoisted.getCashAccounts.mockRejectedValue(new Error("fetch failed"));
+    hoisted.loadAssetTransactions.mockResolvedValue([]);
+    render(
+      <TransactionsManager target={CRYPTO_WITH_WALLET} onClose={vi.fn()} currency="EUR" />,
+    );
+    const addFirstBtn = await screen.findByRole("button", { name: /add the first one/i });
+    fireEvent.click(addFirstBtn);
+
+    // Modal open; no tracked account select (degraded to external-only).
+    await screen.findByLabelText(/quantity/i);
+    expect(screen.queryByRole("combobox", { name: /tracked account/i })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(hoisted.addTransaction).toHaveBeenCalledTimes(1);
+    });
+    expect(hoisted.executeTransfer).not.toHaveBeenCalled();
+  });
+});
+
+// ── Test 7: Late cash-accounts fetch must NOT wipe the open form ──────────────
+
+describe("TransactionsManager — late getCashAccounts resolution preserves form state", () => {
+  // The lazy getCashAccounts fetch resolves AFTER the modal is already open and
+  // mid-edit. The modal's reset effect must not re-fire on the cashAccounts
+  // identity change, or every field (quantity/amount/date) gets wiped.
+  const CRYPTO_WITH_WALLET: OpenTransactionsTarget = {
+    assetRef: { class: "crypto", assetId: "asset-a" },
+    name: "Bitcoin",
+    assetClass: "crypto",
+    walletOptions: [{ id: "wallet-1", name: "Ledger" }],
+  };
+
+  it("does not reset typed quantity/amount/date when the accounts promise resolves while the modal is open", async () => {
+    const deferAccounts = deferred<CashAccount[]>();
+    hoisted.getCashAccounts.mockReturnValue(deferAccounts.promise);
+    hoisted.loadAssetTransactions.mockResolvedValue([]);
+
+    render(
+      <TransactionsManager target={CRYPTO_WITH_WALLET} onClose={vi.fn()} currency="EUR" />,
+    );
+
+    // Open the add modal while the accounts fetch is still pending.
+    const addFirstBtn = await screen.findByRole("button", { name: /add the first one/i });
+    fireEvent.click(addFirstBtn);
+    const qtyInput = await screen.findByLabelText(/quantity/i);
+
+    // With zero accounts at open time, the tracked radio is disabled and shows
+    // the "no accounts" sub-text. Its later disappearance proves the loaded list
+    // reached the modal (i.e. the component re-rendered on the new identity).
+    expect(screen.getByText(/no tracked cash accounts yet/i)).toBeInTheDocument();
+
+    // Type into every reset-tracked field before the fetch lands.
+    fireEvent.change(qtyInput, { target: { value: "0.5" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1234" } });
+    const dateInput = screen.getByLabelText(/date/i);
+    fireEvent.change(dateInput, { target: { value: "2026-01-10" } });
+
+    // The accounts promise resolves now — mid-edit.
+    await act(async () => {
+      deferAccounts.resolve([
+        {
+          id: "acc-eur",
+          user_id: "u1",
+          institution_id: null,
+          name: "Revolut EUR",
+          currency: "EUR",
+          balance: 5000,
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+          last_was_adjustment: false,
+          last_was_transfer: false,
+          created_at: "2026-01-01",
+          updated_at: "2026-01-01",
+          deleted_at: null,
+        },
+      ]);
+    });
+
+    // Proof the loaded list reached the modal: the "no accounts" sub-text is gone
+    // (the tracked radio is now enabled). The default is intentionally NOT flipped
+    // to tracked — accounts loading after open must not touch any field.
+    await waitFor(() => {
+      expect(screen.queryByText(/no tracked cash accounts yet/i)).not.toBeInTheDocument();
+    });
+
+    // The typed values must survive the late resolution (no form wipe).
+    expect((screen.getByLabelText(/quantity/i) as HTMLInputElement).value).toBe("0.5");
+    expect((screen.getByLabelText("Amount") as HTMLInputElement).value).toBe("1234");
+    expect((screen.getByLabelText(/date/i) as HTMLInputElement).value).toBe("2026-01-10");
   });
 });

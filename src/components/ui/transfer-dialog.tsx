@@ -55,7 +55,10 @@ function inferCategory(quoteType: string): AssetCategory {
 
 // ─── Props ──────────────────────────────────────────────────
 
-interface InitialSide {
+/** Prefilled source/destination for a Sell/Move/Buy launched from a position
+ *  editor or the transactions drawer (C2a move-only). Exported so callers can
+ *  construct it without re-declaring the shape. */
+export interface InitialSide {
   type: "crypto_position" | "stock_position";
   assetId: string;
   assetName: string;

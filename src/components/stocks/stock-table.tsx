@@ -8,7 +8,7 @@ const AddStockModal = dynamic(() => import("./add-stock-modal").then(m => m.AddS
 const AddManualNavModal = dynamic(() => import("./add-manual-nav-modal").then(m => m.AddManualNavModal), { ssr: false });
 const UpdateNavModal = dynamic(() => import("./update-nav-modal").then(m => m.UpdateNavModal), { ssr: false });
 import { StockPositionEditor } from "./stock-position-editor";
-import { TransferDialog } from "@/components/ui/transfer-dialog";
+import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
@@ -138,6 +138,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
     [latestManualNavDates],
   );
   const [buyOpen, setBuyOpen] = useState(false);
+  // Move-mode Transfer dialog opened from the transactions modal's Transfer
+  // option (C2a move-only). Holds the prefilled source position; null = closed.
+  const [moveSource, setMoveSource] = useState<InitialSide | null>(null);
   const [editingAsset, setEditingAsset] = useState<StockAssetWithPositions | null>(null);
   const [txnTarget, setTxnTarget] = useState<OpenTransactionsTarget | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -190,14 +193,32 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
   }, []);
 
   const handleHistory = useCallback((asset: StockAssetWithPositions) => {
+    // Build the MOVE source (C2a move-only): default to the asset's first
+    // position; native-currency live price lets the move dialog show a value.
+    const firstPos = asset.positions[0];
+    const priceData = asset.yahoo_ticker ? prices[asset.yahoo_ticker] : undefined;
+    const moveSrc: InitialSide | undefined = firstPos
+      ? {
+          type: "stock_position",
+          assetId: asset.id,
+          assetName: asset.name,
+          assetTicker: asset.ticker ?? asset.yahoo_ticker ?? "",
+          locationId: firstPos.broker_id,
+          locationName: firstPos.broker_name,
+          currentQty: firstPos.quantity,
+          currency: asset.currency,
+          currentPrice: priceData?.price,
+        }
+      : undefined;
     setTxnTarget({
       assetRef: { class: "stock", assetId: asset.id },
       name: asset.name,
       assetClass: "stock",
       // Seed the add-mode broker picker with the asset's existing position brokers.
       brokerOptions: asset.positions.map((p) => ({ id: p.broker_id, name: p.broker_name })),
+      moveSource: moveSrc,
     });
-  }, []);
+  }, [prices]);
 
   const handleDelete = useCallback(async (id: string, name: string) => {
     try {
@@ -1420,6 +1441,17 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
             onSuccess={() => { router.refresh(); setBuyOpen(false); }}
             mode={"buy" as TransferMode}
           />
+          {/* Move-mode Transfer dialog (C2a): the modal's Transfer option now
+              means "relocate this asset". Prefilled from the drawer's asset. */}
+          {moveSource && (
+            <TransferDialog
+              open={!!moveSource}
+              onClose={() => setMoveSource(null)}
+              onSuccess={() => { router.refresh(); setMoveSource(null); }}
+              mode={"move" as TransferMode}
+              initialSource={moveSource}
+            />
+          )}
           {editingAsset && (
             <StockPositionEditor
               open={!!editingAsset}
@@ -1435,9 +1467,12 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
             target={txnTarget}
             onClose={() => setTxnTarget(null)}
             currency={primaryCurrency.toUpperCase() === "USD" ? "USD" : "EUR"}
-            onContinueToTransfer={() => {
+            // Transfer option → move-only (C2a). Open the move dialog prefilled
+            // from the drawer's asset; if no movable position exists, close
+            // cleanly rather than opening an empty dialog (no dead end).
+            onContinueToTransfer={(src) => {
               setTxnTarget(null);
-              setBuyOpen(true);
+              if (src) setMoveSource(src);
             }}
             onMutated={() => router.refresh()}
           />

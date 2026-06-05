@@ -7,7 +7,7 @@ import { Plus, Bitcoin, TrendingUp, Pencil, Trash2, History, ChevronsDownUp, Che
 import dynamic from "next/dynamic";
 const AddCryptoModal = dynamic(() => import("./add-crypto-modal").then(m => m.AddCryptoModal), { ssr: false });
 import { PositionEditor } from "./position-editor";
-import { TransferDialog } from "@/components/ui/transfer-dialog";
+import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
@@ -93,6 +93,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
 
   const [addOpen, setAddOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
+  // Move-mode Transfer dialog opened from the transactions modal's Transfer
+  // option (C2a move-only). Holds the prefilled source position; null = closed.
+  const [moveSource, setMoveSource] = useState<InitialSide | null>(null);
   const [editingAsset, setEditingAsset] = useState<CryptoAssetWithPositions | null>(null);
   const [txnTarget, setTxnTarget] = useState<OpenTransactionsTarget | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -142,14 +145,33 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
   }, []);
 
   const handleHistory = useCallback((asset: CryptoAssetWithPositions) => {
+    // Build the MOVE source (C2a move-only): default to the asset's first
+    // position; live USD/EUR price lets the move dialog show an approx value.
+    const firstPos = asset.positions[0];
+    const priceData = prices[asset.coingecko_id];
+    const moveSrc: InitialSide | undefined = firstPos
+      ? {
+          type: "crypto_position",
+          assetId: asset.id,
+          assetName: asset.name,
+          assetTicker: asset.ticker,
+          locationId: firstPos.wallet_id,
+          locationName: firstPos.wallet_name,
+          currentQty: firstPos.quantity,
+          currency: "USD",
+          currentPriceUsd: priceData?.usd,
+          currentPriceEur: priceData?.eur,
+        }
+      : undefined;
     setTxnTarget({
       assetRef: { class: "crypto", assetId: asset.id },
       name: asset.name,
       assetClass: "crypto",
       // Seed the add-mode wallet picker with the asset's existing position wallets.
       walletOptions: asset.positions.map((p) => ({ id: p.wallet_id, name: p.wallet_name })),
+      moveSource: moveSrc,
     });
-  }, []);
+  }, [prices]);
 
   const handleDelete = useCallback(async (id: string, name: string) => {
     try {
@@ -1378,6 +1400,17 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
             onSuccess={() => { router.refresh(); setBuyOpen(false); }}
             mode={"buy" as TransferMode}
           />
+          {/* Move-mode Transfer dialog (C2a): the modal's Transfer option now
+              means "relocate this asset". Prefilled from the drawer's asset. */}
+          {moveSource && (
+            <TransferDialog
+              open={!!moveSource}
+              onClose={() => setMoveSource(null)}
+              onSuccess={() => { router.refresh(); setMoveSource(null); }}
+              mode={"move" as TransferMode}
+              initialSource={moveSource}
+            />
+          )}
           {editingAsset && (
             <PositionEditor
               open={!!editingAsset}
@@ -1393,9 +1426,12 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
             target={txnTarget}
             onClose={() => setTxnTarget(null)}
             currency={currencyKey === "eur" ? "EUR" : "USD"}
-            onContinueToTransfer={() => {
+            // Transfer option → move-only (C2a). Open the move dialog prefilled
+            // from the drawer's asset; if no movable position exists, close
+            // cleanly rather than opening an empty dialog (no dead end).
+            onContinueToTransfer={(src) => {
               setTxnTarget(null);
-              setBuyOpen(true);
+              if (src) setMoveSource(src);
             }}
             onMutated={() => router.refresh()}
           />

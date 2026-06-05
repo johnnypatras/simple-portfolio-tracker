@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useId } from "react";
+import { useState, useEffect, useId, useRef } from "react";
 import { Modal } from "@/components/ui/modal";
-import { TYPE_GUIDANCE, COST_COPY } from "@/lib/cost-basis-copy";
+import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY } from "@/lib/cost-basis-copy";
+import { fmtCurrency } from "@/lib/format";
 import type { TransactionKind } from "@/lib/transaction-kind";
 import {
   validateQuantity,
@@ -20,6 +21,18 @@ export type TransactionType =
   | "withdrawal"
   | "transfer";
 
+/**
+ * Buy/Sell money-flow routing (C2a). Present ONLY when the modal showed the
+ * "Paid with?" / "Proceeds went to?" question (crypto/stock add-mode buy/sell,
+ * not manual-NAV). The manager reads this to decide the write path:
+ *   - `external` → plain `addTransaction` (S&P contribution/withdrawal)
+ *   - `tracked`  → `executeTransfer` against `accountId` (S&P-neutral)
+ * Absent → today's behavior (always external for buy, proceeds-exit for sell).
+ */
+export type MoneyFlow =
+  | { route: "external" }
+  | { route: "tracked"; accountId: string };
+
 /** What the modal emits. The amount is SINGLE-currency here; the {usd,eur}
  *  derivation is Task 2.5. */
 export interface TransactionSubmit {
@@ -34,6 +47,17 @@ export interface TransactionSubmit {
   walletId?: string;
   /** Chosen destination broker (stock add-mode only — `addTransaction` needs it). */
   brokerId?: string;
+  /** Buy/Sell money-flow routing (C2a) — present only when the question showed. */
+  moneyFlow?: MoneyFlow;
+}
+
+/** A user cash account the Buy/Sell "tracked account" option can route into. */
+export interface CashAccountOption {
+  id: string;
+  name: string;
+  balance: number;
+  /** ISO 4217 — EUR/USD snap the mini-select; others render a static code. */
+  currency: string;
 }
 
 /** Edit-mode seed + lockdown flags. Omit/null = Add mode. */
@@ -80,6 +104,10 @@ export interface TransactionModalProps {
   /** Stock add-mode: the brokers this asset can be added to (defaults to the
    *  first). Rendered as a "Broker" select; the choice is emitted as brokerId. */
   brokerOptions?: { id: string; name: string }[];
+  /** The user's tracked cash accounts — feeds the Buy/Sell "tracked account"
+   *  routing option (C2a). Empty/undefined → the tracked option is disabled and
+   *  the question auto-falls-back to external-only. */
+  cashAccountOptions?: CashAccountOption[];
   onSubmit: (value: TransactionSubmit) => Promise<void> | void;
   onContinueToTransfer?: () => void;
   onUnsplit?: () => void;
@@ -159,6 +187,7 @@ export function TransactionModal({
   edit,
   walletOptions,
   brokerOptions,
+  cashAccountOptions,
   onSubmit,
   onContinueToTransfer,
   onUnsplit,
@@ -183,6 +212,26 @@ export function TransactionModal({
   const [brokerId, setBrokerId] = useState<string>(brokerOptions?.[0]?.id ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ── Money-flow question (C2a) ────────────────────────────────────────────
+  // Buy: "Paid with?" · Sell: "Proceeds went to?". `moneyFlowTracked` is the
+  // chosen radio (true = route through the transfer machinery against a tracked
+  // account; false = plain addTransaction). Defaults to tracked when the user
+  // has ≥1 cash account (per the C2a contract); the reset effect re-seeds it.
+  // `moneyFlowAccountId` is the chosen account for the tracked path (required —
+  // no silent default). The question's VISIBILITY is derived below.
+  const hasCashAccounts = (cashAccountOptions?.length ?? 0) > 0;
+  const [moneyFlowTracked, setMoneyFlowTracked] = useState(hasCashAccounts);
+  const [moneyFlowAccountId, setMoneyFlowAccountId] = useState("");
+
+  // Latest-ref for the async-loaded accounts list. The reset effect reads this
+  // (never the prop directly) so a late getCashAccounts resolution can't enter
+  // its dep array and re-fire the full-form reset. Written in an effect, never
+  // during render.
+  const cashAccountOptionsRef = useRef(cashAccountOptions);
+  useEffect(() => {
+    cashAccountOptionsRef.current = cashAccountOptions;
+  }, [cashAccountOptions]);
+
   // Reset state when modal re-opens
   useEffect(() => {
     if (isOpen) {
@@ -196,7 +245,21 @@ export function TransactionModal({
       setWalletId(walletOptions?.[0]?.id ?? "");
       setBrokerId(brokerOptions?.[0]?.id ?? "");
       setIsSubmitting(false);
+      // Money-flow defaults: tracked when accounts exist (contract), no account
+      // pre-selected (the user must choose — no silent default). Reads the
+      // accounts list AT OPEN TIME via a ref — see below.
+      setMoneyFlowTracked((cashAccountOptionsRef.current?.length ?? 0) > 0);
+      setMoneyFlowAccountId("");
     }
+    // `cashAccountOptions` is intentionally NOT a dependency: it's an async-loaded
+    // list (getCashAccounts resolves any time after the drawer opens) and a new
+    // array identity must not re-fire this full-form reset mid-edit — that would
+    // wipe quantity/amount/date/etc. The tracked-default above reads the list at
+    // open time through cashAccountOptionsRef; accounts that load after the modal
+    // is already open do NOT retroactively flip the default or touch any field.
+    // (walletOptions/brokerOptions stay identity-stable in the caller, so they're
+    // safe as direct deps. The ref is dep-exempt, so exhaustive-deps stays happy
+    // without an eslint-disable.)
   }, [isOpen, edit, assetClass, walletOptions, brokerOptions]);
 
   // Lockdown flags
@@ -218,6 +281,53 @@ export function TransactionModal({
     type !== "transfer" &&
     (brokerOptions?.length ?? 0) > 0;
 
+  // ── Money-flow question (C2a) — derived visibility + routing state ────────
+  // Shown ONLY for add-mode crypto/stock Buy or Sell, never for cash, yield,
+  // deposit/withdrawal, manual-NAV, or edit (editTransaction can't re-route).
+  const showMoneyFlow =
+    !isEditing &&
+    !isManualNav &&
+    (assetClass === "crypto" || assetClass === "stock") &&
+    (type === "buy" || type === "sell");
+
+  // The account chosen for the tracked route (undefined when none picked yet).
+  const selectedAccount =
+    showMoneyFlow && moneyFlowTracked
+      ? cashAccountOptions?.find((a) => a.id === moneyFlowAccountId)
+      : undefined;
+
+  // When the tracked option is active, the cash leg's amount is in THAT
+  // account's currency — the EUR/USD mini-select snaps + locks to it (EUR/USD)
+  // or is replaced by a static code label (other ISO). lockedCurrency drives
+  // both the displayed code and the effective currency emitted on submit.
+  const lockedCurrency = selectedAccount?.currency;
+  const lockIsEurUsd = lockedCurrency === "EUR" || lockedCurrency === "USD";
+  // The currency the Amount actually represents right now.
+  const effectiveCurrency: string =
+    showMoneyFlow && moneyFlowTracked && lockedCurrency ? lockedCurrency : amountCurrency;
+
+  // Tracked routing needs the cash side's value AND a chosen account — neither
+  // the blank-amount market fallback nor a silent default applies here.
+  const trackedNeedsAccount = showMoneyFlow && moneyFlowTracked && !selectedAccount;
+  const amountNum = parseFloat(amountStr);
+  const trackedNeedsAmount =
+    showMoneyFlow &&
+    moneyFlowTracked &&
+    (amountStr.trim() === "" || !Number.isFinite(amountNum) || amountNum <= 0);
+
+  // Overdraft (Buy + tracked): the cash leg can't exceed the account balance.
+  // Recomputed from live state every render (never a stored flag) so switching
+  // type/account never carries a stale error. Boundary amount == balance is OK.
+  const overdraft =
+    showMoneyFlow &&
+    moneyFlowTracked &&
+    type === "buy" &&
+    !!selectedAccount &&
+    Number.isFinite(amountNum) &&
+    amountNum > selectedAccount.balance
+      ? selectedAccount
+      : null;
+
   // Computed validation
   const { quantityError, amountError, dateError } = validate(
     type,
@@ -226,9 +336,28 @@ export function TransactionModal({
     dateStr,
   );
 
+  // Overdraft renders as its OWN role="alert" next to the account select (inside
+  // MoneyFlowQuestion) — not in the footer error line — so the user sees it where
+  // the cause is. It still blocks Save via isSaveBlocked below.
+  const overdraftError = overdraft
+    ? MONEY_FLOW_COPY.overdraft(
+        fmtCurrency(overdraft.balance, overdraft.currency),
+        overdraft.name,
+      )
+    : null;
+
+  // Footer error line — quantity/amount/date only (overdraft has its own alert).
   const visibleError = quantityError ?? amountError ?? dateError;
   const isSaveBlocked =
-    visibleError !== null || type === "transfer" || isTransferLeg || isSplitLocked || isSubmitting;
+    visibleError !== null ||
+    type === "transfer" ||
+    isTransferLeg ||
+    isSplitLocked ||
+    isSubmitting ||
+    // Tracked-routing dead-ends: no account chosen, no usable amount, overdrawn.
+    trackedNeedsAccount ||
+    trackedNeedsAmount ||
+    overdraftError !== null;
 
   // Amount hint: blank vs typed
   const amountIsBlank = amountStr.trim() === "";
@@ -260,9 +389,38 @@ export function TransactionModal({
     if (showWalletSelect) payload.walletId = walletId;
     if (showBrokerSelect) payload.brokerId = brokerId;
 
-    // Provenance gate: only emit cashflowOverride when the user actually
-    // typed/edited the amount (amountDirty=true) and it's a finite number.
-    if (amountDirty && !amountIsBlank) {
+    // Money-flow routing (C2a). Tracked → the manager builds a transfer against
+    // the chosen account (S&P-neutral); external → today's addTransaction path.
+    if (showMoneyFlow) {
+      payload.moneyFlow =
+        moneyFlowTracked && selectedAccount
+          ? { route: "tracked", accountId: selectedAccount.id }
+          : { route: "external" };
+    }
+
+    // Tracked route: the cash leg's amount is REQUIRED (guarded by isSaveBlocked)
+    // and denominated in the account's currency. Emit it as the cashflowOverride
+    // so the transfer carries the exact value — the blank-amount market fallback
+    // does not apply here. EUR/USD accounts pass through directly; any other ISO
+    // currency still flows as the account-currency cost (the transfer machinery
+    // handles non-EUR/USD cash sides server-side).
+    if (payload.moneyFlow?.route === "tracked") {
+      const amt = parseFloat(amountStr);
+      if (Number.isFinite(amt)) {
+        payload.cashflowOverride = {
+          amount: amt,
+          // On the tracked route the manager consumes ONLY `.amount`. The
+          // `currency` label below is intentionally unused/dead on this path —
+          // the cash leg's true currency is resolved server-side by
+          // executeTransfer from the account row, so the value here (a best-effort
+          // EUR/USD narrowing of the account currency) never reaches the ledger.
+          currency: (effectiveCurrency === "USD" ? "USD" : "EUR") as "EUR" | "USD",
+        };
+        payload.amountUserSet = true;
+      }
+    } else if (amountDirty && !amountIsBlank) {
+      // External route: provenance gate unchanged — only emit cashflowOverride
+      // when the user actually typed/edited the amount and it's a finite number.
       const amt = parseFloat(amountStr);
       if (Number.isFinite(amt)) {
         payload.cashflowOverride = { amount: amt, currency: amountCurrency };
@@ -347,6 +505,29 @@ export function TransactionModal({
           {/* Per-type guidance copy */}
           <p className="text-xs text-zinc-400 mt-1.5">{TYPE_GUIDANCE[type]}</p>
         </div>
+
+        {/* ── Money-flow question (C2a) ─────────────────────────────
+             Buy asks "Paid with?" and Sell asks "Proceeds went to?".
+             Answering "tracked account" routes the submit through the transfer
+             machinery (S&P-neutral); answering "new money / left portfolio"
+             keeps the plain addTransaction path. Crypto/stock add-mode buy/sell
+             only; never cash, yield, manual-NAV, or edit. */}
+        {showMoneyFlow && (
+          <MoneyFlowQuestion
+            idBase={`${id}-mf`}
+            type={type as "buy" | "sell"}
+            tracked={moneyFlowTracked}
+            onTrackedChange={setMoneyFlowTracked}
+            accounts={cashAccountOptions ?? []}
+            accountId={moneyFlowAccountId}
+            onAccountChange={setMoneyFlowAccountId}
+            amountNum={amountNum}
+            currency={effectiveCurrency}
+            overdraftError={overdraftError}
+            needsAccount={trackedNeedsAccount}
+            disabled={isSubmitting}
+          />
+        )}
 
         {/* ── Transfer: route-out, no qty/amount fields ─────────── */}
         {type === "transfer" && !isTransferLeg && onContinueToTransfer && (
@@ -443,19 +624,42 @@ export function TransactionModal({
                   >
                     {isManualNav ? "Subscription Amount" : "Amount"}
                   </label>
-                  <select
-                    id={`${id}-amount-currency`}
-                    value={amountCurrency}
-                    onChange={(e) =>
-                      setAmountCurrency(e.target.value as "EUR" | "USD")
-                    }
-                    disabled={isTransferLeg}
-                    className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="Amount currency"
-                  >
-                    <option value="EUR">EUR</option>
-                    <option value="USD">USD</option>
-                  </select>
+                  {/* Currency control. Default: free EUR/USD select. When a
+                      tracked account is chosen (C2a), the amount is in THAT
+                      account's currency — snap+disable the select for EUR/USD,
+                      or replace it with a static code label for any other ISO. */}
+                  {showMoneyFlow && moneyFlowTracked && lockedCurrency && !lockIsEurUsd ? (
+                    <span className="text-xs text-zinc-400" title={MONEY_FLOW_COPY.currencyLockTooltip}>
+                      {lockedCurrency}
+                    </span>
+                  ) : (
+                    <select
+                      id={`${id}-amount-currency`}
+                      value={
+                        showMoneyFlow && moneyFlowTracked && lockIsEurUsd
+                          ? lockedCurrency
+                          : amountCurrency
+                      }
+                      onChange={(e) =>
+                        setAmountCurrency(e.target.value as "EUR" | "USD")
+                      }
+                      disabled={
+                        isTransferLeg ||
+                        // Locked to the account currency while tracked is active.
+                        (showMoneyFlow && moneyFlowTracked && lockIsEurUsd)
+                      }
+                      title={
+                        showMoneyFlow && moneyFlowTracked && lockIsEurUsd
+                          ? MONEY_FLOW_COPY.currencyLockTooltip
+                          : undefined
+                      }
+                      className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
+                      aria-label="Amount currency"
+                    >
+                      <option value="EUR">EUR</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  )}
                 </div>
                 <input
                   id={`${id}-amount`}
@@ -466,20 +670,43 @@ export function TransactionModal({
                     setAmountStr(e.target.value);
                     setAmountDirty(true);
                   }}
-                  placeholder="Leave blank to use market value"
+                  placeholder={
+                    showMoneyFlow && moneyFlowTracked
+                      ? "0.00"
+                      : "Leave blank to use market value"
+                  }
                   disabled={isTransferLeg}
                   className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                {/* Amount hint */}
-                {showOptionalHint && (
+                {/* Amount hint. Tracked route REQUIRES the amount (it's the cash
+                    leg's value — no market fallback); a blank amount surfaces the
+                    required hint instead of the optional one. External route keeps
+                    the byte-identical optional / user-set hints. */}
+                {trackedNeedsAmount ? (
                   <p className="text-xs text-zinc-400 mt-1">
-                    {COST_COPY.amountOptionalHint}
+                    {MONEY_FLOW_COPY.amountRequiredHint(
+                      type === "buy" ? "pays" : "receives",
+                    )}
                   </p>
-                )}
-                {showUserSetHint && (
+                ) : showMoneyFlow && moneyFlowTracked ? (
+                  // Tracked + a valid amount: it's the real cost — reuse the
+                  // user-set hint (gain/loss + S&P provenance copy).
                   <p className="text-xs text-zinc-400 mt-1">
                     {COST_COPY.amountUserSetHint}
                   </p>
+                ) : (
+                  <>
+                    {showOptionalHint && (
+                      <p className="text-xs text-zinc-400 mt-1">
+                        {COST_COPY.amountOptionalHint}
+                      </p>
+                    )}
+                    {showUserSetHint && (
+                      <p className="text-xs text-zinc-400 mt-1">
+                        {COST_COPY.amountUserSetHint}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -540,5 +767,190 @@ export function TransactionModal({
         )}
       </form>
     </Modal>
+  );
+}
+
+// ── Money-flow question (C2a) ──────────────────────────────────────────────────
+
+interface MoneyFlowQuestionProps {
+  idBase: string;
+  type: "buy" | "sell";
+  /** true = "tracked account" radio selected; false = external (new money / left). */
+  tracked: boolean;
+  onTrackedChange: (tracked: boolean) => void;
+  accounts: CashAccountOption[];
+  accountId: string;
+  onAccountChange: (id: string) => void;
+  /** Parsed Amount (NaN when blank) — drives the live effect chip. */
+  amountNum: number;
+  /** Currency the Amount is in right now (account currency when tracked). */
+  currency: string;
+  /** Overdraft message (Buy + tracked + amount > balance), already formatted. */
+  overdraftError: string | null;
+  /** Tracked selected but no account chosen yet → inline required hint. */
+  needsAccount: boolean;
+  disabled: boolean;
+}
+
+/** Renders an S&P-effect chip: the given `text`, colored by `tone`
+ *  (plus = emerald, minus = red, neutral = zinc). The wording per route is
+ *  decided by each call site. */
+function EffectChip({ text, tone }: { text: string; tone: "plus" | "minus" | "neutral" }) {
+  const color =
+    tone === "plus"
+      ? "text-emerald-400"
+      : tone === "minus"
+        ? "text-red-400"
+        : "text-zinc-400";
+  return <span className={`text-[10px] ${color} whitespace-nowrap`}>{text}</span>;
+}
+
+/**
+ * The "Paid with?" (Buy) / "Proceeds went to?" (Sell) radio group. The tracked
+ * option routes the submission through the transfer machinery (S&P-neutral); the
+ * external option keeps the plain contribution/withdrawal. Self-contained: owns
+ * its layout, effect chips, account select, no-accounts fallback, and the
+ * account-required + overdraft inline messages. All copy comes from MONEY_FLOW_COPY.
+ */
+function MoneyFlowQuestion({
+  idBase,
+  type,
+  tracked,
+  onTrackedChange,
+  accounts,
+  accountId,
+  onAccountChange,
+  amountNum,
+  currency,
+  overdraftError,
+  needsAccount,
+  disabled,
+}: MoneyFlowQuestionProps) {
+  const copy = MONEY_FLOW_COPY[type];
+  const hasAccounts = accounts.length > 0;
+
+  // Live external effect chip: `S&P +€X` / `S&P −€X` with a real amount, else
+  // the `S&P +contribution` / `S&P −withdrawal` fallback when the Amount is blank.
+  const hasAmount = Number.isFinite(amountNum) && amountNum > 0;
+  const externalChip = hasAmount
+    ? `${copy.externalChipPrefix}${fmtCurrency(amountNum, currency)}`
+    : copy.externalChipBlank;
+  const externalTone = type === "buy" ? "plus" : "minus";
+
+  // Option ids → the two radios share a `name` so they're a single group.
+  const groupName = `${idBase}-route`;
+  const externalId = `${idBase}-external`;
+  const trackedId = `${idBase}-tracked`;
+  const labelId = `${idBase}-label`;
+
+  // Shared row shell. `selected` drives the accent border; disabled rows dim.
+  const rowClass = (selected: boolean, rowDisabled: boolean) =>
+    `flex items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${
+      selected ? "border-blue-500/70 bg-blue-500/5" : "border-zinc-800 bg-zinc-950"
+    } ${rowDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`;
+
+  // The external radio row (new money / left the portfolio).
+  const externalRow = (
+    <label htmlFor={externalId} className={rowClass(!tracked, disabled)}>
+      <input
+        type="radio"
+        id={externalId}
+        name={groupName}
+        checked={!tracked}
+        onChange={() => onTrackedChange(false)}
+        disabled={disabled}
+        className="mt-0.5 accent-blue-500"
+      />
+      <span className="flex-1 min-w-0">
+        <span className="flex items-center justify-between gap-2">
+          <span className="text-xs text-zinc-200">{copy.externalLabel}</span>
+          <EffectChip text={externalChip} tone={externalTone} />
+        </span>
+        <span className="block text-[10px] text-zinc-400 mt-0.5">{copy.externalSub}</span>
+      </span>
+    </label>
+  );
+
+  // The tracked radio row (from / to a tracked account). Disabled with a sub-text
+  // when the user has no cash accounts — the dead-end is explained, not silent.
+  const trackedRow = (
+    <div>
+      <label htmlFor={trackedId} className={rowClass(tracked, disabled || !hasAccounts)}>
+        <input
+          type="radio"
+          id={trackedId}
+          name={groupName}
+          checked={tracked}
+          onChange={() => onTrackedChange(true)}
+          disabled={disabled || !hasAccounts}
+          className="mt-0.5 accent-blue-500"
+        />
+        <span className="flex-1 min-w-0">
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-xs text-zinc-200">{copy.trackedLabel}</span>
+            <EffectChip text={copy.trackedChip} tone="neutral" />
+          </span>
+          {!hasAccounts && (
+            <span className="block text-[10px] text-zinc-400 mt-0.5">
+              {MONEY_FLOW_COPY.noAccounts}
+            </span>
+          )}
+        </span>
+      </label>
+
+      {/* Account select — only while the tracked option is active. REQUIRED
+          before save (placeholder, no silent default). */}
+      {tracked && hasAccounts && (
+        <div className="mt-2 pl-7">
+          <select
+            id={`${idBase}-account`}
+            value={accountId}
+            onChange={(e) => onAccountChange(e.target.value)}
+            disabled={disabled}
+            aria-label="Tracked account"
+            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <option value="">{MONEY_FLOW_COPY.accountPlaceholder}</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} — {fmtCurrency(a.balance, a.currency)}
+              </option>
+            ))}
+          </select>
+          {needsAccount && (
+            <p className="text-xs text-zinc-400 mt-1">{MONEY_FLOW_COPY.accountRequiredHint}</p>
+          )}
+          {overdraftError && (
+            <p role="alert" className="text-xs text-red-400 mt-1">
+              {overdraftError}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div role="radiogroup" aria-labelledby={labelId}>
+      <p id={labelId} className="text-xs text-zinc-400 mb-1.5">
+        {copy.question}
+      </p>
+      <div className="space-y-2">
+        {/* Order per contract: Buy = external first, then tracked; Sell = tracked
+            first, then external. The DEFAULT selection (tracked when accounts
+            exist) is owned by the parent's state, not the row order. */}
+        {type === "buy" ? (
+          <>
+            {externalRow}
+            {trackedRow}
+          </>
+        ) : (
+          <>
+            {trackedRow}
+            {externalRow}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

@@ -1,8 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TransactionModal } from "@/components/transactions/transaction-modal";
-import { TYPE_GUIDANCE, COST_COPY } from "@/lib/cost-basis-copy";
-import type { TransactionModalProps, TransactionEditState } from "@/components/transactions/transaction-modal";
+import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY } from "@/lib/cost-basis-copy";
+import type {
+  TransactionModalProps,
+  TransactionEditState,
+  CashAccountOption,
+} from "@/components/transactions/transaction-modal";
+
+// Shared cash-account fixtures for the money-flow (C2a) tests.
+const EUR_ACCOUNTS: CashAccountOption[] = [
+  { id: "acc-eur", name: "Revolut EUR", balance: 5000, currency: "EUR" },
+];
+const USD_ACCOUNTS: CashAccountOption[] = [
+  { id: "acc-usd", name: "IBKR Cash", balance: 3000, currency: "USD" },
+];
+const GBP_ACCOUNTS: CashAccountOption[] = [
+  { id: "acc-gbp", name: "Wise GBP", balance: 1000, currency: "GBP" },
+];
 
 vi.mock("focus-trap-react", () => ({
   __esModule: true,
@@ -597,6 +612,422 @@ describe("TransactionModal — double-submit guard", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
 
     // Resolve to clean up (prevents unhandled promise warnings)
+    resolveSubmit();
+  });
+});
+
+// ── Test Group 10: Money-flow question (C2a) — visibility ─────────────────────
+
+describe("TransactionModal — money-flow question visibility", () => {
+  it("crypto BUY (add-mode) shows the 'Paid with?' question", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    expect(screen.getByText(MONEY_FLOW_COPY.buy.question)).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+  });
+
+  it("crypto SELL (add-mode) shows the 'Proceeds went to?' question", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "sell" },
+    });
+    expect(screen.getByText(MONEY_FLOW_COPY.sell.question)).toBeInTheDocument();
+  });
+
+  it("stock BUY and SELL (add-mode) show the question", () => {
+    renderOpen({ assetClass: "stock", cashAccountOptions: EUR_ACCOUNTS });
+    expect(screen.getByText(MONEY_FLOW_COPY.buy.question)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "sell" },
+    });
+    expect(screen.getByText(MONEY_FLOW_COPY.sell.question)).toBeInTheDocument();
+  });
+
+  it("cash class never shows the question", () => {
+    renderOpen({ assetClass: "cash", cashAccountOptions: EUR_ACCOUNTS });
+    // Default type for cash is deposit; switching to withdrawal still no question.
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "withdrawal" },
+    });
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  });
+
+  it("yield type does NOT show the question", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "yield" },
+    });
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  });
+
+  it("transfer type does NOT show the question", () => {
+    renderOpen({
+      assetClass: "crypto",
+      cashAccountOptions: EUR_ACCOUNTS,
+      onContinueToTransfer: vi.fn(),
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "transfer" },
+    });
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  });
+
+  it("edit mode does NOT show the question (editTransaction can't re-route)", () => {
+    const edit: TransactionEditState = {
+      type: "buy",
+      quantity: 1,
+      amount: 1000,
+      amountCurrency: "EUR",
+      date: "2026-01-15",
+    };
+    renderOpen({ assetClass: "crypto", edit, cashAccountOptions: EUR_ACCOUNTS });
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  });
+
+  it("isManualNav does NOT show the question", () => {
+    renderOpen({ assetClass: "stock", isManualNav: true, cashAccountOptions: EUR_ACCOUNTS });
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  });
+});
+
+// ── Test Group 11: Money-flow default + no-accounts fallback ──────────────────
+
+describe("TransactionModal — money-flow default selection", () => {
+  it("BUY: tracked is the DEFAULT radio when ≥1 cash account exists", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    const tracked = screen.getByRole("radio", {
+      name: new RegExp(MONEY_FLOW_COPY.buy.trackedLabel, "i"),
+    }) as HTMLInputElement;
+    expect(tracked.checked).toBe(true);
+    // The account select appears under it.
+    expect(screen.getByRole("combobox", { name: /tracked account/i })).toBeInTheDocument();
+  });
+
+  it("SELL: tracked is the DEFAULT radio when ≥1 cash account exists", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "sell" },
+    });
+    const tracked = screen.getByRole("radio", {
+      name: new RegExp(MONEY_FLOW_COPY.sell.trackedLabel, "i"),
+    }) as HTMLInputElement;
+    expect(tracked.checked).toBe(true);
+  });
+
+  it("no accounts: external is selected, tracked is disabled with the no-accounts sub-text", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: [] });
+    const tracked = screen.getByRole("radio", {
+      name: new RegExp(MONEY_FLOW_COPY.buy.trackedLabel, "i"),
+    }) as HTMLInputElement;
+    const external = screen.getByRole("radio", {
+      name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+    }) as HTMLInputElement;
+    expect(tracked).toBeDisabled();
+    expect(external.checked).toBe(true);
+    expect(screen.getByText(MONEY_FLOW_COPY.noAccounts)).toBeInTheDocument();
+    // No account select rendered when there are no accounts.
+    expect(screen.queryByRole("combobox", { name: /tracked account/i })).not.toBeInTheDocument();
+  });
+
+  it("undefined cashAccountOptions behaves like empty (external-only)", () => {
+    renderOpen({ assetClass: "crypto" });
+    const external = screen.getByRole("radio", {
+      name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+    }) as HTMLInputElement;
+    expect(external.checked).toBe(true);
+  });
+});
+
+// ── Test Group 12: Account select required + amount required (tracked) ────────
+
+describe("TransactionModal — tracked routing blocks", () => {
+  it("tracked + no account chosen: Save disabled with the account-required hint", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    // Fill a valid quantity + amount so only the account is missing.
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "500" } });
+    expect(screen.getByText(MONEY_FLOW_COPY.accountRequiredHint)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+  });
+
+  it("tracked + account chosen + amount: Save enabled, hint gone", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "500" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    expect(screen.queryByText(MONEY_FLOW_COPY.accountRequiredHint)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).not.toBeDisabled();
+  });
+
+  it("tracked + blank amount: Save disabled with the amount-required hint (BUY → 'pays')", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    // Amount left blank → required hint (not the market-fallback hint).
+    expect(
+      screen.getByText(MONEY_FLOW_COPY.amountRequiredHint("pays")),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(COST_COPY.amountOptionalHint)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+  });
+
+  it("tracked SELL + blank amount: amount-required hint uses 'receives'", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "sell" },
+    });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    expect(
+      screen.getByText(MONEY_FLOW_COPY.amountRequiredHint("receives")),
+    ).toBeInTheDocument();
+  });
+
+  it("external route keeps optional-amount behavior (blank allowed, market hint shown)", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    // Switch to external (new money).
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+      }),
+    );
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    // Blank amount on external → optional hint, Save enabled.
+    expect(screen.getByText(COST_COPY.amountOptionalHint)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).not.toBeDisabled();
+  });
+});
+
+// ── Test Group 13: Currency lock ──────────────────────────────────────────────
+
+describe("TransactionModal — currency lock under tracked", () => {
+  it("EUR account: currency select snaps to EUR and is disabled", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    const curSelect = screen.getByRole("combobox", {
+      name: /amount currency/i,
+    }) as HTMLSelectElement;
+    expect(curSelect.value).toBe("EUR");
+    expect(curSelect).toBeDisabled();
+  });
+
+  it("USD account: currency select snaps to USD and is disabled", () => {
+    renderOpen({ assetClass: "stock", cashAccountOptions: USD_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-usd" },
+    });
+    const curSelect = screen.getByRole("combobox", {
+      name: /amount currency/i,
+    }) as HTMLSelectElement;
+    expect(curSelect.value).toBe("USD");
+    expect(curSelect).toBeDisabled();
+  });
+
+  it("non-EUR/USD account (GBP): renders a static code label, no select", () => {
+    renderOpen({ assetClass: "stock", cashAccountOptions: GBP_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-gbp" },
+    });
+    // The EUR/USD select is replaced by a static "GBP" label.
+    expect(screen.queryByRole("combobox", { name: /amount currency/i })).not.toBeInTheDocument();
+    expect(screen.getByText("GBP")).toBeInTheDocument();
+  });
+
+  it("deselecting tracked (→ external) restores the normal EUR/USD select", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: USD_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-usd" },
+    });
+    // Now switch to external — the select should be back and enabled.
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+      }),
+    );
+    const curSelect = screen.getByRole("combobox", {
+      name: /amount currency/i,
+    }) as HTMLSelectElement;
+    expect(curSelect).not.toBeDisabled();
+  });
+});
+
+// ── Test Group 14: Overdraft guard (Buy + tracked) ────────────────────────────
+
+describe("TransactionModal — overdraft guard", () => {
+  it("amount > balance: exact message + Save disabled", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    // Balance is 5000 EUR → overdraw with 6000.
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "6000" } });
+    // Contract format: "Only €5,000.00 available in Revolut EUR."
+    const expected = MONEY_FLOW_COPY.overdraft(
+      new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" }).format(5000),
+      "Revolut EUR",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(expected);
+    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+  });
+
+  it("amount == balance (boundary): allowed, Save enabled", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "5000" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).not.toBeDisabled();
+  });
+
+  it("SELL + tracked + amount > balance: NO overdraft (proceeds go INTO the account)", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "sell" },
+    });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "6000" } });
+    // Selling INTO the account never overdraws it.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).not.toBeDisabled();
+  });
+
+  it("overdraft clears when switching type buy→sell (no stale flag)", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "6000" } });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    // Switch to sell → overdraft must disappear (recomputed from state).
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "sell" },
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+// ── Test Group 15: Money-flow submit payload ──────────────────────────────────
+
+describe("TransactionModal — money-flow submit payload", () => {
+  it("external route → moneyFlow {route:'external'} + legacy fields unchanged", () => {
+    const { onSubmit } = renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+      }),
+    );
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "750" } });
+    fireEvent.submit(document.querySelector("form")!);
+    expect(onSubmit).toHaveBeenCalledOnce();
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.moneyFlow).toEqual({ route: "external" });
+    expect(payload.quantity).toBe(2);
+    expect(payload.cashflowOverride).toMatchObject({ amount: 750, currency: "EUR" });
+    expect(payload.amountUserSet).toBe(true);
+  });
+
+  it("tracked route → moneyFlow {route:'tracked', accountId} + account-currency cost", () => {
+    const { onSubmit } = renderOpen({ assetClass: "stock", cashAccountOptions: USD_ACCOUNTS });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "3" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-usd" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "900" } });
+    fireEvent.submit(document.querySelector("form")!);
+    expect(onSubmit).toHaveBeenCalledOnce();
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.moneyFlow).toEqual({ route: "tracked", accountId: "acc-usd" });
+    // Cost is in the account currency (USD), required on this route.
+    expect(payload.cashflowOverride).toEqual({ amount: 900, currency: "USD" });
+    expect(payload.amountUserSet).toBe(true);
+  });
+
+  it("tracked EUR account → cost currency is EUR", () => {
+    const { onSubmit } = renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "400" } });
+    fireEvent.submit(document.querySelector("form")!);
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.cashflowOverride).toEqual({ amount: 400, currency: "EUR" });
+  });
+});
+
+// ── Test Group 16: Effect chips (live amount) ─────────────────────────────────
+
+describe("TransactionModal — money-flow effect chips", () => {
+  it("BUY external chip shows the blank fallback then the live +amount", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    // Blank amount → "S&P +contribution".
+    expect(screen.getByText(MONEY_FLOW_COPY.buy.externalChipBlank)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "250" } });
+    // Live → "S&P +€250.00" (en-US EUR formatting).
+    const expected =
+      MONEY_FLOW_COPY.buy.externalChipPrefix +
+      new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" }).format(250);
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it("SELL external chip shows the blank fallback (S&P −withdrawal)", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "sell" },
+    });
+    expect(screen.getByText(MONEY_FLOW_COPY.sell.externalChipBlank)).toBeInTheDocument();
+  });
+
+  it("tracked chip reads 'S&P unchanged'", () => {
+    renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    // Both buy options render their chip; tracked = unchanged.
+    expect(screen.getByText(MONEY_FLOW_COPY.buy.trackedChip)).toBeInTheDocument();
+  });
+});
+
+// ── Test Group 17: isSubmitting disables money-flow controls ──────────────────
+
+describe("TransactionModal — money-flow controls disabled while submitting", () => {
+  it("radios + account select disable during an in-flight submit", () => {
+    let resolveSubmit!: () => void;
+    const inflight = new Promise<void>((res) => { resolveSubmit = res; });
+    const onSubmit = vi.fn(() => inflight);
+    render(
+      <TransactionModal
+        isOpen
+        onClose={vi.fn()}
+        assetClass="crypto"
+        cashAccountOptions={EUR_ACCOUNTS}
+        onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-eur" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "100" } });
+    fireEvent.submit(document.querySelector("form")!);
+    // Tracked radio + account select are disabled while the promise is pending.
+    expect(
+      screen.getByRole("radio", { name: new RegExp(MONEY_FLOW_COPY.buy.trackedLabel, "i") }),
+    ).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: /tracked account/i })).toBeDisabled();
     resolveSubmit();
   });
 });
