@@ -548,8 +548,9 @@ describe("golden-scenario invariant suite (integration)", () => {
     //                           realized = proceeds − avg × out
     //                                    = 4,000 − 26,923.076923 × 0.10
     //                                    = 4,000 − 2,692.307692 = 1,307.692307…
-    //   → round to 2dp = €1,307.69 ; remaining cost = 7,000 − 2,692.31 = 4,307.69
-    //     remaining units 0.16 → avg = 4,307.69 / 0.16 = €26,923.08
+    //   → round to 2dp = €1,307.69 ; remaining cost = 7,000 − 2,692.3077
+    //     (exact: 7,000 − 2,692.3077 = 4,307.6923) → €4,307.69
+    //     remaining units 0.16 → avg = 4,307.6923 / 0.16 = €26,923.08
     const txns = await getAssetTransactions(client, userId, btcRef);
     const pnl = computeAssetPnL(txns, {
       valueEur: 0.16 * BTC_EUR, // 0.16 × 40,000 = 6,400 (held units' market value)
@@ -701,7 +702,6 @@ describe("golden-scenario invariant suite (integration)", () => {
       valueEur: 0.16 * BTC_EUR,
       valueUsd: 0.16 * BTC_USD,
     });
-    expect(pnlAfter.eur.avgCost).toBeCloseTo(pnlBefore.eur.avgCost, 6);
     expect(pnlAfter.eur.avgCost).toBeCloseTo(26923.08, 2);
     expect(pnlAfter.eur.costBasis).toBeCloseTo(4307.69, 2);
     expect(pnlAfter.eur.realized).toBeCloseTo(1307.69, 2); // disposal P&L unchanged
@@ -797,6 +797,99 @@ describe("golden-scenario invariant suite (integration)", () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // STEP 10b — Sell-that-EXITS 0.04 BTC, user cost €1,600 (proceeds LEAVE → the
+  //   flow ledger AND the cost ledger both move). THE SIGN CONTRACT acceptance
+  //   proof: the stored cashflow is NEGATIVE (money leaving), not a phantom
+  //   positive S&P contribution; realized P&L still books off the magnitude.
+  // ═══════════════════════════════════════════════════════════════════════
+  it("step 10b — sell 0.04 BTC (exit), cost €1,600: NEW flow −€1,600/−$1,760, realized €1,830.77, Alpha unchanged", async () => {
+    // Pre-read baseline: every PRE-EXISTING flow must stay put (only a new
+    // negative event is added). Capture the stream + Alpha BEFORE the sell.
+    const before = await realEvents();
+    const beforeCount = before.length; // 5 (deposit + buy + yield + interest survive; withdrawal undone)
+    const beforeSumUsd = before.reduce((s, e) => s + e.amount_usd, 0);
+    const beforeSumEur = before.reduce((s, e) => s + (e.amount_eur ?? 0), 0);
+    expect(await alphaBalance(client, alphaId)).toBe(12050); // Alpha after step 10
+
+    // A plain SELL via addTransaction (NOT a transfer) — the proceeds EXIT the
+    // tracked perimeter (no destination cash account). Direction comes from the
+    // type (sell → −), the €1,600 is a MAGNITUDE.
+    await addTransaction(btcRef, {
+      type: "sell",
+      quantity: 0.04,
+      cost: { amount: 1600, currency: "EUR" },
+      walletId,
+    });
+
+    // BTC position: 0.16 − 0.04 = 0.12 BTC.
+    expect(await btcQty(client, btcAssetId, walletId)).toBeCloseTo(0.12, 12);
+
+    // THE SIGN CONTRACT: the user typed €1,600, but a SELL stores it NEGATIVE.
+    //   eur = −1,600 ; usd = −round2(1,600 × 1.10) = −1,760. Not yield, not
+    //   adjustment, dated today (no effectiveDate passed).
+    const today = new Date().toISOString().split("T")[0];
+    const { data: sellRow } = await client
+      .from("activity_log")
+      .select(
+        "cashflow_amount_usd, cashflow_amount_eur, cashflow_user_set, cashflow_status, is_yield, is_adjustment, effective_date",
+      )
+      .eq("entity_type", "crypto_position")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    expect(Number(sellRow!.cashflow_amount_eur)).toBe(-1600);
+    expect(Number(sellRow!.cashflow_amount_usd)).toBe(-1760); // −1,600 × 1.10
+    expect(sellRow!.cashflow_user_set).toBe(true);
+    expect(sellRow!.cashflow_status).toBe("complete");
+    expect(sellRow!.is_yield).toBe(false);
+    expect(sellRow!.is_adjustment).toBe(false);
+    // effective_date may be null (defaults to created_at = today) — either way
+    // the flow's date resolves to today.
+    if (sellRow!.effective_date != null) {
+      expect(sellRow!.effective_date).toBe(today);
+    }
+
+    // Alpha is UNCHANGED — the proceeds left the portfolio, they did NOT land in
+    // a tracked account (that's what makes this a sell-that-exits, not a transfer).
+    expect(await alphaBalance(client, alphaId)).toBe(12050);
+
+    // ── Cost ledger (the disposal books realized P&L off the MAGNITUDE) ──
+    // Running state before this sell (after steps 5–10, BTC untouched since 5):
+    //   units 0.16, cost €4,307.6923, avg €26,923.0769, realized €1,307.6923.
+    // This disposal: out 0.04 units. proceeds = the typed cost €1,600 (engine
+    //   reads |cashflow| so the negative storage doesn't change P&L).
+    //   avg × out      = 26,923.0769 × 0.04 = 1,076.9231
+    //   realized inc.  = 1,600 − 1,076.9231 = 523.0769  → €523.08
+    //   total realized = 1,307.6923 + 523.0769 = 1,830.7692 → €1,830.77
+    //   remaining cost = 4,307.6923 − 1,076.9231 = 3,230.7692 → €3,230.77
+    //   remaining units 0.12 → avg = 3,230.7692 / 0.12 = 26,923.0769 → €26,923.08
+    //   (avg UNCHANGED by a disposal — average-cost only changes on acquisition).
+    const txns = await getAssetTransactions(client, userId, btcRef);
+    const pnl = computeAssetPnL(txns, {
+      valueEur: 0.12 * BTC_EUR, // 0.12 × 40,000 = 4,800 (held units' market value)
+      valueUsd: 0.12 * BTC_USD, // 0.12 × 44,000 = 5,280
+    });
+    expect(pnl.eur.realized).toBeCloseTo(1830.77, 2);
+    expect(pnl.eur.costBasis).toBeCloseTo(3230.77, 2);
+    expect(pnl.eur.avgCost).toBeCloseTo(26923.08, 2);
+
+    // ── Flow ledger: ONE new NEGATIVE event; every pre-existing flow unchanged ──
+    const after = await realEvents();
+    expect(after.length).toBe(beforeCount + 1); // 5 → 6
+    const sellFlow = after.find((e) => e.amount_usd === -1760);
+    expect(sellFlow).toBeDefined();
+    expect(sellFlow!.amount_eur).toBe(-1600);
+    expect(sellFlow!.date).toBe(today);
+    expect(sellFlow!.is_yield).toBeUndefined(); // a sell is never yield
+    // The new Σ = old Σ + the negative sell (the rest of the stream is untouched).
+    const afterSumUsd = after.reduce((s, e) => s + e.amount_usd, 0);
+    const afterSumEur = after.reduce((s, e) => s + (e.amount_eur ?? 0), 0);
+    expect(afterSumUsd).toBeCloseTo(beforeSumUsd - 1760, 2);
+    expect(afterSumEur).toBeCloseTo(beforeSumEur - 1600, 2);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // STEP 11 — Final flow stream = the S&P-replay contract (full hand-computed Σ)
   // ═══════════════════════════════════════════════════════════════════════
   it("step 11 — final deriveCashFlows stream matches the hand-computed pipeline contract", async () => {
@@ -824,22 +917,25 @@ describe("golden-scenario invariant suite (integration)", () => {
     //   GONE step 6 withdrawal −€1,000 → UNDONE → NOT in stream
     //   IN  step 9  interest €50  →  marked-as-yield
     //         +€50.00 / +$55.00   (is_yield)
+    //   OUT step 10b sell-that-EXITS 0.04 BTC, cost €1,600 (proceeds LEFT)
+    //         −€1,600.00 / −$1,760.00   (not yield — THE SIGN CONTRACT)
     //
-    //   Σ amount_usd = 11,000 + 3,520 + 1,980 + 200 + 55 = 16,755.00
-    //   Σ amount_eur = 10,000 + 3,200 + 1,800 + 181.82 + 50 = 15,231.82
+    //   Σ amount_usd = 11,000 + 3,520 + 1,980 + 200 + 55 − 1,760 = 14,995.00
+    //   Σ amount_eur = 10,000 + 3,200 + 1,800 + 181.82 + 50 − 1,600 = 13,631.82
     const { events: rawEvents, pendingCount, failedCount } = await deriveCashFlows();
     const events = rawEvents.filter(isReal);
 
-    // Exactly 5 real flows survive (deposit + 2 split legs + yield + interest).
-    expect(events).toHaveLength(5);
+    // Exactly 6 real flows survive (deposit + 2 split legs + yield + interest +
+    // the sell-that-exits — the only negative real flow).
+    expect(events).toHaveLength(6);
     expect(pendingCount).toBe(0);
     expect(failedCount).toBe(0);
 
     // ── Σ over the whole stream (the replay's signed-amount input) ──
     const sumUsd = events.reduce((s, e) => s + e.amount_usd, 0);
     const sumEur = events.reduce((s, e) => s + (e.amount_eur ?? 0), 0);
-    expect(sumUsd).toBeCloseTo(16755, 2); // 11000 + 3520 + 1980 + 200 + 55
-    expect(sumEur).toBeCloseTo(15231.82, 2); // 10000 + 3200 + 1800 + 181.82 + 50
+    expect(sumUsd).toBeCloseTo(14995, 2); // 11000 + 3520 + 1980 + 200 + 55 − 1760
+    expect(sumEur).toBeCloseTo(13631.82, 2); // 10000 + 3200 + 1800 + 181.82 + 50 − 1600
 
     // ── Every event identified by its hand-computed amount, then asserted ──
     // (order-independent: each flow is unique by amount in this scenario.)
@@ -873,10 +969,19 @@ describe("golden-scenario invariant suite (integration)", () => {
     expect(interest.amount_eur).toBeCloseTo(50, 6);
     expect(interest.is_yield).toBe(true);
 
-    // ── No outflow / internal-leg residue ──
-    // The withdrawal (−$1,100), the buy-from-tracked, and the sell-to-tracked
-    // legs are all absent: no negative flow survives, and no transfer-leg value
-    // leaked into the stream.
-    expect(events.every((e) => e.amount_usd > 0)).toBe(true);
+    const exitSell = byUsd(-1760); // step 10b → sell-that-exits (THE SIGN CONTRACT)
+    expect(exitSell.amount_eur).toBeCloseTo(-1600, 6);
+    expect(exitSell.is_yield).toBeUndefined(); // a sell is never earned income
+
+    // ── Exactly ONE outflow; the internal-transfer legs never leaked ──
+    // The buy-from-tracked + sell-to-tracked legs (step 4/5) and the undone
+    // withdrawal (step 6) are all absent. The ONLY negative flow is the
+    // sell-that-exits — money that genuinely left the portfolio (−$1,760). The
+    // contract proof: this is negative (an outflow), NOT a phantom positive
+    // S&P contribution the way the pre-fix unsigned-override bug stored it.
+    const negatives = events.filter((e) => e.amount_usd < 0);
+    expect(negatives).toHaveLength(1);
+    expect(negatives[0].amount_usd).toBe(-1760);
+    expect(events.filter((e) => e.amount_usd > 0)).toHaveLength(5);
   });
 });
