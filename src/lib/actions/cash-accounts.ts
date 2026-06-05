@@ -441,7 +441,17 @@ export async function updateCashAccount(
     .is("deleted_at", null)
     .single();
 
-  const { error } = await supabase
+  // Optimistic concurrency — ONLY when this update actually writes `balance`.
+  // The balance is computed as an ABSOLUTE from a value read earlier (transfer
+  // legs read the balance, then write read±amount); two concurrent same-user
+  // writes would otherwise clobber each other (two withdrawals from the same
+  // starting balance). Gate the write on the EXACT balance just read so a
+  // conflicting concurrent change makes it match 0 rows. Metadata-only updates
+  // (name/apy/currency, no balance) must NOT carry this guard — an unrelated
+  // concurrent balance change must not block a rename. `before.balance` is the
+  // raw read value, never re-parsed, so the equality predicate matches exactly.
+  const guardsBalance = "balance" in valuePayload && before != null;
+  let updateQuery = supabase
     .from("cash_accounts")
     .update({
       ...valuePayload,
@@ -450,8 +460,18 @@ export async function updateCashAccount(
     })
     .eq("id", id)
     .eq("user_id", user.id);
+  if (guardsBalance) updateQuery = updateQuery.eq("balance", before.balance);
 
-  if (error) throw new Error(error.message);
+  if (guardsBalance) {
+    const { data: updated, error } = await updateQuery.select("id");
+    if (error) throw new Error(error.message);
+    if (!updated || updated.length === 0) {
+      throw new Error("This account's balance changed while saving — please retry.");
+    }
+  } else {
+    const { error } = await updateQuery;
+    if (error) throw new Error(error.message);
+  }
 
   // Capture after snapshot
   const { data: after } = await supabase

@@ -367,12 +367,23 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       // Defense-in-depth: scope update by crypto_asset_id as well. crypto_positions
       // has no direct user_id column, so ownership is enforced via RLS + the
       // input.crypto_asset_id that was already validated above.
-      const { error } = await supabase
+      // Optimistic concurrency: the soft-delete is conditional on the EXACT
+      // quantity we just read. If a concurrent same-user write (double-click,
+      // second tab) changed it first, 0 rows match → we throw a retryable error
+      // instead of silently zeroing out a position someone else already moved.
+      // `existing.quantity` is passed verbatim (no re-parse/re-format) so the
+      // NUMERIC(28,18) equality predicate matches byte-for-byte.
+      const { data: deleted, error } = await supabase
         .from("crypto_positions")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", existing.id)
-        .eq("crypto_asset_id", input.crypto_asset_id);
+        .eq("crypto_asset_id", input.crypto_asset_id)
+        .eq("quantity", existing.quantity ?? 0)
+        .select("id");
       if (error) throw new Error(error.message);
+      if (!deleted || deleted.length === 0) {
+        throw new Error("This position changed while saving — please retry.");
+      }
 
       const qty = (existing.quantity as number) ?? 0;
       const valUsd = -(qty * (opts?.currentPriceUsd ?? 0));
@@ -416,15 +427,25 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       .single();
 
     if (before) {
-      const { error } = await supabase.from("crypto_positions").update(partialUpdate({
+      // Optimistic concurrency: gate the update on the EXACT quantity just read.
+      // addTransaction (and every other caller) computes an ABSOLUTE new quantity
+      // from a value it read earlier; if a concurrent same-user write changed the
+      // row in between, both writers would otherwise clobber each other (e.g. two
+      // 80-unit withdrawals from 100 both writing 20). The `.eq("quantity", …)`
+      // predicate makes the write fail (0 rows) on conflict. `before.quantity` is
+      // the raw read value — never re-parsed — so NUMERIC(28,18) matches exactly.
+      const { data: updated, error } = await supabase.from("crypto_positions").update(partialUpdate({
         quantity: input.quantity,
         acquisition_method: input.acquisition_method,
         apy: input.apy,
         network: normalizedNetwork,
         last_was_adjustment: opts?.isAdjustment ?? false,
         last_was_transfer: opts?.transferGroupId != null,
-      })).eq("id", before.id);
+      })).eq("id", before.id).eq("quantity", before.quantity ?? 0).select("id");
       if (error) throw new Error(error.message);
+      if (!updated || updated.length === 0) {
+        throw new Error("This position changed while saving — please retry.");
+      }
     } else {
       const { error } = await supabase.from("crypto_positions").insert({
         crypto_asset_id: input.crypto_asset_id,
@@ -446,15 +467,21 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
             .is("deleted_at", null)
             .single();
           if (!existing) throw new Error(error.message);
-          const { error: updateErr } = await supabase.from("crypto_positions").update(partialUpdate({
+          // Same optimistic-concurrency guard as the primary update path: gate on
+          // the quantity just re-read after the unique-violation race so a third
+          // concurrent writer can't clobber it either.
+          const { data: updated, error: updateErr } = await supabase.from("crypto_positions").update(partialUpdate({
             quantity: input.quantity,
             acquisition_method: input.acquisition_method,
             apy: input.apy,
             network: normalizedNetwork,
             last_was_adjustment: opts?.isAdjustment ?? false,
             last_was_transfer: opts?.transferGroupId != null,
-          })).eq("id", existing.id);
+          })).eq("id", existing.id).eq("quantity", existing.quantity ?? 0).select("id");
           if (updateErr) throw new Error(updateErr.message);
+          if (!updated || updated.length === 0) {
+            throw new Error("This position changed while saving — please retry.");
+          }
         } else {
           throw new Error(error.message);
         }

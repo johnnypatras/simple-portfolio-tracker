@@ -405,12 +405,22 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       // no direct user_id column — RLS + explicit scope via the validated
       // input.stock_asset_id prevents mis-wired call sites from deleting
       // a position through a stale id.
-      const { error } = await supabase
+      // Optimistic concurrency: the soft-delete is conditional on the EXACT
+      // quantity just read. A concurrent same-user write that changed it first
+      // makes 0 rows match → retryable throw rather than silently zeroing a
+      // position someone else already moved. `existing.quantity` is the raw read
+      // value so the NUMERIC(18,8) equality predicate matches byte-for-byte.
+      const { data: deleted, error } = await supabase
         .from("stock_positions")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", existing.id)
-        .eq("stock_asset_id", input.stock_asset_id);
+        .eq("stock_asset_id", input.stock_asset_id)
+        .eq("quantity", existing.quantity ?? 0)
+        .select("id");
       if (error) throw new Error(error.message);
+      if (!deleted || deleted.length === 0) {
+        throw new Error("This position changed while saving — please retry.");
+      }
 
       const qty = (existing.quantity as number) ?? 0;
       const deltaNative = -(qty * (opts?.currentPriceNative ?? 0));
@@ -453,12 +463,21 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       .single();
 
     if (before) {
-      const { error } = await supabase.from("stock_positions").update({
+      // Optimistic concurrency: gate on the EXACT quantity just read. Every caller
+      // computes an ABSOLUTE new quantity from an earlier read; without this guard
+      // two concurrent same-user writes would clobber each other (both sell from
+      // the same starting balance). `.eq("quantity", before.quantity)` fails the
+      // write (0 rows) on conflict. `before.quantity` is the raw read value, never
+      // re-parsed, so the NUMERIC(18,8) equality matches exactly.
+      const { data: updated, error } = await supabase.from("stock_positions").update({
         quantity: input.quantity,
         last_was_adjustment: opts?.isAdjustment ?? false,
         last_was_transfer: opts?.transferGroupId != null,
-      }).eq("id", before.id);
+      }).eq("id", before.id).eq("quantity", before.quantity ?? 0).select("id");
       if (error) throw new Error(error.message);
+      if (!updated || updated.length === 0) {
+        throw new Error("This position changed while saving — please retry.");
+      }
     } else {
       const { error } = await supabase.from("stock_positions").insert({
         stock_asset_id: input.stock_asset_id,
@@ -477,12 +496,18 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
             .is("deleted_at", null)
             .single();
           if (!existing) throw new Error(error.message);
-          const { error: updateErr } = await supabase.from("stock_positions").update({
+          // Same optimistic-concurrency guard as the primary update path: gate on
+          // the quantity just re-read after the unique-violation race so a third
+          // concurrent writer can't clobber it either.
+          const { data: updated, error: updateErr } = await supabase.from("stock_positions").update({
             quantity: input.quantity,
             last_was_adjustment: opts?.isAdjustment ?? false,
             last_was_transfer: opts?.transferGroupId != null,
-          }).eq("id", existing.id);
+          }).eq("id", existing.id).eq("quantity", existing.quantity ?? 0).select("id");
           if (updateErr) throw new Error(updateErr.message);
+          if (!updated || updated.length === 0) {
+            throw new Error("This position changed while saving — please retry.");
+          }
         } else {
           throw new Error(error.message);
         }

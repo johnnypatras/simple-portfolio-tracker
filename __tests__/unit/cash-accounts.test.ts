@@ -335,8 +335,8 @@ describe("mergeCashAccounts", () => {
       { data: { id: "inst-A" }, error: null },
       // before snapshot fetch
       { data: { id: "surv-id", balance: 6500, currency: "EUR" }, error: null },
-      // update query
-      { error: null },
+      // update query — balance-carrying, so the guard reads `data` via .select("id")
+      { data: [{ id: "surv-id" }], error: null },
       // after snapshot fetch
       { data: { id: "surv-id", balance: 7000, currency: "EUR" }, error: null },
       // resolveDisplayNames: institution lookup
@@ -521,8 +521,11 @@ describe("updateCashAccount — partial-update semantics", () => {
         },
         error: null,
       },
-      // update result
-      { error: null },
+      // update result — `data` non-empty so the optimistic-concurrency guard
+      // (`.select("id")` on a balance-carrying update) sees a matched row.
+      // Metadata-only updates ignore `data` (they don't carry the guard), so
+      // this shape is harmless there.
+      { data: [{ id: "ca-id" }], error: null },
       // after snapshot
       {
         data: {
@@ -741,5 +744,203 @@ describe("updateCashAccount — partial-update semantics", () => {
     // No update call → no badge flip. Even with opts that would normally
     // write last_was_adjustment:true, the early-return takes precedence.
     expect(client.from).not.toHaveBeenCalled();
+  });
+});
+
+// ─── updateCashAccount — optimistic concurrency guard on balance ─────────────
+//
+// Every balance write computes an ABSOLUTE new balance from a value read
+// earlier. Two concurrent same-user writes (double-click, second tab, racing
+// transfer legs) would each read the same starting balance and clobber each
+// other. The fix gates the balance-carrying UPDATE on the EXACT balance just
+// read (`.eq("balance", before.balance).select("id")`); 0 matched rows → a
+// retryable throw. Metadata-only updates (no balance) must NOT carry the guard.
+describe("updateCashAccount — optimistic concurrency (balance guard)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("throws the retry message when the guarded balance UPDATE matches 0 rows", async () => {
+    // before snapshot reads balance 100; the UPDATE (with .eq("balance", 100))
+    // matches nothing because a concurrent writer already changed it →
+    // .select("id") returns []. The guard must surface the retry message.
+    hoisted.mockClient = createMockClient([
+      // before snapshot
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 100,
+          name: "Savings",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      // guarded UPDATE → 0 rows (someone else wrote first)
+      { data: [], error: null },
+    ]);
+
+    await expect(
+      updateCashAccount(
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        { currency: "EUR", balance: 20 },
+      ),
+    ).rejects.toThrow("This account's balance changed while saving — please retry.");
+  });
+
+  it("happy path: a matched row (data non-empty) resolves normally", async () => {
+    hoisted.mockClient = createMockClient([
+      // before snapshot
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 100,
+          name: "Savings",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      // guarded UPDATE → 1 matched row
+      { data: [{ id: "ca-id" }], error: null },
+      // after snapshot
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 20,
+          name: "Savings",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+    ]);
+
+    await expect(
+      updateCashAccount(
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        { currency: "EUR", balance: 20 },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("the guarded UPDATE filters on the EXACT balance just read (.eq('balance', before.balance))", async () => {
+    hoisted.mockClient = createMockClient([
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 3546.5,
+          name: "Savings",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      { data: [{ id: "ca-id" }], error: null }, // update
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 4000,
+          name: "Savings",
+          apy: 0,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+    ]);
+
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { currency: "EUR", balance: 4000 },
+    );
+
+    // 2nd from() call is the UPDATE; its builder's .eq() must have been called
+    // with ("balance", 3546.5) — the verbatim value from the before snapshot.
+    const updateBuilder = hoisted.mockClient!.from.mock.results[1]?.value as {
+      eq: ReturnType<typeof vi.fn>;
+    };
+    expect(updateBuilder.eq).toHaveBeenCalledWith("balance", 3546.5);
+  });
+
+  it("metadata-only update (apy, no balance) does NOT carry the balance guard", async () => {
+    // No balance in the payload → the unguarded branch runs. The update result
+    // is a bare { error: null } (no `data`); if the guard wrongly fired it would
+    // read undefined `data` and throw the retry message. Resolving proves the
+    // guard is correctly skipped for metadata-only updates.
+    hoisted.mockClient = createMockClient([
+      // before snapshot
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 100,
+          name: "Savings",
+          apy: 1,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      // update result — bare, no `data` array
+      { error: null },
+      // after snapshot
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: "inst-A",
+          currency: "EUR",
+          balance: 100,
+          name: "Savings",
+          apy: 5,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+    ]);
+
+    await expect(
+      updateCashAccount(
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        { apy: 5 },
+      ),
+    ).resolves.toBeUndefined();
+
+    // And the UPDATE builder must NOT have filtered on "balance".
+    const updateBuilder = hoisted.mockClient!.from.mock.results[1]?.value as {
+      eq: ReturnType<typeof vi.fn>;
+    };
+    const balanceFilter = updateBuilder.eq.mock.calls.find((c) => c[0] === "balance");
+    expect(balanceFilter).toBeUndefined();
   });
 });

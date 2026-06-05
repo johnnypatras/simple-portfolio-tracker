@@ -463,8 +463,9 @@ describe("upsertPosition — partial-update semantics (network preservation)", (
         },
         error: null,
       },
-      // 3) update result
-      { error: null },
+      // 3) update result — `data` non-empty so the optimistic-concurrency
+      // guard (.eq("quantity", before.quantity).select("id")) sees a matched row.
+      { data: [{ id: "pos-id" }], error: null },
       // 4) after snapshot
       {
         data: {
@@ -517,7 +518,7 @@ describe("upsertPosition — partial-update semantics (network preservation)", (
         },
         error: null,
       },
-      { error: null },
+      { data: [{ id: "pos-id" }], error: null },
       {
         data: {
           id: "pos-id",
@@ -555,7 +556,7 @@ describe("upsertPosition — partial-update semantics (network preservation)", (
         },
         error: null,
       },
-      { error: null },
+      { data: [{ id: "pos-id" }], error: null },
       {
         data: {
           id: "pos-id",
