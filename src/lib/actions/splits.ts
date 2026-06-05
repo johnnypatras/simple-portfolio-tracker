@@ -389,7 +389,35 @@ export async function splitActivityEntry(
     .update({ undone_at: new Date().toISOString() })
     .eq("id", parentId)
     .eq("user_id", user.id);
-  if (undoErr) return { success: false, message: `Failed to mark parent as undone: ${undoErr.message}` };
+  if (undoErr) {
+    // Best-effort rollback: a failed parent-undo would otherwise leave the parent
+    // (undone_at NULL) AND all its children live → deriveCashFlows double-counts
+    // the entry on EVERY render (doubled S&P contribution + doubled P&L cashflow),
+    // forever, with no signal (captureAction only fires on throw; this path
+    // returns). Delete the children so the parent stands alone, and capture
+    // either outcome (the rollback DELETE can itself fail) — never throw a new
+    // error shape from this branch; the caller's contract is {success:false}.
+    const { error: rollbackErr } = await supabase
+      .from("activity_log")
+      .delete()
+      .eq("split_from_id", parentId)
+      .eq("user_id", user.id);
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.captureException(
+      new Error(
+        `split parent-undo failed after children inserted${rollbackErr ? " AND rollback failed" : " (rolled back)"}: ${undoErr.message}`,
+      ),
+      {
+        tags: { action: "splits.splitActivityEntry", phase: "parent-undo" },
+        extra: {
+          parentId,
+          childCount: legs.length,
+          rollbackError: rollbackErr?.message,
+        },
+      },
+    );
+    return { success: false, message: `Failed to mark parent as undone: ${undoErr.message}` };
+  }
 
   revalidateDashboard();
   return { success: true, message: `Split into ${legs.length} date allocations` };
