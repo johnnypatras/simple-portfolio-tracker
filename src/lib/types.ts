@@ -15,6 +15,12 @@ export interface RealCashFlowEvent {
   asset_class?: AssetClass;
   /** Real flows may carry entity attribution for the deposit-tooltip breakdown. */
   entity_name?: string;
+  /**
+   * true = earned income (yield). Model B: participates in the S&P replay at
+   * its market value on the receipt date, like any inflow — flagged so
+   * consumers (e.g. the deposits tooltip) can label it separately.
+   */
+  is_yield?: boolean;
   synthetic?: false;
 }
 
@@ -660,7 +666,7 @@ export interface ActivityLog {
   after_snapshot: Record<string, unknown> | null;
   undone_at: string | null;
   is_adjustment: boolean;
-  /** Earned income (staking reward, dividend, etc.); cost is 0 by definition; excluded from S&P benchmark. */
+  /** Earned income (staking reward, dividend, etc.); cost is 0 by definition. Model B: participates in the S&P benchmark at its market value on the receipt date. */
   is_yield: boolean;
   /** True when the cashflow amount was explicitly authored by the user rather than derived from qty × price. */
   cashflow_user_set: boolean;

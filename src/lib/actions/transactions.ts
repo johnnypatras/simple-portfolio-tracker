@@ -556,15 +556,27 @@ export interface MarkAsYieldResult {
 
 /**
  * BULK reclassify legacy interest / staking / airdrop entries as earned income
- * by flipping `is_yield=true`. Yield = cost 0, excluded from the S&P benchmark —
- * `is_yield` is the single source of truth; the cashflow amount is NEVER zeroed,
+ * by flipping `is_yield=true`. Yield = cost 0 (pure gain), and under Model B it
+ * PARTICIPATES in the S&P benchmark at its market value on the receipt date —
+ * `is_yield` is the single source of truth; the cashflow amount is NEVER touched,
  * so un-yield is lossless.
+ *
+ * Benchmark consequence (Model B): because the amounts are untouched, a flipped
+ * row keeps its place in the S&P replay at its RECORDED cashflow_amount_* —
+ * which is market-at-entry for an auto-priced row (cashflow_user_set=false). If
+ * the row happened to carry a user-set cost, that amount stands until the row is
+ * backdated; the backdate recompute then revalues it to market-at-date and
+ * clears cashflow_user_set (a yield flow IS its market value on receipt — a
+ * "cost" on a yield row is meaningless). So Mark-as-Yield is now a pure cost/P&L
+ * reclassifier: it never shifts the S&P line.
  *
  * Defensive by design — only an ACQUISITION (units ADDED, `quantityDelta > 0`)
  * is eligible. A disposal (sell / withdrawal, `quantityDelta <= 0`) marked as
- * yield would zero its cost at €0, book no realized P&L, AND drop a real outflow
- * from the benchmark — so disposals are skipped even when every other predicate
- * term passes (audit-r6 HIGH).
+ * yield would zero its cost at €0, book no realized P&L, AND mislabel a real
+ * OUTFLOW as earned income (the replay still subtracts its negative amount
+ * correctly — the corruption is in cost/P&L and labeling, not the unit math) —
+ * so disposals are skipped even when every other predicate term passes
+ * (audit-r6 HIGH).
  *
  * SECURITY CONTRACT (do not weaken):
  *   1. validateUUID on every id — reject malformed IDs before any DB contact.

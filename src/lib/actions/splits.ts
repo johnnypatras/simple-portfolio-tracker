@@ -67,9 +67,16 @@ export async function backdateActivityEntry(
   // Only applies when ALL of the following are true:
   //   - effectiveDate is being SET (not cleared — no date → no price to look up)
   //   - The entry is a real cash flow (not an adjustment — adjustments use delta_*)
-  //   - The cashflow amount was auto-computed, not user-supplied (cashflow_user_set=false)
-  //   - Not a yield/income row (is_yield=true → cost = 0 by definition, no recompute)
   //   - The entity type produces cashflows (diary entries, etc. don't have cashflow_amount_*)
+  //   - AND one of:
+  //       · is_yield=true — Model B: a yield row's S&P flow IS its market value at
+  //         the receipt date, so a backdate MUST revalue it to the price at the new
+  //         date. A "cost" on a yield row is meaningless (cost is 0 by definition),
+  //         so any cashflow_user_set flag is ignored here and cleared below.
+  //       · cashflow_user_set=false — an auto-derived (market-value) amount is
+  //         re-derived at the new date.
+  //   A NON-yield user-supplied cost (cashflow_user_set=true) is NEVER overwritten —
+  //   the user's intentional cost basis stands regardless of the effective date.
   //
   // Transfer legs are excluded by the is_adjustment check (both legs are is_adjustment=true).
   // The recompute is best-effort: a price-fetch failure logs an error but does not fail the
@@ -81,8 +88,7 @@ export async function backdateActivityEntry(
   if (
     effectiveDate !== null &&
     !log.is_adjustment &&
-    !cashflowUserSet &&
-    !isYield &&
+    (isYield || !cashflowUserSet) &&
     isCashflowProducingEntity
   ) {
     try {
@@ -94,12 +100,23 @@ export async function backdateActivityEntry(
         log.after_snapshot,
         supabase,
       );
+      // A backdated YIELD row is now auto-derived at the new date, so its
+      // provenance must read auto (cashflow_user_set=false) — a user-set "cost"
+      // on a yield row is meaningless and must not survive the revalue. The
+      // non-yield path writes ONLY the two amount columns (byte-identical to the
+      // pre-Model-B behavior), so the payload is built conditionally.
+      const cfUpdate: {
+        cashflow_amount_usd: number;
+        cashflow_amount_eur: number;
+        cashflow_user_set?: boolean;
+      } = {
+        cashflow_amount_usd: round2(recomputed.usd),
+        cashflow_amount_eur: round2(recomputed.eur),
+      };
+      if (isYield) cfUpdate.cashflow_user_set = false;
       const { error: cfUpdateErr } = await supabase
         .from("activity_log")
-        .update({
-          cashflow_amount_usd: round2(recomputed.usd),
-          cashflow_amount_eur: round2(recomputed.eur),
-        })
+        .update(cfUpdate)
         .eq("id", entryId)
         .eq("user_id", user.id);
       if (cfUpdateErr) {

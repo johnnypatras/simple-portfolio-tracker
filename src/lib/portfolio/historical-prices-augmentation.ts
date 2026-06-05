@@ -1366,6 +1366,13 @@ export function buildBenchmarkCashFlows(
  * (`cashflow_user_set=true AND NOT is_yield`). USD gaps power the chart-enrichment
  * seed; EUR gaps are reserved for the Phase-5 overlay (audit-r5 F1 — emitted now
  * so the seam never needs a shape migration).
+ *
+ * Why yield is excluded from the GAP even under Model B: a yield lot's benchmark
+ * flow IS its market value on the receipt date (deriveCashFlows feeds it in at
+ * exactly that amount), so for a yield lot cost-at-market ≡ flow-at-market and the
+ * cost-vs-market gap is definitionally 0. Keeping yield OUT of the GAP is what
+ * keeps the seed self-consistent — it must never inject a phantom gap for units
+ * the benchmark already booked at market.
  */
 export interface CostBasisSeriesPoint {
   date: string; // YYYY-MM-DD
@@ -1603,6 +1610,10 @@ function toClassifierRow(txn: CostBasisTxn): TransactionRow {
  *           price at D contributes 0 AND increments `uncoveredGapLots` (visibility).
  *           The gap gate is independent of the cost partition above — transfer legs are
  *           cashflow_user_set=false, so they never enter the gap (the seed is untouched).
+ *           Yield stays out of the GAP under Model B too: a yield lot's benchmark flow
+ *           IS its market value on receipt, so its cost-vs-market gap is definitionally
+ *           0 — excluding it is exactly what keeps the seed correct (no phantom gap for
+ *           units the benchmark already booked at market).
  *
  * Stablecoin reclass is the caller's responsibility (asset_class already "cash").
  */

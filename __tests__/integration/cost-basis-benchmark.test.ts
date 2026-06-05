@@ -4,18 +4,35 @@ import { createTestUser, getAdminClient } from "./setup";
 import { deriveCashFlows, getHistoricalBenchmarkExtension } from "@/lib/actions/benchmark";
 import { fetchHistoricalPriceInputsFor } from "@/lib/portfolio/historical-prices-augmentation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { CashFlowEvent, RealCashFlowEvent } from "@/lib/types";
 
 /**
- * Integration tests for Task 2.1: deriveCashFlows excludes is_yield rows.
+ * deriveCashFlows only ever emits REAL flows (it reads the activity log; synthetic
+ * benchmark flows come from buildBenchmarkCashFlows). Narrow the union so the
+ * `is_yield` field (RealCashFlowEvent-only) is type-visible — mirrors the
+ * documented `!f.synthetic` narrowing on the CashFlowEvent union.
+ */
+const isReal = (e: CashFlowEvent): e is RealCashFlowEvent => !e.synthetic;
+
+/**
+ * Integration tests for C1 (Model B): deriveCashFlows INCLUDES is_yield rows.
+ *
+ * Model B (2026-06-05): earned income participates in the S&P replay at its
+ * market value on the receipt date — the read filter that used to drop yield
+ * rows is lifted. (These tests were the Task 2.1 exclusion tests; C1 flips them
+ * to inclusion.)
  *
  * (a) A yield row (is_yield=true, cashflow_status='complete') on the same asset
- *     as a regular cash flow is excluded from deriveCashFlows output.
- * (b) A backdated yield row is absent from deriveCashFlows AND from
- *     buildBenchmarkCashFlows (via getHistoricalBenchmarkExtension), AND its
- *     quantity delta STILL appears in the fetchHistoricalPriceInputsFor lot
- *     stream — proving yield units are HOLDINGS, not cash flows.
+ *     as a regular cash flow is PRESENT in deriveCashFlows output, carrying its
+ *     stored amounts and `is_yield: true` on the event — while the regular row
+ *     does NOT carry `is_yield`.
+ * (b) A backdated yield row is PRESENT in deriveCashFlows dated at its
+ *     effective_date, but STILL ABSENT from buildBenchmarkCashFlows (via
+ *     getHistoricalBenchmarkExtension — the is_adjustment gate, proving no
+ *     double-count), AND its quantity delta STILL appears in the
+ *     fetchHistoricalPriceInputsFor lot stream (the value line is unchanged).
  */
-describe("deriveCashFlows — is_yield exclusion (Task 2.1)", () => {
+describe("deriveCashFlows — is_yield inclusion / Model B (C1)", () => {
   const admin = getAdminClient();
 
   // Patch env vars so createAdminClient() inside deriveCashFlows works against
@@ -72,9 +89,9 @@ describe("deriveCashFlows — is_yield exclusion (Task 2.1)", () => {
     cleanupFns = [];
   });
 
-  // ── (a) Regular cashflow present; yield row absent ────────────────────────
+  // ── (a) Regular cashflow present; yield row ALSO present (Model B) ─────────
 
-  it("(a) returns regular cashflow but NOT the yield row from deriveCashFlows", async () => {
+  it("(a) returns BOTH the regular cashflow AND the yield row (flagged is_yield) from deriveCashFlows", async () => {
     const { userId, cleanup } = await createTestUser();
     cleanupFns.push(cleanup);
 
@@ -132,7 +149,7 @@ describe("deriveCashFlows — is_yield exclusion (Task 2.1)", () => {
     activityIds.push(regularLog!.id);
 
     // Seed a yield row: is_yield=true, cashflow_status='complete'.
-    // Without the is_yield filter this would appear in deriveCashFlows output.
+    // Model B: this now appears in deriveCashFlows output, flagged is_yield.
     const { data: yieldLog, error: yieldErr } = await admin
       .from("activity_log")
       .insert({
@@ -159,19 +176,31 @@ describe("deriveCashFlows — is_yield exclusion (Task 2.1)", () => {
     // Call deriveCashFlows via the admin path (explicit userId bypasses Next.js auth).
     const result = await deriveCashFlows(userId);
 
-    // Exactly one event — the regular purchase; the yield row is excluded.
-    expect(result.events).toHaveLength(1);
-    expect(result.events[0].amount_usd).toBe(30000);
-    expect(result.events[0].asset_class).toBe("crypto");
+    // Model B: BOTH rows now appear — the regular purchase AND the yield row.
+    expect(result.events).toHaveLength(2);
 
-    // Confirm the yield row's amount is NOT present.
-    const yieldAmountPresent = result.events.some((e) => e.amount_usd === 15000);
-    expect(yieldAmountPresent).toBe(false);
+    // The regular purchase is present, with its stored amount, NOT flagged is_yield.
+    const regular = result.events.find((e) => isReal(e) && e.amount_usd === 30000) as
+      | RealCashFlowEvent
+      | undefined;
+    expect(regular).toBeDefined();
+    expect(regular!.asset_class).toBe("crypto");
+    expect(regular!.is_yield).toBeUndefined();
+
+    // The yield row is present, with its STORED amounts, flagged is_yield: true.
+    const yieldEvent = result.events.find((e) => isReal(e) && e.amount_usd === 15000) as
+      | RealCashFlowEvent
+      | undefined;
+    expect(yieldEvent).toBeDefined();
+    expect(yieldEvent!.amount_eur).toBe(13750);
+    expect(yieldEvent!.asset_class).toBe("crypto");
+    expect(yieldEvent!.is_yield).toBe(true);
   });
 
-  // ── (b) Backdated yield row: absent from cash flows, present in lot stream ──
+  // ── (b) Backdated yield row: present in cash flows (Model B) + lot stream,
+  //        but absent from synthetic benchmark flows (is_adjustment gate) ──
 
-  it("(b) backdated yield row absent from deriveCashFlows AND lot-stream includes its qty delta", async () => {
+  it("(b) backdated yield row present in deriveCashFlows (dated at effective_date) AND in the lot-stream, but NOT in synthetic flows", async () => {
     const { userId, cleanup } = await createTestUser();
     cleanupFns.push(cleanup);
 
@@ -285,16 +314,25 @@ describe("deriveCashFlows — is_yield exclusion (Task 2.1)", () => {
       );
     expect(fxErr).toBeNull();
 
-    // ── (b-i) deriveCashFlows excludes the backdated yield row ──────────────
+    // ── (b-i) deriveCashFlows INCLUDES the backdated yield row (Model B) ────
     const cashFlowResult = await deriveCashFlows(userId);
 
-    // Only the purchase row appears; yield's cashflow_amount_usd=12000 is absent.
-    const yieldCashFlowPresent = cashFlowResult.events.some((e) => e.amount_usd === 12000);
-    expect(yieldCashFlowPresent).toBe(false);
+    // The backdated yield row now appears, flagged is_yield and dated at its
+    // effective_date (2023-06-01), carrying its stored amounts.
+    const yieldCashFlow = cashFlowResult.events.find(
+      (e) => isReal(e) && e.amount_usd === 12000,
+    ) as RealCashFlowEvent | undefined;
+    expect(yieldCashFlow).toBeDefined();
+    expect(yieldCashFlow!.date).toBe("2023-06-01");
+    expect(yieldCashFlow!.amount_eur).toBe(11000);
+    expect(yieldCashFlow!.is_yield).toBe(true);
 
-    // The regular purchase is still present.
-    const purchasePresent = cashFlowResult.events.some((e) => e.amount_usd === 40000);
-    expect(purchasePresent).toBe(true);
+    // The regular purchase is still present (and NOT flagged is_yield).
+    const purchase = cashFlowResult.events.find(
+      (e) => isReal(e) && e.amount_usd === 40000,
+    ) as RealCashFlowEvent | undefined;
+    expect(purchase).toBeDefined();
+    expect(purchase!.is_yield).toBeUndefined();
 
     // ── (b-ii) Yield qty delta IS present in fetchHistoricalPriceInputsFor ───
     // This is the value-line non-regression: fetchHistoricalPriceInputsFor does
@@ -322,17 +360,19 @@ describe("deriveCashFlows — is_yield exclusion (Task 2.1)", () => {
     );
     expect(yieldDelta).toBeDefined();
 
-    // Also confirm the yield row's cashflow amount (12000) is absent from
-    // buildBenchmarkCashFlows-sourced synthetic flows — verified structurally:
-    // buildBenchmarkCashFlows gates on is_adjustment===true; the yield row has
-    // is_adjustment=false so it is structurally excluded. We confirm by checking
-    // the synthetic flows for this lot contain only the purchase delta (none for
-    // is_adjustment=false rows like yield).
-    // The purchase row (is_adjustment=false) is also excluded from synthetics —
-    // synthetics only appear for is_adjustment=true lots.
-    // So: no synthetic cash flows at all for this user (no is_adjustment rows).
-    // We verify the lot's deltas carry is_adjustment=false for the yield delta.
+    // The yield delta is is_adjustment=false (its synthetic-flow exclusion key).
     expect(yieldDelta!.is_adjustment).toBe(false);
+
+    // ── (b-iii) NO double-count: the yield row is ABSENT from the synthetic
+    // benchmark cash flows. Under Model B the yield row IS in deriveCashFlows
+    // (asserted in b-i), so it must NOT also be seeded as a synthetic flow —
+    // buildBenchmarkCashFlows gates on is_adjustment===true and the yield row is
+    // is_adjustment=false. This user has no is_adjustment rows at all, so the
+    // synthetic set is empty; the yield amount (12000) is therefore absent.
+    const ext = await getHistoricalBenchmarkExtension(userId);
+    expect(ext.syntheticCashFlows).toEqual([]);
+    const yieldInSynthetic = ext.syntheticCashFlows.some((f) => f.amount_usd === 12000);
+    expect(yieldInSynthetic).toBe(false);
   });
 });
 

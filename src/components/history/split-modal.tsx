@@ -40,7 +40,8 @@ interface SplitModalProps {
 
 /**
  * Returns true when the entry is a yield entry (earned income; cost = 0
- * by definition; excluded from S&P benchmark).
+ * by definition). Model B: a yield row participates in the S&P benchmark at its
+ * market value on the receipt date.
  */
 function isYieldEntry(entry: ActivityLog): boolean {
   return entry.is_yield;

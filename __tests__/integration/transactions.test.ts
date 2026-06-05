@@ -587,6 +587,108 @@ describe("backdateActivityEntry — cashflow recompute on backdate (integration)
     expect(Number(logAfter!.cashflow_amount_eur)).toBe(8888);
     expect(logAfter!.cashflow_user_set).toBe(true);
   });
+
+  // ── Model B (C1): a yield row ALWAYS recomputes on backdate ──────────────────
+  //
+  // Pre-Model-B the gate skipped yield rows (is_yield was a hard exclusion). Under
+  // Model B a yield row's S&P flow IS its market value on the receipt date, so a
+  // backdate MUST revalue cashflow_amount_* to the historical price at the new
+  // date — exactly like an auto-priced non-yield row.
+  it("yield row (cashflow_user_set=false): backdating recomputes cashflow_amount_* to the historical price", async () => {
+    // Insert a yield row directly with snapshots the recompute can price:
+    // before qty 1 → after qty 1.5 ⇒ qtyDelta 0.5; crypto_asset_id drives the
+    // (mocked) $30,000 historical lookup. cashflow_user_set=false (auto).
+    const { data: row, error: insErr } = await client
+      .from("activity_log")
+      .insert({
+        user_id: userId,
+        action: "updated",
+        entity_type: "crypto_position",
+        entity_id: walletId, // any non-null id; the recompute reads snapshots, not this
+        entity_name: "Bitcoin Backdate Test",
+        description: "Yield 0.5 units",
+        is_adjustment: false,
+        is_yield: true,
+        cashflow_user_set: false,
+        cashflow_amount_usd: 9000, // stale pre-backdate amount
+        cashflow_amount_eur: 8000,
+        cashflow_asset_class: "crypto",
+        cashflow_status: "complete",
+        before_snapshot: { crypto_asset_id: cryptoAssetId, quantity: 1 },
+        after_snapshot: { crypto_asset_id: cryptoAssetId, quantity: 1.5 },
+      })
+      .select("id")
+      .single();
+    if (insErr) throw new Error("Failed to insert yield row: " + insErr.message);
+
+    const result = await backdateActivityEntry(row!.id, "2023-06-01");
+    expect(result.success).toBe(true);
+
+    const { data: after } = await client
+      .from("activity_log")
+      .select("cashflow_amount_usd, cashflow_amount_eur, effective_date, cashflow_user_set, is_yield")
+      .eq("id", row!.id)
+      .single();
+
+    expect(after).not.toBeNull();
+    expect(after!.effective_date).toBe("2023-06-01");
+    // Recomputed: qtyDelta(0.5) × $30,000 = $15,000; EUR = 15000 × 0.9091 ≈ 13636.5.
+    expect(Number(after!.cashflow_amount_usd)).toBeCloseTo(15000, 0);
+    expect(Number(after!.cashflow_amount_eur)).toBeCloseTo(13636.5, 1);
+    // Still a yield row; provenance stays auto.
+    expect(after!.is_yield).toBe(true);
+    expect(after!.cashflow_user_set).toBe(false);
+  });
+
+  // ── Model B (C1): a USER-SET yield row recomputes AND clears cashflow_user_set ─
+  //
+  // A "cost" on a yield row is meaningless (cost is 0 by definition). When such a
+  // row is backdated it is revalued to market-at-date AND its provenance is reset
+  // to auto (cashflow_user_set=false) — the amount is now machine-derived, so the
+  // flag must tell the truth. This is the ONE place Model B overrides the user-set
+  // protection, and only because the row is yield.
+  it("yield row (cashflow_user_set=true): backdating recomputes AND clears cashflow_user_set", async () => {
+    const { data: row, error: insErr } = await client
+      .from("activity_log")
+      .insert({
+        user_id: userId,
+        action: "updated",
+        entity_type: "crypto_position",
+        entity_id: walletId,
+        entity_name: "Bitcoin Backdate Test",
+        description: "User-set yield 0.5 units",
+        is_adjustment: false,
+        is_yield: true,
+        cashflow_user_set: true, // a (meaningless) user-set amount on a yield row
+        cashflow_amount_usd: 7777,
+        cashflow_amount_eur: 6666,
+        cashflow_asset_class: "crypto",
+        cashflow_status: "complete",
+        before_snapshot: { crypto_asset_id: cryptoAssetId, quantity: 1 },
+        after_snapshot: { crypto_asset_id: cryptoAssetId, quantity: 1.5 },
+      })
+      .select("id")
+      .single();
+    if (insErr) throw new Error("Failed to insert user-set yield row: " + insErr.message);
+
+    const result = await backdateActivityEntry(row!.id, "2023-06-01");
+    expect(result.success).toBe(true);
+
+    const { data: after } = await client
+      .from("activity_log")
+      .select("cashflow_amount_usd, cashflow_amount_eur, effective_date, cashflow_user_set, is_yield")
+      .eq("id", row!.id)
+      .single();
+
+    expect(after).not.toBeNull();
+    expect(after!.effective_date).toBe("2023-06-01");
+    // Revalued to market-at-date despite the prior user-set amount.
+    expect(Number(after!.cashflow_amount_usd)).toBeCloseTo(15000, 0);
+    expect(Number(after!.cashflow_amount_eur)).toBeCloseTo(13636.5, 1);
+    expect(after!.is_yield).toBe(true);
+    // Provenance flipped to auto — the amount is now machine-derived.
+    expect(after!.cashflow_user_set).toBe(false);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

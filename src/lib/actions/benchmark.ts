@@ -29,6 +29,14 @@ import {
  * Cash flow amounts are pre-computed at write time and stored in
  * cashflow_amount_usd / cashflow_amount_eur columns. This function
  * performs a single DB query instead of fetching historical prices.
+ *
+ * Model B (2026-06-05): yield rows (is_yield=true) ARE included. Earned income
+ * STARTS participating in the S&P replay the day it enters the portfolio, at its
+ * market value on the receipt date — like any inflow. The "one rule": money
+ * starts counting when it enters, keeps counting through every internal change,
+ * stops counting when it leaves; yield received is money entering. Each yielded
+ * row carries `is_yield: true` on the event so consumers (e.g. the deposits
+ * tooltip) can label it separately from a deposit/buy.
  */
 export const deriveCashFlows = cache(async function deriveCashFlows(
   userId?: string
@@ -69,7 +77,6 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
         .from("activity_log")
         .select("cashflow_amount_usd, cashflow_amount_eur, cashflow_asset_class, entity_name, created_at, effective_date, is_yield")
         .eq("cashflow_status", "complete")
-        .eq("is_yield", false)
         .is("undone_at", null);
       const scoped = resolvedUserId ? base.eq("user_id", resolvedUserId) : base;
       return scoped
@@ -132,6 +139,9 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
       amount_eur: (row.cashflow_amount_eur as number) ?? undefined,
       asset_class: (row.cashflow_asset_class as AssetClass) ?? undefined,
       entity_name: (row.entity_name as string) ?? undefined,
+      // Model B: flag earned income so consumers can label it (deposits tooltip).
+      // Optional field — synthetic flows + non-yield rows never set it.
+      is_yield: row.is_yield === true ? true : undefined,
     })),
     pendingCount: pendingResult.count ?? 0,
     failedCount: failedResult.count ?? 0,
