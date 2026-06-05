@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createTestUser, getAdminClient } from "./setup";
@@ -8,6 +8,7 @@ import {
   fetchTransferCounterparts,
   toTransactionDisplayRows,
 } from "@/lib/portfolio/asset-transactions";
+import { computeCostBasis } from "@/lib/portfolio/cost-basis";
 
 /**
  * Integration tests for Task 2.4a — getAssetTransactions (the asset-scoped read).
@@ -53,6 +54,9 @@ type ActivityInsert = {
   details?: Record<string, unknown> | null;
   effective_date?: string | null;
   undone_at?: string | null;
+  /** Override the DEFAULT now() so a test can pin same-day rows to distinct
+   *  recording instants (the day-granular ordering tiebreak relies on this). */
+  created_at?: string;
 };
 
 async function insertActivity(
@@ -1120,5 +1124,133 @@ describe("fetchTransferCounterparts + toTransactionDisplayRows — sell-type leg
     expect(leg.kind).toBe("transfer");
     expect(leg.transferRole).toBeUndefined();
     expect(leg.counterpartName).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. Day-granular ordering — same-day BACKDATED sell after a LIVE buy (H1)
+//
+// A live BUY (effective_date NULL → falls back to created_at) and a SELL
+// backdated to that SAME calendar day (date-only effective_date) must fold in
+// recording order (buy, then sell), NOT alphabetically. A date-only string
+// ("2026-01-01") is a lexical prefix of any same-day timestamptz
+// ("2026-01-01T09:00:00+00:00"), so an un-normalized comparator sorts the
+// backdated sell FIRST → an oversell anomaly fires + realized P&L is mis-booked.
+// The fix day-normalizes the created_at fallback, so the created_at recording
+// instant breaks the tie correctly. This exercises the REAL read path feeding
+// the cost engine.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("getAssetTransactions — same-day backdated sell ordering feeds the cost engine (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  let cryptoAssetId: string;
+  let positionId: string;
+
+  // A single calendar day. The buy records at 09:00, the sell — though entered
+  // later (11:00) — is backdated to this same day via a DATE-ONLY effective_date.
+  const DAY = "2026-04-10";
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+
+    const { data: asset } = await client
+      .from("crypto_assets")
+      .insert({
+        user_id: userId,
+        name: "OrderCoin",
+        ticker: "ORD",
+        coingecko_id: `ordercoin-${randomUUID()}`,
+      })
+      .select("id")
+      .single();
+    cryptoAssetId = asset!.id;
+
+    const { data: wallet } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Order Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    const { data: pos } = await client
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: cryptoAssetId, wallet_id: wallet!.id, quantity: 0 })
+      .select("id")
+      .single();
+    positionId = pos!.id;
+
+    // BUY: qty 0 → 1, effective_date NULL (live), recorded at 09:00. cost 30000.
+    await insertActivity(client, {
+      user_id: userId,
+      action: "created",
+      entity_type: "crypto_position",
+      entity_name: "OrderCoin (buy)",
+      description: "Buy 1 @ 30000",
+      entity_id: positionId,
+      before_snapshot: { quantity: 0 },
+      after_snapshot: { quantity: 1 },
+      cashflow_amount_usd: 30000,
+      cashflow_amount_eur: 27000,
+      created_at: `${DAY}T09:00:00+00:00`,
+      // effective_date intentionally omitted → NULL → falls back to created_at.
+    });
+    // SELL: qty 1 → 0, backdated to DAY (date-only), recorded LATER at 11:00.
+    // proceeds 30200 USD / 27180 EUR.
+    await insertActivity(client, {
+      user_id: userId,
+      action: "updated",
+      entity_type: "crypto_position",
+      entity_name: "OrderCoin (sell)",
+      description: "Sell 1 @ 30200",
+      entity_id: positionId,
+      before_snapshot: { quantity: 1 },
+      after_snapshot: { quantity: 0 },
+      cashflow_amount_usd: 30200,
+      cashflow_amount_eur: 27180,
+      effective_date: DAY,
+      created_at: `${DAY}T11:00:00+00:00`,
+    });
+  });
+
+  afterAll(() => cleanup());
+
+  it("sorts the live buy before the same-day backdated sell (no oversell, correct realized P&L)", async () => {
+    const rows = await getAssetTransactions(client, userId, {
+      class: "crypto",
+      assetId: cryptoAssetId,
+    });
+    expect(rows).toHaveLength(2);
+
+    // The BUY (created 09:00) must precede the SELL (created 11:00) despite the
+    // sell carrying a same-day date-only effective_date.
+    expect(rows[0].cashflow_amount_usd).toBe(30000); // buy first
+    expect(rows[1].cashflow_amount_usd).toBe(30200); // sell second
+
+    // Feed the cost engine with an anomaly spy. With the correct order the sell
+    // disposes exactly the 1 held unit → NO oversell. Position is fully sold, so
+    // currentMarketValue = 0.
+    //
+    // Arithmetic (EUR, authoritative):
+    //   buy:  units 0→1, cost 0→27180  (cashflow_amount_eur = 27180)
+    //   sell: avg = 27180/1 = 27180; out = 1; proceeds = 27180 (cashflow_amount_eur)
+    //         realized += 27180 − 27180×1 = 0  ← but proceeds is 27180 here…
+    // Wait — the EUR proceeds (27180) equals the EUR cost (27180), so EUR realized
+    // is 0. Use USD where the numbers differ to assert a non-trivial realized:
+    //   buy:  cost 0→30000; sell: avg 30000, proceeds 30200 → realized = +200.
+    const anomaly = vi.fn();
+    const resultUsd = computeCostBasis(rows, 0, { currency: "usd", onAnomaly: anomaly });
+
+    // No oversell fired — proves the buy folded before the sell.
+    expect(anomaly).not.toHaveBeenCalled();
+    // realized = proceeds (30200) − avgAtSale (30000) × out (1) = +200.
+    expect(resultUsd.realized).toBeCloseTo(200, 6);
+    // Fully sold → no held units, no remaining cost.
+    expect(resultUsd.costBasis).toBeCloseTo(0, 6);
+    expect(resultUsd.unrealized).toBeCloseTo(0, 6);
+    expect(resultUsd.totalPnL).toBeCloseTo(200, 6);
   });
 });

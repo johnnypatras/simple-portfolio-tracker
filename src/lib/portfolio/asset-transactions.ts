@@ -317,11 +317,18 @@ export async function fetchTransferCounterparts(
  * suppress a same-id parent in another — ids are UUIDs, so this is academic, but
  * the per-group scope keeps the invariant local and obvious.)
  *
- * Sort: stable by COALESCE(effective_date, created_at) asc, tie-broken by
- * created_at then id (deterministic). Within a single calendar day a date-only
- * `effective_date` sorts before a same-day full-timestamp `created_at` row
- * (lexical prefix); intentional — the cost engine relies only on day-granular
- * ordering. Returns a NEW array (does not mutate the input).
+ * Sort: stable by the row's day-granular ECONOMIC date asc, tie-broken by the
+ * full `created_at` recording instant, then `id` (deterministic). The economic
+ * date is `effective_date` (already date-only) for a backdated row, else
+ * `created_at` NORMALIZED TO ITS DAY (`.slice(0, 10)`). Day-normalizing the
+ * fallback is load-bearing: comparing a date-only `effective_date`
+ * ("2026-01-01") against a same-day full timestamptz `created_at`
+ * ("2026-01-01T09:00:00+00:00") lexically would sort the backdated row FIRST on
+ * every same-day tie (the date is a string prefix of the timestamp) — booking a
+ * same-day backdated SELL before the live BUY and mis-folding realized P&L. With
+ * both sides at day granularity, same-day rows fall through to the `created_at`
+ * tiebreak (the real recording order). Mirrors `latestChangeDate` in
+ * split-helpers.ts. Returns a NEW array (does not mutate the input).
  */
 function dedupeAndSortAssetRows(rows: AssetTransactionRow[]): AssetTransactionRow[] {
   const childParentIds = new Set(
@@ -330,8 +337,8 @@ function dedupeAndSortAssetRows(rows: AssetTransactionRow[]): AssetTransactionRo
   const deduped = rows.filter((r) => !childParentIds.has(r.id));
 
   deduped.sort((a, b) => {
-    const da = a.effective_date ?? a.created_at;
-    const db = b.effective_date ?? b.created_at;
+    const da = a.effective_date ?? a.created_at.slice(0, 10);
+    const db = b.effective_date ?? b.created_at.slice(0, 10);
     if (da !== db) return da < db ? -1 : 1;
     if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
