@@ -2,13 +2,17 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AssetRef, TransferInput, TransferSide } from "@/lib/types";
+import type {
+  AssetRef,
+  TransferInput,
+  TransferSide,
+  AssetTransactionDisplayRow,
+} from "@/lib/types";
 import {
   loadAssetTransactions,
   addTransaction,
   editTransaction,
   markAsYield,
-  type AssetTransactionDisplayRow,
 } from "@/lib/actions/transactions";
 import { executeTransfer } from "@/lib/actions/transfers";
 import { getCashAccounts } from "@/lib/actions/cash-accounts";

@@ -286,12 +286,12 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     </span>
                   )}
                 </span>
-                <span className="text-zinc-500" aria-hidden="true"> · </span>
+                <span className="text-zinc-600" aria-hidden="true"> · </span>
                 <span className="text-zinc-400">Unrealized </span>
                 <span className={changeColorClass(unrealized)}>
                   {unrealized >= 0 ? "+" : ""}{fmtCurrency(unrealized, "EUR")}
                 </span>
-                <span className="text-zinc-500" aria-hidden="true"> · </span>
+                <span className="text-zinc-600" aria-hidden="true"> · </span>
                 <span className="text-zinc-400">Realized </span>
                 <span className={changeColorClass(realized)}>
                   {realized >= 0 ? "+" : ""}{fmtCurrency(realized, "EUR")}

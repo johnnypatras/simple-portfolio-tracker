@@ -17,6 +17,10 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Bound the only previously-unbounded job (preview=15, deploy=20 already set).
+    # Full pipeline (lint→build→unit→component→supabase→integration) runs in a few
+    # minutes; 30 is generous headroom that still kills a hung Supabase/Docker step.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
 

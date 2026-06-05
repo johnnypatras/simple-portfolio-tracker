@@ -29,7 +29,9 @@ export type TransactionType =
  *   - `tracked`  → `executeTransfer` against `accountId` (S&P-neutral)
  * Absent → today's behavior (always external for buy, proceeds-exit for sell).
  */
-export type MoneyFlow =
+// Module-local — only referenced by TransactionSubmit.moneyFlow below; no
+// external consumer.
+type MoneyFlow =
   | { route: "external" }
   | { route: "tracked"; accountId: string };
 
@@ -40,9 +42,11 @@ export interface TransactionSubmit {
   quantity: number;
   date: string; // "" means "today" — the caller (Task 2.5) defaults it
   /** Present ONLY when the user actually typed/edited the amount →
-   *  provenance gate for cashflow_user_set. */
+   *  provenance gate for cashflow_user_set. Its PRESENCE is the provenance
+   *  signal: a previously-redundant `amountUserSet` boolean (always
+   *  `=== (cashflowOverride !== undefined)`) was removed — consumers test
+   *  `cashflowOverride` presence directly. */
   cashflowOverride?: { amount: number; currency: "EUR" | "USD" };
-  amountUserSet: boolean; // === (cashflowOverride !== undefined)
   /** Chosen destination wallet (crypto add-mode only — `addTransaction` needs it). */
   walletId?: string;
   /** Chosen destination broker (stock add-mode only — `addTransaction` needs it). */
@@ -380,7 +384,6 @@ export function TransactionModal({
       type,
       quantity,
       date: dateStr,
-      amountUserSet: false,
     };
 
     // Destination choice (add-mode only). When the selector is shown, a value is
@@ -416,7 +419,6 @@ export function TransactionModal({
           // EUR/USD narrowing of the account currency) never reaches the ledger.
           currency: (effectiveCurrency === "USD" ? "USD" : "EUR") as "EUR" | "USD",
         };
-        payload.amountUserSet = true;
       }
     } else if (amountDirty && !amountIsBlank) {
       // External route: provenance gate unchanged — only emit cashflowOverride
@@ -424,7 +426,6 @@ export function TransactionModal({
       const amt = parseFloat(amountStr);
       if (Number.isFinite(amt)) {
         payload.cashflowOverride = { amount: amt, currency: amountCurrency };
-        payload.amountUserSet = true;
       }
     }
 

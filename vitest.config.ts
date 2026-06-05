@@ -96,6 +96,20 @@ export default defineConfig({
           include: ["__tests__/integration/**/*.test.ts"],
           testTimeout: 30_000,
           hookTimeout: 30_000,
+          // Run all integration files SERIALLY in one worker (no cross-file
+          // parallelism). In Vitest 4 the old `poolOptions.forks.singleFork` was
+          // removed; `fileParallelism: false` is the supported equivalent (one
+          // forked worker, files run one after another). This eliminates two
+          // residual flake classes that only appear under concurrent execution
+          // against the single shared local Supabase:
+          //   1. contention on shared fixture rows (e.g. the `fx:EUR`
+          //      historical_prices row several suites read/write); and
+          //   2. a supabase-CLI telemetry config rename race triggered by
+          //      multiple workers each running `supabase status` at module load.
+          // The trade-off is a slower (serial) integration run — still minutes,
+          // and the determinism is worth it.
+          pool: "forks",
+          fileParallelism: false,
         },
         resolve: {
           alias: { "@": path.resolve(__dirname, "src") },

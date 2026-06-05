@@ -25,6 +25,7 @@ import {
   classifyTransaction,
   classifyTransferRole,
   quantityDelta,
+  asSnapshot,
   type TransactionRow,
 } from "@/lib/transaction-kind";
 // Type-only import — safe from a lib module (no client-component runtime pulled in).
@@ -202,8 +203,9 @@ export async function getAssetTransactions(
 // ─── Transfer counterpart lookup (C2b display enrichment) ────────────────────
 
 /** The counterpart leg of a transfer group, keyed by `transfer_group_id`. Only
- *  the two fields the role helper + annotation need. */
-export interface TransferCounterpart {
+ *  the two fields the role helper + annotation need. Module-local — only the
+ *  exported `TransferCounterpartMap` alias is consumed externally. */
+interface TransferCounterpart {
   entityType: string;
   entityName: string;
 }
@@ -543,19 +545,6 @@ export async function getAllAssetTransactions(
     out.set(key, dedupeAndSortAssetRows(rows));
   }
   return out;
-}
-
-/**
- * Narrow a raw `unknown` Json snapshot to the shape `quantityDelta` /
- * `classifyTransaction` expect (`Record<string, unknown> | null`). Object values
- * pass through; anything else (string, number, array, null) becomes null — the
- * helpers treat a null snapshot as 0 for that field. This is the boundary
- * normalization the project convention requires at Json column read sites.
- */
-function asSnapshot(v: unknown): Record<string, unknown> | null {
-  return v !== null && typeof v === "object" && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : null;
 }
 
 /**

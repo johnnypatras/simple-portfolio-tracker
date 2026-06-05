@@ -90,8 +90,10 @@ export interface PortfolioSummary {
   };
 }
 
-/** Additive subset of {@link CostBasisResult} that sums meaningfully across assets. */
-export interface CostBasisTotals {
+/** Additive subset of {@link CostBasisResult} that sums meaningfully across
+ *  assets. Module-local — only referenced by `PortfolioSummary.costBasisTotals`
+ *  (structurally typed; no external consumer imports the name). */
+interface CostBasisTotals {
   costBasis: number;
   realized: number;
   unrealized: number;

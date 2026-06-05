@@ -19,6 +19,20 @@ export interface TransactionRow {
   details?: Record<string, unknown> | null;
 }
 
+/**
+ * Narrow a raw Json-typed `unknown` snapshot (DB Json column) to the
+ * `Record<string, unknown> | null` shape the helpers above consume. Plain
+ * objects pass through; anything else (string, number, array, null) becomes null
+ * — the helpers treat a null snapshot as 0 for every field. The single shared
+ * home for this boundary-normalization guard (callers at Json column read sites
+ * use it instead of an inline `as Record<string, unknown>` cast). PURE.
+ */
+export function asSnapshot(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : null;
+}
+
 export type TransactionKind =
   | "buy"
   | "sell"

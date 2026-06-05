@@ -343,7 +343,7 @@ describe("TransactionModal — no-op-save provenance guard", () => {
     vi.useRealTimers();
   });
 
-  it("add mode: submitting without touching amount → cashflowOverride absent, amountUserSet=false", () => {
+  it("add mode: submitting without touching amount → cashflowOverride absent (provenance gate)", () => {
     const { onSubmit, container } = renderOpen({ assetClass: "crypto" });
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
     // Amount untouched (blank) — provenance gate: no cashflowOverride
@@ -351,11 +351,12 @@ describe("TransactionModal — no-op-save provenance guard", () => {
     fireEvent.submit(form);
     expect(onSubmit).toHaveBeenCalledOnce();
     const payload = onSubmit.mock.calls[0][0];
-    expect(payload.amountUserSet).toBe(false);
+    // cashflowOverride PRESENCE is the provenance signal (the redundant
+    // amountUserSet boolean was removed).
     expect(payload.cashflowOverride).toBeUndefined();
   });
 
-  it("add mode: typing an amount → cashflowOverride present, amountUserSet=true", () => {
+  it("add mode: typing an amount → cashflowOverride present (provenance gate)", () => {
     const { onSubmit, container } = renderOpen({ assetClass: "crypto" });
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
     // Use exact label to avoid "Amount currency" select
@@ -364,11 +365,10 @@ describe("TransactionModal — no-op-save provenance guard", () => {
     fireEvent.submit(form);
     expect(onSubmit).toHaveBeenCalledOnce();
     const payload = onSubmit.mock.calls[0][0];
-    expect(payload.amountUserSet).toBe(true);
     expect(payload.cashflowOverride).toMatchObject({ amount: 500 });
   });
 
-  it("edit mode: prefilled amount untouched → cashflowOverride absent, amountUserSet=false", () => {
+  it("edit mode: prefilled amount untouched → cashflowOverride absent (provenance gate)", () => {
     const edit: TransactionEditState = {
       type: "buy",
       quantity: 1,
@@ -381,11 +381,10 @@ describe("TransactionModal — no-op-save provenance guard", () => {
     fireEvent.submit(form);
     expect(onSubmit).toHaveBeenCalledOnce();
     const payload = onSubmit.mock.calls[0][0];
-    expect(payload.amountUserSet).toBe(false);
     expect(payload.cashflowOverride).toBeUndefined();
   });
 
-  it("edit mode: user edits the prefilled amount → cashflowOverride present, amountUserSet=true", () => {
+  it("edit mode: user edits the prefilled amount → cashflowOverride present (provenance gate)", () => {
     const edit: TransactionEditState = {
       type: "buy",
       quantity: 1,
@@ -400,7 +399,6 @@ describe("TransactionModal — no-op-save provenance guard", () => {
     fireEvent.submit(form);
     expect(onSubmit).toHaveBeenCalledOnce();
     const payload = onSubmit.mock.calls[0][0];
-    expect(payload.amountUserSet).toBe(true);
     expect(payload.cashflowOverride).toMatchObject({ amount: 1100 });
   });
 });
@@ -939,7 +937,6 @@ describe("TransactionModal — money-flow submit payload", () => {
     expect(payload.moneyFlow).toEqual({ route: "external" });
     expect(payload.quantity).toBe(2);
     expect(payload.cashflowOverride).toMatchObject({ amount: 750, currency: "EUR" });
-    expect(payload.amountUserSet).toBe(true);
   });
 
   it("tracked route → moneyFlow {route:'tracked', accountId} + account-currency cost", () => {
@@ -955,7 +952,6 @@ describe("TransactionModal — money-flow submit payload", () => {
     expect(payload.moneyFlow).toEqual({ route: "tracked", accountId: "acc-usd" });
     // Cost is in the account currency (USD), required on this route.
     expect(payload.cashflowOverride).toEqual({ amount: 900, currency: "USD" });
-    expect(payload.amountUserSet).toBe(true);
   });
 
   it("tracked EUR account → cost currency is EUR", () => {

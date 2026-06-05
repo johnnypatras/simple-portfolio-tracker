@@ -632,7 +632,9 @@ describe("getHistoricalBenchmarkExtension — cost-basis series (Task 3.4b)", ()
     // The adjustment lot is MARKET-valued in the COST column (not its delta/0):
     // on 2023-06-01 the crypto cost ≈ qty(1) × 27000 = 27000 USD.
     const firstDay = result.costBasisSeries[0];
-    expect(firstDay.date <= "2023-06-01" || firstDay.date === "2023-06-01").toBe(true);
+    // The series' first day is on-or-before the seed date (the `=== ` disjunct was
+    // redundant — `<=` already covers equality).
+    expect(firstDay.date <= "2023-06-01").toBe(true);
     const onSeedDate = result.costBasisSeries.find((p) => p.date === "2023-06-01");
     expect(onSeedDate).toBeDefined();
     expect(onSeedDate!.cryptoCostUsd).toBeCloseTo(27000, 0);

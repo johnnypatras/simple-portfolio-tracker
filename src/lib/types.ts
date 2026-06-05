@@ -752,6 +752,102 @@ export interface SplitLeg {
   cost?: { amount: number; currency: "EUR" | "USD" };
 }
 
+// ── Transaction action shapes ──
+// Moved here from the "use server" transactions.ts module: Turbopack strips type
+// re-exports from "use server" modules, so these interfaces must live in this
+// pure module. transactions.ts imports them back; client consumers
+// (transactions-manager) import AssetTransactionDisplayRow from here too.
+
+/** The kind of transaction `addTransaction` handles (modal's TransactionType
+ *  MINUS transfer — a transfer routes out at the UI as a two-legged operation). */
+export type AddTransactionType = "buy" | "sell" | "yield" | "deposit" | "withdrawal";
+
+export interface AddTransactionParams {
+  /** The kind of transaction. Determines direction + yield/cost semantics. */
+  type: AddTransactionType;
+  /** Units TRANSACTED (a positive delta). For cash this IS the cash amount. */
+  quantity: number;
+  /**
+   * Single-currency cost the user typed (incl. fees) — a MAGNITUDE. When
+   * present, the other currency is derived via FX-at-date (`toUsdAndEur`, which
+   * THROWS on FX failure so a bad rate never silently writes a wrong cost) and
+   * the pair is stored (`cashflow_user_set=true`), bypassing qty × price. The
+   * stored SIGN comes from the transaction TYPE (buy/deposit/yield → +,
+   * sell/withdrawal → −), applied at the signing locus in @/lib/activity-fx —
+   * never from the amount itself. Absent → market-value fallback
+   * (`cashflow_user_set=false`).
+   */
+  cost?: { amount: number; currency: "EUR" | "USD" } | null;
+  /** Effective date (YYYY-MM-DD). Absent → today. */
+  effectiveDate?: string;
+  isAdjustment?: boolean;
+  /** The wallet that owns this crypto position (required for crypto writes). */
+  walletId?: string;
+  /** The broker that owns this stock position (required for stock writes). */
+  brokerId?: string;
+  /** Market price in USD — used for the no-cost fallback (qty × price). */
+  currentPriceUsd?: number;
+  /** Market price in EUR — used for the no-cost fallback (qty × price). */
+  currentPriceEur?: number;
+}
+
+export interface EditTransactionPatch {
+  /**
+   * Override the effective date (YYYY-MM-DD). Pass null to clear (→ the entry
+   * falls back to `created_at` everywhere a date is read).
+   */
+  effectiveDate?: string | null;
+  /**
+   * New single-currency cost the user typed (incl. fees). When present, the
+   * other currency is derived via FX-at-the-entry's-date (`toUsdAndEur`, which
+   * THROWS on FX failure so a bad rate never silently writes a wrong cost) and
+   * the row's amount columns are rewritten. Pass null (or omit) to leave the
+   * amount untouched. `is_yield` is NOT toggled here — that goes through the
+   * separate guarded `markAsYield` action.
+   */
+  cost?: { amount: number; currency: "EUR" | "USD" } | null;
+}
+
+export interface EditTransactionResult {
+  success: boolean;
+  /**
+   * Set to true when the entry was not found OR does not belong to the
+   * authenticated user — indistinguishable on purpose (no leaking of other
+   * users' IDs).
+   */
+  notFound?: boolean;
+  message?: string;
+}
+
+export interface MarkAsYieldResult {
+  /** Rows that qualified at fetch time and were targeted for is_yield=true. */
+  updated: number;
+  /** How many ids were rejected: not found, wrong owner, or ineligible by guard. */
+  skipped: number;
+}
+
+/**
+ * A display row enriched with the two structural-lock flags the transaction
+ * modal needs when an entry is opened for edit. Both are read straight off the
+ * raw activity_log row (the display mapper drops them, so we zip them back in):
+ *   - `isTransferLeg` — `transfer_group_id` is set → the modal's transfer-leg
+ *     lock (edit routes to the Transfer screen instead).
+ *   - `isSplitChild`  — `split_from_id` is set → the modal's split-child lock
+ *     (unsplit first).
+ *
+ * Intersects the drawer's `TransactionDisplayRow` via an inline type-only
+ * `import(...)` (same convention as the `ShareScope`/`PortfolioSummary`
+ * references above) — the drawer is a client component, so a top-level runtime
+ * import is avoided; the type-only reference is erased at compile time and
+ * introduces no module cycle. A `type` alias (not `interface extends`) is
+ * required because `interface … extends import("…").X` is not valid TS.
+ */
+export type AssetTransactionDisplayRow =
+  import("@/components/transactions/transactions-drawer").TransactionDisplayRow & {
+    isTransferLeg: boolean;
+    isSplitChild: boolean;
+  };
+
 /** Persistent share link record. Consumed by sharing-settings UI. */
 export interface ShareLink {
   id: string;

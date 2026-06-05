@@ -52,7 +52,7 @@
  * cleanly from 0/0. */
 const EPS = 1e-9;
 
-import { quantityDelta, type TransactionRow } from "@/lib/transaction-kind";
+import { quantityDelta, asSnapshot, type TransactionRow } from "@/lib/transaction-kind";
 
 /**
  * Structural subset of `AssetTransactionRow` (asset-transactions.ts) the engine
@@ -137,12 +137,6 @@ function resolveValue(txn: CostBasisTxn, currency: "usd" | "eur"): number {
   return Math.abs(
     num(currency === "usd" ? txn.cashflow_amount_usd : txn.cashflow_amount_eur),
   );
-}
-
-/** Narrow a Json-typed `unknown` snapshot to the shape `quantityDelta` requires. */
-function asSnapshot(v: unknown): Record<string, unknown> | null {
-  if (v != null && typeof v === "object") return v as Record<string, unknown>;
-  return null;
 }
 
 /** Adapt a `CostBasisTxn` to the `quantityDelta` input shape. */

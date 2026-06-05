@@ -59,8 +59,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { TransactionsManager } from "@/components/transactions/transactions-manager";
 import type { OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
-import type { AssetTransactionDisplayRow } from "@/lib/actions/transactions";
-import type { CashAccount } from "@/lib/types";
+import type { AssetTransactionDisplayRow, CashAccount } from "@/lib/types";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

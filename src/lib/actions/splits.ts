@@ -11,8 +11,6 @@ import { CASHFLOW_PRODUCING_ENTITY_TYPES } from "@/lib/cashflow";
 import { computeDeltaFromSnapshots, toUsdAndEur } from "@/lib/actions/activity-log";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 
-// ── Helpers ──────────────────────────────────────────────
-
 // ── Operation 1: Simple Backdate ─────────────────────────
 
 export async function backdateActivityEntry(

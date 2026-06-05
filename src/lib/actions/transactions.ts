@@ -15,7 +15,7 @@ import {
 import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { COST_COPY } from "@/lib/cost-basis-copy";
-import { quantityDelta } from "@/lib/transaction-kind";
+import { quantityDelta, asSnapshot } from "@/lib/transaction-kind";
 import { latestChangeDate } from "@/lib/split-helpers";
 import {
   getAssetTransactions,
@@ -23,51 +23,20 @@ import {
   toTransactionDisplayRows,
 } from "@/lib/portfolio/asset-transactions";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AssetRef, EntityType, FlowStatus, UsdEurAmount } from "@/lib/types";
-import type { TransactionDisplayRow } from "@/components/transactions/transactions-drawer";
+import type {
+  AssetRef,
+  EntityType,
+  FlowStatus,
+  UsdEurAmount,
+  AddTransactionType,
+  AddTransactionParams,
+  EditTransactionPatch,
+  EditTransactionResult,
+  MarkAsYieldResult,
+  AssetTransactionDisplayRow,
+} from "@/lib/types";
 
 // ─── addTransaction ──────────────────────────────────────────────────────────
-
-/**
- * The transaction kinds `addTransaction` handles. This is intentionally the
- * modal's `TransactionType` MINUS `transfer` — a transfer routes out at the UI
- * layer as a two-legged sell/buy/move and never reaches this action. Kept
- * module-private (not exported) so it can't be mistaken for the modal's
- * 6-member `TransactionType`.
- *
- * Direction is derived from the type, never from the sign of `quantity`
- * (which is always > 0): buy / deposit / yield ADD; sell / withdrawal SUBTRACT.
- */
-type AddTransactionType = "buy" | "sell" | "yield" | "deposit" | "withdrawal";
-
-export interface AddTransactionParams {
-  /** The kind of transaction. Determines direction + yield/cost semantics. */
-  type: AddTransactionType;
-  /** Units TRANSACTED (a positive delta). For cash this IS the cash amount. */
-  quantity: number;
-  /**
-   * Single-currency cost the user typed (incl. fees) — a MAGNITUDE. When
-   * present, the other currency is derived via FX-at-date (`toUsdAndEur`, which
-   * THROWS on FX failure so a bad rate never silently writes a wrong cost) and
-   * the pair is stored (`cashflow_user_set=true`), bypassing qty × price. The
-   * stored SIGN comes from the transaction TYPE (buy/deposit/yield → +,
-   * sell/withdrawal → −), applied at the signing locus in @/lib/activity-fx —
-   * never from the amount itself. Absent → market-value fallback
-   * (`cashflow_user_set=false`).
-   */
-  cost?: { amount: number; currency: "EUR" | "USD" } | null;
-  /** Effective date (YYYY-MM-DD). Absent → today. */
-  effectiveDate?: string;
-  isAdjustment?: boolean;
-  /** The wallet that owns this crypto position (required for crypto writes). */
-  walletId?: string;
-  /** The broker that owns this stock position (required for stock writes). */
-  brokerId?: string;
-  /** Market price in USD — used for the no-cost fallback (qty × price). */
-  currentPriceUsd?: number;
-  /** Market price in EUR — used for the no-cost fallback (qty × price). */
-  currentPriceEur?: number;
-}
 
 /**
  * Signed direction for a transaction type. Buy / deposit / yield are
@@ -141,6 +110,11 @@ export async function addTransaction(
       if (!params.walletId) {
         throw new Error("walletId is required for a crypto transaction");
       }
+      // Validate the ids before any DB contact (matches the cash branch's
+      // readCashBalance guard) — reject a malformed asset/wallet id at the
+      // boundary rather than letting it reach the query.
+      validateUUID(assetRef.assetId, "Asset ID");
+      validateUUID(params.walletId, "Wallet ID");
       const supabase = await createServerSupabaseClient();
       const currentQty = await readCryptoQty(
         supabase,
@@ -173,6 +147,9 @@ export async function addTransaction(
       if (!params.brokerId) {
         throw new Error("brokerId is required for a stock transaction");
       }
+      // Validate the ids before any DB contact (matches the cash branch).
+      validateUUID(assetRef.assetId, "Asset ID");
+      validateUUID(params.brokerId, "Broker ID");
       const supabase = await createServerSupabaseClient();
       const currentQty = await readStockQty(
         supabase,
@@ -323,34 +300,6 @@ async function readCashBalance(
 }
 
 // ─── editTransaction ─────────────────────────────────────────────────────────
-
-export interface EditTransactionPatch {
-  /**
-   * Override the effective date (YYYY-MM-DD). Pass null to clear (→ the entry
-   * falls back to `created_at` everywhere a date is read).
-   */
-  effectiveDate?: string | null;
-  /**
-   * New single-currency cost the user typed (incl. fees). When present, the
-   * other currency is derived via FX-at-the-entry's-date (`toUsdAndEur`, which
-   * THROWS on FX failure so a bad rate never silently writes a wrong cost) and
-   * the row's amount columns are rewritten. Pass null (or omit) to leave the
-   * amount untouched. `is_yield` is NOT toggled here — that goes through the
-   * separate guarded `markAsYield` action.
-   */
-  cost?: { amount: number; currency: "EUR" | "USD" } | null;
-}
-
-export interface EditTransactionResult {
-  success: boolean;
-  /**
-   * Set to true when the entry was not found OR does not belong to the
-   * authenticated user — indistinguishable on purpose (no leaking of other
-   * users' IDs).
-   */
-  notFound?: boolean;
-  message?: string;
-}
 
 /**
  * Direct UPDATE on an activity_log entry owned by the authenticated user. Edits
@@ -509,9 +458,9 @@ export async function editTransaction(
         is_adjustment: row.is_adjustment,
         transfer_group_id: row.transfer_group_id,
         split_from_id: row.split_from_id,
-        before_snapshot: row.before_snapshot as Record<string, unknown> | null,
-        after_snapshot: row.after_snapshot as Record<string, unknown> | null,
-        details: row.details as Record<string, unknown> | null,
+        before_snapshot: asSnapshot(row.before_snapshot),
+        after_snapshot: asSnapshot(row.after_snapshot),
+        details: asSnapshot(row.details),
       });
       const existingSigned = row.is_adjustment
         ? (row.delta_usd as number | null) ?? (row.delta_eur as number | null)
@@ -541,11 +490,9 @@ export async function editTransaction(
         const { classifyAssetClass, isStablecoin } = await import("@/lib/cashflow");
         let isStable = false;
         if (row.entity_type === "crypto_position") {
-          const snap = (row.after_snapshot ?? row.before_snapshot) as
-            | Record<string, unknown>
-            | null;
-          const assetId = snap?.crypto_asset_id as string | undefined;
-          if (assetId) {
+          const snap = asSnapshot(row.after_snapshot) ?? asSnapshot(row.before_snapshot);
+          const assetId = snap?.crypto_asset_id;
+          if (typeof assetId === "string") {
             const { data: asset } = await supabase
               .from("crypto_assets")
               .select("subcategory")
@@ -588,13 +535,6 @@ export async function editTransaction(
 }
 
 // ─── markAsYield ───────────────────────────────────────────────────────────────
-
-export interface MarkAsYieldResult {
-  /** Rows that qualified at fetch time and were targeted for is_yield=true. */
-  updated: number;
-  /** How many ids were rejected: not found, wrong owner, or ineligible by guard. */
-  skipped: number;
-}
 
 /**
  * BULK reclassify legacy interest / staking / airdrop entries as earned income
@@ -681,9 +621,9 @@ export async function markAsYield(ids: string[]): Promise<MarkAsYieldResult> {
           is_adjustment: row.is_adjustment,
           transfer_group_id: row.transfer_group_id,
           split_from_id: row.split_from_id,
-          before_snapshot: row.before_snapshot as Record<string, unknown> | null,
-          after_snapshot: row.after_snapshot as Record<string, unknown> | null,
-          details: row.details as Record<string, unknown> | null,
+          before_snapshot: asSnapshot(row.before_snapshot),
+          after_snapshot: asSnapshot(row.after_snapshot),
+          details: asSnapshot(row.details),
         });
         return qd > 0;
       })
@@ -716,20 +656,6 @@ export async function markAsYield(ids: string[]): Promise<MarkAsYieldResult> {
 }
 
 // ─── loadAssetTransactions ───────────────────────────────────────────────────
-
-/**
- * A display row enriched with the two structural-lock flags the transaction
- * modal needs when an entry is opened for edit. Both are read straight off the
- * raw activity_log row (the display mapper drops them, so we zip them back in):
- *   - `isTransferLeg` — `transfer_group_id` is set → the modal's transfer-leg
- *     lock (edit routes to the Transfer screen instead).
- *   - `isSplitChild`  — `split_from_id` is set → the modal's split-child lock
- *     (unsplit first).
- */
-export interface AssetTransactionDisplayRow extends TransactionDisplayRow {
-  isTransferLeg: boolean;
-  isSplitChild: boolean;
-}
 
 /**
  * Owner-path read of a single asset's full transaction history, shaped for the

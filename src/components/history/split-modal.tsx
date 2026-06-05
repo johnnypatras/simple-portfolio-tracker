@@ -4,6 +4,7 @@ import { useState, useEffect, useId, useCallback } from "react";
 import { X, Plus } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { extractQuantity } from "@/lib/split-helpers";
+import { fmtCurrency } from "@/lib/format";
 import type { ActivityLog } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────────
@@ -357,8 +358,7 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
           <p className="text-xs text-zinc-400">
             Costs entered:{" "}
             <span className="text-zinc-200 font-medium">
-              {costCurrency === "EUR" ? "€" : "$"}
-              {costSum.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {fmtCurrency(costSum, costCurrency)}
             </span>
             {" "}— costs should sum to what you actually paid
           </p>

@@ -482,11 +482,13 @@ export function PositionEditor({
                 disabled={metaSaving}
                 className="p-2 rounded-lg text-blue-400 hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0 mb-px"
                 title="Save changes"
+                aria-label="Save changes"
+                aria-busy={metaSaving}
               >
                 {metaSaving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Save className="w-4 h-4" />
+                  <Save className="w-4 h-4" aria-hidden="true" />
                 )}
               </button>
             )}

@@ -1062,15 +1062,17 @@ export function ActivityTimeline({
                                 onClick={() => handleBackdate(log.id, backdateValue)}
                                 className="p-1 rounded text-emerald-400 hover:bg-emerald-500/15 transition-colors"
                                 title="Set effective date"
+                                aria-label="Set effective date"
                               >
-                                <Check className="w-3.5 h-3.5" />
+                                <Check className="w-3.5 h-3.5" aria-hidden="true" />
                               </button>
                               <button
                                 onClick={() => setBackdatingId(null)}
                                 className="p-1 rounded text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                                 title="Cancel"
+                                aria-label="Cancel"
                               >
-                                <X className="w-3.5 h-3.5" />
+                                <X className="w-3.5 h-3.5" aria-hidden="true" />
                               </button>
                             </div>
                           )}

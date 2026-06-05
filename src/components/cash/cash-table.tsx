@@ -480,7 +480,7 @@ export function CashTable({
                                     <span className="text-zinc-300 tabular-nums">{formatCurrency(acctValueBase, primaryCurrency)}</span>
                                     {!isReadOnly && (
                                       <>
-                                        <button type="button" aria-label={`Transactions for ${acct.name ?? acct.currency}`} onClick={() => openHistory(acct)} className="p-1 text-zinc-400 hover:text-blue-400"><History className="w-3 h-3" /></button>
+                                        <button type="button" aria-label={`Transactions for ${acct.name ?? acct.currency}`} title="Transactions" onClick={() => openHistory(acct)} className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 transition-colors"><History className="w-3.5 h-3.5" /></button>
                                         <button type="button" aria-label={`Edit ${acct.name ?? acct.currency}`} onClick={() => openEditCash(acct)} className="p-1 text-zinc-400 hover:text-zinc-300"><Pencil className="w-3 h-3" /></button>
                                         <ConfirmButton showAdjustmentCheckbox onConfirm={(opts) => handleDeleteCash(acct.id, opts)} className="p-1 text-zinc-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></ConfirmButton>
                                       </>

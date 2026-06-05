@@ -127,18 +127,20 @@ export const deriveCashFlows = cache(async function deriveCashFlows(
   // Post-sort by effective_date (falls back to created_at date portion)
   // so cashflow events appear in correct chronological order
   const sorted = [...(data ?? [])].sort((a, b) => {
-    const dateA = (a.effective_date as string) ?? (a.created_at as string).split("T")[0];
-    const dateB = (b.effective_date as string) ?? (b.created_at as string).split("T")[0];
+    const dateA = a.effective_date ?? a.created_at.split("T")[0];
+    const dateB = b.effective_date ?? b.created_at.split("T")[0];
     return dateA.localeCompare(dateB);
   });
 
   return {
     events: sorted.map((row) => ({
-      date: (row.effective_date as string) ?? (row.created_at as string).split("T")[0],
-      amount_usd: (row.cashflow_amount_usd as number) ?? 0,
-      amount_eur: (row.cashflow_amount_eur as number) ?? undefined,
+      date: row.effective_date ?? row.created_at.split("T")[0],
+      amount_usd: row.cashflow_amount_usd ?? 0,
+      amount_eur: row.cashflow_amount_eur ?? undefined,
+      // cashflow_asset_class is TEXT (string | null) in the row → narrow to the
+      // AssetClass union here (a real cast, not redundant).
       asset_class: (row.cashflow_asset_class as AssetClass) ?? undefined,
-      entity_name: (row.entity_name as string) ?? undefined,
+      entity_name: row.entity_name ?? undefined,
       // Model B: flag earned income so consumers can label it (deposits tooltip).
       // Optional field — synthetic flows + non-yield rows never set it.
       is_yield: row.is_yield === true ? true : undefined,

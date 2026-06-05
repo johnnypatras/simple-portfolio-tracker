@@ -283,6 +283,10 @@ describe("fetchHistoricalPriceInputsFor — user-costed price coverage (Task 3.4
 
     const widened = await fetchHistoricalPriceInputsFor(admin, userId);
 
+    // Vacuous-truth guard: the byte-identity assertion below is meaningless if the
+    // control has no lots — prove the backdated lot is actually present first.
+    expect(control.lots.length).toBeGreaterThan(0);
+
     // BYTE-IDENTITY: the value-line lots are exactly the control's lots — the
     // user-costed row added ZERO lots (only the backdated lot, exactly as before).
     expect(widened.lots).toEqual(control.lots);

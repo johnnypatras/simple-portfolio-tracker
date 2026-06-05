@@ -48,7 +48,10 @@ export function computeCashflowFromPrices(params: {
   const currency = params.entityCurrency ?? "USD";
 
   if (currency === "EUR") {
-    return { usd: delta * fxRate, eur: delta };
+    // Symmetric `fxRate > 0` guard (mirrors the USD branch): a non-positive rate
+    // would otherwise produce a silently-wrong 0 USD leg — fall back to the delta
+    // (1:1) instead of fabricating a zero.
+    return { usd: fxRate > 0 ? delta * fxRate : delta, eur: delta };
   }
   if (currency === "USD") {
     return { usd: delta, eur: fxRate > 0 ? delta / fxRate : delta };
