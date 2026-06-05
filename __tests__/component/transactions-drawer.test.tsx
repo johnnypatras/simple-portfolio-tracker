@@ -147,6 +147,63 @@ describe("TransactionsDrawer — row rendering", () => {
     expect(xferBadge).toHaveClass("text-teal-400");
     expect(adjBadge).toHaveClass("text-amber-400");
   });
+
+  // ── C2b: sell/buy-type transfer legs render as the action pressed ──────────
+  it("a sell-role transfer leg renders a red 'Sell' badge + '(to Alpha Bank)'", () => {
+    renderDrawer({ rows: [
+      makeRow({
+        id: "sell-leg",
+        kind: "transfer", // mechanically still a transfer
+        transferRole: "sell",
+        counterpartName: "Alpha Bank",
+        quantity: -0.5,
+        amount: 1400,
+        currency: "EUR",
+        date: "2026-05-15",
+      }),
+    ]});
+    const sellBadge = screen.getByText("Sell");
+    expect(sellBadge).toHaveClass("text-red-400");
+    expect(screen.getByText(/\(to Alpha Bank\)/)).toBeInTheDocument();
+    // No bare teal "Transfer" badge for this row.
+    expect(screen.queryByText("Transfer")).not.toBeInTheDocument();
+  });
+
+  it("a buy-role transfer leg renders a blue 'Buy' badge + '(from Revolut)'", () => {
+    renderDrawer({ rows: [
+      makeRow({
+        id: "buy-leg",
+        kind: "transfer",
+        transferRole: "buy",
+        counterpartName: "Revolut",
+        quantity: 3,
+        amount: 900,
+        currency: "EUR",
+        date: "2026-05-15",
+      }),
+    ]});
+    const buyBadge = screen.getByText("Buy");
+    expect(buyBadge).toHaveClass("text-blue-400");
+    expect(screen.getByText(/\(from Revolut\)/)).toBeInTheDocument();
+  });
+
+  it("a move-type transfer leg (no role) renders the plain teal 'Transfer' badge", () => {
+    renderDrawer({ rows: [
+      makeRow({
+        id: "move-leg",
+        kind: "transfer",
+        // no transferRole / counterpartName → plain Transfer
+        quantity: 1,
+        amount: null,
+        currency: "EUR",
+        date: "2026-05-15",
+      }),
+    ]});
+    const xferBadge = screen.getByText("Transfer");
+    expect(xferBadge).toHaveClass("text-teal-400");
+    expect(screen.queryByText("Sell")).not.toBeInTheDocument();
+    expect(screen.queryByText("Buy")).not.toBeInTheDocument();
+  });
 });
 
 // ── Test Group 2: Consecutive-yield grouping ───────────────────────────────────

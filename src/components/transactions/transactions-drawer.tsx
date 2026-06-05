@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { X, Pencil } from "lucide-react";
 import FocusTrap from "focus-trap-react";
-import type { TransactionKind } from "@/lib/transaction-kind";
+import type { TransactionKind, TransferRole } from "@/lib/transaction-kind";
 import { fmtCurrency, formatQuantity } from "@/lib/format";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 
@@ -19,6 +19,17 @@ export interface TransactionDisplayRow {
   currency: "EUR" | "USD";
   /** ISO date string, e.g. "2026-03-14" or full ISO. */
   date: string;
+  /**
+   * Display persona for a transfer leg (C2b). Set ONLY to "sell"/"buy" — a
+   * money-flow position leg whose counterpart is a tracked cash account — so the
+   * row reads "Sell (to Alpha Bank)" / "Buy (from Alpha Bank)" instead of a bare
+   * teal Transfer. `kind` STAYS "transfer" (engine/undo/eligibility depend on
+   * it); this is pure presentation. Absent on every other row (incl. "move" legs).
+   */
+  transferRole?: TransferRole;
+  /** The counterpart account's name (the tracked cash account) — present iff
+   *  `transferRole` is sell/buy. Annotated as "(to {name})" / "(from {name})". */
+  counterpartName?: string;
 }
 
 /** Extended row shape passed by the manager — optional flags default to false. */
@@ -106,6 +117,38 @@ function KindBadge({ kind }: { kind: TransactionKind }) {
   );
 }
 
+/**
+ * Badge for a sell/buy-type transfer leg (C2b): a position leg whose proceeds
+ * went to / payment came from a tracked cash account. Reuses the SELL/BUY
+ * styling tokens (red "Sell" / blue "Buy") so the user sees the action they
+ * pressed — never a bare teal Transfer — while the underlying `kind` stays
+ * "transfer". The counterpart name is shown as a faint inline annotation:
+ * "(to Alpha Bank)" for a sell, "(from Alpha Bank)" for a buy. Long names
+ * truncate (the badge stays fixed; the name flexes).
+ */
+function TransferRoleBadge({
+  role,
+  counterpartName,
+}: {
+  role: "sell" | "buy";
+  counterpartName: string;
+}) {
+  const kind: TransactionKind = role === "sell" ? "sell" : "buy";
+  const preposition = role === "sell" ? "to" : "from";
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      <span
+        className={`shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${KIND_BADGE_CLASSES[kind]}`}
+      >
+        {KIND_LABEL[kind]}
+      </span>
+      <span className="text-[10px] text-zinc-400 truncate">
+        ({preposition} {counterpartName})
+      </span>
+    </div>
+  );
+}
+
 // ── Date formatting ───────────────────────────────────────────────────────────
 
 /** Format locale-stably — always YYYY-MM-DD. */
@@ -173,10 +216,21 @@ function TransactionRow({
         </div>
       )}
 
-      {/* Kind badge */}
-      <div className="shrink-0">
-        <KindBadge kind={row.kind} />
-      </div>
+      {/* Kind badge — a sell/buy-type transfer leg (C2b) renders the Sell/Buy
+          badge + "(to/from {account})" annotation; everything else is the plain
+          kind badge. The role variant gets min-w-0; the max-w-[12rem] cap below
+          lets a long account name truncate inside the badge slot instead of
+          stretching the row. */}
+      {(row.transferRole === "sell" || row.transferRole === "buy") &&
+      row.counterpartName ? (
+        <div className="min-w-0 max-w-[12rem]">
+          <TransferRoleBadge role={row.transferRole} counterpartName={row.counterpartName} />
+        </div>
+      ) : (
+        <div className="shrink-0">
+          <KindBadge kind={row.kind} />
+        </div>
+      )}
 
       {/* Quantity */}
       <div className="w-24 shrink-0 text-right font-mono text-sm text-zinc-100">

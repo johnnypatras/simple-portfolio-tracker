@@ -43,6 +43,7 @@ const {
   describeChanges,
   identifyTransferLegs,
   buildTransferSummary,
+  deriveTransferHeader,
 } = await import("@/components/history/activity-timeline");
 
 // ── Helpers ──────────────────────────────────────────────
@@ -229,6 +230,91 @@ describe("buildTransferSummary", () => {
     const result = buildTransferSummary(source, dest);
     expect(result).toContain("BTC");
     expect(result).toContain("ETH");
+  });
+});
+
+// ── deriveTransferHeader (C2b) ───────────────────────────────────────────────
+
+describe("deriveTransferHeader", () => {
+  it("position-source + cash-dest → Sell (to {cash account})", () => {
+    // Crypto position is the source (more-negative delta), cash is the dest.
+    const position = makeActivityLog({
+      id: "pos",
+      entity_type: "crypto_position",
+      entity_name: "BTC",
+      delta_eur: -5000,
+    });
+    const cash = makeActivityLog({
+      id: "cash",
+      entity_type: "cash_account",
+      entity_name: "Alpha Bank",
+      delta_eur: 5000,
+    });
+    const h = deriveTransferHeader([position, cash]);
+    expect(h.role).toBe("sell");
+    expect(h.label).toBe("Sell");
+    expect(h.counterpartName).toBe("Alpha Bank");
+  });
+
+  it("position-dest + cash-source → Buy (from {cash account})", () => {
+    // Cash is the source (more-negative delta), stock position is the dest.
+    const cash = makeActivityLog({
+      id: "cash",
+      entity_type: "bank_account",
+      entity_name: "Revolut",
+      delta_eur: -3000,
+    });
+    const position = makeActivityLog({
+      id: "pos",
+      entity_type: "stock_position",
+      entity_name: "VWCE",
+      delta_eur: 3000,
+    });
+    const h = deriveTransferHeader([cash, position]);
+    expect(h.role).toBe("buy");
+    expect(h.label).toBe("Buy");
+    expect(h.counterpartName).toBe("Revolut");
+  });
+
+  it("role derivation is order-independent (sell leg array reversed)", () => {
+    const position = makeActivityLog({ id: "pos", entity_type: "crypto_position", entity_name: "ETH", delta_eur: -2000 });
+    const cash = makeActivityLog({ id: "cash", entity_type: "cash_account", entity_name: "Snappi", delta_eur: 2000 });
+    // dest-first order
+    const h = deriveTransferHeader([cash, position]);
+    expect(h.role).toBe("sell");
+    expect(h.counterpartName).toBe("Snappi");
+  });
+
+  it("same-asset position move (position↔position) → Transfer (move)", () => {
+    const a = makeActivityLog({ id: "a", entity_type: "crypto_position", entity_name: "BTC", delta_eur: -5000 });
+    const b = makeActivityLog({ id: "b", entity_type: "crypto_position", entity_name: "BTC", delta_eur: 5000 });
+    const h = deriveTransferHeader([a, b]);
+    expect(h.role).toBe("move");
+    expect(h.label).toBe("Transfer");
+    expect(h.counterpartName).toBeNull();
+  });
+
+  it("cash↔cash transfer → Transfer (move)", () => {
+    const a = makeActivityLog({ id: "a", entity_type: "cash_account", entity_name: "Alpha Bank", delta_eur: -1000 });
+    const b = makeActivityLog({ id: "b", entity_type: "bank_account", entity_name: "Revolut", delta_eur: 1000 });
+    const h = deriveTransferHeader([a, b]);
+    expect(h.role).toBe("move");
+    expect(h.label).toBe("Transfer");
+  });
+
+  it("cross-asset position pair (crypto↔stock) → Transfer (move)", () => {
+    const a = makeActivityLog({ id: "a", entity_type: "crypto_position", entity_name: "BTC", delta_eur: -5000 });
+    const b = makeActivityLog({ id: "b", entity_type: "stock_position", entity_name: "VWCE", delta_eur: 5000 });
+    const h = deriveTransferHeader([a, b]);
+    expect(h.role).toBe("move");
+  });
+
+  it("degenerate single-leg group → Transfer (move)", () => {
+    const a = makeActivityLog({ id: "a", entity_type: "crypto_position", entity_name: "BTC", delta_eur: -5000 });
+    const h = deriveTransferHeader([a]);
+    expect(h.role).toBe("move");
+    expect(h.label).toBe("Transfer");
+    expect(h.counterpartName).toBeNull();
   });
 });
 

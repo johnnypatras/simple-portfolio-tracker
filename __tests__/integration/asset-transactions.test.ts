@@ -5,6 +5,8 @@ import { createTestUser, getAdminClient } from "./setup";
 import {
   getAssetTransactions,
   getAllAssetTransactions,
+  fetchTransferCounterparts,
+  toTransactionDisplayRows,
 } from "@/lib/portfolio/asset-transactions";
 
 /**
@@ -977,5 +979,146 @@ describe("getAllAssetTransactions — orphan rows skipped without throwing (inte
     // Orphan position's row dropped (position no longer in the meta map).
     expect(ids.has(orphanPositionId)).toBe(false);
     expect(rows).toHaveLength(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. Transfer counterpart enrichment (C2b — sell/buy display role)
+//
+// A sell-type transfer is two legs sharing a transfer_group_id: the crypto
+// position leg (qty DOWN, delta < 0) and the cash account leg (balance UP,
+// delta > 0), both is_adjustment=true. The drawer pipeline (the exact path
+// loadAssetTransactions runs) must label the POSITION leg "Sell (to {cash
+// name})" via transferRole/counterpartName, while the CASH leg carries NO
+// sell/buy role (the cash side stays a plain transfer by contract).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("fetchTransferCounterparts + toTransactionDisplayRows — sell-type leg (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  let cryptoAssetId: string;
+  let positionId: string;
+  let cashAccountId: string;
+  const transferGroupId = randomUUID();
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+
+    // Crypto asset + one position.
+    const { data: asset } = await client
+      .from("crypto_assets")
+      .insert({
+        user_id: userId,
+        name: "SellCoin",
+        ticker: "SEL",
+        coingecko_id: `sellcoin-${randomUUID()}`,
+      })
+      .select("id")
+      .single();
+    cryptoAssetId = asset!.id;
+
+    const { data: wallet } = await client
+      .from("wallets")
+      .insert({ user_id: userId, name: "Sell Wallet", wallet_type: "custodial" })
+      .select("id")
+      .single();
+    const { data: pos } = await client
+      .from("crypto_positions")
+      .insert({ crypto_asset_id: cryptoAssetId, wallet_id: wallet!.id, quantity: 1 })
+      .select("id")
+      .single();
+    positionId = pos!.id;
+
+    // Cash account (the proceeds destination).
+    const { data: inst } = await client
+      .from("institutions")
+      .insert({ user_id: userId, name: "Sell Bank" })
+      .select("id")
+      .single();
+    const { data: account } = await client
+      .from("cash_accounts")
+      .insert({
+        user_id: userId,
+        institution_id: inst!.id,
+        name: "Alpha Bank",
+        currency: "EUR",
+        balance: 1400,
+      })
+      .select("id")
+      .single();
+    cashAccountId = account!.id;
+
+    // ── The sell-type transfer pair (shared transfer_group_id) ──
+    // Position leg: qty 2 → 1 (DOWN), delta negative.
+    await insertActivity(client, {
+      user_id: userId,
+      action: "updated",
+      entity_type: "crypto_position",
+      entity_name: "SellCoin",
+      description: "Sell leg (to Alpha Bank)",
+      entity_id: positionId,
+      is_adjustment: true,
+      transfer_group_id: transferGroupId,
+      before_snapshot: { quantity: 2 },
+      after_snapshot: { quantity: 1 },
+      delta_usd: -1540,
+      delta_eur: -1400,
+      effective_date: "2026-05-15",
+    });
+    // Cash leg: balance 0 → 1400 (UP), delta positive.
+    await insertActivity(client, {
+      user_id: userId,
+      action: "updated",
+      entity_type: "cash_account",
+      entity_name: "Alpha Bank",
+      description: "Proceeds from SellCoin",
+      entity_id: cashAccountId,
+      is_adjustment: true,
+      transfer_group_id: transferGroupId,
+      before_snapshot: { balance: 0 },
+      after_snapshot: { balance: 1400 },
+      delta_usd: 1540,
+      delta_eur: 1400,
+      effective_date: "2026-05-15",
+    });
+  });
+
+  afterAll(() => cleanup());
+
+  it("the POSITION asset's leg is enriched with transferRole 'sell' + the cash account name", async () => {
+    const raw = await getAssetTransactions(client, userId, {
+      class: "crypto",
+      assetId: cryptoAssetId,
+    });
+    const counterparts = await fetchTransferCounterparts(client, userId, raw);
+    const display = toTransactionDisplayRows(raw, "EUR", counterparts);
+
+    expect(display).toHaveLength(1);
+    const leg = display[0];
+    // kind is unchanged (the engine/eligibility depend on it).
+    expect(leg.kind).toBe("transfer");
+    // …but the DISPLAY role + counterpart name are set.
+    expect(leg.transferRole).toBe("sell");
+    expect(leg.counterpartName).toBe("Alpha Bank");
+  });
+
+  it("the CASH account's leg carries NO sell/buy role (cash side stays a plain transfer)", async () => {
+    const raw = await getAssetTransactions(client, userId, {
+      class: "cash",
+      accountId: cashAccountId,
+    });
+    const counterparts = await fetchTransferCounterparts(client, userId, raw);
+    const display = toTransactionDisplayRows(raw, "EUR", counterparts);
+
+    expect(display).toHaveLength(1);
+    const leg = display[0];
+    expect(leg.kind).toBe("transfer");
+    expect(leg.transferRole).toBeUndefined();
+    expect(leg.counterpartName).toBeUndefined();
   });
 });

@@ -36,6 +36,8 @@ import { exportActivityLogsCsv, toggleActivityAdjustment } from "@/lib/actions/a
 import { backdateActivityEntry, unsplitActivityEntry } from "@/lib/actions/splits";
 import { undoActivity } from "@/lib/actions/undo";
 import { backfillSingleRow } from "@/lib/actions/backfill";
+import { CASH_ENTITY_TYPES } from "@/lib/deltas";
+import { classifyTransferRole, isPositionType, quantityDelta } from "@/lib/transaction-kind";
 import { useSharedView } from "@/components/shared-view-context";
 import { IS_ADJUSTMENT_TOOLTIP_TEXT, IS_ADJUSTMENT_TOGGLE_ON_LABEL, IS_ADJUSTMENT_TOGGLE_OFF_LABEL } from "@/lib/constants";
 
@@ -418,6 +420,56 @@ export function identifyTransferLegs(entries: ActivityLog[]): {
     : { source: entries[1], dest: entries[0] };
 }
 
+/**
+ * The DISPLAY header for a grouped transfer item (C2b). Delegates the
+ * position/cash × source/dest role logic to the shared `classifyTransferRole`
+ * (the same primitive the drawer uses) instead of duplicating it: a position+cash
+ * pair is a money-flow Sell/Buy and the header reads "Sell (to {cash account})" /
+ * "Buy (from {cash account})" so the timeline shows the action the user pressed —
+ * not a bare "Transfer". SELL when the position is the source (units left →
+ * proceeds to the cash account), BUY when it is the destination (units arrived →
+ * paid from the cash account). Everything else (same-asset move, cross-asset
+ * position pair, cash↔cash, degenerate single-leg group) stays `role: "move"`
+ * with `label: "Transfer"`, byte-identical to before.
+ *
+ * Returns the role plus the resolved label + counterpart name so the caller can
+ * style the accent (sell = red, buy = blue) consistently with the kind colors.
+ */
+export function deriveTransferHeader(entries: ActivityLog[]): {
+  role: "sell" | "buy" | "move";
+  label: string;
+  counterpartName: string | null;
+} {
+  if (entries.length < 2) return { role: "move", label: "Transfer", counterpartName: null };
+
+  const { source, dest } = identifyTransferLegs(entries);
+
+  // A money-flow header needs a POSITION leg paired with a CASH counterpart.
+  // Pick which side is the position; the other is the counterpart account.
+  const positionIsSource = isPositionType(source.entity_type);
+  const positionLeg = positionIsSource ? source : dest;
+  const counterpart = positionIsSource ? dest : source;
+  if (
+    !isPositionType(positionLeg.entity_type) ||
+    !(CASH_ENTITY_TYPES as readonly string[]).includes(counterpart.entity_type)
+  ) {
+    return { role: "move", label: "Transfer", counterpartName: null };
+  }
+
+  // Signed qty of the position leg via the canonical extractor. When the rows
+  // carry no quantity snapshots (qty === 0), fall back to the leg's flow side
+  // (source = units leaving = negative) so the role still resolves — the old
+  // logic keyed purely on source/dest, and for real rows the two always agree.
+  const signedQty = quantityDelta(positionLeg) || (positionIsSource ? -1 : 1);
+  const role = classifyTransferRole(
+    { entityType: positionLeg.entity_type, quantityDelta: signedQty },
+    { entityType: counterpart.entity_type },
+  );
+  if (role === "sell") return { role: "sell", label: "Sell", counterpartName: counterpart.entity_name };
+  if (role === "buy") return { role: "buy", label: "Buy", counterpartName: counterpart.entity_name };
+  return { role: "move", label: "Transfer", counterpartName: null };
+}
+
 /** Extract institution/location name from an entity_name. */
 function extractLocation(entityName: string): string | null {
   // "Payroll (Alpha Bank)" → "Alpha Bank"
@@ -712,6 +764,15 @@ export function ActivityTimeline({
                       const isUndone = item.entries.some((e) => e.undone_at);
                       const entityTypes = [...new Set(item.entries.map((e) => e.entity_type))];
                       const summaryText = buildTransferSummary(source, dest);
+                      // C2b: a sell/buy-type pair (position + cash) reads as the
+                      // action the user pressed; a genuine move stays "Transfer".
+                      const header = deriveTransferHeader(item.entries);
+                      const headerLabelClass =
+                        header.role === "sell"
+                          ? "text-red-400"
+                          : header.role === "buy"
+                            ? "text-blue-400"
+                            : "text-zinc-200";
 
                       return (
                         <div
@@ -726,7 +787,16 @@ export function ActivityTimeline({
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-medium text-zinc-200">Transfer</span>
+                                <span className={`text-sm font-medium ${headerLabelClass}`}>
+                                  {header.label}
+                                  {header.counterpartName && (
+                                    <span className="text-[10px] text-zinc-400 font-normal">
+                                      {" "}
+                                      ({header.role === "sell" ? "to" : "from"}{" "}
+                                      {header.counterpartName})
+                                    </span>
+                                  )}
+                                </span>
                                 {entityTypes.map((type) => {
                                   const Icon = getEntityIcon(type);
                                   return (

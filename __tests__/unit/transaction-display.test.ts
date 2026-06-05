@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { toTransactionDisplayRows } from "@/lib/portfolio/asset-transactions";
-import type { AssetTransactionRow } from "@/lib/portfolio/asset-transactions";
+import type {
+  AssetTransactionRow,
+  TransferCounterpartMap,
+} from "@/lib/portfolio/asset-transactions";
 
 /**
  * Unit tests for the pure raw→display mapper `toTransactionDisplayRows`.
@@ -242,5 +245,101 @@ describe("toTransactionDisplayRows", () => {
     const b = makeRow({ id: "b", created_at: "2026-02-01T00:00:00Z" });
     const out = toTransactionDisplayRows([a, b], "USD");
     expect(out.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+});
+
+// ── C2b: transferRole / counterpartName threading ─────────────────────────────
+
+describe("toTransactionDisplayRows — transfer role enrichment (C2b)", () => {
+  /** A sell-type position leg: crypto qty DOWN, in a transfer group. */
+  function sellLeg(overrides: Partial<AssetTransactionRow> = {}): AssetTransactionRow {
+    return makeRow({
+      id: "sell-leg",
+      entity_type: "crypto_position",
+      is_adjustment: true,
+      transfer_group_id: "grp-1",
+      before_snapshot: { quantity: 2 },
+      after_snapshot: { quantity: 1 }, // -1
+      delta_usd: -500,
+      delta_eur: -450,
+      ...overrides,
+    });
+  }
+
+  /** A buy-type position leg: stock qty UP, in a transfer group. */
+  function buyLeg(overrides: Partial<AssetTransactionRow> = {}): AssetTransactionRow {
+    return makeRow({
+      id: "buy-leg",
+      entity_type: "stock_position",
+      is_adjustment: true,
+      transfer_group_id: "grp-2",
+      before_snapshot: { quantity: 0 },
+      after_snapshot: { quantity: 3 }, // +3
+      delta_usd: 900,
+      delta_eur: 810,
+      ...overrides,
+    });
+  }
+
+  it("WITHOUT a counterpart map → transferRole + counterpartName absent (kind stays transfer)", () => {
+    const [out] = toTransactionDisplayRows([sellLeg()], "USD");
+    expect(out.kind).toBe("transfer");
+    expect(out.transferRole).toBeUndefined();
+    expect(out.counterpartName).toBeUndefined();
+  });
+
+  it("sell leg WITH a cash counterpart → transferRole 'sell' + counterpart name; kind stays transfer", () => {
+    const map: TransferCounterpartMap = new Map([
+      ["grp-1", { entityType: "cash_account", entityName: "Alpha Bank" }],
+    ]);
+    const [out] = toTransactionDisplayRows([sellLeg()], "USD", map);
+    expect(out.kind).toBe("transfer"); // unchanged
+    expect(out.transferRole).toBe("sell");
+    expect(out.counterpartName).toBe("Alpha Bank");
+  });
+
+  it("buy leg WITH a cash counterpart → transferRole 'buy' + counterpart name", () => {
+    const map: TransferCounterpartMap = new Map([
+      ["grp-2", { entityType: "bank_account", entityName: "Revolut" }],
+    ]);
+    const [out] = toTransactionDisplayRows([buyLeg()], "EUR", map);
+    expect(out.transferRole).toBe("buy");
+    expect(out.counterpartName).toBe("Revolut");
+  });
+
+  it("MOVE leg (position counterpart) → role/name absent even with a map", () => {
+    // Same-asset relocate: counterpart is another crypto_position.
+    const map: TransferCounterpartMap = new Map([
+      ["grp-1", { entityType: "crypto_position", entityName: "BTC (Ledger)" }],
+    ]);
+    const [out] = toTransactionDisplayRows([sellLeg()], "USD", map);
+    expect(out.kind).toBe("transfer");
+    expect(out.transferRole).toBeUndefined();
+    expect(out.counterpartName).toBeUndefined();
+  });
+
+  it("transfer leg with NO matching group in the map → role/name absent", () => {
+    const map: TransferCounterpartMap = new Map([
+      ["some-other-group", { entityType: "cash_account", entityName: "N26" }],
+    ]);
+    const [out] = toTransactionDisplayRows([sellLeg()], "USD", map);
+    expect(out.transferRole).toBeUndefined();
+    expect(out.counterpartName).toBeUndefined();
+  });
+
+  it("a non-transfer row is never enriched even when a map is supplied", () => {
+    const plainBuy = makeRow({
+      id: "plain-buy",
+      before_snapshot: { quantity: 0 },
+      after_snapshot: { quantity: 1 },
+      cashflow_amount_usd: 100,
+      cashflow_amount_eur: 90,
+    });
+    const map: TransferCounterpartMap = new Map([
+      ["grp-1", { entityType: "cash_account", entityName: "Alpha Bank" }],
+    ]);
+    const [out] = toTransactionDisplayRows([plainBuy], "USD", map);
+    expect(out.kind).toBe("buy");
+    expect(out.transferRole).toBeUndefined();
   });
 });

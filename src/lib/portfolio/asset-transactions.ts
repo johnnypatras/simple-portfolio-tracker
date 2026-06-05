@@ -23,6 +23,7 @@ import { fetchAllPaginated } from "@/lib/supabase/pagination";
 import { CASH_ENTITY_TYPES } from "@/lib/deltas";
 import {
   classifyTransaction,
+  classifyTransferRole,
   quantityDelta,
   type TransactionRow,
 } from "@/lib/transaction-kind";
@@ -196,6 +197,111 @@ export async function getAssetTransactions(
 
   // 4. + 5. Split-orphan de-dup then stable ordering (shared with the bulk read).
   return dedupeAndSortAssetRows(rows);
+}
+
+// ─── Transfer counterpart lookup (C2b display enrichment) ────────────────────
+
+/** The counterpart leg of a transfer group, keyed by `transfer_group_id`. Only
+ *  the two fields the role helper + annotation need. */
+export interface TransferCounterpart {
+  entityType: string;
+  entityName: string;
+}
+export type TransferCounterpartMap = Map<string, TransferCounterpart>;
+
+/**
+ * For the asset's transfer legs, look up the OTHER leg in each transfer group so
+ * the drawer can label a sell/buy-type leg "Sell (to {cash account})" /
+ * "Buy (from {cash account})" (C2b). The counterpart is a different entity's
+ * activity_log row sharing the same `transfer_group_id`; the mode was never
+ * stored, so it is inferred at display time from the two legs' entity types.
+ *
+ * ONE extra query for all groups (selecting only `id, transfer_group_id,
+ * entity_type, entity_name`), scoped exactly like the module's other reads:
+ * `.eq("user_id", userId)` (defense-in-depth — the admin client bypasses RLS).
+ * Rows already in hand (`excludeIds`) are filtered out in JS so each group's
+ * "other" leg remains. A group with >2 legs is degenerate (transfers are
+ * two-legged); the first non-excluded leg wins — deterministic via the id order.
+ *
+ * GRACEFUL DEGRADATION: a lookup failure logs (the module's error convention is
+ * a thrown Error wrapped with context; here we instead WARN and return an empty
+ * map) so the caller proceeds WITHOUT enrichment — every leg falls back to the
+ * plain teal Transfer presentation. No throw, no dead end.
+ *
+ * @param rows        the asset's already-fetched rows (their group ids + ids).
+ * @param excludeIds  ids already in `rows` — excluded so the counterpart is the
+ *                    OTHER leg, not the same row.
+ */
+export async function fetchTransferCounterparts(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  rows: Pick<AssetTransactionRow, "id" | "transfer_group_id">[],
+): Promise<TransferCounterpartMap> {
+  const groupIds = [
+    ...new Set(
+      rows
+        .map((r) => r.transfer_group_id)
+        .filter((v): v is string => v != null),
+    ),
+  ];
+  if (groupIds.length === 0) return new Map();
+
+  const excludeIds = new Set(rows.map((r) => r.id));
+
+  try {
+    const legs = await fetchAllPaginated<{
+      id: string;
+      transfer_group_id: string | null;
+      entity_type: string;
+      entity_name: string;
+    }>(
+      (from, to) =>
+        supabase
+          .from("activity_log")
+          .select("id, transfer_group_id, entity_type, entity_name")
+          .eq("user_id", userId) // defense-in-depth — admin bypasses RLS
+          .in("transfer_group_id", groupIds)
+          .is("undone_at", null)
+          .order("id", { ascending: true }) // deterministic counterpart pick
+          .range(from, to),
+      1000,
+      { label: "asset-transactions:transfer-counterparts" },
+    );
+
+    const map: TransferCounterpartMap = new Map();
+    for (const leg of legs) {
+      if (leg.transfer_group_id == null) continue;
+      if (excludeIds.has(leg.id)) continue; // the asset's own leg, not the counterpart
+      if (map.has(leg.transfer_group_id)) continue; // first non-self leg wins
+      map.set(leg.transfer_group_id, {
+        entityType: leg.entity_type,
+        entityName: leg.entity_name,
+      });
+    }
+    return map;
+  } catch (e: unknown) {
+    // Graceful: enrichment is optional. Warn and degrade to plain Transfer.
+    console.warn(
+      `[fetchTransferCounterparts] counterpart lookup failed; rendering plain Transfer: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+    // A silent lookup failure strips the Sell/Buy labels off every transfer leg
+    // (they fall back to plain "Transfer"), so leave a production breadcrumb for
+    // signal without raising alert noise. Fire-and-forget, lazy-imported exactly
+    // like the pagination warn path — Sentry's absence never blocks the read.
+    void import("@sentry/nextjs")
+      .then((Sentry) =>
+        Sentry.addBreadcrumb({
+          category: "asset-transactions",
+          message: "transfer counterpart lookup failed; rendering plain Transfer",
+          level: "warning",
+          data: { groupCount: groupIds.length },
+        }),
+      )
+      .catch(() => {});
+    return new Map();
+  }
 }
 
 /**
@@ -459,10 +565,19 @@ function asSnapshot(v: unknown): Record<string, unknown> | null {
  *
  * Direction is conveyed by the sign of `quantity` and the kind badge, so `amount`
  * is shown as a magnitude.
+ *
+ * `counterparts` (C2b, optional): when supplied — the {@link fetchTransferCounterparts}
+ * map — a transfer leg whose counterpart is a tracked cash account is enriched
+ * with `transferRole` ("sell"/"buy") + `counterpartName` so the drawer renders
+ * "Sell (to Alpha Bank)" / "Buy (from Alpha Bank)". The leg's `kind` STAYS
+ * "transfer" — only the presentation changes. A leg resolving to "move" (or with
+ * no counterpart, or when the map is omitted) leaves both fields absent → plain
+ * Transfer. Stays PURE: the map is precomputed by the caller, not fetched here.
  */
 export function toTransactionDisplayRows(
   rows: AssetTransactionRow[],
   currency: "EUR" | "USD",
+  counterparts?: TransferCounterpartMap,
 ): TransactionDisplayRow[] {
   return rows.map((row) => {
     const classifierRow: TransactionRow = {
@@ -491,7 +606,7 @@ export function toTransactionDisplayRows(
           : row.cashflow_amount_usd;
     const amount = raw == null ? null : Math.abs(raw);
 
-    return {
+    const display: TransactionDisplayRow = {
       id: row.id,
       kind: classifyTransaction(classifierRow),
       quantity: quantityDelta(classifierRow), // signed
@@ -499,5 +614,23 @@ export function toTransactionDisplayRows(
       currency,
       date: row.effective_date ?? row.created_at,
     };
+
+    // C2b: enrich a sell/buy-type transfer leg with its display role + the
+    // counterpart account name. `kind` stays "transfer" — this is presentation
+    // only. Set the two fields ONLY for "sell"/"buy" (a "move" leg keeps the
+    // plain Transfer presentation, so both stay absent).
+    if (counterparts && row.transfer_group_id != null) {
+      const counterpart = counterparts.get(row.transfer_group_id) ?? null;
+      const role = classifyTransferRole(
+        { entityType: row.entity_type, quantityDelta: display.quantity },
+        counterpart,
+      );
+      if ((role === "sell" || role === "buy") && counterpart) {
+        display.transferRole = role;
+        display.counterpartName = counterpart.entityName;
+      }
+    }
+
+    return display;
   });
 }

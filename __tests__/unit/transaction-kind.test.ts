@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { classifyTransaction, quantityDelta } from "@/lib/transaction-kind";
+import {
+  classifyTransaction,
+  classifyTransferRole,
+  quantityDelta,
+} from "@/lib/transaction-kind";
 
 const cryptoBuy = {
   action: "updated",
@@ -83,5 +87,77 @@ describe("classifyTransaction", () => {
       classifyTransaction({ ...cryptoBuy, is_adjustment: true, transfer_group_id: "g1" })
     ).toBe("transfer");
     expect(classifyTransaction({ ...cryptoBuy, is_adjustment: true })).toBe("adjustment");
+  });
+});
+
+describe("classifyTransferRole (C2b)", () => {
+  const cash = { entityType: "cash_account" };
+  const bank = { entityType: "bank_account" };
+
+  it("crypto leg + cash counterpart, qty DOWN → sell", () => {
+    expect(
+      classifyTransferRole({ entityType: "crypto_position", quantityDelta: -0.5 }, cash),
+    ).toBe("sell");
+  });
+  it("crypto leg + cash counterpart, qty UP → buy", () => {
+    expect(
+      classifyTransferRole({ entityType: "crypto_position", quantityDelta: 0.5 }, cash),
+    ).toBe("buy");
+  });
+  it("stock leg + cash counterpart, qty DOWN → sell", () => {
+    expect(
+      classifyTransferRole({ entityType: "stock_position", quantityDelta: -3 }, bank),
+    ).toBe("sell");
+  });
+  it("stock leg + cash counterpart, qty UP → buy", () => {
+    expect(
+      classifyTransferRole({ entityType: "stock_position", quantityDelta: 3 }, bank),
+    ).toBe("buy");
+  });
+  it("qty exactly 0 with cash counterpart → buy (>= 0 is the acquisition side)", () => {
+    expect(
+      classifyTransferRole({ entityType: "crypto_position", quantityDelta: 0 }, cash),
+    ).toBe("buy");
+  });
+  it("position↔position SAME asset (relocate) → move", () => {
+    expect(
+      classifyTransferRole(
+        { entityType: "crypto_position", quantityDelta: -1 },
+        { entityType: "crypto_position" },
+      ),
+    ).toBe("move");
+  });
+  it("cross-asset position pair → move", () => {
+    expect(
+      classifyTransferRole(
+        { entityType: "crypto_position", quantityDelta: -1 },
+        { entityType: "stock_position" },
+      ),
+    ).toBe("move");
+  });
+  it("CASH leg whose counterpart is a position → move (cash side stays move by contract)", () => {
+    expect(
+      classifyTransferRole(
+        { entityType: "cash_account", quantityDelta: 500 },
+        { entityType: "crypto_position" },
+      ),
+    ).toBe("move");
+  });
+  it("cash↔cash → move", () => {
+    expect(
+      classifyTransferRole({ entityType: "cash_account", quantityDelta: -100 }, bank),
+    ).toBe("move");
+  });
+  it("null counterpart → move (no inference possible)", () => {
+    expect(
+      classifyTransferRole({ entityType: "crypto_position", quantityDelta: -1 }, null),
+    ).toBe("move");
+  });
+  it("all four cash counterpart types resolve a position leg to sell/buy", () => {
+    for (const t of ["cash_account", "bank_account", "exchange_deposit", "broker_deposit"]) {
+      expect(
+        classifyTransferRole({ entityType: "stock_position", quantityDelta: -1 }, { entityType: t }),
+      ).toBe("sell");
+    }
   });
 });

@@ -18,6 +18,7 @@ import { COST_COPY } from "@/lib/cost-basis-copy";
 import { quantityDelta } from "@/lib/transaction-kind";
 import {
   getAssetTransactions,
+  fetchTransferCounterparts,
   toTransactionDisplayRows,
 } from "@/lib/portfolio/asset-transactions";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -717,7 +718,11 @@ export async function loadAssetTransactions(
     if (!user) throw new Error("Not authenticated");
 
     const raw = await getAssetTransactions(supabase, user.id, assetRef);
-    const display = toTransactionDisplayRows(raw, currency);
+    // C2b: look up the OTHER leg of each transfer group so a sell/buy-type leg
+    // can read "Sell (to {cash account})" / "Buy (from {cash account})". The
+    // lookup degrades gracefully (failure → empty map → plain Transfer).
+    const counterparts = await fetchTransferCounterparts(supabase, user.id, raw);
+    const display = toTransactionDisplayRows(raw, currency, counterparts);
 
     if (display.length !== raw.length) {
       throw new Error("toTransactionDisplayRows must be 1:1 with its input");

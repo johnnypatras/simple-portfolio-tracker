@@ -101,3 +101,55 @@ export function classifyTransaction(row: TransactionRow): TransactionKind {
   if (isCash) return up ? "deposit" : "withdrawal";
   return up ? "buy" : "sell";
 }
+
+// ─── Transfer role (display layer) ───────────────────────────────────────────
+
+/** The DISPLAY persona of a transfer leg (C2b). Never changes `kind` — purely
+ *  how a `kind === "transfer"` leg is presented to the user. */
+export type TransferRole = "sell" | "buy" | "move";
+
+/** The two position entity types whose money-flow legs read as Sell/Buy. */
+const POSITION_ENTITY_TYPES = ["crypto_position", "stock_position"] as const;
+
+/** True for the position entity types (crypto/stock) — the single source of
+ *  truth shared with the activity-timeline transfer-header derivation. */
+export function isPositionType(entityType: string): boolean {
+  return (POSITION_ENTITY_TYPES as readonly string[]).includes(entityType);
+}
+
+function isCashType(entityType: string): boolean {
+  return (CASH_ENTITY_TYPES as readonly string[]).includes(entityType);
+}
+
+/**
+ * Infer the DISPLAY role of a single transfer leg from its own shape + the
+ * counterpart leg's entity type (C2b). The transfer mode was never stored, so
+ * this is computed at display time and applies retroactively to all legs.
+ *
+ * Rules:
+ *   - A POSITION leg (crypto/stock) paired with a CASH counterpart is a
+ *     money-flow leg: `quantityDelta < 0` → "sell" (units left, proceeds went
+ *     to the tracked account), `>= 0` → "buy" (units arrived, paid from the
+ *     tracked account). This is exactly the C2a sell/buy-type transfer.
+ *   - EVERYTHING else → "move": position↔position (same asset relocate OR a
+ *     cross-asset pair), cash↔cash, a CASH leg whose counterpart is a position,
+ *     and any leg with a missing/unknown counterpart. These keep today's
+ *     Transfer presentation.
+ *
+ * Why the CASH leg of a sell-type pair deliberately stays "move": the contract
+ * specifies the ASSET side only ("you pressed Sell → the position leg reads
+ * 'Sell (to Alpha)'"). Phrasing the cash side (e.g. "Deposit (from BTC sale)")
+ * is a candidate polish but is EXPLICITLY out of scope here — so a cash leg
+ * never resolves to sell/buy, only the position leg does.
+ */
+export function classifyTransferRole(
+  leg: { entityType: string; quantityDelta: number },
+  counterpart: { entityType: string } | null,
+): TransferRole {
+  if (!counterpart) return "move";
+  // Only a position leg with a cash counterpart is a money-flow sell/buy.
+  if (isPositionType(leg.entityType) && isCashType(counterpart.entityType)) {
+    return leg.quantityDelta < 0 ? "sell" : "buy";
+  }
+  return "move";
+}
