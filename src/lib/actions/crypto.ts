@@ -10,10 +10,11 @@ import type {
   UsdEurAmount,
   Wallet,
 } from "@/lib/types";
-import { logActivity } from "@/lib/actions/activity-log";
+import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
 import { partialUpdate } from "@/lib/partial-update";
-import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy, validateAmount } from "@/lib/validation";
+import { round2 } from "@/lib/format";
 import { computeActivityFx, emptyFx } from "@/lib/activity-fx";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { PG_UNIQUE_VIOLATION } from "@/lib/supabase/error-codes";
@@ -292,6 +293,16 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   transferGroupId?: string;
   effectiveDate?: string;
   cashflowOverride?: UsdEurAmount;
+  /**
+   * Single-currency cost the user typed (incl. fees) — the position cost spine.
+   * When present AND no `cashflowOverride` was already given, the other currency
+   * is derived here via FX-at-date (`toUsdAndEur`, which THROWS on FX failure so
+   * a bad rate never silently writes a wrong cost) and the resulting { usd, eur }
+   * pair becomes the `cashflowOverride`. The user's typed currency is stored
+   * EXACTLY; only the derived leg is round2'd. EXACTLY the upsertStockPosition /
+   * addTransaction pattern. Ignored for yield (cost 0).
+   */
+  cost?: { amount: number; currency: "EUR" | "USD" } | null;
   isYield?: boolean;
 }) {
   return captureAction("crypto.upsertPosition", async () => {
@@ -310,6 +321,26 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  // ── Single-currency cost → dual-currency override (mirrors upsertStockPosition) ──
+  // Only when a cost was supplied, no explicit cashflowOverride was already given
+  // (the override wins — it carries both currencies verbatim), and this is not a
+  // yield (yield has no cost). toUsdAndEur calls getFXRates, which THROWS on FX
+  // failure — a bad rate never silently writes a wrong cost. The typed currency is
+  // stored verbatim; only the cross-currency derived leg is round2'd.
+  let cashflowOverride = opts?.cashflowOverride;
+  if (opts?.cost != null && cashflowOverride == null && !opts?.isYield) {
+    validateAmount(opts.cost.amount, "Cost");
+    const derived = await toUsdAndEur(
+      opts.cost.amount,
+      opts.cost.currency,
+      opts.effectiveDate,
+    );
+    cashflowOverride =
+      opts.cost.currency === "EUR"
+        ? { eur: opts.cost.amount, usd: round2(derived.usd) }
+        : { usd: opts.cost.amount, eur: round2(derived.eur) };
+  }
 
   // Fetch asset ticker and subcategory for logging and cashflow classification
   const { data: asset } = await supabase
@@ -346,8 +377,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       const qty = (existing.quantity as number) ?? 0;
       const valUsd = -(qty * (opts?.currentPriceUsd ?? 0));
       const valEur = -(qty * (opts?.currentPriceEur ?? 0));
-      const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || opts?.cashflowOverride != null)
-        ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: opts?.cashflowOverride })
+      const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || cashflowOverride != null)
+        ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: cashflowOverride })
         : emptyFx();
 
       await logActivity({
@@ -442,8 +473,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
     const qtyDelta = afterQty - beforeQty;
     const valUsd = qtyDelta * (opts?.currentPriceUsd ?? 0);
     const valEur = qtyDelta * (opts?.currentPriceEur ?? 0);
-    const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || opts?.cashflowOverride != null)
-      ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: opts?.cashflowOverride })
+    const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || cashflowOverride != null)
+      ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: cashflowOverride })
       : emptyFx();
 
     await logActivity({

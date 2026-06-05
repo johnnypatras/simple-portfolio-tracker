@@ -16,6 +16,7 @@ import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { quantityDelta } from "@/lib/transaction-kind";
+import { latestChangeDate } from "@/lib/split-helpers";
 import {
   getAssetTransactions,
   fetchTransferCounterparts,
@@ -736,5 +737,58 @@ export async function loadAssetTransactions(
       isTransferLeg: raw[i].transfer_group_id != null,
       isSplitChild: raw[i].split_from_id != null,
     }));
+  });
+}
+
+// ─── loadLastChangeDate ──────────────────────────────────────────────────────
+
+/** How many newest-by-`created_at` rows the last-change scan considers. */
+const LAST_CHANGE_SCAN_LIMIT = 20;
+
+/**
+ * Most-recent change date (as `YYYY-MM-DD`) for a single entity's live history,
+ * or null when the entity has no history. Powers the position editors'
+ * "Backdate to last change" suggest-chip: when a correction checkbox is ON the
+ * date field defaults to today, and this gives the one-click alternative of the
+ * position's actual last-change date.
+ *
+ * The date is the MAX of `COALESCE(effective_date, created_at-day)` across the
+ * entity's NON-UNDONE rows (computed in JS via `latestChangeDate`) — a backdated
+ * entry recorded later still wins by the date it claims. The fetch is capped at
+ * the `LAST_CHANGE_SCAN_LIMIT` newest-by-`created_at` rows and asks only for the
+ * two date columns. Known trade-off: a backdated entry whose `created_at` falls
+ * OUTSIDE that window is not considered, so on a heavy-history position the chip
+ * can suggest a smaller date than the true max — acceptable because the chip is
+ * an overridable suggestion on a plain date input, never an applied value.
+ *
+ * Auth: RLS server client + `getUser()` + explicit `.eq("user_id", user.id)`
+ * (defense-in-depth over RLS). A malformed id is rejected before any DB contact.
+ * A fetch error or no rows returns null — the chip simply doesn't show; the
+ * date field still works (no dead end).
+ *
+ * No revalidation — pure read.
+ */
+export async function loadLastChangeDate(entityId: string): Promise<string | null> {
+  return captureAction("transactions.loadLastChangeDate", async () => {
+    validateUUID(entityId, "Entity ID");
+
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
+    const { data, error } = await supabase
+      .from("activity_log")
+      .select("effective_date, created_at")
+      .eq("entity_id", entityId)
+      .eq("user_id", user.id)
+      .is("undone_at", null)
+      .order("created_at", { ascending: false })
+      .limit(LAST_CHANGE_SCAN_LIMIT);
+
+    if (error || !data || data.length === 0) return null;
+
+    return latestChangeDate(data);
   });
 }

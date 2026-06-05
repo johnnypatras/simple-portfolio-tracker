@@ -96,6 +96,30 @@ export function formatQuantity(n: number, maxDecimals: number): string {
   return _getNumberFormatter(maxDecimals, 2).format(n);
 }
 
+/**
+ * Format a `YYYY-MM-DD` date for the correction-date suggest chip
+ * ("Backdate to last change (Mar 2)?"). Month-short + day, with the year added
+ * only when it differs from the current year (so a same-year backdate stays
+ * terse and an older one is unambiguous).
+ *
+ * The string is parsed by splitting its components into a LOCAL date — not
+ * `new Date("YYYY-MM-DD")`, which parses as UTC midnight and would render the
+ * previous day in negative-offset timezones. `now` is injectable for
+ * deterministic tests; returns the raw input unchanged if it isn't `YYYY-MM-DD`.
+ */
+export function formatBackdateChipDate(isoDate: string, now: Date = new Date()): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!m) return isoDate;
+  const [, yStr, moStr, dStr] = m;
+  const year = Number(yStr);
+  const d = new Date(year, Number(moStr) - 1, Number(dStr));
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(year !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
+
 /** Color palette for group-by-source rows */
 export const GROUP_PALETTE = [
   "text-blue-400",

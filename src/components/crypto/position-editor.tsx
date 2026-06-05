@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useId } from "react";
+import { useState, useMemo, useCallback, useEffect, useId, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Save, Trash2, Loader2, Check, ArrowRightLeft, TrendingDown, TrendingUp } from "lucide-react";
+import { Plus, Save, Trash2, Loader2, Check, ArrowRightLeft, TrendingDown, TrendingUp, History } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { toast } from "sonner";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
+import { loadLastChangeDate } from "@/lib/actions/transactions";
 import type { CryptoAssetWithPositions, Wallet, TransferMode, AcquisitionType } from "@/lib/types";
 import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { COST_COPY } from "@/lib/cost-basis-copy";
+import { formatBackdateChipDate } from "@/lib/format";
 
 interface PositionEditorProps {
   open: boolean;
@@ -56,6 +59,23 @@ export function PositionEditor({
   // ─── Effective date (optional backdating) ──────────────
   const [effectiveDate, setEffectiveDate] = useState("");
 
+  // Per-row "Amount paid (incl. fees)" — the cost spine. Transient + dirty-tracked:
+  // an untouched field emits NO cost (position falls back to market value).
+  // Mirrors the stock editor + transaction-modal's provenance gate.
+  const [costEdits, setCostEdits] = useState<Record<string, string>>({});
+  const [costDirty, setCostDirty] = useState<Record<string, boolean>>({});
+  const [costCurrency, setCostCurrency] = useState<Record<string, "EUR" | "USD">>({});
+
+  // ─── Correction-date suggest chip ──────────────────────
+  // Last-change date per position id — cached after the first resolution for the
+  // editor's open lifetime. A toggle during the in-flight fetch may issue one
+  // redundant read; the stale result is discarded by the gen-ref below.
+  // `undefined` = not fetched yet; `null` = fetched, no history (no chip).
+  const [lastChangeDates, setLastChangeDates] = useState<Record<string, string | null>>({});
+  // Generation ref guards the async fetch (cancel-safe, ref-write only — no lint
+  // violation), mirroring transactions-manager's gen-ref idiom.
+  const lastChangeGenRef = useRef(0);
+
   // Clear the "just saved" checkmark after 1.5s
   useEffect(() => {
     if (!justSavedId) return;
@@ -97,6 +117,10 @@ export function PositionEditor({
     setEdits(map);
     setAdjOverrides({});
     setEffectiveDate("");
+    setCostEdits({});
+    setCostDirty({});
+    setCostCurrency({});
+    setLastChangeDates({});
   }, [asset.id, asset.chain, asset.subcategory, asset.positions]);
 
   async function handleMetaSave() {
@@ -229,6 +253,15 @@ export function PositionEditor({
     const method = (edit?.acquisition ?? "bought") as AcquisitionType;
     const apy = parseFloat(edit?.apy ?? "0");
     const priceData = prices?.[asset.coingecko_id];
+    // Provenance gate (mirrors the stock editor): emit a cost ONLY when the user
+    // actually typed a finite, non-blank amount for this row. Untouched → no
+    // cost (the position falls back to market value).
+    const costStr = costEdits[walletId] ?? "";
+    const costNum = parseFloat(costStr);
+    const cost =
+      (costDirty[walletId] ?? false) && costStr.trim() !== "" && Number.isFinite(costNum)
+        ? { amount: costNum, currency: costCurrency[walletId] ?? "EUR" }
+        : undefined;
     try {
       await upsertPosition({
         crypto_asset_id: asset.id,
@@ -242,6 +275,7 @@ export function PositionEditor({
         currentPriceUsd: priceData?.usd,
         currentPriceEur: priceData?.eur,
         ...(effectiveDate ? { effectiveDate } : {}),
+        ...(cost ? { cost } : {}),
       });
       // If zero, remove from local state
       if (qty <= 0) {
@@ -257,6 +291,10 @@ export function PositionEditor({
         ...prev,
         ...(prev[walletId] ? { [walletId]: { ...prev[walletId], isAdjustment: false } } : {}),
       }));
+      // Clear the cost field after a successful save so it doesn't re-apply on
+      // the next save of an unrelated edit (the value is now persisted).
+      setCostEdits((prev) => ({ ...prev, [walletId]: "" }));
+      setCostDirty((prev) => ({ ...prev, [walletId]: false }));
       setJustSavedId(walletId);
       toast.success(edit.isAdjustment ? "Saved as adjustment" : "Position saved");
     } catch (err) {
@@ -300,6 +338,42 @@ export function PositionEditor({
 
   // All positions: existing + newly added
   const allWalletIds = Object.keys(edits);
+
+  // ─── Correction-date chip: derived state ───────────────
+  // The wallet rows whose adjustment checkbox is currently ON.
+  const checkedWalletIds = allWalletIds.filter((w) => edits[w]?.isAdjustment);
+  const anyAdjustment = checkedWalletIds.length > 0;
+  // The chip shows only when EXACTLY ONE row is checked (multiple → ambiguous,
+  // zero → nothing) and that row maps to an existing position with history.
+  const soleCheckedWalletId = checkedWalletIds.length === 1 ? checkedWalletIds[0] : null;
+  const soleCheckedPositionId = soleCheckedWalletId
+    ? asset.positions.find((p) => p.wallet_id === soleCheckedWalletId)?.id ?? null
+    : null;
+  // The fetched last-change date for the sole-checked position (undefined = not
+  // yet fetched, null = fetched-but-no-history). The chip needs a real date.
+  const chipDate = soleCheckedPositionId ? lastChangeDates[soleCheckedPositionId] : undefined;
+
+  // Lazy fetch: the first time a sole-checked position has no cached entry, load
+  // its last-change date. Effect writes only a ref synchronously; setState is
+  // async + generation-guarded (cancel-safe). Failure caches null (no chip, but
+  // the date field still works — no dead end).
+  useEffect(() => {
+    if (!soleCheckedPositionId) return;
+    if (soleCheckedPositionId in lastChangeDates) return; // cached (date or null)
+    const positionId = soleCheckedPositionId;
+    const gen = ++lastChangeGenRef.current;
+    loadLastChangeDate(positionId)
+      .then((date) => {
+        if (lastChangeGenRef.current === gen) {
+          setLastChangeDates((prev) => ({ ...prev, [positionId]: date }));
+        }
+      })
+      .catch(() => {
+        if (lastChangeGenRef.current === gen) {
+          setLastChangeDates((prev) => ({ ...prev, [positionId]: null }));
+        }
+      });
+  }, [soleCheckedPositionId, lastChangeDates]);
 
   return (
     <Modal
@@ -609,6 +683,42 @@ export function PositionEditor({
                   title="L2/Network for this position"
                 />
               </div>
+              {/* Amount paid (incl. fees) — optional cost spine. Blank → market fallback. */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor={`${id}-cost-${walletId}`} className="block text-xs text-zinc-400">
+                    Amount paid (incl. fees)
+                  </label>
+                  <select
+                    id={`${id}-cost-currency-${walletId}`}
+                    value={costCurrency[walletId] ?? "EUR"}
+                    onChange={(e) =>
+                      setCostCurrency((prev) => ({ ...prev, [walletId]: e.target.value as "EUR" | "USD" }))
+                    }
+                    disabled={isSaving}
+                    className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50"
+                    aria-label="Amount paid currency"
+                  >
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+                <input
+                  id={`${id}-cost-${walletId}`}
+                  type="text"
+                  inputMode="decimal"
+                  value={costEdits[walletId] ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCostEdits((prev) => ({ ...prev, [walletId]: v }));
+                    setCostDirty((prev) => ({ ...prev, [walletId]: true }));
+                  }}
+                  placeholder="Leave blank to use market value"
+                  disabled={isSaving}
+                  className="w-full px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums disabled:opacity-50"
+                />
+                <p className="text-[10px] text-zinc-400 mt-1">{COST_COPY.amountOptionalHint}</p>
+              </div>
             </div>
           );
         })}
@@ -647,9 +757,13 @@ export function PositionEditor({
           </p>
         )}
 
-        {/* Effective date (optional) */}
+        {/* Effective date (optional) — emphasized while a correction is checked,
+            since a correction silently defaults to today unless backdated. */}
         <div>
-          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
+          <label
+            htmlFor={`${id}-effective-date`}
+            className={`block text-xs mb-1 ${anyAdjustment ? "text-amber-400" : "text-zinc-400"}`}
+          >
             Effective date (optional)
           </label>
           <input
@@ -658,8 +772,21 @@ export function PositionEditor({
             max={new Date().toISOString().split("T")[0]}
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+            className={`w-full bg-zinc-950 border rounded px-3 py-2 text-zinc-100 text-sm ${anyAdjustment ? "border-amber-500/40" : "border-zinc-700"}`}
           />
+          {/* Suggest chip — only with EXACTLY one correction checked and a fetched
+              last-change date for that position. One click backdates; still editable. */}
+          {chipDate && (
+            <button
+              type="button"
+              onClick={() => setEffectiveDate(chipDate)}
+              className="mt-2 inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-400 hover:bg-amber-500/20 transition-colors"
+              aria-label={`Backdate the effective date to this position's last change on ${formatBackdateChipDate(chipDate)}`}
+            >
+              <History className="w-3 h-3" />
+              Backdate to last change ({formatBackdateChipDate(chipDate)})?
+            </button>
+          )}
           <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 

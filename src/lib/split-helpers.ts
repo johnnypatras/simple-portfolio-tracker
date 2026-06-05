@@ -63,6 +63,40 @@ export function splitDirectionForParent(log: ActivityLog): 1 | -1 {
 }
 
 /**
+ * The shape `latestChangeDate` reads off each activity_log row: the optional
+ * backdate (`effective_date`, a `YYYY-MM-DD` DATE column) and the always-present
+ * `created_at` timestamp. Anything wider is irrelevant to the max computation.
+ */
+export interface ChangeDateRow {
+  effective_date: string | null;
+  created_at: string;
+}
+
+/**
+ * Most-recent change date across a set of activity_log rows, as a `YYYY-MM-DD`
+ * string — the date the correction-suggest chip backdates to. Returns null for
+ * an empty set (no history → no chip).
+ *
+ * Each row's effective date is `COALESCE(effective_date, date-part of created_at)`:
+ * a backdated entry recorded later must still WIN by the date it claims, not by
+ * the wall-clock instant it was written — so an entry effective Mar 2 but typed
+ * in June beats an entry created (and effective) in April. We compare the
+ * `YYYY-MM-DD` day strings lexicographically, which is a correct chronological
+ * order for zero-padded ISO dates and sidesteps timezone drift from `new Date()`
+ * (the `created_at` timestamp is sliced to its UTC day, matching how the DATE
+ * column stores `effective_date`). `undone_at` exclusion is the caller's
+ * responsibility (a server-side `.is("undone_at", null)` filter).
+ */
+export function latestChangeDate(rows: ReadonlyArray<ChangeDateRow>): string | null {
+  let max: string | null = null;
+  for (const row of rows) {
+    const day = row.effective_date ?? row.created_at.slice(0, 10);
+    if (max === null || day > max) max = day;
+  }
+  return max;
+}
+
+/**
  * Resolve the literal split sign for an activity-log row at augmentation read
  * time. New children carry an explicit `details.split_direction` (1 or -1);
  * legacy #94 children carry NONE. For those legacy rows the fallback

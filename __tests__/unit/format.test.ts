@@ -8,6 +8,7 @@ import {
   changeColorClass,
   formatNumber,
   formatQuantity,
+  formatBackdateChipDate,
 } from "@/lib/format";
 
 // ── fmtCurrency ────────────────────────────────────────────
@@ -187,5 +188,53 @@ describe("formatQuantity", () => {
   it("adds thousands separators", () => {
     // maximumFractionDigits=4 doesn't pad beyond actual precision
     expect(formatQuantity(12345.678, 4)).toBe("12,345.678");
+  });
+});
+
+// ── formatBackdateChipDate ─────────────────────────────────
+// Locale output varies by runtime, so we assert against the same
+// `toLocaleDateString` contract (deriving the expected string from the LOCAL
+// formatter) plus the year-omission/inclusion logic and the LOCAL-date parse.
+describe("formatBackdateChipDate", () => {
+  const NOW = new Date(2026, 5, 15); // 2026-06-15, local
+
+  it("omits the year when the date is in the current year", () => {
+    const expected = new Date(2026, 2, 2).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+    expect(formatBackdateChipDate("2026-03-02", NOW)).toBe(expected);
+    // Year string should NOT appear for a same-year date.
+    expect(formatBackdateChipDate("2026-03-02", NOW)).not.toMatch(/2026/);
+  });
+
+  it("includes the year when the date is in a different year", () => {
+    const expected = new Date(2024, 10, 9).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    expect(formatBackdateChipDate("2024-11-09", NOW)).toBe(expected);
+    expect(formatBackdateChipDate("2024-11-09", NOW)).toMatch(/2024/);
+  });
+
+  it("parses as a LOCAL date (no UTC-midnight off-by-one)", () => {
+    // new Date('2026-03-02') would be UTC midnight → the prior day in negative
+    // offsets. The component-split parse renders the 2nd regardless of zone.
+    expect(formatBackdateChipDate("2026-03-02", NOW)).toContain("2");
+    const day1 = new Date(2026, 2, 1).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    expect(formatBackdateChipDate("2026-03-02", NOW)).not.toBe(day1);
+  });
+
+  it("includes the year across the Dec-31 → Jan-1 boundary", () => {
+    // One day apart, different calendar years: yesterday's date must carry its
+    // year when "now" has just rolled over.
+    const jan1 = new Date(2026, 0, 1);
+    expect(formatBackdateChipDate("2025-12-31", jan1)).toMatch(/2025/);
+    expect(formatBackdateChipDate("2026-01-01", jan1)).not.toMatch(/2026/);
+  });
+
+  it("returns the raw input unchanged when it isn't YYYY-MM-DD", () => {
+    expect(formatBackdateChipDate("not-a-date", NOW)).toBe("not-a-date");
   });
 });

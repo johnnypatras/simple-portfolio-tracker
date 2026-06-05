@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useId } from "react";
+import { useState, useMemo, useCallback, useEffect, useId, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Save, Trash2, Loader2, X, Check, ArrowRightLeft, TrendingDown, TrendingUp } from "lucide-react";
+import { Plus, Save, Trash2, Loader2, X, Check, ArrowRightLeft, TrendingDown, TrendingUp, History } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { toast } from "sonner";
 import { upsertStockPosition, deleteStockPosition, updateStockAsset } from "@/lib/actions/stocks";
+import { loadLastChangeDate } from "@/lib/actions/transactions";
 import type { StockAssetWithPositions, Broker, AssetCategory, TransferMode } from "@/lib/types";
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 import { COST_COPY } from "@/lib/cost-basis-copy";
+import { formatBackdateChipDate } from "@/lib/format";
 
 const TYPES: { value: AssetCategory; label: string }[] = [
   { value: "individual_stock", label: "Individual Stock" },
@@ -65,6 +67,16 @@ export function StockPositionEditor({
   // ─── Effective date (optional backdating) ──────────────
   const [effectiveDate, setEffectiveDate] = useState("");
 
+  // ─── Correction-date suggest chip ──────────────────────
+  // Last-change date per position id — cached after the first resolution for the
+  // editor's open lifetime. A toggle during the in-flight fetch may issue one
+  // redundant read; the stale result is discarded by the gen-ref below.
+  // `undefined` = not fetched yet; `null` = fetched, no history (no chip).
+  const [lastChangeDates, setLastChangeDates] = useState<Record<string, string | null>>({});
+  // Generation ref guards the async fetch (cancel-safe, ref-write only — no lint
+  // violation), mirroring transactions-manager's gen-ref idiom.
+  const lastChangeGenRef = useRef(0);
+
   // Clear the "just saved" checkmark after 1.5s
   useEffect(() => {
     if (!justSavedId) return;
@@ -105,6 +117,7 @@ export function StockPositionEditor({
     setCostDirty({});
     setCostCurrency({});
     setEffectiveDate("");
+    setLastChangeDates({});
   }, [asset.id, asset.name, asset.yahoo_ticker, asset.isin, asset.category, asset.subcategory, asset.tags, asset.positions]);
 
   const nameChanged = localName.trim() !== asset.name;
@@ -270,6 +283,42 @@ export function StockPositionEditor({
 
   // All positions: existing + newly added
   const allBrokerIds = Object.keys(edits);
+
+  // ─── Correction-date chip: derived state ───────────────
+  // The broker rows whose adjustment checkbox is currently ON.
+  const checkedBrokerIds = allBrokerIds.filter((b) => adjustmentFlags[b]);
+  const anyAdjustment = checkedBrokerIds.length > 0;
+  // The chip shows only when EXACTLY ONE row is checked (multiple → ambiguous,
+  // zero → nothing) and that row maps to an existing position with history.
+  const soleCheckedBrokerId = checkedBrokerIds.length === 1 ? checkedBrokerIds[0] : null;
+  const soleCheckedPositionId = soleCheckedBrokerId
+    ? asset.positions.find((p) => p.broker_id === soleCheckedBrokerId)?.id ?? null
+    : null;
+  // The fetched last-change date for the sole-checked position (undefined = not
+  // yet fetched, null = fetched-but-no-history). The chip needs a real date.
+  const chipDate = soleCheckedPositionId ? lastChangeDates[soleCheckedPositionId] : undefined;
+
+  // Lazy fetch: the first time a sole-checked position has no cached entry, load
+  // its last-change date. Effect writes only a ref synchronously; setState is
+  // async + generation-guarded (cancel-safe). Failure caches null (no chip, but
+  // the date field still works — no dead end).
+  useEffect(() => {
+    if (!soleCheckedPositionId) return;
+    if (soleCheckedPositionId in lastChangeDates) return; // cached (date or null)
+    const positionId = soleCheckedPositionId;
+    const gen = ++lastChangeGenRef.current;
+    loadLastChangeDate(positionId)
+      .then((date) => {
+        if (lastChangeGenRef.current === gen) {
+          setLastChangeDates((prev) => ({ ...prev, [positionId]: date }));
+        }
+      })
+      .catch(() => {
+        if (lastChangeGenRef.current === gen) {
+          setLastChangeDates((prev) => ({ ...prev, [positionId]: null }));
+        }
+      });
+  }, [soleCheckedPositionId, lastChangeDates]);
 
   return (
     <Modal
@@ -692,9 +741,13 @@ export function StockPositionEditor({
           </p>
         )}
 
-        {/* Effective date (optional) */}
+        {/* Effective date (optional) — emphasized while a correction is checked,
+            since a correction silently defaults to today unless backdated. */}
         <div>
-          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
+          <label
+            htmlFor={`${id}-effective-date`}
+            className={`block text-xs mb-1 ${anyAdjustment ? "text-amber-400" : "text-zinc-400"}`}
+          >
             Effective date (optional)
           </label>
           <input
@@ -703,8 +756,21 @@ export function StockPositionEditor({
             max={new Date().toISOString().split("T")[0]}
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+            className={`w-full bg-zinc-950 border rounded px-3 py-2 text-zinc-100 text-sm ${anyAdjustment ? "border-amber-500/40" : "border-zinc-700"}`}
           />
+          {/* Suggest chip — only with EXACTLY one correction checked and a fetched
+              last-change date for that position. One click backdates; still editable. */}
+          {chipDate && (
+            <button
+              type="button"
+              onClick={() => setEffectiveDate(chipDate)}
+              className="mt-2 inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-400 hover:bg-amber-500/20 transition-colors"
+              aria-label={`Backdate the effective date to this position's last change on ${formatBackdateChipDate(chipDate)}`}
+            >
+              <History className="w-3 h-3" />
+              Backdate to last change ({formatBackdateChipDate(chipDate)})?
+            </button>
+          )}
           <p className="text-[10px] text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
         </div>
 

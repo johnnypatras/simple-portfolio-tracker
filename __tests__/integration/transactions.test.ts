@@ -76,6 +76,7 @@ import { upsertPosition, createCryptoAsset } from "@/lib/actions/crypto";
 import { upsertStockPosition, createStockAsset } from "@/lib/actions/stocks";
 import { createCashAccount } from "@/lib/actions/cash-accounts";
 import { backdateActivityEntry } from "@/lib/actions/splits";
+import { loadLastChangeDate } from "@/lib/actions/transactions";
 
 // ─── Test suite ──────────────────────────────────────────────
 describe("cost-override threading (integration)", () => {
@@ -2194,5 +2195,92 @@ describe("loadAssetTransactions — owner read + lock-flag enrichment (integrati
     } finally {
       hoisted.testClient = prev;
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// loadLastChangeDate — correction-date chip backing read
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("loadLastChangeDate — last-change date for the suggest chip (integration)", () => {
+  let userA: { client: SupabaseClient; userId: string; cleanup: () => void };
+  let userB: { client: SupabaseClient; userId: string; cleanup: () => void };
+  // A synthetic entity id (activity_log.entity_id is a free uuid — no FK).
+  const entityId = randomUUID();
+
+  beforeAll(async () => {
+    userA = await createTestUser();
+    userB = await createTestUser();
+
+    // userA's history for the entity:
+    //   • a plain row created+effective Apr 10
+    //   • a BACKDATED row claiming May 20 but recorded (created_at) in June —
+    //     it must WIN by its effective date, not its recorded instant
+    //   • an UNDONE row claiming Dec 31 — excluded by the .is("undone_at", null)
+    //     server-side filter, so it must NOT win despite the latest claimed date
+    const rows = [
+      {
+        user_id: userA.userId,
+        action: "created" as const,
+        entity_type: "crypto_position",
+        entity_name: "ChipCoin",
+        description: "plain buy",
+        entity_id: entityId,
+        after_snapshot: { quantity: 1 },
+        effective_date: "2026-04-10",
+        created_at: "2026-04-10T09:00:00Z",
+      },
+      {
+        user_id: userA.userId,
+        action: "updated" as const,
+        entity_type: "crypto_position",
+        entity_name: "ChipCoin",
+        description: "backdated correction recorded later",
+        entity_id: entityId,
+        before_snapshot: { quantity: 1 },
+        after_snapshot: { quantity: 2 },
+        effective_date: "2026-05-20",
+        created_at: "2026-06-01T09:00:00Z",
+      },
+      {
+        user_id: userA.userId,
+        action: "updated" as const,
+        entity_type: "crypto_position",
+        entity_name: "ChipCoin",
+        description: "undone row with the latest claimed date",
+        entity_id: entityId,
+        before_snapshot: { quantity: 2 },
+        after_snapshot: { quantity: 3 },
+        effective_date: "2026-12-31",
+        created_at: "2026-12-31T09:00:00Z",
+        undone_at: "2027-01-01T00:00:00Z",
+      },
+    ];
+    const { error } = await userA.client.from("activity_log").insert(rows);
+    if (error) throw new Error("Failed to seed activity_log: " + error.message);
+  });
+
+  afterAll(() => {
+    userA.cleanup();
+    userB.cleanup();
+  });
+
+  it("returns the backdated effective_date (recorded later, wins), excluding the undone row", async () => {
+    hoisted.testClient = userA.client;
+    const date = await loadLastChangeDate(entityId);
+    // May 20 (backdated, recorded in June) beats Apr 10; Dec 31 is undone → excluded.
+    expect(date).toBe("2026-05-20");
+  });
+
+  it("a foreign user cannot see another user's entity history (returns null)", async () => {
+    hoisted.testClient = userB.client;
+    const date = await loadLastChangeDate(entityId);
+    expect(date).toBeNull();
+  });
+
+  it("returns null for an entity with no rows", async () => {
+    hoisted.testClient = userA.client;
+    const date = await loadLastChangeDate(randomUUID());
+    expect(date).toBeNull();
   });
 });

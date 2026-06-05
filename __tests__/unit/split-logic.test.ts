@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { extractQuantity, isValidPastOrTodayDate } from "@/lib/split-helpers";
+import { extractQuantity, isValidPastOrTodayDate, latestChangeDate } from "@/lib/split-helpers";
 import { round2 } from "@/lib/format";
 
 describe("isValidPastOrTodayDate", () => {
@@ -216,5 +216,41 @@ describe("fraction rounding (split delta distribution)", () => {
     expect(childDeltas[0]).toBe(333.33);
     expect(childDeltas[1]).toBe(333.33);
     expect(childDeltas[2]).toBeCloseTo(333.34, 2); // remainder absorbs the penny (fp noise)
+  });
+});
+
+// ─── latestChangeDate ─────────────────────────────────────
+// The pure COALESCE-max behind loadLastChangeDate (powers the correction-date
+// suggest chip). `undone_at` exclusion is server-side (the query filters it) —
+// these rows are all assumed live, documented in the action's docstring.
+describe("latestChangeDate", () => {
+  it("returns null for an empty set (no history → no chip)", () => {
+    expect(latestChangeDate([])).toBeNull();
+  });
+
+  it("falls back to the created_at day when effective_date is null", () => {
+    expect(
+      latestChangeDate([{ effective_date: null, created_at: "2026-03-02T14:30:00Z" }]),
+    ).toBe("2026-03-02");
+  });
+
+  it("a backdated entry recorded later wins by its effective date, not created_at", () => {
+    // The backdated row claims May 20 though it was typed in June; a plain row
+    // created Apr 10. May 20 > Apr 10 → the backdated effective date wins even
+    // though comparing created_at would (wrongly) pick the June row regardless.
+    const rows = [
+      { effective_date: null, created_at: "2026-04-10T09:00:00Z" }, // → 2026-04-10
+      { effective_date: "2026-05-20", created_at: "2026-06-01T09:00:00Z" }, // → 2026-05-20
+    ];
+    expect(latestChangeDate(rows)).toBe("2026-05-20");
+  });
+
+  it("picks the maximum across a mix of backdated and plain rows", () => {
+    const rows = [
+      { effective_date: "2026-01-15", created_at: "2026-01-15T00:00:00Z" },
+      { effective_date: null, created_at: "2026-02-28T23:59:00Z" }, // → 2026-02-28
+      { effective_date: "2026-02-10", created_at: "2026-05-01T00:00:00Z" },
+    ];
+    expect(latestChangeDate(rows)).toBe("2026-02-28");
   });
 });
