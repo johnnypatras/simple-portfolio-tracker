@@ -282,7 +282,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                   {totalPnL >= 0 ? "+" : ""}{fmtCurrency(totalPnL, "EUR")}
                   {pct !== null && (
                     <span className="ml-1 font-normal">
-                      ({totalPnL >= 0 ? "+" : ""}{fmtPct(pct * 100)})
+                      ({fmtPct(pct * 100)})
                     </span>
                   )}
                 </span>

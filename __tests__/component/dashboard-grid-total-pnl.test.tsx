@@ -139,6 +139,10 @@ describe("DashboardGrid — Total P&L stat (Task 3.3c)", () => {
     expect(screen.getByText(/€1,000\.00/)).toBeInTheDocument();
     // % = 1000/8000 = 12.5%
     expect(screen.getByText(/12\.5%/)).toBeInTheDocument();
+    // Exactly ONE sign on the percent (smoke finding: a manual "+" prefixed
+    // onto fmtPct — which already signs — rendered "(++12.5%)").
+    expect(screen.getByText(/\(\+12\.5%\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/\+\+/)).toBeNull();
     // Unrealized sub-line
     expect(screen.getByText(/Unrealized/)).toBeInTheDocument();
     expect(screen.getByText(/€800\.00/)).toBeInTheDocument();

@@ -892,3 +892,35 @@ describe("TransactionsDrawer — rejection contract", () => {
     expect(screen.getByText(COST_COPY.markAsYieldConfirm)).toBeInTheDocument();
   });
 });
+
+// ── Smoke findings: zero-qty rows + annotation title ─────────────────────────
+describe("zero-quantity rows and transfer annotation title (smoke fixes)", () => {
+  it("a genuinely zero quantity renders a bare '0', never '+0.00'", () => {
+    render(
+      <TransactionsDrawer
+        isOpen
+        onClose={() => {}}
+        assetName="GHO"
+        assetClass="crypto"
+        rows={[makeRow({ id: "z1", kind: "buy", quantity: 0, amount: 0, currency: "EUR", date: "2026-03-01" })]}
+        onEdit={() => {}}
+      />,
+    );
+    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.queryByText("+0.00")).toBeNull();
+  });
+
+  it("the sell/buy-type annotation carries a title with the full text", () => {
+    render(
+      <TransactionsDrawer
+        isOpen
+        onClose={() => {}}
+        assetName="BTC"
+        assetClass="crypto"
+        rows={[makeRow({ id: "t1", kind: "transfer", quantity: 0.001, amount: 52.95, currency: "EUR", date: "2026-06-06", transferRole: "buy", counterpartName: "Cash" })]}
+        onEdit={() => {}}
+      />,
+    );
+    expect(screen.getByTitle("(from Cash)")).toBeInTheDocument();
+  });
+});

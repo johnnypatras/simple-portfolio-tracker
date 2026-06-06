@@ -162,3 +162,39 @@ describe("sumGroupPnL", () => {
     expect(sum!.eur.costBasis).toBe(1000); // only crypto:a contributed
   });
 });
+
+// ── Display-zero snap (smoke finding: red "−€0.00" for ≈−0 residue) ──────────
+// Values that round to zero at 2-decimal display precision (|v| < 0.005) snap
+// to exactly 0 BEFORE sign/color decisions: realized takes the pure-hold "—",
+// unrealized/total render an unsigned neutral €0.00. Values at/over half a
+// cent keep their sign and color.
+describe("display-zero snap (|v| < 0.005)", () => {
+  const basePnl = (over: Partial<AssetPnL["eur"]>): AssetPnL => ({
+    eur: { avgCost: 100, costBasis: 1000, unrealized: 0, realized: 0, totalPnL: 0, ...over },
+    usd: { avgCost: 110, costBasis: 1100, unrealized: 0, realized: 0, totalPnL: 0 },
+  }) as AssetPnL;
+
+  it("realized −0.004 snaps to the pure-hold dash (never a red −€0.00)", () => {
+    const { container } = render(<>{renderRealizedCell(basePnl({ realized: -0.004 }), "EUR")}</>);
+    expect(container.textContent).toBe("—");
+  });
+
+  it("realized −0.006 (a real half-cent loss) still renders signed and red", () => {
+    const { container } = render(<>{renderRealizedCell(basePnl({ realized: -0.006 }), "EUR")}</>);
+    expect(container.textContent).not.toBe("—");
+    expect(container.querySelector(".text-red-400")).not.toBeNull();
+  });
+
+  it("unrealized −0.004 renders neutral unsigned €0.00", () => {
+    const { container } = render(<>{renderUnrealizedCell(basePnl({ unrealized: -0.004 }), "EUR")}</>);
+    expect(container.textContent).toContain("0.00");
+    expect(container.textContent).not.toContain("-");
+    expect(container.querySelector(".text-zinc-400")).not.toBeNull();
+    expect(container.querySelector(".text-red-400")).toBeNull();
+  });
+
+  it("totalPnL −0.004 renders neutral, not red", () => {
+    const { container } = render(<>{renderTotalPnLCell(basePnl({ totalPnL: -0.004 }), "EUR")}</>);
+    expect(container.querySelector(".text-red-400")).toBeNull();
+  });
+});

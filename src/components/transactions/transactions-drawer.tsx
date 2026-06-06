@@ -142,7 +142,10 @@ function TransferRoleBadge({
       >
         {KIND_LABEL[kind]}
       </span>
-      <span className="text-[10px] text-zinc-400 truncate">
+      <span
+        className="text-[10px] text-zinc-400 truncate"
+        title={`(${preposition} ${counterpartName})`}
+      >
         ({preposition} {counterpartName})
       </span>
     </div>
@@ -159,6 +162,10 @@ function formatDate(dateStr: string): string {
 // ── Quantity display ──────────────────────────────────────────────────────────
 
 function formatQty(qty: number): string {
+  // A genuinely-zero quantity (e.g. a metadata-only activity row whose
+  // snapshots carry equal quantities) renders as a bare "0" — a signed
+  // "+0.00" reads as a tiny acquisition, which it is not.
+  if (qty === 0) return "0";
   const abs = Math.abs(qty);
   const formatted = formatQuantity(abs, 6);
   return qty < 0 ? `-${formatted}` : `+${formatted}`;
@@ -218,12 +225,12 @@ function TransactionRow({
 
       {/* Kind badge — a sell/buy-type transfer leg (C2b) renders the Sell/Buy
           badge + "(to/from {account})" annotation; everything else is the plain
-          kind badge. The role variant gets min-w-0; the max-w-[12rem] cap below
-          lets a long account name truncate inside the badge slot instead of
-          stretching the row. */}
+          kind badge. The role variant takes the row's slack (flex-1 min-w-0) so
+          a typical "(from Cash)" renders in full; genuinely long account names
+          still truncate (title carries the full text). */}
       {(row.transferRole === "sell" || row.transferRole === "buy") &&
       row.counterpartName ? (
-        <div className="min-w-0 max-w-[12rem]">
+        <div className="flex-1 min-w-0">
           <TransferRoleBadge role={row.transferRole} counterpartName={row.counterpartName} />
         </div>
       ) : (
@@ -233,17 +240,18 @@ function TransactionRow({
       )}
 
       {/* Quantity */}
-      <div className="w-24 shrink-0 text-right font-mono text-sm text-zinc-100">
+      <div className="w-20 shrink-0 text-right font-mono text-sm text-zinc-100">
         {formatQty(row.quantity)}
       </div>
 
       {/* Amount */}
-      <div className="w-28 shrink-0 text-right text-sm text-zinc-100">
+      <div className="w-24 shrink-0 text-right text-sm text-zinc-100">
         {row.amount !== null ? fmtCurrency(row.amount, row.currency) : "—"}
       </div>
 
-      {/* Date */}
-      <div className="flex-1 text-sm text-zinc-400">
+      {/* Date — content-sized and never wrapping; the badge/annotation slot
+          (flex-1 above) is the row's designated slack-taker. */}
+      <div className="shrink-0 whitespace-nowrap text-right text-sm text-zinc-400">
         {formatDate(row.date)}
       </div>
 
@@ -531,7 +539,7 @@ export function TransactionsDrawer({
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="fixed inset-y-0 right-0 w-full max-w-md bg-zinc-900 border-l border-zinc-800 shadow-2xl flex flex-col outline-none"
+          className="fixed inset-y-0 right-0 w-full max-w-lg bg-zinc-900 border-l border-zinc-800 shadow-2xl flex flex-col outline-none"
         >
           {/* ── Header ─────────────────────────────────────────────── */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">

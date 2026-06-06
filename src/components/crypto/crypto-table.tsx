@@ -889,7 +889,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
 
           {/* ── Desktop table layout ── */}
           <div className="hidden md:block bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-x-auto">
-            <table className="w-full [&_td:first-child:not([colspan])]:max-w-0 [&_td:first-child:not([colspan])]:overflow-hidden">
+            <table className="w-full [&_td:first-child:not([colspan])]:max-w-0 [&_td:first-child:not([colspan])]:min-w-[9rem] [&_td:first-child:not([colspan])]:overflow-hidden">
               <caption className="sr-only">Cryptocurrency holdings</caption>
               <thead>
                 <tr className="border-b border-zinc-800/50">
