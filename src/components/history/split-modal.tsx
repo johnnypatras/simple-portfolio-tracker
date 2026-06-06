@@ -5,7 +5,7 @@ import { X, Plus } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { extractQuantity } from "@/lib/split-helpers";
 import { fmtCurrency } from "@/lib/format";
-import type { ActivityLog } from "@/lib/types";
+import type { ActivityLog, CostCurrency } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -19,8 +19,6 @@ interface SplitLegDraft {
   quantity: string; // string for controlled input
   cost: string;     // string for controlled input; blank → no cost emitted
 }
-
-type CostCurrency = "EUR" | "USD";
 
 interface SplitModalProps {
   entry: ActivityLog | null;

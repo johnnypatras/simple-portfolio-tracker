@@ -2,7 +2,7 @@
 
 import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { validateUUID, validateAmount } from "@/lib/validation";
+import { validateUUID, validateAmount, validateBaseCurrency } from "@/lib/validation";
 import { isValidPastOrTodayDate, extractQuantity, splitDirectionForParent } from "@/lib/split-helpers";
 import type { ActivityLog, EntityType, SplitLeg } from "@/lib/types";
 import { round2 } from "@/lib/format";
@@ -205,6 +205,7 @@ export async function splitActivityEntry(
         return { success: false, message: "Cannot set a per-leg cost on an adjustment split" };
       }
       validateAmount(leg.cost.amount, "Cost");
+      validateBaseCurrency(leg.cost.currency, "Cost currency");
     }
   }
 

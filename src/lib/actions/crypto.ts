@@ -13,7 +13,7 @@ import type {
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
 import { partialUpdate } from "@/lib/partial-update";
-import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy, validateAmount } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy, validateAmount, validateBaseCurrency } from "@/lib/validation";
 import { round2 } from "@/lib/format";
 import { computeActivityFx, emptyFx } from "@/lib/activity-fx";
 import { captureAction } from "@/lib/actions/with-sentry";
@@ -331,6 +331,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   let cashflowOverride = opts?.cashflowOverride;
   if (opts?.cost != null && cashflowOverride == null && !opts?.isYield) {
     validateAmount(opts.cost.amount, "Cost");
+    validateBaseCurrency(opts.cost.currency, "Cost currency");
     const derived = await toUsdAndEur(
       opts.cost.amount,
       opts.cost.currency,

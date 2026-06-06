@@ -3,6 +3,7 @@ import {
   validateAmount,
   validateQuantity,
   validateCurrency,
+  validateBaseCurrency,
   validateName,
   validateUUID,
   validateCoinGeckoId,
@@ -123,6 +124,34 @@ describe("validateCurrency", () => {
   // SQL injection attempt
   it("rejects SQL injection payload", () => {
     expect(() => validateCurrency("'; DROP TABLE--")).toThrow("Invalid currency");
+  });
+});
+
+describe("validateBaseCurrency", () => {
+  it("accepts EUR and USD (the two cost-storage currencies)", () => {
+    expect(() => validateBaseCurrency("EUR")).not.toThrow();
+    expect(() => validateBaseCurrency("USD")).not.toThrow();
+  });
+
+  it("rejects any other ISO 4217 code (no column to land in)", () => {
+    expect(() => validateBaseCurrency("GBP")).toThrow("must be EUR or USD");
+    expect(() => validateBaseCurrency("CHF")).toThrow("must be EUR or USD");
+    expect(() => validateBaseCurrency("JPY")).toThrow("must be EUR or USD");
+  });
+
+  it("rejects lowercase eur/usd (no implicit normalization)", () => {
+    expect(() => validateBaseCurrency("eur")).toThrow("must be EUR or USD");
+    expect(() => validateBaseCurrency("usd")).toThrow("must be EUR or USD");
+  });
+
+  it("rejects empty string", () => {
+    expect(() => validateBaseCurrency("")).toThrow("must be EUR or USD");
+  });
+
+  it("uses the custom label in the error message", () => {
+    expect(() => validateBaseCurrency("GBP", "Cost currency")).toThrow(
+      "Cost currency must be EUR or USD",
+    );
   });
 });
 

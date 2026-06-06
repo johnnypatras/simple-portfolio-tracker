@@ -62,6 +62,8 @@ export type WalletType = "custodial" | "non_custodial";
 export type PrivacyLabel = "anon" | "doxxed";
 /** User's base/display currency (EUR or USD) */
 export type BaseCurrency = "USD" | "EUR";
+/** The currency a user typed a COST amount in — distinct from BaseCurrency (the profile/display currency). */
+export type CostCurrency = "EUR" | "USD";
 /** @deprecated Use `string` directly — this alias provides no type safety. Retained for deprecated type consumers. */
 export type CurrencyType = string;
 
@@ -749,7 +751,7 @@ export interface SplitLeg {
    * the leg falls back to the proportional split of the parent's amounts.
    * Legs are always positive; cost is always a positive magnitude.
    */
-  cost?: { amount: number; currency: "EUR" | "USD" };
+  cost?: { amount: number; currency: CostCurrency };
 }
 
 // ── Transaction action shapes ──
@@ -777,7 +779,7 @@ export interface AddTransactionParams {
    * never from the amount itself. Absent → market-value fallback
    * (`cashflow_user_set=false`).
    */
-  cost?: { amount: number; currency: "EUR" | "USD" } | null;
+  cost?: { amount: number; currency: CostCurrency } | null;
   /** Effective date (YYYY-MM-DD). Absent → today. */
   effectiveDate?: string;
   isAdjustment?: boolean;
@@ -805,7 +807,7 @@ export interface EditTransactionPatch {
    * amount untouched. `is_yield` is NOT toggled here — that goes through the
    * separate guarded `markAsYield` action.
    */
-  cost?: { amount: number; currency: "EUR" | "USD" } | null;
+  cost?: { amount: number; currency: CostCurrency } | null;
 }
 
 export interface EditTransactionResult {

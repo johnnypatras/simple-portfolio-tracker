@@ -4,6 +4,7 @@
  */
 
 import { MAX_NAME_LENGTH } from "@/lib/constants";
+import type { CostCurrency } from "@/lib/types";
 
 const MAX_AMOUNT = 1_000_000_000; // 1 billion — sanity cap
 
@@ -25,6 +26,19 @@ export function validateCurrency(s: string): void {
   if (!CURRENCY_RE.test(s)) {
     throw new Error(`Invalid currency code: "${s}" (expected 3-letter ISO 4217)`);
   }
+}
+
+/**
+ * Narrow a string to {@link CostCurrency} (EUR or USD). Assertion-style on
+ * purpose: a COST is stored as a dual EUR+USD pair, so a third currency has no
+ * column to land in — the `else` branch at every cost write would silently file
+ * the raw magnitude under the USD column. Use this at the boundary of any cost
+ * write (server actions are direct POST endpoints, so a crafted body can carry
+ * `currency: "GBP"`). Distinct from {@link validateCurrency}, which accepts ANY
+ * 3-letter ISO code (asset trading currencies legitimately span GBP/CHF/etc.).
+ */
+export function validateBaseCurrency(s: string, label = "Currency"): asserts s is CostCurrency {
+  if (s !== "EUR" && s !== "USD") throw new Error(`${label} must be EUR or USD`);
 }
 
 export function validateName(s: string, maxLen = MAX_NAME_LENGTH, label = "Name"): void {

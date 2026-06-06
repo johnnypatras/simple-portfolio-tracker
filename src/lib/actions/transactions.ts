@@ -10,6 +10,7 @@ import {
   validateUUID,
   validateQuantity,
   validateAmount,
+  validateBaseCurrency,
   validatePastOrTodayDate,
 } from "@/lib/validation";
 import { round2 } from "@/lib/format";
@@ -83,6 +84,7 @@ export async function addTransaction(
     }
     if (params.cost != null) {
       validateAmount(params.cost.amount, "Cost");
+      validateBaseCurrency(params.cost.currency, "Cost currency");
     }
 
     const isYield = params.type === "yield";
@@ -350,6 +352,7 @@ export async function editTransaction(
     validateUUID(entryId, "Entry ID");
     if (patch.cost != null) {
       validateAmount(patch.cost.amount, "Cost");
+      validateBaseCurrency(patch.cost.currency, "Cost currency");
     }
     if (patch.effectiveDate != null) {
       validatePastOrTodayDate(patch.effectiveDate, "Date");

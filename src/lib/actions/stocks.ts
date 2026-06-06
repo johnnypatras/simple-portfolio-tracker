@@ -11,7 +11,7 @@ import type {
   Broker,
 } from "@/lib/types";
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
-import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin, validateTags, validateCurrency, validateAmount } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateYahooTicker, validateName, validateIsin, validateTags, validateCurrency, validateAmount, validateBaseCurrency } from "@/lib/validation";
 import { partialUpdate } from "@/lib/partial-update";
 import { normalizeCategory } from "@/lib/stock-categories";
 import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
@@ -370,6 +370,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
   let cashflowOverride = opts?.cashflowOverride;
   if (opts?.cost != null && cashflowOverride == null && !opts?.isYield) {
     validateAmount(opts.cost.amount, "Cost");
+    validateBaseCurrency(opts.cost.currency, "Cost currency");
     const derived = await toUsdAndEur(
       opts.cost.amount,
       opts.cost.currency,
