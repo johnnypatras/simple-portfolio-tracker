@@ -15,6 +15,15 @@ describe("cost-basis copy", () => {
   it("amount-optional hint mentions the market-value fallback", () => {
     expect(COST_COPY.amountOptionalHint).toMatch(/market value/i);
   });
+  it("editor delta hint pins the cost to the CHANGE with a worked example + keeps the fallback", () => {
+    // The position editors' quantity field holds the new TOTAL, so the cost
+    // hint must say it applies to the change only (100 → 110 ⇒ cost of the 10).
+    expect(COST_COPY.amountDeltaHint).toMatch(/this change only/i);
+    expect(COST_COPY.amountDeltaHint).toMatch(/100 → 110/);
+    expect(COST_COPY.amountDeltaHint).toMatch(/the 10/);
+    expect(COST_COPY.amountDeltaHint).toMatch(/incl\. fees/i);
+    expect(COST_COPY.amountDeltaHint).toMatch(/market value/i);
+  });
   it("multi-currency tooltip explains the EUR/USD divergence", () => {
     expect(COST_COPY.fxDivergenceTooltip).toMatch(/exchange.?rate/i);
   });

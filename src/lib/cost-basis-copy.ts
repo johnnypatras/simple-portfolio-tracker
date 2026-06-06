@@ -9,6 +9,10 @@ export const TYPE_GUIDANCE = {
 
 export const COST_COPY = {
   amountOptionalHint:  "Leave blank to use the market value on that date.",
+  // Position editors only: the quantity field there holds the NEW TOTAL, so the
+  // cost must be pinned to the change. (Add modals and the transaction modal
+  // keep amountOptionalHint — their quantity IS the transacted amount.)
+  amountDeltaHint:     "For this change only — e.g. raising 100 → 110 means what you paid for the 10 (incl. fees). Leave blank to use the market value on that date.",
   amountUserSetHint:   "This is the real amount you paid (incl. fees) — used for your gain/loss and the S&P comparison, not the chart's value line.",
   fxDivergenceTooltip: "EUR and USD cost can differ slightly: each buy was converted at the exchange rate on its own date.",
   markAsYieldConfirm:  "Mark these as Yield? Their cost becomes 0 — pure gain. They keep counting toward the S&P comparison at their recorded value.",

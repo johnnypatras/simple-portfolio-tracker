@@ -719,7 +719,7 @@ export function PositionEditor({
                   disabled={isSaving}
                   className="w-full px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums disabled:opacity-50"
                 />
-                <p className="text-[10px] text-zinc-400 mt-1">{COST_COPY.amountOptionalHint}</p>
+                <p className="text-[10px] text-zinc-400 mt-1">{COST_COPY.amountDeltaHint}</p>
               </div>
             </div>
           );
