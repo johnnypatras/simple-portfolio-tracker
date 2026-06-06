@@ -1407,11 +1407,15 @@ export interface CostBasisSeriesTxn {
 /**
  * One portfolio asset's full input to the cost-basis series.
  *
- *   - txns:           the asset's COMPLETE transaction stream, sorted ascending by
- *                     COALESCE(effective_date, created_at) (the caller's job —
- *                     identical ordering to getAssetTransactions). Each entry is
- *                     dated by `date` (the COALESCE'd day) so the running cost can
- *                     be emitted onto the daily spine.
+ *   - txns:           the asset's COMPLETE transaction stream, pre-ordered by the
+ *                     SHARED `dedupeAndSortAssetRows` comparator (the caller maps
+ *                     getAllAssetTransactions' already-sorted rows verbatim, so the
+ *                     same-day acquisition-before-disposal + created_at + id tiebreaks
+ *                     are byte-identical to getAssetTransactions). `runningCostByDate`
+ *                     re-sorts only by the day key, and JS sort is STABLE, so that
+ *                     same-day order is preserved end-to-end. Each entry is dated by
+ *                     `date` (the COALESCE'd day) so the running cost can be emitted
+ *                     onto the daily spine.
  *   - asset_kind / asset_key / native_currency: identify the price series for
  *                     market valuation (stablecoins keep asset_kind "crypto" +
  *                     coingecko_id key — the price cache stores them by coingecko_id).
@@ -1524,6 +1528,11 @@ function runningCostByDate(
   // cost arithmetic) and cache its cost for every spine day until the prefix grows
   // again. The fold runs at most once per distinct txn date, so the whole pass is
   // O(dates + txns × prefix) — trivial for portfolio-scale streams.
+  // Sort by the DAY key ONLY. JS sort is STABLE, so for same-day rows this
+  // preserves the caller's incoming order — which is the shared
+  // dedupeAndSortAssetRows ordering (acquisition-before-disposal, then created_at,
+  // then id). Re-deriving those tiebreaks here would risk drifting from the
+  // headline engine; relying on stable preservation keeps the two folds aligned.
   const sortedTxns = [...txnsWithDate].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const sortedDates = [...dates].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   let cursor = 0;

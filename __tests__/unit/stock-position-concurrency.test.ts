@@ -161,4 +161,37 @@ describe("stocks upsertStockPosition — optimistic concurrency (quantity guard)
       upsertStockPosition({ stock_asset_id: ASSET_ID, broker_id: BROKER_ID, quantity: 0 }),
     ).rejects.toThrow("This position changed while saving — please retry.");
   });
+
+  it("UNIQUE-violation fallback: re-read then guarded fallback UPDATE matches 0 rows → retry throw", async () => {
+    // INSERT (no live `before`) races a concurrent insert → 23505. We re-read the
+    // now-existing row (qty 50) and retry GUARDED on that quantity; a third writer
+    // changed it again so the fallback UPDATE matches 0 rows.
+    hoisted.mockClient = createMockClient([
+      { data: { ticker: "AAPL" }, error: null }, // asset
+      { data: null, error: null }, // before → none, take the insert path
+      { data: null, error: { code: "23505", message: "duplicate key" } }, // insert → unique violation
+      { data: { id: "pos-1", quantity: 50 }, error: null }, // re-read existing
+      { data: [], error: null }, // guarded fallback UPDATE → 0 rows
+    ]);
+
+    await expect(
+      upsertStockPosition({ stock_asset_id: ASSET_ID, broker_id: BROKER_ID, quantity: 10 }),
+    ).rejects.toThrow("This position changed while saving — please retry.");
+  });
+
+  it("UNIQUE-violation fallback: re-read then guarded fallback UPDATE matches 1 row → resolves", async () => {
+    hoisted.mockClient = createMockClient([
+      { data: { ticker: "AAPL" }, error: null }, // asset
+      { data: null, error: null }, // before → none, take the insert path
+      { data: null, error: { code: "23505", message: "duplicate key" } }, // insert → unique violation
+      { data: { id: "pos-1", quantity: 50 }, error: null }, // re-read existing
+      { data: [{ id: "pos-1" }], error: null }, // guarded fallback UPDATE → 1 row
+      { data: { id: "pos-1", quantity: 10 }, error: null }, // after
+    ]);
+
+    await expect(
+      upsertStockPosition({ stock_asset_id: ASSET_ID, broker_id: BROKER_ID, quantity: 10 }),
+    ).resolves.toBeUndefined();
+    expect(hoisted.logActivity).toHaveBeenCalled();
+  });
 });

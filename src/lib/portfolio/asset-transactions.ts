@@ -319,29 +319,68 @@ export async function fetchTransferCounterparts(
  * suppress a same-id parent in another — ids are UUIDs, so this is academic, but
  * the per-group scope keeps the invariant local and obvious.)
  *
- * Sort: stable by the row's day-granular ECONOMIC date asc, tie-broken by the
- * full `created_at` recording instant, then `id` (deterministic). The economic
- * date is `effective_date` (already date-only) for a backdated row, else
- * `created_at` NORMALIZED TO ITS DAY (`.slice(0, 10)`). Day-normalizing the
- * fallback is load-bearing: comparing a date-only `effective_date`
- * ("2026-01-01") against a same-day full timestamptz `created_at`
- * ("2026-01-01T09:00:00+00:00") lexically would sort the backdated row FIRST on
- * every same-day tie (the date is a string prefix of the timestamp) — booking a
- * same-day backdated SELL before the live BUY and mis-folding realized P&L. With
- * both sides at day granularity, same-day rows fall through to the `created_at`
- * tiebreak (the real recording order). Mirrors `latestChangeDate` in
- * split-helpers.ts. Returns a NEW array (does not mutate the input).
+ * Sort, by economically-faithful key (you cannot dispose before acquiring on the
+ * same day): (1) the row's day-granular ECONOMIC date asc, then (2)
+ * ACQUISITIONS BEFORE DISPOSALS within the same day, then (3) the full
+ * `created_at` recording instant, then (4) `id` (deterministic).
+ *
+ * (1) The economic date is `effective_date` (already date-only) for a backdated
+ *     row, else `created_at` NORMALIZED TO ITS DAY (`.slice(0, 10)`).
+ *     Day-normalizing the fallback is load-bearing: comparing a date-only
+ *     `effective_date` ("2026-01-01") against a same-day full timestamptz
+ *     `created_at` ("2026-01-01T09:00:00+00:00") lexically would sort the
+ *     backdated row FIRST on every same-day tie (the date is a string prefix of
+ *     the timestamp). With both sides at day granularity same-day rows fall
+ *     through to the next key. Mirrors `latestChangeDate` in split-helpers.ts.
+ * (2) When the day ties, an ACQUISITION (`quantityDelta > 0`) sorts before a
+ *     DISPOSAL (`quantityDelta <= 0`). Two failure modes this fixes: a bulk
+ *     import with identical `created_at` would otherwise fall to the random `id`
+ *     and let a same-day sell land before its same-day buy ~50% of the time; and
+ *     a backdated SELL recorded BEFORE its same-day backdated BUY would order
+ *     sell-first by `created_at`. Either mis-attributes realized/unrealized P&L
+ *     (and can spuriously oversell) even though `totalPnL` stays invariant. The
+ *     sign is precomputed once per row (O(n)) into `signById` so the comparator
+ *     is a cheap lookup, not an O(n log n) re-derivation.
+ * (3)+(4) Same-day same-direction rows fall through to the real recording order
+ *     (`created_at`) then `id`.
+ *
+ * Returns a NEW array (does not mutate the input). Exported for unit coverage of
+ * the comparator (the ordering invariant the cost engine + the #94 cost series
+ * both depend on); production callers stay inside this module.
  */
-function dedupeAndSortAssetRows(rows: AssetTransactionRow[]): AssetTransactionRow[] {
+export function dedupeAndSortAssetRows(rows: AssetTransactionRow[]): AssetTransactionRow[] {
   const childParentIds = new Set(
     rows.map((r) => r.split_from_id).filter((v): v is string => v != null),
   );
   const deduped = rows.filter((r) => !childParentIds.has(r.id));
 
+  // Precompute the disposal/acquisition sign per row ONCE (O(n)) so the
+  // comparator does not re-run quantityDelta on every comparison. An acquisition
+  // (qd > 0) gets order key 0; a disposal or qty-neutral row (qd <= 0) gets 1, so
+  // acquisitions sort first on a same-day tie.
+  const signById = new Map<string, 0 | 1>();
+  for (const r of deduped) {
+    const qd = quantityDelta({
+      entity_type: r.entity_type,
+      action: r.action,
+      is_yield: r.is_yield,
+      is_adjustment: r.is_adjustment,
+      transfer_group_id: r.transfer_group_id,
+      split_from_id: r.split_from_id,
+      before_snapshot: asSnapshot(r.before_snapshot),
+      after_snapshot: asSnapshot(r.after_snapshot),
+      details: asSnapshot(r.details),
+    });
+    signById.set(r.id, qd > 0 ? 0 : 1);
+  }
+
   deduped.sort((a, b) => {
     const da = a.effective_date ?? a.created_at.slice(0, 10);
     const db = b.effective_date ?? b.created_at.slice(0, 10);
     if (da !== db) return da < db ? -1 : 1;
+    const sa = signById.get(a.id) ?? 1;
+    const sb = signById.get(b.id) ?? 1;
+    if (sa !== sb) return sa - sb; // acquisition (0) before disposal (1)
     if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
