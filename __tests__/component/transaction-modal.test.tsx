@@ -162,20 +162,40 @@ describe("TransactionModal — field visibility per type", () => {
 // ── Test Group 4: UI lockdown states — each must show a visible reason ────────
 
 describe("TransactionModal — lockdown: NaN/empty quantity blocks save with visible alert", () => {
-  it("empty quantity: Save is disabled and shows 'Quantity must be a valid number'", () => {
+  it("fresh modal: NO eager alert, but Save is already disabled (display gated, blocking not)", () => {
     renderOpen({ assetClass: "crypto" });
-    // Quantity is empty by default — alert should be visible
-    expect(screen.getByRole("alert")).toHaveTextContent("Quantity must be a valid number");
-    const saveBtn = screen.getByRole("button", { name: /save/i });
-    expect(saveBtn).toBeDisabled();
+    // Quantity is empty by default — the error must NOT render before the user
+    // visits the field (touched-gating), but Save stays disabled regardless.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
   });
 
-  it("NaN quantity after clearing: alert persists and Save stays disabled", () => {
+  it("empty quantity after blur: alert appears and Save stays disabled", () => {
+    renderOpen({ assetClass: "crypto" });
+    const qtyInput = screen.getByLabelText(/quantity/i);
+    fireEvent.blur(qtyInput);
+    expect(screen.getByRole("alert")).toHaveTextContent("Quantity must be a valid number");
+    expect(qtyInput).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+  });
+
+  it("NaN quantity after typing + blur: alert persists and Save stays disabled", () => {
     renderOpen({ assetClass: "crypto" });
     const qtyInput = screen.getByLabelText(/quantity/i);
     fireEvent.change(qtyInput, { target: { value: "abc" } });
+    fireEvent.blur(qtyInput);
     expect(screen.getByRole("alert")).toHaveTextContent("Quantity must be a valid number");
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+  });
+
+  it("fixing the quantity after blur clears the alert live", () => {
+    renderOpen({ assetClass: "crypto" });
+    const qtyInput = screen.getByLabelText(/quantity/i);
+    fireEvent.blur(qtyInput);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    fireEvent.change(qtyInput, { target: { value: "2" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(qtyInput).toHaveAttribute("aria-invalid", "false");
   });
 });
 
@@ -185,7 +205,9 @@ describe("TransactionModal — lockdown: typed non-numeric amount blocks save wi
     // First fill in a valid quantity
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
     // Then type a non-numeric amount (use exact label to avoid "Amount currency")
+    // and blur it — error text renders only for touched fields.
     fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "abc" } });
+    fireEvent.blur(screen.getByLabelText("Amount"));
     expect(screen.getByRole("alert")).toHaveTextContent("Amount must be a valid number");
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
   });
@@ -207,6 +229,7 @@ describe("TransactionModal — lockdown: future date blocked with visible alert"
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
     const dateInput = screen.getByLabelText(/date/i);
     fireEvent.change(dateInput, { target: { value: "2099-12-31" } });
+    fireEvent.blur(dateInput);
     expect(screen.getByRole("alert")).toHaveTextContent(/cannot be in the future/i);
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
   });

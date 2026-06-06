@@ -16,7 +16,7 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatCurrency, fmtCurrencyCompact, fmtPct, changeColorClass } from "@/lib/format";
+import { formatCurrency, fmtPct, changeColorClass, changeDisplayParts } from "@/lib/format";
 import type { FXRates } from "@/lib/prices/fx";
 import { buildInstitutionGroups } from "@/lib/portfolio/institution-grouping";
 import { EditInstitutionModal } from "@/components/accounts/edit-institution-modal";
@@ -263,12 +263,21 @@ export function AccountsView({
             <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
               {formatCurrency(grandTotal, primaryCurrency)}
             </p>
-            {grandChange24h.valueChange !== 0 && (
-              <span className={`text-sm tabular-nums ${changeColorClass(grandPercentChange)}`}>
-                {grandChange24h.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(grandChange24h.valueChange, primaryCurrency)}
-                <span className="ml-1 font-normal">({fmtPct(grandPercentChange)})</span>
-              </span>
-            )}
+            {grandChange24h.valueChange !== 0 && (() => {
+              const d = changeDisplayParts(grandChange24h.valueChange, grandPercentChange, primaryCurrency, { compact: true });
+              return (
+                <span className={`text-sm tabular-nums ${d.colorClass}`}>
+                  {d.isDisplayZero ? (
+                    d.pct
+                  ) : (
+                    <>
+                      {d.value}
+                      <span className="ml-1 font-normal">({d.pct})</span>
+                    </>
+                  )}
+                </span>
+              );
+            })()}
           </div>
 
           {/* Allocation breakdown — stacked bar + legend */}
@@ -467,11 +476,18 @@ export function AccountsView({
                         <span className="text-sm font-medium text-zinc-200">
                           {formatCurrency(totalValue, primaryCurrency)}
                         </span>
-                        <p className={`text-xs tabular-nums ${change24h.valueChange !== 0 ? changeColorClass(change24h.percentChange) : "invisible"}`}>
-                          {change24h.valueChange !== 0
-                            ? `${change24h.valueChange > 0 ? "+" : ""}${fmtCurrencyCompact(change24h.valueChange, primaryCurrency)} (${fmtPct(change24h.percentChange)})`
-                            : "\u00A0"}
-                        </p>
+                        {(() => {
+                          const d = changeDisplayParts(change24h.valueChange, change24h.percentChange, primaryCurrency, { compact: true });
+                          return (
+                            <p className={`text-xs tabular-nums ${change24h.valueChange !== 0 ? d.colorClass : "invisible"}`}>
+                              {change24h.valueChange !== 0
+                                ? d.isDisplayZero
+                                  ? d.pct
+                                  : `${d.value} (${d.pct})`
+                                : "\u00A0"}
+                            </p>
+                          );
+                        })()}
                       </>
                     )}
                   </div>

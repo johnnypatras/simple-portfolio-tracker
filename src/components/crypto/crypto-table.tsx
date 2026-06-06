@@ -45,7 +45,7 @@ import {
   type CryptoSortKey,
   type SortDirection,
 } from "./crypto-columns";
-import { formatCurrency, formatQuantity, GROUP_PALETTE } from "@/lib/format";
+import { changeDisplayParts, formatCurrency, formatQuantity, GROUP_PALETTE } from "@/lib/format";
 import {
   sumGroupPnL,
   renderAvgCostCell,
@@ -396,6 +396,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
           </p>
           {weighted24hChange !== 0 && (() => {
             const delta = nonStableValue - nonStableValue / (1 + weighted24hChange / 100);
+            const d = changeDisplayParts(delta, weighted24hChange, primaryCurrency);
             return (
               <span
                 ref={openTooltip === "summary" ? tooltipRef : undefined}
@@ -404,17 +405,19 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                 tabIndex={0}
                 onClick={(e) => toggleTooltip("summary", e)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleTooltip("summary", e); } }}
-                className={`relative group/tip cursor-pointer text-xs tabular-nums ${weighted24hChange >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                className={`relative group/tip cursor-pointer text-xs tabular-nums ${d.colorClass}`}
               >
-                {isReadOnly ? (
+                {d.isDisplayZero ? (
+                  d.pct
+                ) : isReadOnly ? (
                   <>
-                    {weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(1)}%
-                    <span className="ml-1">({delta >= 0 ? "+" : ""}{formatCurrency(delta, primaryCurrency)})</span>
+                    {d.pct}
+                    <span className="ml-1">({d.value})</span>
                   </>
                 ) : (
                   <>
-                    {delta >= 0 ? "+" : ""}{formatCurrency(delta, primaryCurrency)}
-                    <span className="ml-1">({weighted24hChange >= 0 ? "+" : ""}{weighted24hChange.toFixed(1)}%)</span>
+                    {d.value}
+                    <span className="ml-1">({d.pct})</span>
                   </>
                 )}
                 <ChangeTooltip
@@ -889,7 +892,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
 
           {/* ── Desktop table layout ── */}
           <div className="hidden md:block bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-x-auto">
-            <table className="w-full [&_td:first-child:not([colspan])]:max-w-0 [&_td:first-child:not([colspan])]:min-w-[9rem] [&_td:first-child:not([colspan])]:overflow-hidden">
+            <table className="w-full [&_td:first-child:not([colspan])]:max-w-0 [&_td:first-child:not([colspan])]:min-w-[11rem] [&_td:first-child:not([colspan])]:overflow-hidden">
               <caption className="sr-only">Cryptocurrency holdings</caption>
               <thead>
                 <tr className="border-b border-zinc-800/50">
@@ -1790,6 +1793,7 @@ function MobileCryptoCard({
       <button
         onClick={() => toggleExpand(row.asset.id)}
         className="w-full px-4 py-3 flex items-center justify-between overflow-hidden"
+        aria-expanded={rowExpanded}
         aria-label={`${rowExpanded ? "Collapse" : "Expand"} ${row.asset.name}`}
       >
         <div className="flex items-center gap-2.5 min-w-0">

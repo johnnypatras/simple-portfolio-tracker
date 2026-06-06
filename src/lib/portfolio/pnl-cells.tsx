@@ -20,7 +20,7 @@
 
 import type { ReactNode } from "react";
 import type { AssetPnL, CostBasisResult } from "@/lib/portfolio/cost-basis";
-import { fmtCurrency, fmtPct, changeColorClass } from "@/lib/format";
+import { fmtCurrency, fmtPct, changeColorClass, snapDisplayZero as snapAtPrecision } from "@/lib/format";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 
 const DASH = <span className="text-xs text-zinc-400">—</span>;
@@ -28,12 +28,11 @@ const DASH = <span className="text-xs text-zinc-400">—</span>;
 /**
  * Snap a value that ROUNDS TO ZERO at 2-decimal display precision to exactly 0
  * before sign/color decisions. Without this, a residual like −0.004 renders as
- * a red "−€0.00" — a signed, colored zero. |v| < half a cent ⇒ 0 (positive
- * zero, so downstream `=== 0` and color checks take the neutral path).
+ * a red "−€0.00" — a signed, colored zero. Delegates to the shared
+ * format.ts helper at this module's fixed precision (cells render 2 decimals).
  */
-const DISPLAY_ZERO_EPS = 0.005;
 function snapDisplayZero(v: number): number {
-  return Math.abs(v) < DISPLAY_ZERO_EPS ? 0 : v;
+  return snapAtPrecision(v, 2);
 }
 
 /** True when the table is showing a non-EUR headline (USD toggle). */

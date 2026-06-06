@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { fmtCurrencyCompact, fmtPct, changeColorClass } from "@/lib/format";
+import { fmtCurrencyCompact, fmtPct, changeColorClass, snapDisplayZero } from "@/lib/format";
 
 const DEPOSIT_BREAKDOWN_LIMIT = 5;
 
@@ -9,8 +9,10 @@ function TooltipRow({
   label: string; value: number; cur: string; colored?: boolean; bold?: boolean;
   pct?: number; indent?: boolean;
 }) {
-  const formatted = `${value > 0 ? "+" : ""}${fmtCurrencyCompact(value, cur)}`;
-  const colorCls = colored ? changeColorClass(value) : indent ? "text-zinc-400" : "text-zinc-300";
+  // Snap sub-half-unit residues to 0 so sign/color/digits agree (no red "−€0").
+  const v = snapDisplayZero(value, 0);
+  const formatted = `${v > 0 ? "+" : ""}${fmtCurrencyCompact(v, cur)}`;
+  const colorCls = colored ? changeColorClass(v) : indent ? "text-zinc-400" : "text-zinc-300";
   const hasPct = pct != null && isFinite(pct) && Math.abs(pct) >= 0.05;
   return (
     <>

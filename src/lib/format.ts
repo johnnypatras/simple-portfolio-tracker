@@ -86,6 +86,56 @@ export function changeColorClass(value: number): string {
   return "text-zinc-400";
 }
 
+/**
+ * Snap a value to exactly 0 when it would RENDER as zero at the given display
+ * precision (i.e. |value| is under half a display unit). Keeps sign, color and
+ * digits agreeing — a −€0.30 change must never show as a red "−€0".
+ * Always returns +0 in the zero case (never −0, which Intl renders signed).
+ */
+export function snapDisplayZero(value: number, decimals: number): number {
+  return Math.abs(value) < 0.5 / 10 ** decimals ? 0 : value;
+}
+
+/** Render-ready period-change pair — see {@link changeDisplayParts}. */
+export interface ChangeDisplay {
+  /** Signed currency change ("+€342", "-€1,298.50") — unsigned "€0" when display-zero. */
+  value: string;
+  /** Signed 1-decimal percent ("+1.9%", "-0.7%") — unsigned "0.0%" when display-zero. */
+  pct: string;
+  /** emerald/red from the DISPLAY-rounded direction; zinc when both parts are zero. */
+  colorClass: string;
+  /** Both parts round to zero → callers render the pct alone ("0.0%"). */
+  isDisplayZero: boolean;
+}
+
+/**
+ * Format a value+percent change pair with sign, color and the zero state all
+ * derived from the values ROUNDED AT THEIR DISPLAY PRECISION — the single
+ * source of truth for every inline period-change line (dashboard cards +
+ * detail-page summary panels). `compact: true` renders whole currency units
+ * (dashboard cards); default is 2-decimal currency (detail panels).
+ * Direction (sign/color) follows the percent first — it is the headline of the
+ * pair — and falls back to the value's direction when the percent rounds away.
+ */
+export function changeDisplayParts(
+  valueChange: number,
+  percent: number,
+  currency: string,
+  opts: { compact?: boolean } = {},
+): ChangeDisplay {
+  const v = snapDisplayZero(valueChange, opts.compact ? 0 : 2);
+  const p = snapDisplayZero(percent, 1);
+  const formatted = opts.compact
+    ? fmtCurrencyCompact(v, currency)
+    : fmtCurrency(v, currency);
+  return {
+    value: `${v > 0 ? "+" : ""}${formatted}`,
+    pct: p === 0 ? "0.0%" : fmtPct(p),
+    colorClass: changeColorClass(p !== 0 ? p : v),
+    isDisplayZero: v === 0 && p === 0,
+  };
+}
+
 /** Plain number with fixed decimal places */
 export function formatNumber(n: number, decimals = 2): string {
   return _getNumberFormatter(decimals).format(n);

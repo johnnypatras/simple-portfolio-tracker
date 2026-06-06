@@ -215,6 +215,14 @@ export function TransactionModal({
   const [walletId, setWalletId] = useState<string>(walletOptions?.[0]?.id ?? "");
   const [brokerId, setBrokerId] = useState<string>(brokerOptions?.[0]?.id ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Per-field touched flags (set on blur). Validation always RUNS (Save stays
+  // disabled while invalid) but error text only RENDERS for fields the user has
+  // actually visited — a fresh modal must not open with a red "required" alert.
+  const [touched, setTouched] = useState({
+    quantity: false,
+    amount: false,
+    date: false,
+  });
 
   // ── Money-flow question (C2a) ────────────────────────────────────────────
   // Buy: "Paid with?" · Sell: "Proceeds went to?". `moneyFlowTracked` is the
@@ -249,6 +257,7 @@ export function TransactionModal({
       setWalletId(walletOptions?.[0]?.id ?? "");
       setBrokerId(brokerOptions?.[0]?.id ?? "");
       setIsSubmitting(false);
+      setTouched({ quantity: false, amount: false, date: false });
       // Money-flow defaults: tracked when accounts exist (contract), no account
       // pre-selected (the user must choose — no silent default). Reads the
       // accounts list AT OPEN TIME via a ref — see below.
@@ -351,9 +360,16 @@ export function TransactionModal({
     : null;
 
   // Footer error line — quantity/amount/date only (overdraft has its own alert).
-  const visibleError = quantityError ?? amountError ?? dateError;
+  // Display is touched-gated; BLOCKING below uses the raw errors so an untouched
+  // invalid field still disables Save (correctness and display stay independent).
+  const visibleError =
+    (touched.quantity ? quantityError : null) ??
+    (touched.amount ? amountError : null) ??
+    (touched.date ? dateError : null);
   const isSaveBlocked =
-    visibleError !== null ||
+    quantityError !== null ||
+    amountError !== null ||
+    dateError !== null ||
     type === "transfer" ||
     isTransferLeg ||
     isSplitLocked ||
@@ -609,6 +625,8 @@ export function TransactionModal({
                 min="0"
                 value={quantityStr}
                 onChange={(e) => setQuantityStr(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, quantity: true }))}
+                aria-invalid={touched.quantity && quantityError !== null}
                 placeholder="0"
                 disabled={isTransferLeg}
                 className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -671,6 +689,8 @@ export function TransactionModal({
                     setAmountStr(e.target.value);
                     setAmountDirty(true);
                   }}
+                  onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
+                  aria-invalid={touched.amount && amountError !== null}
                   placeholder={
                     showMoneyFlow && moneyFlowTracked
                       ? "0.00"
@@ -726,6 +746,8 @@ export function TransactionModal({
                 max={todayStr}
                 value={dateStr}
                 onChange={(e) => setDateStr(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, date: true }))}
+                aria-invalid={touched.date && dateError !== null}
                 disabled={isTransferLeg}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
               />

@@ -24,7 +24,7 @@ import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/types";
-import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass } from "@/lib/format";
+import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass, changeDisplayParts } from "@/lib/format";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { useSharedView } from "@/components/shared-view-context";
@@ -211,6 +211,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {/* ── Total value + change ── */}
           {(() => {
             const c = getChangeForPeriod(changePeriod, changeCtx);
+            const d = changeDisplayParts(c.valueChange, c.percent, cur, { compact: true });
             const dep = getDepositsForPeriod(changePeriod, changeCtx);
             // 24h aggregate is market-only; add deposits so tooltip
             // decomposition (Market = Total − Deposits) works correctly.
@@ -229,26 +230,20 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                     onClick={(e) => toggleTooltip("total", e)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("total", e); } }}
                     tabIndex={0}
-                    className={`relative group/tip cursor-pointer text-sm font-medium tabular-nums whitespace-nowrap ${changeColorClass(c.percent)}`}
+                    className={`relative group/tip cursor-pointer text-sm font-medium tabular-nums whitespace-nowrap ${d.colorClass}`}
                   >
-                    {c.valueChange !== 0 ? (
-                      isReadOnly ? (
-                        <>
-                          {fmtPct(c.percent)}
-                          <span className="ml-1 font-normal">
-                            ({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                          <span className="ml-1 font-normal">
-                            ({fmtPct(c.percent)})
-                          </span>
-                        </>
-                      )
+                    {d.isDisplayZero ? (
+                      d.pct
+                    ) : isReadOnly ? (
+                      <>
+                        {d.pct}
+                        <span className="ml-1 font-normal">({d.value})</span>
+                      </>
                     ) : (
-                      fmtPct(c.percent)
+                      <>
+                        {d.value}
+                        <span className="ml-1 font-normal">({d.pct})</span>
+                      </>
                     )}
                     <ChangeTooltip
                       valueChange={tv}
@@ -535,6 +530,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           </div>
           {(() => {
             const c = getCryptoChangeForPeriod(changePeriod, changeCtx);
+            const d = changeDisplayParts(c.valueChange, c.percent, cur, { compact: true });
             return (
               <>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
@@ -549,22 +545,20 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       onClick={(e) => toggleTooltip("crypto", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("crypto", e); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${d.colorClass}`}
                     >
-                      {c.valueChange !== 0 ? (
-                        isReadOnly ? (
-                          <>
-                            {fmtPct(c.percent)}
-                            <span className="ml-1">({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})</span>
-                          </>
-                        ) : (
-                          <>
-                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                            <span className="ml-1">({fmtPct(c.percent)})</span>
-                          </>
-                        )
+                      {d.isDisplayZero ? (
+                        d.pct
+                      ) : isReadOnly ? (
+                        <>
+                          {d.pct}
+                          <span className="ml-1">({d.value})</span>
+                        </>
                       ) : (
-                        fmtPct(c.percent)
+                        <>
+                          {d.value}
+                          <span className="ml-1">({d.pct})</span>
+                        </>
                       )}
                       {(() => {
                         const dep = getDepositsForPeriod(changePeriod, changeCtx, "crypto");
@@ -721,6 +715,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           </div>
           {(() => {
             const c = getStockChangeForPeriod(changePeriod, changeCtx);
+            const d = changeDisplayParts(c.valueChange, c.percent, cur, { compact: true });
             return (
               <>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
@@ -735,22 +730,20 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       onClick={(e) => toggleTooltip("equities", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("equities", e); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${d.colorClass}`}
                     >
-                      {c.valueChange !== 0 ? (
-                        isReadOnly ? (
-                          <>
-                            {fmtPct(c.percent)}
-                            <span className="ml-1">({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})</span>
-                          </>
-                        ) : (
-                          <>
-                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                            <span className="ml-1">({fmtPct(c.percent)})</span>
-                          </>
-                        )
+                      {d.isDisplayZero ? (
+                        d.pct
+                      ) : isReadOnly ? (
+                        <>
+                          {d.pct}
+                          <span className="ml-1">({d.value})</span>
+                        </>
                       ) : (
-                        fmtPct(c.percent)
+                        <>
+                          {d.value}
+                          <span className="ml-1">({d.pct})</span>
+                        </>
                       )}
                       {(() => {
                         const dep = getDepositsForPeriod(changePeriod, changeCtx, "stocks");
@@ -938,6 +931,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           </div>
           {(() => {
             const c = getCashChangeForPeriod(changePeriod, changeCtx);
+            const d = changeDisplayParts(c.valueChange, c.percent, cur, { compact: true });
             return (
               <>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
@@ -952,22 +946,20 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       onClick={(e) => toggleTooltip("cash", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("cash", e); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${d.colorClass}`}
                     >
-                      {c.valueChange !== 0 ? (
-                        isReadOnly ? (
-                          <>
-                            {fmtPct(c.percent)}
-                            <span className="ml-1">({c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)})</span>
-                          </>
-                        ) : (
-                          <>
-                            {c.valueChange > 0 ? "+" : ""}{fmtCurrencyCompact(c.valueChange, cur)}
-                            <span className="ml-1">({fmtPct(c.percent)})</span>
-                          </>
-                        )
+                      {d.isDisplayZero ? (
+                        d.pct
+                      ) : isReadOnly ? (
+                        <>
+                          {d.pct}
+                          <span className="ml-1">({d.value})</span>
+                        </>
                       ) : (
-                        fmtPct(c.percent)
+                        <>
+                          {d.value}
+                          <span className="ml-1">({d.pct})</span>
+                        </>
                       )}
                       {(() => {
                         const dep = getDepositsForPeriod(changePeriod, changeCtx, "cash");

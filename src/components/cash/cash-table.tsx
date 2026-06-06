@@ -19,7 +19,7 @@ import {
   buildCashGroupRows,
   type CashRow,
 } from "@/components/cash/cash-columns";
-import { formatCurrency } from "@/lib/format";
+import { changeDisplayParts, formatCurrency } from "@/lib/format";
 import type { ColumnDef, RenderContext } from "@/lib/column-config";
 import type { AssetPnL } from "@/lib/portfolio/cost-basis";
 import type {
@@ -309,38 +309,43 @@ export function CashTable({
           <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
             {formatCurrency(totalCash, primaryCurrency)}
           </p>
-          {cashChangePercent !== 0 && (
-            <span
-              ref={openTooltip === "summary" ? tooltipRef : undefined}
-              role="button"
-              aria-label="Show cash change breakdown"
-              tabIndex={0}
-              onClick={(e) => toggleTooltip("summary", e)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("summary", e); } }}
-              className={`relative group/tip cursor-pointer text-xs tabular-nums ${cashChangePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}
-            >
-              {isReadOnly ? (
-                <>
-                  {cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(1)}%
-                  <span className="ml-1">({cashChangeValue >= 0 ? "+" : ""}{formatCurrency(cashChangeValue, primaryCurrency)})</span>
-                </>
-              ) : (
-                <>
-                  {cashChangeValue >= 0 ? "+" : ""}{formatCurrency(cashChangeValue, primaryCurrency)}
-                  <span className="ml-1">({cashChangePercent >= 0 ? "+" : ""}{cashChangePercent.toFixed(1)}%)</span>
-                </>
-              )}
-              <ChangeTooltip
-                valueChange={cashChangeValue + deposits}
-                fxValueChange={fxValueChange24h}
-                deposits={deposits}
-                depositBreakdown={depositBreakdown}
-                startValue={totalCash - cashChangeValue - deposits}
-                cur={primaryCurrency}
-                open={openTooltip === "summary"}
-              />
-            </span>
-          )}
+          {cashChangePercent !== 0 && (() => {
+            const d = changeDisplayParts(cashChangeValue, cashChangePercent, primaryCurrency);
+            return (
+              <span
+                ref={openTooltip === "summary" ? tooltipRef : undefined}
+                role="button"
+                aria-label="Show cash change breakdown"
+                tabIndex={0}
+                onClick={(e) => toggleTooltip("summary", e)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("summary", e); } }}
+                className={`relative group/tip cursor-pointer text-xs tabular-nums ${d.colorClass}`}
+              >
+                {d.isDisplayZero ? (
+                  d.pct
+                ) : isReadOnly ? (
+                  <>
+                    {d.pct}
+                    <span className="ml-1">({d.value})</span>
+                  </>
+                ) : (
+                  <>
+                    {d.value}
+                    <span className="ml-1">({d.pct})</span>
+                  </>
+                )}
+                <ChangeTooltip
+                  valueChange={cashChangeValue + deposits}
+                  fxValueChange={fxValueChange24h}
+                  deposits={deposits}
+                  depositBreakdown={depositBreakdown}
+                  startValue={totalCash - cashChangeValue - deposits}
+                  cur={primaryCurrency}
+                  open={openTooltip === "summary"}
+                />
+              </span>
+            );
+          })()}
         </div>
         {weightedApy > 0 && (
           <p className="text-[11px] text-emerald-400/80 mt-0.5 tabular-nums">

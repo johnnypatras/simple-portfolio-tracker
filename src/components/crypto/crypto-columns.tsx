@@ -475,7 +475,8 @@ export function getCryptoColumns(handlers: {
           onClick={() => handlers.toggleExpand(row.asset.id)}
           aria-expanded={handlers.isExpanded(row.asset.id)}
           aria-label={`${handlers.isExpanded(row.asset.id) ? "Collapse" : "Expand"} ${row.asset.name}`}
-          className="flex items-center gap-2 text-left min-w-0"
+          title={row.asset.name}
+          className="flex w-full items-center gap-2 text-left min-w-0"
         >
           {handlers.isExpanded(row.asset.id) ? (
             <ChevronDown aria-hidden="true" className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
@@ -487,11 +488,11 @@ export function getCryptoColumns(handlers: {
           ) : (
             <div className="w-5 h-5 rounded-full bg-zinc-800 shrink-0" />
           )}
-          <div className="min-w-0">
+          <div className="flex-1 min-w-0">
             <span className="text-sm font-medium text-zinc-200 truncate block">
               {row.asset.name}
             </span>
-            <span className="text-xs text-zinc-400 uppercase">
+            <span className="text-xs text-zinc-400 uppercase truncate block">
               {row.asset.ticker}
             </span>
           </div>
@@ -520,7 +521,7 @@ export function getCryptoColumns(handlers: {
           };
           const match = info[wt];
           return match ? (
-            <span className={`text-xs font-medium ${match.color}`}>{match.label}</span>
+            <span className={`text-xs font-medium whitespace-nowrap ${match.color}`}>{match.label}</span>
           ) : (
             <span className="text-xs text-zinc-400">—</span>
           );

@@ -6,6 +6,8 @@ import {
   fmtPct,
   fmtPctPlain,
   changeColorClass,
+  changeDisplayParts,
+  snapDisplayZero,
   formatNumber,
   formatQuantity,
   formatBackdateChipDate,
@@ -236,5 +238,105 @@ describe("formatBackdateChipDate", () => {
 
   it("returns the raw input unchanged when it isn't YYYY-MM-DD", () => {
     expect(formatBackdateChipDate("not-a-date", NOW)).toBe("not-a-date");
+  });
+});
+
+// ── snapDisplayZero ────────────────────────────────────────
+
+describe("snapDisplayZero", () => {
+  it("snaps values under half a display unit to exactly +0", () => {
+    expect(snapDisplayZero(-0.3, 0)).toBe(0);
+    expect(snapDisplayZero(0.49, 0)).toBe(0);
+    expect(snapDisplayZero(-0.004, 2)).toBe(0);
+    expect(snapDisplayZero(0.0049, 2)).toBe(0);
+    expect(snapDisplayZero(-0.04, 1)).toBe(0);
+  });
+
+  it("returns +0 (never −0) in the zero case so Intl can't render a sign", () => {
+    expect(Object.is(snapDisplayZero(-0.3, 0), -0)).toBe(false);
+    expect(Object.is(snapDisplayZero(-0.3, 0), 0)).toBe(true);
+  });
+
+  it("passes through values at or above half a display unit", () => {
+    expect(snapDisplayZero(-0.5, 0)).toBe(-0.5);
+    expect(snapDisplayZero(0.7, 0)).toBe(0.7);
+    expect(snapDisplayZero(-0.005, 2)).toBe(-0.005);
+    expect(snapDisplayZero(123.45, 2)).toBe(123.45);
+  });
+});
+
+// ── changeDisplayParts ─────────────────────────────────────
+
+describe("changeDisplayParts", () => {
+  it("renders a normal positive change with signs and emerald color", () => {
+    const d = changeDisplayParts(342.39, 1.9, "EUR", { compact: true });
+    expect(d.value).toBe("+€342");
+    expect(d.pct).toBe("+1.9%");
+    expect(d.colorClass).toBe("text-emerald-400");
+    expect(d.isDisplayZero).toBe(false);
+  });
+
+  it("renders a normal negative change with red color", () => {
+    const d = changeDisplayParts(-298.5, -1.5, "EUR", { compact: true });
+    expect(d.value).toBe("-€299");
+    expect(d.pct).toBe("-1.5%");
+    expect(d.colorClass).toBe("text-red-400");
+  });
+
+  it("THE FINDING: a −€0.30 / −0.04% change renders unsigned, zinc, display-zero", () => {
+    const d = changeDisplayParts(-0.3, -0.04, "EUR", { compact: true });
+    expect(d.value).toBe("€0");
+    expect(d.pct).toBe("0.0%");
+    expect(d.colorClass).toBe("text-zinc-400");
+    expect(d.isDisplayZero).toBe(true);
+  });
+
+  it("never emits '−€0' or '−0.0%' for any sub-half-unit negative", () => {
+    for (const v of [-0.49, -0.25, -0.01]) {
+      const d = changeDisplayParts(v, v / 10, "EUR", { compact: true });
+      expect(d.value).not.toMatch(/-€0\b/);
+      expect(d.pct).not.toMatch(/-0\.0%/);
+    }
+  });
+
+  it("micro-position: value display-zero but percent real keeps the percent's direction", () => {
+    // −€0.40 on a €8 position = −5%: the pct carries the signal, color follows it
+    const d = changeDisplayParts(-0.4, -5, "EUR", { compact: true });
+    expect(d.value).toBe("€0");
+    expect(d.pct).toBe("-5.0%");
+    expect(d.colorClass).toBe("text-red-400");
+    expect(d.isDisplayZero).toBe(false);
+  });
+
+  it("exact zero renders unsigned '0.0%' (no leading '+')", () => {
+    const d = changeDisplayParts(0, 0, "EUR", { compact: true });
+    expect(d.pct).toBe("0.0%");
+    expect(d.isDisplayZero).toBe(true);
+    expect(d.colorClass).toBe("text-zinc-400");
+  });
+
+  it("default (detail-panel) mode renders 2-decimal currency", () => {
+    const d = changeDisplayParts(-12.345, -0.7, "EUR");
+    expect(d.value).toBe("-€12.35");
+    expect(d.pct).toBe("-0.7%");
+    expect(d.colorClass).toBe("text-red-400");
+  });
+
+  it("2-decimal mode: a −€0.004 residue snaps to unsigned €0.00", () => {
+    const d = changeDisplayParts(-0.004, -0.01, "EUR");
+    expect(d.value).toBe("€0.00");
+    expect(d.pct).toBe("0.0%");
+    expect(d.isDisplayZero).toBe(true);
+  });
+
+  it("USD currency flows through", () => {
+    const d = changeDisplayParts(50, 2.1, "USD", { compact: true });
+    expect(d.value).toBe("+$50");
+  });
+
+  it("non-finite percent degrades to the em-dash via fmtPct", () => {
+    const d = changeDisplayParts(100, Number.POSITIVE_INFINITY, "EUR", { compact: true });
+    expect(d.pct).toBe("—");
+    expect(d.isDisplayZero).toBe(false);
   });
 });
