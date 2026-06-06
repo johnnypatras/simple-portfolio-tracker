@@ -19,5 +19,5 @@ Sentry.init({
   sendDefaultPii: false,
 
   // Filter known-benign noise (see sentry.server.config.ts for rationale).
-  ignoreErrors: ["NEXT_NOT_FOUND", "NEXT_REDIRECT", "AbortError"],
+  ignoreErrors: ["NEXT_NOT_FOUND", "NEXT_REDIRECT", "AbortError", "ConcurrencyConflictError"],
 });

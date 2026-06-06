@@ -128,6 +128,21 @@ describe("crypto upsertPosition — optimistic concurrency (quantity guard)", ()
     ).rejects.toThrow("This position changed while saving — please retry.");
   });
 
+  it("throws a named ConcurrencyConflictError (Sentry ignoreErrors filters by name)", async () => {
+    hoisted.mockClient = createMockClient([
+      { data: { ticker: "BTC", subcategory: null }, error: null }, // asset
+      { data: { id: "pos-1", quantity: 100 }, error: null }, // before
+      { data: [], error: null }, // guarded UPDATE → 0 rows
+    ]);
+
+    const err = await upsertPosition({
+      crypto_asset_id: ASSET_ID,
+      wallet_id: WALLET_ID,
+      quantity: 20,
+    }).catch((e: unknown) => e);
+    expect((err as Error).name).toBe("ConcurrencyConflictError");
+  });
+
   it("filters on the EXACT quantity just read (.eq('quantity', before.quantity))", async () => {
     hoisted.mockClient = createMockClient([
       { data: { ticker: "BTC", subcategory: null }, error: null }, // asset

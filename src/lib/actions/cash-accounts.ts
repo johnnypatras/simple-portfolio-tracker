@@ -11,6 +11,7 @@ import { round2 } from "@/lib/format";
 import { type FxResult, emptyFx } from "@/lib/activity-fx";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { pickJoinedName } from "@/lib/supabase/join-utils";
+import { ConcurrencyConflictError } from "@/lib/concurrency-error";
 
 // CashAccountOpts is defined in @/lib/types — Turbopack strips re-exports
 // from "use server" modules.
@@ -449,7 +450,10 @@ export async function updateCashAccount(
   // conflicting concurrent change makes it match 0 rows. Metadata-only updates
   // (name/apy/currency, no balance) must NOT carry this guard — an unrelated
   // concurrent balance change must not block a rename. `before.balance` is the
-  // raw read value, never re-parsed, so the equality predicate matches exactly.
+  // raw read value, never re-parsed. The match holds because it originated as a
+  // JS float64 via the app's own write path (shortest round-trip serialization);
+  // values from non-JS paths (raw SQL, tampered imports — now coerced at the
+  // import boundary) are outside the guarantee.
   const guardsBalance = "balance" in valuePayload && before != null;
   let updateQuery = supabase
     .from("cash_accounts")
@@ -466,7 +470,7 @@ export async function updateCashAccount(
     const { data: updated, error } = await updateQuery.select("id");
     if (error) throw new Error(error.message);
     if (!updated || updated.length === 0) {
-      throw new Error("This account's balance changed while saving — please retry.");
+      throw new ConcurrencyConflictError("This account's balance changed while saving — please retry.");
     }
   } else {
     const { error } = await updateQuery;

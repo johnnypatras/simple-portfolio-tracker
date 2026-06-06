@@ -1395,7 +1395,7 @@ export function TransferDialog({
                         >
                           {matchingCashAccounts.map((ca) => (
                             <option key={ca.id} value={ca.id}>
-                              {ca.name ?? "Account"} \u2014 {buyAssetCurrency} {ca.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                              {ca.name ?? "Account"} — {buyAssetCurrency} {ca.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                             </option>
                           ))}
                         </select>

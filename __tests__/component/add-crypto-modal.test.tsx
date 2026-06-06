@@ -36,10 +36,12 @@ vi.mock("focus-trap-react", () => ({
 }));
 
 // next/image renders an <img> in jsdom without complaint when mocked simply.
+// Default `alt` to "" so the stub satisfies jsx-a11y/alt-text — only the
+// next-specific element rule needs suppressing.
 vi.mock("next/image", () => ({
-  default: (props: Record<string, unknown>) => {
-    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-    return <img {...(props as Record<string, never>)} />;
+  default: ({ alt = "", ...rest }: { alt?: string } & Record<string, unknown>) => {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img alt={alt} {...(rest as Record<string, never>)} />;
   },
 }));
 

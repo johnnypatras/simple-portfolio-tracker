@@ -69,6 +69,7 @@ export function SettingsTabs({ profile }: SettingsTabsProps) {
               role="tab"
               aria-selected={isActive}
               aria-controls={`panel-${tab.id}`}
+              aria-label={tab.label}
               tabIndex={isActive ? 0 : -1}
               onClick={() => setActive(tab.id)}
               onKeyDown={(e) => handleTabKeyDown(e, index)}
@@ -78,7 +79,7 @@ export function SettingsTabs({ profile }: SettingsTabsProps) {
                   : "text-zinc-400 hover:text-zinc-300"
               }`}
             >
-              <Icon className="w-4 h-4 shrink-0" />
+              <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
               <span className="hidden sm:inline">{tab.label}</span>
             </button>
           );

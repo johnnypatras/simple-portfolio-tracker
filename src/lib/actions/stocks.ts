@@ -18,6 +18,7 @@ import { computeActivityFxWithConversion, emptyFx } from "@/lib/activity-fx";
 import { round2 } from "@/lib/format";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { PG_UNIQUE_VIOLATION } from "@/lib/supabase/error-codes";
+import { ConcurrencyConflictError } from "@/lib/concurrency-error";
 
 /** Get all stock assets with their positions and broker names */
 export async function getStockAssetsWithPositions(): Promise<
@@ -410,7 +411,10 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       // quantity just read. A concurrent same-user write that changed it first
       // makes 0 rows match → retryable throw rather than silently zeroing a
       // position someone else already moved. `existing.quantity` is the raw read
-      // value so the NUMERIC(18,8) equality predicate matches byte-for-byte.
+      // value. The match holds because it originated as a JS float64 via the
+      // app's own write path (shortest round-trip serialization); values from
+      // non-JS paths (raw SQL, tampered imports — now coerced at the import
+      // boundary) are outside the guarantee.
       const { data: deleted, error } = await supabase
         .from("stock_positions")
         .update({ deleted_at: new Date().toISOString() })
@@ -420,7 +424,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         .select("id");
       if (error) throw new Error(error.message);
       if (!deleted || deleted.length === 0) {
-        throw new Error("This position changed while saving — please retry.");
+        throw new ConcurrencyConflictError("This position changed while saving — please retry.");
       }
 
       const qty = (existing.quantity as number) ?? 0;
@@ -469,7 +473,10 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       // two concurrent same-user writes would clobber each other (both sell from
       // the same starting balance). `.eq("quantity", before.quantity)` fails the
       // write (0 rows) on conflict. `before.quantity` is the raw read value, never
-      // re-parsed, so the NUMERIC(18,8) equality matches exactly.
+      // re-parsed. The match holds because it originated as a JS float64 via the
+      // app's own write path (shortest round-trip serialization); values from
+      // non-JS paths (raw SQL, tampered imports — now coerced at the import
+      // boundary) are outside the guarantee.
       const { data: updated, error } = await supabase.from("stock_positions").update({
         quantity: input.quantity,
         last_was_adjustment: opts?.isAdjustment ?? false,
@@ -477,7 +484,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       }).eq("id", before.id).eq("quantity", before.quantity ?? 0).select("id");
       if (error) throw new Error(error.message);
       if (!updated || updated.length === 0) {
-        throw new Error("This position changed while saving — please retry.");
+        throw new ConcurrencyConflictError("This position changed while saving — please retry.");
       }
     } else {
       const { error } = await supabase.from("stock_positions").insert({
@@ -507,7 +514,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
           }).eq("id", existing.id).eq("quantity", existing.quantity ?? 0).select("id");
           if (updateErr) throw new Error(updateErr.message);
           if (!updated || updated.length === 0) {
-            throw new Error("This position changed while saving — please retry.");
+            throw new ConcurrencyConflictError("This position changed while saving — please retry.");
           }
         } else {
           throw new Error(error.message);

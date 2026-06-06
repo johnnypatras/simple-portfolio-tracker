@@ -554,12 +554,14 @@ export function TradeTable({
                     <div className="flex items-center justify-end gap-1 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto transition-opacity">
                       <button
                         onClick={() => openEdit(t)}
+                        aria-label={`Edit ${t.asset_name} trade`}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                       >
-                        <Pencil className="w-3.5 h-3.5" />
+                        <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
                       <ConfirmButton
                         onConfirm={() => handleDelete(t.id)}
+                        ariaLabel={`Delete ${t.asset_name} trade`}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -623,12 +625,14 @@ export function TradeTable({
                 <div className="flex items-center gap-0.5 shrink-0">
                   <button
                     onClick={() => openEdit(t)}
+                    aria-label={`Edit ${t.asset_name} trade`}
                     className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
                   >
-                    <Pencil className="w-3.5 h-3.5" />
+                    <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
                   <ConfirmButton
                     onConfirm={() => handleDelete(t.id)}
+                    ariaLabel={`Delete ${t.asset_name} trade`}
                     className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

@@ -20,5 +20,7 @@ Sentry.init({
   // Filter known-benign noise:
   //   - NEXT_NOT_FOUND / NEXT_REDIRECT are Next.js control-flow exceptions
   //   - AbortError fires routinely from fetchWithTimeout's 8s budget
-  ignoreErrors: ["NEXT_NOT_FOUND", "NEXT_REDIRECT", "AbortError"],
+  //   - ConcurrencyConflictError is a user-retryable optimistic-lock conflict
+  //     (guarded write matched 0 rows) — the user simply retries, nothing broke
+  ignoreErrors: ["NEXT_NOT_FOUND", "NEXT_REDIRECT", "AbortError", "ConcurrencyConflictError"],
 });

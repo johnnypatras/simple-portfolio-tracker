@@ -258,4 +258,65 @@ describe("validateBackup", () => {
       expect(fromDeposit?.balance).toBe(500);
     }
   });
+
+  // ── Numeric-field hardening: junk that coerces to 0/NaN must be REJECTED ──
+  // Number("") === 0, Number(null) === 0, Number([]) === 0 — a tampered backup
+  // could otherwise slip an empty/null/array balance or quantity past
+  // validateAmount/validateQuantity as a legitimate 0. coerceFiniteNumber rejects
+  // these before the range check; a finite numeric string is accepted.
+  describe("numeric-field hardening", () => {
+    for (const junk of ["", "abc", null, [], "1,5"] as const) {
+      it(`rejects a cash balance of ${JSON.stringify(junk)}`, async () => {
+        const data = {
+          ...minimalV3(),
+          cashAccounts: [{ currency: "EUR", balance: junk }],
+        };
+        const result = await validateBackup(data);
+        expect(result.ok).toBe(false);
+      });
+
+      it(`rejects a crypto position quantity of ${JSON.stringify(junk)}`, async () => {
+        const data = {
+          ...minimalV3(),
+          cryptoAssets: [
+            {
+              id: "ca1",
+              ticker: "BTC",
+              name: "Bitcoin",
+              coingecko_id: "bitcoin",
+              positions: [{ wallet_id: "w1", quantity: junk }],
+            },
+          ],
+        };
+        const result = await validateBackup(data);
+        expect(result.ok).toBe(false);
+      });
+    }
+
+    it("accepts a finite numeric string balance (\"100.50\")", async () => {
+      const data = {
+        ...minimalV3(),
+        cashAccounts: [{ currency: "EUR", balance: "100.50" }],
+      };
+      const result = await validateBackup(data);
+      expect(result.ok).toBe(true);
+    });
+
+    it("accepts a finite numeric string quantity (\"2.5\")", async () => {
+      const data = {
+        ...minimalV3(),
+        cryptoAssets: [
+          {
+            id: "ca1",
+            ticker: "BTC",
+            name: "Bitcoin",
+            coingecko_id: "bitcoin",
+            positions: [{ wallet_id: "w1", quantity: "2.5" }],
+          },
+        ],
+      };
+      const result = await validateBackup(data);
+      expect(result.ok).toBe(true);
+    });
+  });
 });

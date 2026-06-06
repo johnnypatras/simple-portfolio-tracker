@@ -27,6 +27,26 @@ function hasRequiredFields(item: unknown, fields: string[]): boolean {
   return fields.every((f) => f in item);
 }
 
+/**
+ * Reject a numeric field whose raw value would silently coerce to 0 (or NaN)
+ * before {@link validateAmount}/{@link validateQuantity} can vet it. `Number("")`,
+ * `Number(null)`, and `Number([])` are all 0 — a hand-tampered backup could slip
+ * an empty/null/array balance or quantity past validation as a legitimate 0.
+ * Accepts a real `number` or a finite numeric string; throws (with the field
+ * label, matching the file's per-field error style) otherwise. Returns the
+ * coerced number so the caller inserts the vetted value, never the raw string.
+ */
+function coerceFiniteNumber(raw: unknown, label: string): number {
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) throw new Error(`${label} must be a finite number`);
+    return raw;
+  }
+  if (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw))) {
+    return Number(raw);
+  }
+  throw new Error(`${label} must be a number`);
+}
+
 export async function validateBackup(
   data: unknown
 ): Promise<{ ok: true; preview: PortfolioBackup } | { ok: false; error: string }> {
@@ -203,7 +223,9 @@ export async function validateBackup(
     for (const [i, ca] of (d.cashAccounts as Record<string, unknown>[]).entries()) {
       if (ca.name) validateName(String(ca.name), 100, `cashAccounts[${i}].name`);
       validateCurrency(String(ca.currency));
-      validateAmount(Number(ca.balance), `cashAccounts[${i}].balance`);
+      // Reject junk (""/null/[] → 0) BEFORE the range check so a tampered backup
+      // can't slip an empty balance past validation as a legitimate 0.
+      validateAmount(coerceFiniteNumber(ca.balance, `cashAccounts[${i}].balance`), `cashAccounts[${i}].balance`);
     }
     for (const [i, t] of (d.tradeEntries as Record<string, unknown>[]).entries()) {
       if (t.trade_date) validateDate(String(t.trade_date), `tradeEntries[${i}].trade_date`);
@@ -221,7 +243,10 @@ export async function validateBackup(
       const positions = (asset as Record<string, unknown>).positions;
       if (Array.isArray(positions)) {
         for (const [j, pos] of (positions as Record<string, unknown>[]).entries()) {
-          validateQuantity(Number(pos.quantity), `cryptoAssets[${i}].positions[${j}].quantity`);
+          validateQuantity(
+            coerceFiniteNumber(pos.quantity, `cryptoAssets[${i}].positions[${j}].quantity`),
+            `cryptoAssets[${i}].positions[${j}].quantity`,
+          );
           if (pos.network != null && String(pos.network).trim()) {
             validateName(String(pos.network).trim(), 50, `cryptoAssets[${i}].positions[${j}].network`);
           }
@@ -232,7 +257,10 @@ export async function validateBackup(
       const positions = (asset as Record<string, unknown>).positions;
       if (Array.isArray(positions)) {
         for (const [j, pos] of (positions as Record<string, unknown>[]).entries()) {
-          validateQuantity(Number(pos.quantity), `stockAssets[${i}].positions[${j}].quantity`);
+          validateQuantity(
+            coerceFiniteNumber(pos.quantity, `stockAssets[${i}].positions[${j}].quantity`),
+            `stockAssets[${i}].positions[${j}].quantity`,
+          );
         }
       }
     }
@@ -482,7 +510,10 @@ export async function importFromJson(
           institution_id: mappedInstId,
           name: ca.name ?? null,
           currency: ca.currency,
-          balance: ca.balance,
+          // Insert the COERCED number (validated above) — a high-precision string
+          // entering verbatim would break the NUMERIC equality the concurrency
+          // guard relies on.
+          balance: Number(ca.balance),
           apy: ca.apy ?? 0,
           region: ca.region ?? null,
           wallet_id: mappedWalletId,
@@ -566,7 +597,8 @@ export async function importFromJson(
       posRows.push({
         crypto_asset_id: newAssetId,
         wallet_id: mappedWalletId,
-        quantity: pos.quantity,
+        // Coerced (validated above) — a raw string would break the NUMERIC guard.
+        quantity: Number(pos.quantity),
         acquisition_method: pos.acquisition_method ?? "bought",
         apy: pos.apy ?? 0,
         network: pos.network?.trim() || null,
@@ -708,7 +740,8 @@ export async function importFromJson(
       posRows.push({
         stock_asset_id: newAssetId,
         broker_id: mappedBrokerId,
-        quantity: pos.quantity,
+        // Coerced (validated above) — a raw string would break the NUMERIC guard.
+        quantity: Number(pos.quantity),
         last_was_adjustment: pos.last_was_adjustment ?? false,
         last_was_transfer: pos.last_was_transfer ?? false,
       });

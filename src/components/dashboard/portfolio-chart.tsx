@@ -695,6 +695,7 @@ function PeriodSelector({
           type="button"
           key={p.label}
           onClick={() => onChange(i)}
+          aria-pressed={i === activeIdx}
           className={`px-1.5 py-0.5 min-h-6 min-w-6 text-[10px] rounded transition-colors ${
             i === activeIdx
               ? "bg-zinc-700 text-zinc-100"
