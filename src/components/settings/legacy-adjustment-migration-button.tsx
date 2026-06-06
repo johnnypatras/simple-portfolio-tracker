@@ -156,7 +156,7 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
           </div>
           <p className="text-xs text-zinc-400">
             This will reclassify <span className="text-zinc-200 font-medium">{candidateCount}</span>{" "}
-            {candidateCount === 1 ? "entry" : "entries"} from adjustment to real cash flow, so the S&amp;P
+            {candidateCount === 1 ? "entry" : "entries"}{" "}from adjustment to real cash flow, so the S&amp;P
             benchmark counts them as deposits. The change is reversible — each entry can be toggled back via
             its &ldquo;Mark as adjustment&rdquo; button in the History timeline.
           </p>
@@ -208,7 +208,7 @@ export function LegacyAdjustmentMigrationButton({ candidateCount }: LegacyAdjust
           </div>
           {result.pending > 0 && (
             <p className="text-xs text-zinc-400">
-              {result.pending} {result.pending === 1 ? "entry" : "entries"} awaiting price data — they&rsquo;ll
+              {result.pending} {result.pending === 1 ? "entry" : "entries"}{" "}awaiting price data — they&rsquo;ll
               resolve automatically.
             </p>
           )}

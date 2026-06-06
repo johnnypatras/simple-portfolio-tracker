@@ -237,16 +237,25 @@ export function PortfolioChart({
     // which seeds from the at-or-before lookup at chartStart before scanning the
     // in-window entries. This ensures the carried-forward cost (from a pre-window
     // series entry) is included even when no entry falls inside the visible range.
+    let costSetsFloor = false;
     if (costBasisSeries && costBasisSeries.length > 0) {
       const chartStart = data[0].date;
       const chartEnd = data[data.length - 1].date;
       const { min: costMin, max: costMax } = computeCostBasisYDomainExpansion(
         costBasisSeries, chartStart, chartEnd, viewMode, primaryCurrency,
       );
-      if (costMin < minValue) minValue = costMin;
+      if (costMin < minValue) {
+        minValue = costMin;
+        costSetsFloor = true;
+      }
       if (costMax > maxValue) maxValue = costMax;
     }
-    return [Math.floor(minValue * 0.99), Math.ceil(maxValue * 1.01)] as const;
+    // When the cost overlay IS the floor-setter, pad a little extra so the
+    // dashed cost line sits visibly above the bottom axis instead of
+    // coinciding with it (smoke finding: at 1% padding the line reads as the
+    // axis itself).
+    const floorFactor = costSetsFloor ? 0.97 : 0.99;
+    return [Math.floor(minValue * floorFactor), Math.ceil(maxValue * 1.01)] as const;
   }, [data, showBenchmark, costBasisSeries, viewMode, primaryCurrency]);
 
   // Compute allocation area fields relative to yDomain baseline.

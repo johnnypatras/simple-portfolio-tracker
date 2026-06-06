@@ -183,14 +183,14 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
         {/* Portfolio Overview (merged Total + Allocation) */}
         <div className="md:col-span-2 bg-zinc-900 border border-zinc-800/50 rounded-xl p-3 sm:p-5">
           {/* ── Header row: title + period toggle ── */}
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-y-1 mb-2">
             <div className="flex items-center gap-2">
               <Wallet className="w-4 h-4 text-zinc-400" />
               <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Portfolio
               </span>
             </div>
-            <div className="flex gap-0.5">
+            <div className="flex gap-0.5 ml-auto">
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
@@ -274,27 +274,33 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             const pct = costBasis > 0 ? totalPnL / costBasis : null;
             return (
               <p className="text-[11px] mt-1 tabular-nums">
-                <span className="text-zinc-400">Total P&amp;L </span>
-                <span
-                  className={changeColorClass(totalPnL)}
-                  {...(cur === "USD" ? { title: COST_COPY.fxDivergenceTooltip } : {})}
-                >
-                  {totalPnL >= 0 ? "+" : ""}{fmtCurrency(totalPnL, "EUR")}
-                  {pct !== null && (
-                    <span className="ml-1 font-normal">
-                      ({fmtPct(pct * 100)})
-                    </span>
-                  )}
+                <span className="whitespace-nowrap">
+                  <span className="text-zinc-400">Total P&amp;L </span>
+                  <span
+                    className={changeColorClass(totalPnL)}
+                    {...(cur === "USD" ? { title: COST_COPY.fxDivergenceTooltip } : {})}
+                  >
+                    {totalPnL >= 0 ? "+" : ""}{fmtCurrency(totalPnL, "EUR")}
+                    {pct !== null && (
+                      <span className="ml-1 font-normal">
+                        ({fmtPct(pct * 100)})
+                      </span>
+                    )}
+                  </span>
                 </span>
                 <span className="text-zinc-600" aria-hidden="true"> · </span>
-                <span className="text-zinc-400">Unrealized </span>
-                <span className={changeColorClass(unrealized)}>
-                  {unrealized >= 0 ? "+" : ""}{fmtCurrency(unrealized, "EUR")}
+                <span className="whitespace-nowrap">
+                  <span className="text-zinc-400">Unrealized </span>
+                  <span className={changeColorClass(unrealized)}>
+                    {unrealized >= 0 ? "+" : ""}{fmtCurrency(unrealized, "EUR")}
+                  </span>
                 </span>
                 <span className="text-zinc-600" aria-hidden="true"> · </span>
-                <span className="text-zinc-400">Realized </span>
-                <span className={changeColorClass(realized)}>
-                  {realized >= 0 ? "+" : ""}{fmtCurrency(realized, "EUR")}
+                <span className="whitespace-nowrap">
+                  <span className="text-zinc-400">Realized </span>
+                  <span className={changeColorClass(realized)}>
+                    {realized >= 0 ? "+" : ""}{fmtCurrency(realized, "EUR")}
+                  </span>
                 </span>
               </p>
             );
@@ -503,14 +509,14 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             }
           }}
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-y-1 mb-2">
             <div className="flex items-center gap-2">
               <Bitcoin className="w-4 h-4 text-zinc-400" />
               <span id="crypto-panel-label" className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Crypto
               </span>
             </div>
-            <div className="flex gap-0.5">
+            <div className="flex gap-0.5 ml-auto">
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
@@ -531,7 +537,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             const c = getCryptoChangeForPeriod(changePeriod, changeCtx);
             return (
               <>
-                <div className="flex items-baseline gap-3 mt-2">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
                   <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
                     {fmtCurrency(cryptoValue, cur, 0)}
                   </p>
@@ -543,7 +549,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       onClick={(e) => toggleTooltip("crypto", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("crypto", e); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
                         isReadOnly ? (
@@ -689,14 +695,14 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             }
           }}
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-y-1 mb-2">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-zinc-400" />
               <span id="equities-panel-label" className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Equities
               </span>
             </div>
-            <div className="flex gap-0.5">
+            <div className="flex gap-0.5 ml-auto">
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
@@ -717,7 +723,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             const c = getStockChangeForPeriod(changePeriod, changeCtx);
             return (
               <>
-                <div className="flex items-baseline gap-3 mt-2">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
                   <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
                     {fmtCurrency(stocksValue, cur, 0)}
                   </p>
@@ -729,7 +735,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       onClick={(e) => toggleTooltip("equities", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("equities", e); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
                         isReadOnly ? (
@@ -906,14 +912,14 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             }
           }}
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-y-1 mb-2">
             <div className="flex items-center gap-2">
               <Banknote className="w-4 h-4 text-zinc-400" />
               <span id="cash-panel-label" className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
                 Banks & Deposits
               </span>
             </div>
-            <div className="flex gap-0.5">
+            <div className="flex gap-0.5 ml-auto">
               {CHANGE_PERIODS.map((p) => (
                 <button
                   key={p}
@@ -934,7 +940,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             const c = getCashChangeForPeriod(changePeriod, changeCtx);
             return (
               <>
-                <div className="flex items-baseline gap-3 mt-2">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
                   <p className="text-3xl font-semibold text-zinc-100 tabular-nums">
                     {fmtCurrency(cashValue, cur, 0)}
                   </p>
@@ -946,7 +952,7 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                       onClick={(e) => toggleTooltip("cash", e)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleTooltip("cash", e); } }}
                       tabIndex={0}
-                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center ${changeColorClass(c.percent)}`}
+                      className={`relative group/tip cursor-pointer text-xs tabular-nums min-h-6 inline-flex items-center whitespace-nowrap ${changeColorClass(c.percent)}`}
                     >
                       {c.valueChange !== 0 ? (
                         isReadOnly ? (
