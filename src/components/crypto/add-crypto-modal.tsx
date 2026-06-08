@@ -10,6 +10,7 @@ import type { CoinGeckoSearchResult, Wallet, AcquisitionType } from "@/lib/types
 import { ACQUISITION_TYPES, parseWalletChains, getWalletChainTokens } from "@/lib/types";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
+import { omitWriteTimePrice } from "@/lib/backdated-price";
 
 interface ExistingCryptoEntry {
   coingecko_id: string;
@@ -224,6 +225,12 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
         positionCostDirty && positionCost.trim() !== "" && Number.isFinite(costNum)
           ? { amount: costNum, currency: positionCostCurrency }
           : undefined;
+      // The search result carries only a USD price (no EUR). Passing USD-only
+      // would book a $0 EUR cashflow at cashflow_status=complete. So a no-cost
+      // entry omits the price for BOTH the backdated and the today path —
+      // backfill values both currencies at the effective date. An entry WITH a
+      // user cost keeps the USD price (the cost is stored verbatim either way).
+      const omitPrice = omitWriteTimePrice(effectiveDate, cost != null) || cost == null;
       await upsertPosition({
         crypto_asset_id: assetId,
         wallet_id: positionWalletId,
@@ -233,7 +240,7 @@ export function AddCryptoModal({ open, onClose, wallets, existingSubcategories, 
       }, {
         ...adjustOpts,
         ...dateOpts,
-        currentPriceUsd: selectedCoin.price_usd,
+        ...(omitPrice ? {} : { currentPriceUsd: selectedCoin.price_usd }),
         ...(cost ? { cost } : {}),
       });
 

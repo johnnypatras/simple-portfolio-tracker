@@ -268,6 +268,57 @@ describe("stock StockPositionEditor — amount paid (cost spine)", () => {
   });
 });
 
+// ─── Backdated no-cost entries defer pricing to the backfill ──
+// A backdated row with NO user cost must NOT carry a write-time market price,
+// so the row lands cashflow_status=null and the backfill prices it at
+// effective_date. A today no-cost row keeps the price.
+
+describe("stock StockPositionEditor — backdated no-cost defers to backfill", () => {
+  function costInput(): HTMLInputElement {
+    return screen.getAllByLabelText("Amount paid (incl. fees)")[0] as HTMLInputElement;
+  }
+  function firstRowSave(): HTMLElement {
+    return screen.getAllByRole("button", { name: "Save" })[0];
+  }
+
+  it("backdated + no cost → upsertStockPosition called WITHOUT currentPriceNative", async () => {
+    renderEditor();
+    fireEvent.change(dateInput(), { target: { value: "2026-03-02" } });
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertStockPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ currentPriceNative: expect.anything() }),
+    );
+    expect(hoisted.upsertStockPosition.mock.calls[0][1].effectiveDate).toBe("2026-03-02");
+  });
+
+  it("today (no effectiveDate) + no cost → upsertStockPosition called WITH currentPriceNative", async () => {
+    renderEditor();
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertStockPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ currentPriceNative: 80 }),
+    );
+  });
+
+  it("backdated WITH a user cost → currentPriceNative still passes", async () => {
+    renderEditor();
+    fireEvent.change(dateInput(), { target: { value: "2026-03-02" } });
+    fireEvent.change(costInput(), { target: { value: "1000" } });
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertStockPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ currentPriceNative: 80 }),
+    );
+  });
+});
+
 describe("StockPositionEditor — Sell/Buy delegate to the trade modal (1a)", () => {
   it("Sell closes the editor and delegates onTrade('sell')", () => {
     const { onClose, onTrade } = renderEditor();

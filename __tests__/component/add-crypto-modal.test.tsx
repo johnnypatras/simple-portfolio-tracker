@@ -166,3 +166,57 @@ describe("AddCryptoModal — Amount paid (incl. fees) cost field", () => {
     expect(opts.cost).toBeUndefined();
   });
 });
+
+// ─── Backdated/no-cost entries defer pricing to the backfill ──
+// The search result carries only price_usd (no EUR). Passing USD-only would
+// book a $0 EUR cashflow at cashflow_status=complete (the EUR-leg bug), so a
+// no-cost entry omits the price entirely — backfill values both currencies at
+// the effective date. An entry WITH a user cost keeps the USD price.
+describe("AddCryptoModal — backdated/no-cost defers to backfill", () => {
+  async function fillPosition() {
+    fireEvent.click(screen.getByRole("button", { name: /Add initial position/i }));
+    fireEvent.change(screen.getByLabelText(/Wallet \/ Exchange/i), { target: { value: "wallet-1" } });
+    fireEvent.change(screen.getByLabelText(/Quantity/i), { target: { value: "2" } });
+  }
+
+  it("backdated + no cost → upsertPosition called WITHOUT currentPriceUsd", async () => {
+    renderOpen();
+    await selectCoin();
+    await fillPosition();
+    fireEvent.change(screen.getByLabelText("Effective date (optional)"), { target: { value: "2026-03-02" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalled());
+    expect(hoisted.upsertPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ currentPriceUsd: expect.anything() }),
+    );
+  });
+
+  it("today (no effectiveDate) + no cost → upsertPosition called WITHOUT currentPriceUsd (no EUR source → defer)", async () => {
+    renderOpen();
+    await selectCoin();
+    await fillPosition();
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalled());
+    expect(hoisted.upsertPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ currentPriceUsd: expect.anything() }),
+    );
+  });
+
+  it("with a user cost → currentPriceUsd still passes", async () => {
+    renderOpen();
+    await selectCoin();
+    await fillPosition();
+    fireEvent.change(screen.getByLabelText(/Amount paid \(incl\. fees\)/i), { target: { value: "1500" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalled());
+    expect(hoisted.upsertPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ currentPriceUsd: 50000 }),
+    );
+  });
+});

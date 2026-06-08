@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
+import { omitWriteTimePrice } from "@/lib/backdated-price";
 
 interface AddStockModalProps {
   open: boolean;
@@ -228,6 +229,10 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
           positionCostDirty && positionCost.trim() !== "" && Number.isFinite(costNum)
             ? { amount: costNum, currency: positionCostCurrency }
             : undefined;
+        // A backdated no-cost entry must NOT carry today's price — omitting it
+        // lands the row cashflow_status=null so the date-aware backfill values
+        // it at effective_date. A today entry's price IS the effective-date price.
+        const omitPrice = omitWriteTimePrice(effectiveDate, cost != null);
         await upsertStockPosition({
           stock_asset_id: assetId,
           broker_id: positionBrokerId,
@@ -235,8 +240,9 @@ export function AddStockModal({ open, onClose, brokers, existingSubcategories, e
         }, {
           ...adjustOpts,
           ...dateOpts,
-          currentPriceNative: selected?.price,
-          assetCurrency: selected?.currency,
+          ...(omitPrice
+            ? {}
+            : { currentPriceNative: selected?.price, assetCurrency: selected?.currency }),
           ...(cost ? { cost } : {}),
         });
       }

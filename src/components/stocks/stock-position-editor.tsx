@@ -12,6 +12,7 @@ import type { StockAssetWithPositions, Broker, AssetCategory, TransferMode } fro
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { formatBackdateChipDate } from "@/lib/format";
+import { omitWriteTimePrice } from "@/lib/backdated-price";
 
 const TYPES: { value: AssetCategory; label: string }[] = [
   { value: "individual_stock", label: "Individual Stock" },
@@ -218,6 +219,10 @@ export function StockPositionEditor({
       (costDirty[brokerId] ?? false) && costStr.trim() !== "" && Number.isFinite(costNum)
         ? { amount: costNum, currency: costCurrency[brokerId] ?? "EUR" }
         : undefined;
+    // A backdated no-cost entry must NOT carry today's price — omitting it lands
+    // the row cashflow_status=null so the date-aware backfill values it at
+    // effective_date. A today entry's current price IS the effective-date price.
+    const omitPrice = omitWriteTimePrice(effectiveDate, cost != null);
     try {
       await upsertStockPosition({
         stock_asset_id: asset.id,
@@ -225,8 +230,9 @@ export function StockPositionEditor({
         quantity: qty,
       }, {
         isAdjustment: adjustmentFlags[brokerId] ?? false,
-        currentPriceNative: priceData?.price,
-        assetCurrency: priceData?.currency ?? asset.currency,
+        ...(omitPrice
+          ? {}
+          : { currentPriceNative: priceData?.price, assetCurrency: priceData?.currency ?? asset.currency }),
         ...(effectiveDate ? { effectiveDate } : {}),
         ...(cost ? { cost } : {}),
       });

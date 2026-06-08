@@ -145,3 +145,57 @@ describe("AddStockModal — Amount paid (incl. fees) cost field", () => {
     expect(opts.cost).toBeUndefined();
   });
 });
+
+// ─── Backdated no-cost entries defer pricing to the backfill ──
+// A backdated row with NO user cost must NOT carry a write-time market price,
+// so the row lands cashflow_status=null and the backfill prices it at
+// effective_date. A today no-cost row keeps the native price.
+describe("AddStockModal — backdated no-cost defers to backfill", () => {
+  async function fillPosition() {
+    fireEvent.click(screen.getByRole("button", { name: /Add initial position/i }));
+    fireEvent.change(screen.getByLabelText(/Broker/i), { target: { value: "broker-1" } });
+    fireEvent.change(screen.getByLabelText(/Shares/i), { target: { value: "10" } });
+  }
+
+  it("backdated + no cost → upsertStockPosition called WITHOUT currentPriceNative", async () => {
+    renderOpen();
+    await intoForm();
+    await fillPosition();
+    fireEvent.change(screen.getByLabelText("Effective date (optional)"), { target: { value: "2026-03-02" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalled());
+    expect(hoisted.upsertStockPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ currentPriceNative: expect.anything() }),
+    );
+  });
+
+  it("today (no effectiveDate) + no cost → upsertStockPosition called WITH currentPriceNative", async () => {
+    renderOpen();
+    await intoForm();
+    await fillPosition();
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalled());
+    expect(hoisted.upsertStockPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ currentPriceNative: 200 }),
+    );
+  });
+
+  it("backdated WITH a user cost → currentPriceNative still passes", async () => {
+    renderOpen();
+    await intoForm();
+    await fillPosition();
+    fireEvent.change(screen.getByLabelText("Effective date (optional)"), { target: { value: "2026-03-02" } });
+    fireEvent.change(screen.getByLabelText(/Amount paid \(incl\. fees\)/i), { target: { value: "2000" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalled());
+    expect(hoisted.upsertStockPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ currentPriceNative: 200 }),
+    );
+  });
+});

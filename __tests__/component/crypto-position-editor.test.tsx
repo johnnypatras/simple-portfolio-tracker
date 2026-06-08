@@ -297,6 +297,63 @@ describe("crypto PositionEditor — amount paid (cost spine)", () => {
   });
 });
 
+// ─── Backdated no-cost entries defer pricing to the backfill ──
+// A backdated row with NO user cost must NOT carry a write-time market price,
+// so the row lands cashflow_status=null and the date-aware backfill prices it
+// at effective_date. A today (no effectiveDate) no-cost row keeps the price —
+// today's price IS the effective-date price.
+
+describe("crypto PositionEditor — backdated no-cost defers to backfill", () => {
+  function costInput(): HTMLInputElement {
+    return screen.getAllByLabelText("Amount paid (incl. fees)")[0] as HTMLInputElement;
+  }
+  function firstRowSave(): HTMLElement {
+    return screen.getAllByRole("button", { name: "Save" })[0];
+  }
+
+  it("backdated + no cost → upsertPosition called WITHOUT currentPriceUsd/Eur", async () => {
+    renderEditor();
+    fireEvent.change(dateInput(), { target: { value: "2026-03-02" } });
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ currentPriceUsd: expect.anything() }),
+    );
+    expect(hoisted.upsertPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ currentPriceEur: expect.anything() }),
+    );
+    // The backdate itself is still threaded.
+    expect(hoisted.upsertPosition.mock.calls[0][1].effectiveDate).toBe("2026-03-02");
+  });
+
+  it("today (no effectiveDate) + no cost → upsertPosition called WITH the prices", async () => {
+    renderEditor();
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ currentPriceUsd: 60000, currentPriceEur: 55000 }),
+    );
+  });
+
+  it("backdated WITH a user cost → prices still pass (cost is stored verbatim)", async () => {
+    renderEditor();
+    fireEvent.change(dateInput(), { target: { value: "2026-03-02" } });
+    fireEvent.change(costInput(), { target: { value: "1000" } });
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertPosition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ currentPriceUsd: 60000, currentPriceEur: 55000 }),
+    );
+  });
+});
+
 describe("PositionEditor — Sell/Buy delegate to the trade modal (1a)", () => {
   it("Sell closes the editor and delegates onTrade('sell')", () => {
     const { onClose, onTrade } = renderEditor();

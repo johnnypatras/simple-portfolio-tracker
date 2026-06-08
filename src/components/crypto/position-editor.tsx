@@ -13,6 +13,7 @@ import { ACQUISITION_TYPES, parseWalletChains } from "@/lib/types";
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { formatBackdateChipDate } from "@/lib/format";
+import { omitWriteTimePrice } from "@/lib/backdated-price";
 
 interface PositionEditorProps {
   open: boolean;
@@ -267,6 +268,10 @@ export function PositionEditor({
       (costDirty[walletId] ?? false) && costStr.trim() !== "" && Number.isFinite(costNum)
         ? { amount: costNum, currency: costCurrency[walletId] ?? "EUR" }
         : undefined;
+    // A backdated no-cost entry must NOT carry today's price — omitting it lands
+    // the row cashflow_status=null so the date-aware backfill values it at
+    // effective_date. A today entry's current price IS the effective-date price.
+    const omitPrice = omitWriteTimePrice(effectiveDate, cost != null);
     try {
       await upsertPosition({
         crypto_asset_id: asset.id,
@@ -277,8 +282,7 @@ export function PositionEditor({
         network: edit?.network?.trim() || null,
       }, {
         isAdjustment: edit.isAdjustment,
-        currentPriceUsd: priceData?.usd,
-        currentPriceEur: priceData?.eur,
+        ...(omitPrice ? {} : { currentPriceUsd: priceData?.usd, currentPriceEur: priceData?.eur }),
         ...(effectiveDate ? { effectiveDate } : {}),
         ...(cost ? { cost } : {}),
       });
