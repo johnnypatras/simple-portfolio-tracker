@@ -281,4 +281,57 @@ describe("addNewAssetTransaction (integration)", () => {
       .is("deleted_at", null);
     expect(posRows ?? []).toHaveLength(0);
   });
+
+  it("rejects when neither locationId nor newLocationName is given", async () => {
+    const res = await addNewAssetTransaction({
+      assetClass: "crypto",
+      newCryptoAsset: { ticker: "G1", name: "Guard1", coingecko_id: `g1-${randomUUID()}` },
+      quantity: 1,
+    });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/exactly one/i);
+  });
+
+  it("rejects when both locationId and newLocationName are given", async () => {
+    const res = await addNewAssetTransaction({
+      assetClass: "crypto",
+      newCryptoAsset: { ticker: "G2", name: "Guard2", coingecko_id: `g2-${randomUUID()}` },
+      locationId: walletId,
+      newLocationName: "Both",
+      quantity: 1,
+    });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/exactly one/i);
+  });
+
+  it("rejects a crypto buy with no newCryptoAsset", async () => {
+    const res = await addNewAssetTransaction({
+      assetClass: "crypto",
+      locationId: walletId,
+      quantity: 1,
+    });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/newCryptoAsset is required/i);
+  });
+
+  it("rejects a zero quantity (validateQuantity allows 0; the > 0 guard catches it)", async () => {
+    const coingeckoId = `g4-${randomUUID()}`;
+    const res = await addNewAssetTransaction({
+      assetClass: "crypto",
+      newCryptoAsset: { ticker: "G4", name: "Guard4", coingecko_id: coingeckoId },
+      locationId: walletId,
+      quantity: 0,
+    });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/positive/i); // proves the > 0 guard fired, not a coincidental failure
+
+    // Fail-fast: the rejection happened before any create — no orphan asset.
+    const { data: a } = await client
+      .from("crypto_assets")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("coingecko_id", coingeckoId)
+      .is("deleted_at", null);
+    expect(a ?? []).toHaveLength(0);
+  });
 });
