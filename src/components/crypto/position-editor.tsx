@@ -22,6 +22,10 @@ interface PositionEditorProps {
   existingSubcategories: string[];
   existingChains: string[];
   prices?: Record<string, { usd: number; eur: number }>;
+  /** Open the single trade modal for this asset, pre-typed. The Sell/Buy buttons
+   *  delegate here (the editor closes) instead of opening the transfer dialog.
+   *  Move still uses the dialog. Required so every call site must wire it. */
+  onTrade: (type: "buy" | "sell") => void;
 }
 
 interface PositionEdit {
@@ -40,6 +44,7 @@ export function PositionEditor({
   existingSubcategories,
   existingChains,
   prices,
+  onTrade,
 }: PositionEditorProps) {
   const id = useId();
   const router = useRouter();
@@ -499,7 +504,7 @@ export function PositionEditor({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => { setTransferMode("sell"); setTransferOpen(true); }}
+            onClick={() => { onClose(); onTrade("sell"); }}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-400 hover:text-red-400 hover:bg-zinc-800/50 transition-colors"
             title="Sell this asset"
           >
@@ -507,7 +512,7 @@ export function PositionEditor({
           </button>
           <button
             type="button"
-            onClick={() => { setTransferMode("buy"); setTransferOpen(true); }}
+            onClick={() => { onClose(); onTrade("buy"); }}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/50 transition-colors"
             title="Buy more of this asset"
           >

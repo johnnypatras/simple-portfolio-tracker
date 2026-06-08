@@ -1423,6 +1423,18 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
               existingSubcategories={existingSubcategories}
               existingChains={existingChains}
               prices={prices}
+              onTrade={(type) => {
+                const a = editingAsset;
+                if (!a) return;
+                setEditingAsset(null);
+                setTxnTarget({
+                  assetRef: { class: "crypto", assetId: a.id },
+                  name: a.name,
+                  assetClass: "crypto",
+                  walletOptions: a.positions.map((p) => ({ id: p.wallet_id, name: p.wallet_name })),
+                  openAdd: type,
+                });
+              }}
             />
           )}
           <TransactionsManager

@@ -75,8 +75,10 @@ function makeAsset(positionWalletIds: string[] = ["w-1", "w-2"]): CryptoAssetWit
 
 function renderEditor(asset = makeAsset()) {
   const onClose = vi.fn();
+  const onTrade = vi.fn();
   return {
     onClose,
+    onTrade,
     ...render(
       <PositionEditor
         open
@@ -86,6 +88,7 @@ function renderEditor(asset = makeAsset()) {
         existingSubcategories={[]}
         existingChains={[]}
         prices={{ bitcoin: { usd: 60000, eur: 55000 } }}
+        onTrade={onTrade}
       />,
     ),
   };
