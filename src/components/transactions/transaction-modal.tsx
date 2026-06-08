@@ -6,7 +6,7 @@ import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY } from "@/lib/cost-basis-copy
 import { fmtCurrency } from "@/lib/format";
 import { AssetPicker } from "@/components/transactions/asset-picker";
 import type { TransactionKind } from "@/lib/transaction-kind";
-import type { PickedAsset } from "@/lib/types";
+import type { PickedAsset, WalletType } from "@/lib/types";
 import {
   validateQuantity,
   validateAmount,
@@ -53,6 +53,12 @@ export interface TransactionSubmit {
   walletId?: string;
   /** Chosen destination broker (stock add-mode only — `addTransaction` needs it). */
   brokerId?: string;
+  /** Picker-Buy only: user chose "+ New" location instead of an existing one. The
+   *  manager creates the wallet/broker. Mutually exclusive with walletId/brokerId. */
+  newLocationName?: string;
+  /** Picker-Buy crypto only: custody for the new wallet (Exchange|Self-custody).
+   *  Omitted → custodial default downstream. */
+  walletType?: WalletType;
   /** Buy/Sell money-flow routing (C2a) — present only when the question showed. */
   moneyFlow?: MoneyFlow;
 }
@@ -240,6 +246,10 @@ export function TransactionModal({
   // caller passed (the asset's existing position wallets/brokers).
   const [walletId, setWalletId] = useState<string>(walletOptions?.[0]?.id ?? "");
   const [brokerId, setBrokerId] = useState<string>(brokerOptions?.[0]?.id ?? "");
+  // Picker-Buy "+ New" location (local state — no async identity trap, safe in reset).
+  const [creatingNewLocation, setCreatingNewLocation] = useState(false);
+  const [newLocationName, setNewLocationName] = useState("");
+  const [walletType, setWalletType] = useState<WalletType>("custodial");
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Per-field touched flags (set on blur). Validation always RUNS (Save stays
   // disabled while invalid) but error text only RENDERS for fields the user has
@@ -282,6 +292,9 @@ export function TransactionModal({
       setAmountCurrency(edit?.amountCurrency ?? "EUR");
       setWalletId(walletOptions?.[0]?.id ?? "");
       setBrokerId(brokerOptions?.[0]?.id ?? "");
+      setCreatingNewLocation(false);
+      setNewLocationName("");
+      setWalletType("custodial");
       setIsSubmitting(false);
       setTouched({ quantity: false, amount: false, date: false });
       // Money-flow defaults: tracked when accounts exist (contract), no account
@@ -394,6 +407,9 @@ export function TransactionModal({
     (touched.quantity ? quantityError : null) ??
     (touched.amount ? amountError : null) ??
     (touched.date ? dateError : null);
+  // Picker-Buy: creating a new location but the name is still blank → block Save.
+  const newLocationBlocked =
+    !!pickerMode && creatingNewLocation && newLocationName.trim() === "";
   const isSaveBlocked =
     quantityError !== null ||
     amountError !== null ||
@@ -405,7 +421,8 @@ export function TransactionModal({
     // Tracked-routing dead-ends: no account chosen, no usable amount, overdrawn.
     trackedNeedsAccount ||
     trackedNeedsAmount ||
-    overdraftError !== null;
+    overdraftError !== null ||
+    newLocationBlocked;
 
   // Amount hint: blank vs typed
   const amountIsBlank = amountStr.trim() === "";
@@ -438,8 +455,21 @@ export function TransactionModal({
     // Destination choice (add-mode only). When the selector is shown, a value is
     // always present (it defaults to the first option), so the caller's
     // addTransaction always gets the wallet/broker it requires.
-    if (showWalletSelect) payload.walletId = walletId;
-    if (showBrokerSelect) payload.brokerId = brokerId;
+    if (showWalletSelect) {
+      if (pickerMode && creatingNewLocation) {
+        payload.newLocationName = newLocationName.trim();
+        payload.walletType = walletType;
+      } else {
+        payload.walletId = walletId;
+      }
+    }
+    if (showBrokerSelect) {
+      if (pickerMode && creatingNewLocation) {
+        payload.newLocationName = newLocationName.trim();
+      } else {
+        payload.brokerId = brokerId;
+      }
+    }
 
     // Money-flow routing (C2a). Tracked → the manager builds a transfer against
     // the chosen account (S&P-neutral); external → today's addTransaction path.
@@ -654,7 +684,8 @@ export function TransactionModal({
         {/* ── Non-transfer fields ───────────────────────────────── */}
         {type !== "transfer" && !isSplitLocked && (
           <>
-            {/* Destination wallet (crypto add-mode) */}
+            {/* Destination wallet (crypto add-mode). Picker-Buy adds a "+ New"
+                affordance with an Exchange | Self-custody toggle. */}
             {showWalletSelect && (
               <div>
                 <label
@@ -663,22 +694,81 @@ export function TransactionModal({
                 >
                   Wallet
                 </label>
-                <select
-                  id={`${id}-wallet`}
-                  value={walletId}
-                  onChange={(e) => setWalletId(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-                >
-                  {walletOptions!.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-                </select>
+                {pickerMode && creatingNewLocation ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={`${id}-wallet`}
+                        type="text"
+                        value={newLocationName}
+                        onChange={(e) => setNewLocationName(e.target.value)}
+                        placeholder="New wallet name"
+                        className="flex-1 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreatingNewLocation(false);
+                          setNewLocationName("");
+                        }}
+                        className="text-xs text-zinc-400 hover:text-zinc-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {/* Exchange | Self-custody toggle (crypto new-wallet only) */}
+                    <div className="flex gap-2">
+                      {(["custodial", "non_custodial"] as const).map((wt) => {
+                        const selected = walletType === wt;
+                        const label = wt === "custodial" ? "Exchange" : "Self-custody";
+                        const tone = wt === "custodial" ? "text-sky-400" : "text-violet-400";
+                        return (
+                          <button
+                            key={wt}
+                            type="button"
+                            onClick={() => setWalletType(wt)}
+                            className={`flex-1 px-3 py-2 rounded-lg border text-xs transition-colors ${
+                              selected
+                                ? "border-blue-500/70 bg-blue-500/5"
+                                : "border-zinc-800 bg-zinc-950"
+                            } ${selected ? tone : "text-zinc-400"}`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <select
+                      id={`${id}-wallet`}
+                      value={walletId}
+                      onChange={(e) => setWalletId(e.target.value)}
+                      className="flex-1 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                    >
+                      {walletOptions!.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                    {pickerMode && (
+                      <button
+                        type="button"
+                        onClick={() => setCreatingNewLocation(true)}
+                        className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap"
+                      >
+                        + New
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Destination broker (stock add-mode) */}
+            {/* Destination broker (stock add-mode). Picker-Buy adds "+ New" — no
+                custody toggle (brokers have no custody). */}
             {showBrokerSelect && (
               <div>
                 <label
@@ -687,18 +777,52 @@ export function TransactionModal({
                 >
                   Broker
                 </label>
-                <select
-                  id={`${id}-broker`}
-                  value={brokerId}
-                  onChange={(e) => setBrokerId(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-                >
-                  {brokerOptions!.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                {pickerMode && creatingNewLocation ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      id={`${id}-broker`}
+                      type="text"
+                      value={newLocationName}
+                      onChange={(e) => setNewLocationName(e.target.value)}
+                      placeholder="New broker name"
+                      className="flex-1 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatingNewLocation(false);
+                        setNewLocationName("");
+                      }}
+                      className="text-xs text-zinc-400 hover:text-zinc-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <select
+                      id={`${id}-broker`}
+                      value={brokerId}
+                      onChange={(e) => setBrokerId(e.target.value)}
+                      className="flex-1 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                    >
+                      {brokerOptions!.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                    {pickerMode && (
+                      <button
+                        type="button"
+                        onClick={() => setCreatingNewLocation(true)}
+                        className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap"
+                      >
+                        + New
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

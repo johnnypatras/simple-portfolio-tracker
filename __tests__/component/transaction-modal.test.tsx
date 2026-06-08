@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { TransactionModal } from "@/components/transactions/transaction-modal";
 import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY } from "@/lib/cost-basis-copy";
 import type {
@@ -1140,5 +1140,85 @@ describe("TransactionModal — no pickerMode (regression)", () => {
       walletOptions: [{ id: "w1", name: "Ledger" }],
     });
     expect(screen.getByLabelText("Quantity")).toBeInTheDocument();
+  });
+});
+
+describe("TransactionModal — picker-mode new location + custody (1b-2b-ii-a)", () => {
+  function renderPickerWithWallets(picked = PICKED_SOL) {
+    const onSubmit = vi.fn();
+    render(
+      <TransactionModal
+        isOpen
+        onClose={vi.fn()}
+        assetClass="crypto"
+        initialType="buy"
+        allowedTypes={["buy"]}
+        pickerMode={{ picked, onAssetPicked: vi.fn(), ownedTickers: new Set() }}
+        walletOptions={[{ id: "w1", name: "Existing Wallet" }]}
+        onSubmit={onSubmit}
+      />,
+    );
+    return { onSubmit };
+  }
+
+  it("offers a + New affordance in picker mode and reveals name + custody toggle", () => {
+    renderPickerWithWallets();
+    fireEvent.click(screen.getByRole("button", { name: /\+ new/i }));
+    expect(screen.getByPlaceholderText(/new (wallet|exchange)/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exchange" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Self-custody" })).toBeInTheDocument();
+  });
+
+  it("emits newLocationName + walletType when + New is used (self-custody)", async () => {
+    const { onSubmit } = renderPickerWithWallets();
+    fireEvent.click(screen.getByRole("button", { name: /\+ new/i }));
+    fireEvent.change(screen.getByPlaceholderText(/new (wallet|exchange)/i), { target: { value: "Ledger" } });
+    fireEvent.click(screen.getByRole("button", { name: "Self-custody" }));
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.newLocationName).toBe("Ledger");
+    expect(payload.walletType).toBe("non_custodial");
+    expect(payload.walletId).toBeUndefined();
+  });
+
+  it("emits walletId (not newLocationName) when an existing wallet is chosen", async () => {
+    const { onSubmit } = renderPickerWithWallets();
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.walletId).toBe("w1");
+    expect(payload.newLocationName).toBeUndefined();
+  });
+
+  it("blocks Save when + New is chosen but the name is blank", () => {
+    renderPickerWithWallets();
+    fireEvent.click(screen.getByRole("button", { name: /\+ new/i }));
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "2" } });
+    expect(screen.getByRole("button", { name: /^Save$/ })).toBeDisabled();
+  });
+
+  it("stock + New shows NO custody toggle", () => {
+    const onSubmit = vi.fn();
+    render(
+      <TransactionModal
+        isOpen
+        onClose={vi.fn()}
+        assetClass="stock"
+        initialType="buy"
+        allowedTypes={["buy"]}
+        pickerMode={{
+          picked: { ...PICKED_SOL, assetClass: "stock", ticker: "VUSA" },
+          onAssetPicked: vi.fn(),
+          ownedTickers: new Set(),
+        }}
+        brokerOptions={[{ id: "b1", name: "DEGIRO" }]}
+        onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /\+ new/i }));
+    expect(screen.queryByRole("button", { name: "Exchange" })).not.toBeInTheDocument();
   });
 });
