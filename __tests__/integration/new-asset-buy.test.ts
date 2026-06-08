@@ -334,4 +334,49 @@ describe("addNewAssetTransaction (integration)", () => {
       .is("deleted_at", null);
     expect(a ?? []).toHaveLength(0);
   });
+
+  it("a new wallet defaults to custodial when walletType is omitted", async () => {
+    const coingeckoId = `cust-default-${randomUUID()}`;
+    const newWalletName = `Default Wallet ${randomUUID().slice(0, 6)}`;
+    const res = await addNewAssetTransaction({
+      assetClass: "crypto",
+      newCryptoAsset: { ticker: "CD", name: "Cust Default", coingecko_id: coingeckoId },
+      newLocationName: newWalletName,
+      quantity: 1,
+      cost: { amount: 10, currency: "EUR" },
+    });
+    expect(res.success).toBe(true);
+
+    const { data: w } = await client
+      .from("wallets")
+      .select("wallet_type")
+      .eq("user_id", userId)
+      .eq("name", newWalletName)
+      .is("deleted_at", null)
+      .single();
+    expect(w!.wallet_type).toBe("custodial");
+  });
+
+  it("a new wallet honors walletType: 'non_custodial' (self-custody)", async () => {
+    const coingeckoId = `cust-sc-${randomUUID()}`;
+    const newWalletName = `SC Wallet ${randomUUID().slice(0, 6)}`;
+    const res = await addNewAssetTransaction({
+      assetClass: "crypto",
+      newCryptoAsset: { ticker: "SC", name: "Self Custody", coingecko_id: coingeckoId },
+      newLocationName: newWalletName,
+      walletType: "non_custodial",
+      quantity: 1,
+      cost: { amount: 10, currency: "EUR" },
+    });
+    expect(res.success).toBe(true);
+
+    const { data: w } = await client
+      .from("wallets")
+      .select("wallet_type")
+      .eq("user_id", userId)
+      .eq("name", newWalletName)
+      .is("deleted_at", null)
+      .single();
+    expect(w!.wallet_type).toBe("non_custodial");
+  });
 });

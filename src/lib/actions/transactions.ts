@@ -306,11 +306,9 @@ export async function addNewAssetTransaction(
     if (hasNewLoc) {
       const name = input.newLocationName!.trim();
       if (input.assetClass === "crypto") {
-        // Defaults new wallets to "custodial" (matches executeTransfer's newWallet
-        // path). DEFERRED DECISION for 1b-2: an external new-money buy may be funding
-        // a SELF-CUSTODY wallet — the picker UI should surface a custody choice rather
-        // than inherit this hardcode. Tracked in the 1b-2 plan.
-        locationId = await createWallet({ name, wallet_type: "custodial" });
+        // Custody comes from the caller's toggle (Exchange | Self-custody); default
+        // custodial when absent so existing callers are unaffected.
+        locationId = await createWallet({ name, wallet_type: input.walletType ?? "custodial" });
         createdLocation = { table: "wallets", id: locationId };
       } else {
         locationId = await createBroker({ name });

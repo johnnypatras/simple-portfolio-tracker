@@ -813,6 +813,10 @@ export interface NewAssetBuyInput {
   locationId?: string;
   /** Create a wallet (crypto) / broker (stock) with this name and buy into it. */
   newLocationName?: string;
+  /** Custody for a newly-created crypto wallet (the newLocationName path). Default
+   *  custodial ("Exchange"). Ignored for stocks (brokers have no custody) and when
+   *  buying into an existing location. */
+  walletType?: WalletType;
   /** Units transacted (a positive delta). */
   quantity: number;
   /** Actual amount paid incl. fees (a MAGNITUDE). Absent → market-value fallback. */
