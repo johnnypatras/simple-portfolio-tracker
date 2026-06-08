@@ -2,9 +2,12 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { revalidateDashboard } from "@/lib/actions/revalidate";
-import { upsertPosition } from "@/lib/actions/crypto";
-import { upsertStockPosition } from "@/lib/actions/stocks";
+import * as Sentry from "@sentry/nextjs";
+import { upsertPosition, createCryptoAsset } from "@/lib/actions/crypto";
+import { upsertStockPosition, createStockAsset } from "@/lib/actions/stocks";
 import { updateCashAccount } from "@/lib/actions/cash-accounts";
+import { createWallet } from "@/lib/actions/wallets";
+import { createBroker } from "@/lib/actions/brokers";
 import { toUsdAndEur } from "@/lib/actions/activity-log";
 import {
   validateUUID,
@@ -35,6 +38,8 @@ import type {
   EditTransactionResult,
   MarkAsYieldResult,
   AssetTransactionDisplayRow,
+  NewAssetBuyInput,
+  NewAssetBuyResult,
 } from "@/lib/types";
 
 // ─── addTransaction ──────────────────────────────────────────────────────────
@@ -221,6 +226,142 @@ export async function addTransaction(
 
     await revalidateDashboard();
   });
+}
+
+// ─── addNewAssetTransaction ────────────────────────────────────────────────────
+
+/**
+ * Buy an asset the user may not own yet — the EXTERNAL (new-money) path of the
+ * one Buy machine. Mints the asset (idempotent — createCryptoAsset/
+ * createStockAsset return the existing id on a dup) and, when newLocationName is
+ * given, the wallet/broker, then DELEGATES to addTransaction for the buy itself.
+ *
+ * S&P CONTRACT: the delegated buy is is_adjustment=false (a contribution, not an
+ * off-book adjustment), honoring the modal's "S&P +contribution" chip. WITH a cost
+ * the row is cashflow_status='complete' and counts immediately. WITHOUT a cost this
+ * action passes no market price (same as the existing modal addTransaction path),
+ * so the row is cashflow_status=null and is valued later by the backfill — it still
+ * counts once valued; it just isn't 'complete' at write time. (1b-2's picker has a
+ * live price and MAY pass it for immediate 'complete' status.) The TRACKED
+ * (from-a-tracked-account, S&P-neutral) route is NOT this action — it goes through
+ * executeTransfer with a newCryptoAsset/newStockAsset payload.
+ *
+ * CLEANUP (mirrors executeTransfer): a freshly-created wallet/broker is hard-
+ * deleted if the buy fails. The ASSET is NEVER cleaned up — createCryptoAsset/
+ * createStockAsset may have returned a PRE-EXISTING row (dedup), and an asset
+ * with no position is harmless; deleting a deduped asset would destroy data.
+ * (An empty institution created as a side effect of createWallet/createBroker is
+ * also left in place — same stance as executeTransfer's cleanup.)
+ *
+ * Error model: returns { success:false, error } (never throws) — mirrors
+ * executeTransfer so the caller can surface the message and keep the modal open.
+ */
+export async function addNewAssetTransaction(
+  input: NewAssetBuyInput,
+): Promise<NewAssetBuyResult> {
+  const supabase = await createServerSupabaseClient();
+  let createdLocation: { table: "wallets" | "brokers"; id: string } | null = null;
+  try {
+    // ── Boundary + shape validation — quantity/date/cost/asset-presence/location
+    //    BEFORE any creation, so these fail fast. (A deep field-validation failure
+    //    inside create* — e.g. an over-100-char name — can still throw AFTER the
+    //    asset is minted, leaving an orphan asset; that's harmless by the same
+    //    dedup-safety contract as the cleanup below, not a leak.) ──
+    // validateQuantity rejects negative / NaN / over-max but ALLOWS 0 — an
+    // explicit > 0 guard stops a no-op "buy" from minting an orphan asset.
+    validateQuantity(input.quantity, "Quantity");
+    if (input.quantity <= 0) {
+      throw new Error("Quantity must be positive");
+    }
+    if (input.effectiveDate !== undefined) {
+      validatePastOrTodayDate(input.effectiveDate, "Date");
+    }
+    if (input.cost != null) {
+      validateAmount(input.cost.amount, "Cost");
+      validateBaseCurrency(input.cost.currency, "Cost currency");
+    }
+    if (input.assetClass === "crypto" && !input.newCryptoAsset) {
+      throw new Error("newCryptoAsset is required for a crypto buy");
+    }
+    if (input.assetClass === "stock" && !input.newStockAsset) {
+      throw new Error("newStockAsset is required for a stock buy");
+    }
+    const hasLoc = !!input.locationId;
+    const hasNewLoc = !!input.newLocationName?.trim();
+    if (hasLoc === hasNewLoc) {
+      throw new Error(
+        "Provide exactly one of an existing location or a new location name",
+      );
+    }
+
+    // ── Mint the asset (idempotent: returns the existing id on a dup). The
+    //    non-null asserts are justified by the presence guards above. ──
+    const assetId =
+      input.assetClass === "crypto"
+        ? await createCryptoAsset(input.newCryptoAsset!)
+        : await createStockAsset(input.newStockAsset!);
+
+    // ── Resolve the location: an existing id, OR create the wallet/broker ──
+    let locationId: string;
+    if (hasNewLoc) {
+      const name = input.newLocationName!.trim();
+      if (input.assetClass === "crypto") {
+        // Defaults new wallets to "custodial" (matches executeTransfer's newWallet
+        // path). DEFERRED DECISION for 1b-2: an external new-money buy may be funding
+        // a SELF-CUSTODY wallet — the picker UI should surface a custody choice rather
+        // than inherit this hardcode. Tracked in the 1b-2 plan.
+        locationId = await createWallet({ name, wallet_type: "custodial" });
+        createdLocation = { table: "wallets", id: locationId };
+      } else {
+        locationId = await createBroker({ name });
+        createdLocation = { table: "brokers", id: locationId };
+      }
+    } else {
+      locationId = input.locationId!;
+    }
+
+    // ── Delegate the buy (books an S&P contribution via addTransaction) ──
+    const assetRef: AssetRef =
+      input.assetClass === "crypto"
+        ? { class: "crypto", assetId }
+        : { class: "stock", assetId };
+    await addTransaction(assetRef, {
+      type: "buy",
+      quantity: input.quantity,
+      cost: input.cost,
+      effectiveDate: input.effectiveDate,
+      walletId: input.assetClass === "crypto" ? locationId : undefined,
+      brokerId: input.assetClass === "stock" ? locationId : undefined,
+    });
+
+    return { success: true };
+  } catch (err) {
+    // Clean up a freshly-created location (NEVER the asset — it may be a deduped
+    // pre-existing row; an asset with no position is harmless). Mirrors
+    // executeTransfer's cleanupTransferEntities (RLS owner client; best-effort).
+    // Dormant until Task 3 assigns createdLocation (it stays null here, so the
+    // block is skipped) — but written now so `supabase` + `createdLocation` are
+    // both read from Task 1 onward (no unused-var lint failure).
+    if (createdLocation) {
+      try {
+        await supabase.from(createdLocation.table).delete().eq("id", createdLocation.id);
+        await supabase
+          .from("activity_log")
+          .delete()
+          .eq("entity_id", createdLocation.id)
+          .eq("entity_table", createdLocation.table);
+      } catch (cleanupErr) {
+        console.warn(
+          `[addNewAssetTransaction] cleanup failed for ${createdLocation.table}/${createdLocation.id}:`,
+          cleanupErr instanceof Error ? cleanupErr.message : cleanupErr,
+        );
+      }
+    }
+    Sentry.captureException(err, {
+      tags: { action: "transactions.addNewAssetTransaction" },
+    });
+    return { success: false, error: err instanceof Error ? err.message : "Buy failed" };
+  }
 }
 
 /**

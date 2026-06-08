@@ -793,6 +793,40 @@ export interface AddTransactionParams {
   currentPriceEur?: number;
 }
 
+/**
+ * Input for `addNewAssetTransaction` — a Buy of an asset the user may not own
+ * yet (the toolbar "Buy" / new-asset path of the one Buy machine).
+ *
+ * Invariants the action enforces (returns { success:false } on violation):
+ *   - exactly one of `newCryptoAsset` / `newStockAsset`, matching `assetClass`;
+ *   - exactly one of `locationId` (an existing wallet/broker) OR `newLocationName`
+ *     (create one).
+ * The asset payloads are deduped server-side (createCryptoAsset/createStockAsset
+ * return the existing id on a unique-violation), so the caller need NOT decide
+ * new-vs-existing — it always passes the full new-asset spec.
+ */
+export interface NewAssetBuyInput {
+  assetClass: "crypto" | "stock";
+  newCryptoAsset?: CryptoAssetInput;
+  newStockAsset?: StockAssetInput;
+  /** Buy into this existing wallet (crypto) / broker (stock). */
+  locationId?: string;
+  /** Create a wallet (crypto) / broker (stock) with this name and buy into it. */
+  newLocationName?: string;
+  /** Units transacted (a positive delta). */
+  quantity: number;
+  /** Actual amount paid incl. fees (a MAGNITUDE). Absent → market-value fallback. */
+  cost?: { amount: number; currency: CostCurrency } | null;
+  /** Effective date (YYYY-MM-DD). Absent → today. */
+  effectiveDate?: string;
+}
+
+/** Result of `addNewAssetTransaction` — mirrors `TransferResult`'s success/error shape. */
+export interface NewAssetBuyResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface EditTransactionPatch {
   /**
    * Override the effective date (YYYY-MM-DD). Pass null to clear (→ the entry
