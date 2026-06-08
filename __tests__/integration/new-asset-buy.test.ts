@@ -109,14 +109,17 @@ describe("addNewAssetTransaction (integration)", () => {
     // "created" row → `.single()` is safe; no cross-test "newest row" ambiguity).
     const { data: log } = await client
       .from("activity_log")
-      .select("is_adjustment, cashflow_status, cashflow_user_set, cashflow_amount_eur")
+      .select("is_adjustment, cashflow_status, cashflow_user_set, cashflow_amount_eur, cashflow_amount_usd")
       .eq("entity_id", pos!.id)
       .eq("entity_table", "crypto_positions")
       .single();
     expect(log!.is_adjustment).toBe(false);
     expect(log!.cashflow_status).toBe("complete");
     expect(log!.cashflow_user_set).toBe(true);
-    expect(Number(log!.cashflow_amount_eur)).toBe(200);
+    expect(Number(log!.cashflow_amount_eur)).toBe(200); // verbatim (user) leg — exact
+    // The USD leg is FX-derived (round2(200 × 1.1) = 220). Tolerance, not strict —
+    // the derived leg may not round-trip exactly through float64/NUMERIC.
+    expect(Number(log!.cashflow_amount_usd)).toBeCloseTo(220, 1);
   });
 
   it("stock new-money buy into an existing broker books an S&P contribution", async () => {

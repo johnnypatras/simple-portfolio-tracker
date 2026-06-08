@@ -42,6 +42,11 @@ export function AssetPicker({ assetClass, ownedTickers, onPick }: AssetPickerPro
         {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" aria-hidden="true" />}
       </div>
 
+      {/* Announce result arrival to screen readers (the list itself is silent). */}
+      <span className="sr-only" aria-live="polite">
+        {results.length > 0 ? `${results.length} results` : ""}
+      </span>
+
       {results.length > 0 && (
         <ul className="mt-1 max-h-56 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800/60">
           {results.map((r) => {
@@ -52,7 +57,7 @@ export function AssetPicker({ assetClass, ownedTickers, onPick }: AssetPickerPro
                 <button
                   type="button"
                   onClick={() => onPick({ assetClass, ticker, name: resultName(r), raw: r })}
-                  className="w-full text-left px-3 py-2 hover:bg-zinc-800/60 focus:bg-zinc-800/80 focus:outline-none transition-colors"
+                  className="w-full text-left px-3 py-2 hover:bg-zinc-800/60 focus:bg-zinc-800/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 transition-colors"
                 >
                   <span className="text-sm text-zinc-100">{ticker}</span>
                   <span className="text-xs text-zinc-400 ml-2">{resultName(r)}</span>

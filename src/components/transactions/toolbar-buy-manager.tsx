@@ -185,7 +185,8 @@ export function ToolbarBuyManager({
             newStockAsset,
             locationId: submit.newLocationName ? undefined : (submit.walletId ?? submit.brokerId),
             newLocationName: submit.newLocationName,
-            walletType: submit.walletType,
+            // Custody is crypto-only (brokers have none) — don't send it for stocks.
+            walletType: assetClass === "crypto" ? submit.walletType : undefined,
             quantity: submit.quantity,
             cost,
             effectiveDate: submit.date || undefined,

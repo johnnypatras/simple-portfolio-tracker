@@ -123,10 +123,16 @@ describe("executeTransfer new-wallet custody (integration)", () => {
       .from("cash_accounts").select("balance").eq("id", cash!.id).single();
     expect(Number(cashAfter!.balance)).toBe(800);
 
-    // The position leg is an adjustment → transfers are S&P-neutral (no contribution).
-    const { data: log } = await client
+    // BOTH legs are adjustments → transfers are S&P-neutral (no contribution).
+    const { data: posLog } = await client
       .from("activity_log").select("is_adjustment")
       .eq("entity_id", pos!.id).eq("entity_table", "crypto_positions").single();
-    expect(log!.is_adjustment).toBe(true);
+    expect(posLog!.is_adjustment).toBe(true);
+    // The cash debit leg must ALSO be neutral — a dropped flag here would make the
+    // cash outflow count in the benchmark.
+    const { data: cashLog } = await client
+      .from("activity_log").select("is_adjustment")
+      .eq("entity_id", cash!.id).eq("entity_table", "cash_accounts").single();
+    expect(cashLog!.is_adjustment).toBe(true);
   });
 });

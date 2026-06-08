@@ -736,6 +736,7 @@ export function TransactionModal({
                           <button
                             key={wt}
                             type="button"
+                            aria-pressed={selected}
                             onClick={() => setWalletType(wt)}
                             className={`flex-1 px-3 py-2 rounded-lg border text-xs transition-colors ${
                               selected
