@@ -9,6 +9,7 @@ const AddCryptoModal = dynamic(() => import("./add-crypto-modal").then(m => m.Ad
 import { PositionEditor } from "./position-editor";
 import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
+import { ToolbarBuyManager } from "@/components/transactions/toolbar-buy-manager";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -192,6 +193,11 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
   const rows = useMemo(
     () => sortCryptoRows(baseRows, sortKey, sortDir),
     [baseRows, sortKey, sortDir]
+  );
+  // Uppercased held tickers → the toolbar-Buy picker's "Owned" badge.
+  const ownedCryptoTickers = useMemo(
+    () => new Set(assets.map((a) => a.ticker.toUpperCase())),
+    [assets],
   );
 
   // Stablecoin split: exclude from summary total + 24h change weighting
@@ -1397,11 +1403,14 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
       {!isReadOnly && (
         <>
           <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} existingChains={existingChains} existingAssets={assets.map((a) => ({ coingecko_id: a.coingecko_id, chain: a.chain }))} />
-          <TransferDialog
+          <ToolbarBuyManager
+            assetClass="crypto"
             open={buyOpen}
             onClose={() => setBuyOpen(false)}
-            onSuccess={() => { router.refresh(); setBuyOpen(false); }}
-            mode={"buy" as TransferMode}
+            wallets={wallets}
+            brokers={[]}
+            ownedTickers={ownedCryptoTickers}
+            onMutated={() => router.refresh()}
           />
           {/* Move-mode Transfer dialog (C2a): the modal's Transfer option now
               means "relocate this asset". Prefilled from the drawer's asset. */}

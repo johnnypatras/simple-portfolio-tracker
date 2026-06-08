@@ -10,6 +10,7 @@ const UpdateNavModal = dynamic(() => import("./update-nav-modal").then(m => m.Up
 import { StockPositionEditor } from "./stock-position-editor";
 import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
+import { ToolbarBuyManager } from "@/components/transactions/toolbar-buy-manager";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -233,6 +234,11 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
   const rows = useMemo(
     () => buildStockRows(assets, prices, primaryCurrency, fxRates, dividends),
     [assets, prices, primaryCurrency, fxRates, dividends]
+  );
+  // Uppercased held tickers → the toolbar-Buy picker's "Owned" badge.
+  const ownedStockTickers = useMemo(
+    () => new Set(assets.map((a) => a.ticker.toUpperCase())),
+    [assets],
   );
 
   const totalPortfolioValue = useMemo(
@@ -1438,11 +1444,14 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               asset={editingNavAsset}
             />
           )}
-          <TransferDialog
+          <ToolbarBuyManager
+            assetClass="stock"
             open={buyOpen}
             onClose={() => setBuyOpen(false)}
-            onSuccess={() => { router.refresh(); setBuyOpen(false); }}
-            mode={"buy" as TransferMode}
+            wallets={[]}
+            brokers={brokers}
+            ownedTickers={ownedStockTickers}
+            onMutated={() => router.refresh()}
           />
           {/* Move-mode Transfer dialog (C2a): the modal's Transfer option now
               means "relocate this asset". Prefilled from the drawer's asset. */}
