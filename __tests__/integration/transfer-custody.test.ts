@@ -80,4 +80,53 @@ describe("executeTransfer new-wallet custody (integration)", () => {
   it("honors newWallet.wallet_type: 'non_custodial'", async () => {
     expect(await buyIntoNewWallet("non_custodial")).toBe("non_custodial");
   });
+
+  // The toolbar-Buy TRACKED route (1b-2b-ii-b): pay with a tracked cash account,
+  // mint a new asset + new self-custody wallet. Both legs must be S&P-neutral.
+  it("tracked new-asset buy: cash source funds it, custody threads, both legs neutral", async () => {
+    // `name` satisfies chk_bank_requires_name (needs wallet_id | broker_id | name).
+    const { data: cash, error: cashErr } = await client
+      .from("cash_accounts")
+      .insert({ user_id: userId, currency: "EUR", balance: 1000, name: "Test Cash EUR" })
+      .select("id")
+      .single();
+    if (cashErr) throw new Error("cash insert failed: " + cashErr.message);
+    const coingeckoId = `tracked-buy-${randomUUID()}`;
+    const walletName = `Tracked SC ${randomUUID().slice(0, 6)}`;
+    const res = await executeTransfer({
+      mode: "buy",
+      source: { type: "cash_account", accountId: cash!.id, amount: 200 },
+      destination: { type: "crypto_position", assetId: "PENDING", walletId: "PENDING", quantity: 3 },
+      newCryptoAsset: { ticker: "TRK", name: "Tracked Coin", coingecko_id: coingeckoId },
+      newWallet: { name: walletName, wallet_type: "non_custodial" },
+    });
+    expect(res.success).toBe(true);
+
+    // New asset + position at the transacted qty.
+    const { data: asset } = await client
+      .from("crypto_assets").select("id").eq("user_id", userId)
+      .eq("coingecko_id", coingeckoId).is("deleted_at", null).single();
+    expect(asset).not.toBeNull();
+    const { data: pos } = await client
+      .from("crypto_positions").select("id, quantity")
+      .eq("crypto_asset_id", asset!.id).is("deleted_at", null).single();
+    expect(Number(pos!.quantity)).toBe(3);
+
+    // New wallet got the chosen custody.
+    const { data: w } = await client
+      .from("wallets").select("wallet_type").eq("user_id", userId)
+      .eq("name", walletName).is("deleted_at", null).single();
+    expect(w!.wallet_type).toBe("non_custodial");
+
+    // Cash debited by the buy amount.
+    const { data: cashAfter } = await client
+      .from("cash_accounts").select("balance").eq("id", cash!.id).single();
+    expect(Number(cashAfter!.balance)).toBe(800);
+
+    // The position leg is an adjustment → transfers are S&P-neutral (no contribution).
+    const { data: log } = await client
+      .from("activity_log").select("is_adjustment")
+      .eq("entity_id", pos!.id).eq("entity_table", "crypto_positions").single();
+    expect(log!.is_adjustment).toBe(true);
+  });
 });
