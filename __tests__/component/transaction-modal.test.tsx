@@ -1222,3 +1222,88 @@ describe("TransactionModal — picker-mode new location + custody (1b-2b-ii-a)",
     expect(screen.queryByRole("button", { name: "Exchange" })).not.toBeInTheDocument();
   });
 });
+
+describe("TransactionModal — picker mode with ZERO existing locations (auto + New)", () => {
+  it("crypto with no wallets: shows the new-wallet form directly (no select, no + New button)", () => {
+    render(
+      <TransactionModal
+        isOpen
+        onClose={vi.fn()}
+        assetClass="crypto"
+        initialType="buy"
+        allowedTypes={["buy"]}
+        pickerMode={{ picked: PICKED_SOL, onAssetPicked: vi.fn(), ownedTickers: new Set() }}
+        walletOptions={[]}
+        onSubmit={vi.fn()}
+      />,
+    );
+    // The "+ New" form is shown immediately (there's nothing to select).
+    expect(screen.getByPlaceholderText(/new wallet name/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exchange" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Self-custody" })).toBeInTheDocument();
+    // No "+ New" toggle button (no select branch is rendered).
+    expect(screen.queryByRole("button", { name: /\+ new/i })).not.toBeInTheDocument();
+  });
+
+  it("crypto with no wallets: Save emits newLocationName + default custodial walletType", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <TransactionModal
+        isOpen
+        onClose={vi.fn()}
+        assetClass="crypto"
+        initialType="buy"
+        allowedTypes={["buy"]}
+        pickerMode={{ picked: PICKED_SOL, onAssetPicked: vi.fn(), ownedTickers: new Set() }}
+        walletOptions={[]}
+        onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/new wallet name/i), { target: { value: "First Wallet" } });
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const p = onSubmit.mock.calls[0][0];
+    expect(p.newLocationName).toBe("First Wallet");
+    expect(p.walletType).toBe("custodial");
+    expect(p.walletId).toBeUndefined();
+  });
+
+  it("crypto with no wallets: Save blocked until the new-wallet name is entered", () => {
+    render(
+      <TransactionModal
+        isOpen
+        onClose={vi.fn()}
+        assetClass="crypto"
+        initialType="buy"
+        allowedTypes={["buy"]}
+        pickerMode={{ picked: PICKED_SOL, onAssetPicked: vi.fn(), ownedTickers: new Set() }}
+        walletOptions={[]}
+        onSubmit={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "1" } });
+    expect(screen.getByRole("button", { name: /^Save$/ })).toBeDisabled();
+  });
+
+  it("stock with no brokers: shows the new-broker form, no custody toggle", () => {
+    render(
+      <TransactionModal
+        isOpen
+        onClose={vi.fn()}
+        assetClass="stock"
+        initialType="buy"
+        allowedTypes={["buy"]}
+        pickerMode={{
+          picked: { ...PICKED_SOL, assetClass: "stock", ticker: "VUSA" },
+          onAssetPicked: vi.fn(),
+          ownedTickers: new Set(),
+        }}
+        brokerOptions={[]}
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(screen.getByPlaceholderText(/new broker name/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Exchange" })).not.toBeInTheDocument();
+  });
+});

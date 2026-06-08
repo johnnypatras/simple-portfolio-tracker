@@ -328,12 +328,20 @@ export function TransactionModal({
     !isEditing &&
     assetClass === "crypto" &&
     type !== "transfer" &&
-    (walletOptions?.length ?? 0) > 0;
+    ((walletOptions?.length ?? 0) > 0 || !!pickerMode);
   const showBrokerSelect =
     !isEditing &&
     assetClass === "stock" &&
     type !== "transfer" &&
-    (brokerOptions?.length ?? 0) > 0;
+    ((brokerOptions?.length ?? 0) > 0 || !!pickerMode);
+  // Picker-Buy with NO existing wallets/brokers → there's nothing to select, so
+  // force the "+ New" form open (and hide its Cancel — nothing to go back to).
+  const hasLocationOptions =
+    assetClass === "crypto"
+      ? (walletOptions?.length ?? 0) > 0
+      : (brokerOptions?.length ?? 0) > 0;
+  const forceNewLocation = !!pickerMode && !hasLocationOptions;
+  const isCreatingLocation = creatingNewLocation || forceNewLocation;
 
   // ── Money-flow question (C2a) — derived visibility + routing state ────────
   // Shown ONLY for add-mode crypto/stock Buy or Sell, never for cash, yield,
@@ -409,7 +417,7 @@ export function TransactionModal({
     (touched.date ? dateError : null);
   // Picker-Buy: creating a new location but the name is still blank → block Save.
   const newLocationBlocked =
-    !!pickerMode && creatingNewLocation && newLocationName.trim() === "";
+    !!pickerMode && isCreatingLocation && newLocationName.trim() === "";
   const isSaveBlocked =
     quantityError !== null ||
     amountError !== null ||
@@ -456,7 +464,7 @@ export function TransactionModal({
     // always present (it defaults to the first option), so the caller's
     // addTransaction always gets the wallet/broker it requires.
     if (showWalletSelect) {
-      if (pickerMode && creatingNewLocation) {
+      if (pickerMode && isCreatingLocation) {
         payload.newLocationName = newLocationName.trim();
         payload.walletType = walletType;
       } else {
@@ -464,7 +472,7 @@ export function TransactionModal({
       }
     }
     if (showBrokerSelect) {
-      if (pickerMode && creatingNewLocation) {
+      if (pickerMode && isCreatingLocation) {
         payload.newLocationName = newLocationName.trim();
       } else {
         payload.brokerId = brokerId;
@@ -694,7 +702,7 @@ export function TransactionModal({
                 >
                   Wallet
                 </label>
-                {pickerMode && creatingNewLocation ? (
+                {pickerMode && isCreatingLocation ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <input
@@ -705,16 +713,18 @@ export function TransactionModal({
                         placeholder="New wallet name"
                         className="flex-1 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCreatingNewLocation(false);
-                          setNewLocationName("");
-                        }}
-                        className="text-xs text-zinc-400 hover:text-zinc-300"
-                      >
-                        Cancel
-                      </button>
+                      {!forceNewLocation && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreatingNewLocation(false);
+                            setNewLocationName("");
+                          }}
+                          className="text-xs text-zinc-400 hover:text-zinc-300"
+                        >
+                          Cancel
+                        </button>
+                      )}
                     </div>
                     {/* Exchange | Self-custody toggle (crypto new-wallet only) */}
                     <div className="flex gap-2">
@@ -777,7 +787,7 @@ export function TransactionModal({
                 >
                   Broker
                 </label>
-                {pickerMode && creatingNewLocation ? (
+                {pickerMode && isCreatingLocation ? (
                   <div className="flex items-center gap-2">
                     <input
                       id={`${id}-broker`}
@@ -787,16 +797,18 @@ export function TransactionModal({
                       placeholder="New broker name"
                       className="flex-1 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                     />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCreatingNewLocation(false);
-                        setNewLocationName("");
-                      }}
-                      className="text-xs text-zinc-400 hover:text-zinc-300"
-                    >
-                      Cancel
-                    </button>
+                    {!forceNewLocation && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreatingNewLocation(false);
+                          setNewLocationName("");
+                        }}
+                        className="text-xs text-zinc-400 hover:text-zinc-300"
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
