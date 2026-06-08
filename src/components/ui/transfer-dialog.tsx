@@ -23,10 +23,10 @@ import type {
   CoinGeckoSearchResult,
   StockAssetInput,
   CryptoAssetInput,
-  AssetCategory,
 } from "@/lib/types";
 import { parseWalletChains } from "@/lib/types";
 import { SEED_BALANCE_DEFAULT_IS_ADJUSTMENT } from "@/lib/benchmark-rule";
+import { extractBaseTicker, inferCategory } from "@/lib/asset-extract";
 
 // ─── Destination type tabs ──────────────────────────────────
 
@@ -40,19 +40,6 @@ const DEST_TABS: { value: DestType; label: string }[] = [
   { value: "crypto_position", label: "Crypto" },
   { value: "stock_position", label: "Stock" },
 ];
-
-/** Strip exchange suffix: VWCE.DE → VWCE */
-function extractBaseTicker(symbol: string): string {
-  const dot = symbol.indexOf(".");
-  return dot > 0 ? symbol.slice(0, dot) : symbol;
-}
-
-/** Infer asset category from Yahoo quoteType */
-function inferCategory(quoteType: string): AssetCategory {
-  if (quoteType === "ETF") return "etf";
-  if (quoteType === "EQUITY") return "individual_stock";
-  return "other";
-}
 
 // ─── Props ──────────────────────────────────────────────────
 
