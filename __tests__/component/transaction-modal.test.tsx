@@ -24,6 +24,12 @@ vi.mock("focus-trap-react", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+// Picker mode renders <AssetPicker> → useAssetSearch (a debounced fetch). This
+// suite uses REAL timers, so mock the hook to a no-op to keep `fetch` out of it.
+vi.mock("@/lib/hooks/use-asset-search", () => ({
+  useAssetSearch: () => ({ results: [], loading: false }),
+}));
+
 // ── Helpers ──────────────────────────────────────────────
 
 function renderOpen(overrides: Partial<TransactionModalProps> = {}) {
@@ -1074,5 +1080,65 @@ describe("TransactionModal — transfer with no route-out (BUG2 regression)", ()
       screen.getByText(/open it from its own page and choose transfer/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+  });
+});
+
+// ── Picker mode (1b-2b-i) ─────────────────────────────────────────────────────
+
+const PICKED_SOL = {
+  assetClass: "crypto" as const,
+  ticker: "SOL",
+  name: "Solana",
+  raw: { id: "solana", name: "Solana", symbol: "sol", thumb: "", large: "", market_cap_rank: 5 },
+};
+
+describe("TransactionModal — picker mode (1b-2b-i)", () => {
+  it("shows the asset search (with a Cancel) and HIDES the buy fields pre-pick", () => {
+    renderOpen({
+      assetClass: "crypto",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: { picked: null, onAssetPicked: vi.fn(), ownedTickers: new Set() },
+    });
+    expect(screen.getByPlaceholderText(/search crypto/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Save$/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the buy fields once an asset is picked", () => {
+    renderOpen({
+      assetClass: "crypto",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: { picked: PICKED_SOL, onAssetPicked: vi.fn(), ownedTickers: new Set() },
+    });
+    expect(screen.getByLabelText("Quantity")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/search crypto/i)).not.toBeInTheDocument();
+    // The selected-asset card shows the name (unique — the title shows the ticker).
+    expect(screen.getByText("Solana")).toBeInTheDocument();
+  });
+
+  it("restricts the Type options to the allowedTypes", () => {
+    renderOpen({
+      assetClass: "crypto",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: { picked: PICKED_SOL, onAssetPicked: vi.fn(), ownedTickers: new Set() },
+    });
+    const typeSelect = screen.getByRole("combobox", { name: /type/i }) as HTMLSelectElement;
+    const options = Array.from(typeSelect.options).map((o) => o.value);
+    expect(options).toEqual(["buy"]);
+  });
+});
+
+describe("TransactionModal — no pickerMode (regression)", () => {
+  it("renders buy fields immediately when pickerMode is absent", () => {
+    renderOpen({
+      assetClass: "crypto",
+      assetName: "BTC",
+      walletOptions: [{ id: "w1", name: "Ledger" }],
+    });
+    expect(screen.getByLabelText("Quantity")).toBeInTheDocument();
   });
 });

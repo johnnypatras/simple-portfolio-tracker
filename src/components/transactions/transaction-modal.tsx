@@ -4,7 +4,9 @@ import { useState, useEffect, useId, useRef } from "react";
 import { Modal } from "@/components/ui/modal";
 import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY } from "@/lib/cost-basis-copy";
 import { fmtCurrency } from "@/lib/format";
+import { AssetPicker } from "@/components/transactions/asset-picker";
 import type { TransactionKind } from "@/lib/transaction-kind";
+import type { PickedAsset } from "@/lib/types";
 import {
   validateQuantity,
   validateAmount,
@@ -116,6 +118,17 @@ export interface TransactionModalProps {
    *  position editor's Sell button). Ignored in edit mode. Falls back to the
    *  first type option when absent. */
   initialType?: TransactionType;
+  /** Add-mode only: restrict the Type selector to this subset (toolbar Buy passes
+   *  ["buy"]). Absent → all class-appropriate types. */
+  allowedTypes?: TransactionType[];
+  /** Toolbar-Buy picker mode: when set, the modal renders an asset SEARCH first and
+   *  hides the buy fields until `picked` is non-null. The PARENT owns the picked
+   *  state (it builds the submit payload). Absent → existing asset-scoped behavior. */
+  pickerMode?: {
+    picked: PickedAsset | null;
+    onAssetPicked: (a: PickedAsset) => void;
+    ownedTickers: Set<string>;
+  };
   onSubmit: (value: TransactionSubmit) => Promise<void> | void;
   onContinueToTransfer?: () => void;
   onUnsplit?: () => void;
@@ -197,12 +210,20 @@ export function TransactionModal({
   brokerOptions,
   cashAccountOptions,
   initialType,
+  allowedTypes,
+  pickerMode,
   onSubmit,
   onContinueToTransfer,
   onUnsplit,
 }: TransactionModalProps) {
   const id = useId();
-  const typeOptions = getTypeOptions(assetClass);
+  // `allowedTypes` filters the RENDERED options only (toolbar Buy passes ["buy"]).
+  // It deliberately never enters the reset effect — it'd be a new inline array each
+  // render → form-wipe. The effect's default already resolves via `initialType`.
+  const allOptions = getTypeOptions(assetClass);
+  const typeOptions = allowedTypes
+    ? allOptions.filter((t) => allowedTypes.includes(t))
+    : allOptions;
   const defaultType = edit ? edit.type : (initialType ?? typeOptions[0]);
 
   const [type, setType] = useState<TransactionType>(defaultType);
@@ -288,6 +309,8 @@ export function TransactionModal({
   // can't move a row between positions), non-transfer, and only when the matching
   // options prop is provided for this asset class.
   const isEditing = !!edit;
+  // True when the buy form should show: no picker mode, or an asset has been picked.
+  const pickerReady = !pickerMode || pickerMode.picked != null;
   const showWalletSelect =
     !isEditing &&
     assetClass === "crypto" &&
@@ -391,7 +414,12 @@ export function TransactionModal({
 
   // Title
   const verb = isEditing ? "Edit transaction" : "Add transaction";
-  const title = assetName ? `${verb} — ${assetName}` : verb;
+  const pickerTitle = pickerMode
+    ? pickerMode.picked
+      ? `Buy — ${pickerMode.picked.ticker}`
+      : `Buy ${assetClass === "crypto" ? "crypto" : "stock"}`
+    : null;
+  const title = pickerTitle ?? (assetName ? `${verb} — ${assetName}` : verb);
 
   // Today's max date string for the date input
   const todayStr = new Date().toISOString().split("T")[0];
@@ -461,6 +489,42 @@ export function TransactionModal({
   return (
     <Modal open={isOpen} onClose={onClose} title={title}>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* ── Toolbar-Buy picker: search step (pre-pick) ── */}
+        {pickerMode && !pickerMode.picked && (
+          <div className="space-y-3">
+            {/* assetClass is "crypto" | "stock" in picker mode — the toolbar Buy
+                never opens the picker for cash (cash has no asset to search). */}
+            <AssetPicker
+              assetClass={assetClass as "crypto" | "stock"}
+              ownedTickers={pickerMode.ownedTickers}
+              onPick={pickerMode.onAssetPicked}
+            />
+            {/* In-body Cancel for parity with every other modal mode. */}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {/* ── Selected-asset card (post-pick) ── */}
+        {pickerMode && pickerMode.picked && (
+          <div className="flex items-center justify-between bg-zinc-800/50 rounded-lg px-3 py-2">
+            <span className="text-sm text-zinc-100 font-medium">
+              {pickerMode.picked.ticker}
+              <span className="text-xs text-zinc-400 ml-2 font-normal">{pickerMode.picked.name}</span>
+            </span>
+          </div>
+        )}
+
+        {/* The full buy/edit form — shown only once an asset is chosen (picker mode)
+            or always (every existing caller, where pickerReady defaults true). */}
+        {pickerReady && (
+          <>
         {/* ── Split-child / undone lockdown ──────────────────────── */}
         {isSplitLocked && (
           <div className="space-y-2">
@@ -815,6 +879,8 @@ export function TransactionModal({
               {isEditing ? "Save Changes" : "Save"}
             </button>
           </div>
+        )}
+          </>
         )}
       </form>
     </Modal>
