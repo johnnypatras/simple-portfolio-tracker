@@ -339,9 +339,8 @@ export async function addNewAssetTransaction(
     // Clean up a freshly-created location (NEVER the asset — it may be a deduped
     // pre-existing row; an asset with no position is harmless). Mirrors
     // executeTransfer's cleanupTransferEntities (RLS owner client; best-effort).
-    // Dormant until Task 3 assigns createdLocation (it stays null here, so the
-    // block is skipped) — but written now so `supabase` + `createdLocation` are
-    // both read from Task 1 onward (no unused-var lint failure).
+    // Only runs when this call created the wallet/broker (the newLocationName
+    // branch set createdLocation); an existing-location buy leaves it null.
     if (createdLocation) {
       try {
         await supabase.from(createdLocation.table).delete().eq("id", createdLocation.id);
