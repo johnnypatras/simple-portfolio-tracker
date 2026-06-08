@@ -658,3 +658,30 @@ describe("TransactionsManager — openAdd target", () => {
     expect(typeSelect.value).toBe("sell");
   });
 });
+
+describe("TransactionsManager — openAdd success dismissal (BUG1 regression)", () => {
+  it("a successful add from an openAdd target dismisses entirely (drawer never opens)", async () => {
+    hoisted.loadAssetTransactions.mockResolvedValue([]);
+    hoisted.addTransaction.mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    // openAdd opens the modal directly, pre-typed buy (no drawer behind).
+    renderManager({ ...TARGET_A, openAdd: "buy" }, onClose);
+
+    const qtyInput = await screen.findByLabelText(/quantity/i);
+    fireEvent.change(qtyInput, { target: { value: "1" } });
+    // Route via "new money" (external) → addTransaction success path.
+    fireEvent.click(
+      screen.getByRole("radio", { name: /new money entering the portfolio/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    // The fix: an openAdd flow calls the top-level onClose on success, so the
+    // parent clears the target and the history drawer never appears. Asserting
+    // onClose was called IS the regression check — without the fix the success
+    // branch never calls onClose (only the cancel path did). (The drawer would
+    // stay mounted here regardless, since onClose is a spy that doesn't clear
+    // the `target` prop the way the real parent table does — so we don't assert
+    // on the drawer DOM in this harness.)
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+});

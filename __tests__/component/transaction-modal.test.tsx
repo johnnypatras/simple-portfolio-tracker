@@ -1061,3 +1061,18 @@ describe("TransactionModal — money-flow controls disabled while submitting", (
     resolveSubmit();
   });
 });
+
+describe("TransactionModal — transfer with no route-out (BUG2 regression)", () => {
+  it("shows a graceful message + Cancel instead of a dead-end", () => {
+    // No onContinueToTransfer (mirrors the Accounts-page editor modal).
+    renderOpen({ assetClass: "crypto" });
+    fireEvent.change(screen.getByRole("combobox", { name: /type/i }), {
+      target: { value: "transfer" },
+    });
+    // Unique to the fallback copy (TYPE_GUIDANCE.transfer shares the leading phrase).
+    expect(
+      screen.getByText(/open it from its own page and choose transfer/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+  });
+});

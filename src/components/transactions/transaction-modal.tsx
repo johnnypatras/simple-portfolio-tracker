@@ -564,6 +564,29 @@ export function TransactionModal({
           </div>
         )}
 
+        {/* ── Transfer selected with no route-out (e.g. the Accounts-page
+            editor's modal has no onContinueToTransfer): not a dead end —
+            explain and offer Cancel. ──────────────────────────── */}
+        {type === "transfer" && !isTransferLeg && !onContinueToTransfer && (
+          <div className="space-y-2">
+            <p
+              role="alert"
+              className="text-sm text-teal-400 bg-teal-400/10 px-3 py-2 rounded-lg"
+            >
+              {COST_COPY.transferUnavailableHere}
+            </p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Non-transfer fields ───────────────────────────────── */}
         {type !== "transfer" && !isSplitLocked && (
           <>

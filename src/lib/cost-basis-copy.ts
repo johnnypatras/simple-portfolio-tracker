@@ -19,6 +19,9 @@ export const COST_COPY = {
   transferLegLocked:   "This is part of a transfer — edit it from the Transfer screen so both sides stay in sync.",
   splitChildLocked:    "This entry was split into dated parts. Unsplit it first to edit the original.",
   yieldHasNoCost:      "Yield entries have no cost — they're earned income. Unmark as yield first if you need to record a cost.",
+  // Shown when "Transfer" is selected on a surface with no move-screen route
+  // (e.g. the Accounts-page editor) — keeps it from being a dead end.
+  transferUnavailableHere: "To move this asset between places you track, open it from its own page and choose Transfer.",
 } as const;
 
 /**

@@ -141,14 +141,16 @@ export function TransactionsManager({
   onMutated,
 }: TransactionsManagerProps) {
   const [modal, setModal] = useState<ModalState>(null);
-
-  // A target requesting a direct add (position-editor Sell/Buy) opens the modal
-  // straight away, pre-typed. Keyed on the target identity so re-opens re-fire.
-  useEffect(() => {
+  // Derived-state: when a new target arrives carrying `openAdd`, open the modal
+  // pre-typed immediately (no effect) — same render-time reset pattern as rows.
+  // Tracked as a prev-target reference so only a *new* target triggers the reset.
+  const [modalTarget, setModalTarget] = useState<typeof target>(null);
+  if (target !== modalTarget) {
+    setModalTarget(target);
     if (target?.openAdd) {
       setModal({ mode: "add", initialType: target.openAdd });
     }
-  }, [target]);
+  }
 
   // Keep onClose out of effect deps via a ref — updated synchronously before
   // any effect so the effect always calls the latest version without re-firing
@@ -289,6 +291,10 @@ export function TransactionsManager({
           if (result.success) {
             toast.success(submit.type === "buy" ? "Buy recorded" : "Sell recorded");
             setModal(null);
+            // Editor-delegated (openAdd) flow has no drawer to fall back to —
+            // dismiss entirely, matching the modal's own close handler. Without
+            // this the history drawer would pop open after a successful trade.
+            if (target?.openAdd) onClose();
             onMutated?.();
             refetch();
           } else {
@@ -319,6 +325,9 @@ export function TransactionsManager({
         });
         toast.success("Transaction added");
         setModal(null);
+        // See the tracked branch: an openAdd (editor-delegated) flow dismisses
+        // entirely so the history drawer doesn't pop open after success.
+        if (target?.openAdd) onClose();
         onMutated?.();
         refetch();
       } catch (err) {
