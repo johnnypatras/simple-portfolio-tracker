@@ -832,6 +832,18 @@ export interface NewAssetBuyResult {
   error?: string;
 }
 
+/**
+ * An asset chosen in the toolbar-Buy picker. Carries the RAW search result so the
+ * orchestrator (1b-2b-ii) can build a newCryptoAsset/newStockAsset spec; `ticker`
+ * and `name` are pre-extracted for display + the owned-ticker match.
+ */
+export interface PickedAsset {
+  assetClass: "crypto" | "stock";
+  ticker: string;
+  name: string;
+  raw: YahooSearchResult | CoinGeckoSearchResult;
+}
+
 export interface EditTransactionPatch {
   /**
    * Override the effective date (YYYY-MM-DD). Pass null to clear (→ the entry
