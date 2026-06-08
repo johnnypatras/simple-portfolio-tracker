@@ -85,6 +85,7 @@ function renderEditor(asset = makeAsset()) {
         existingSubcategories={[]}
         existingTags={[]}
         prices={{ "VUSA.AS": { price: 80, currency: "USD" } }}
+        onTrade={vi.fn()}
       />,
     ),
   };

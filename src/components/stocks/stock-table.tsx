@@ -1464,6 +1464,18 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               existingSubcategories={existingSubcategories}
               existingTags={existingTags}
               prices={prices}
+              onTrade={(type) => {
+                const a = editingAsset;
+                if (!a) return;
+                setEditingAsset(null);
+                setTxnTarget({
+                  assetRef: { class: "stock", assetId: a.id },
+                  name: a.name,
+                  assetClass: "stock",
+                  brokerOptions: a.positions.map((p) => ({ id: p.broker_id, name: p.broker_name })),
+                  openAdd: type,
+                });
+              }}
             />
           )}
           <TransactionsManager

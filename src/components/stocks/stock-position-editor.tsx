@@ -38,6 +38,9 @@ interface StockPositionEditorProps {
   existingSubcategories: string[];
   existingTags: string[];
   prices?: Record<string, { price: number; currency: string }>;
+  /** Opens the trade modal pre-typed for this asset. Sell/Buy delegate here
+   *  (editor closes); move still uses the dialog. Required. */
+  onTrade: (type: "buy" | "sell") => void;
 }
 
 export function StockPositionEditor({
@@ -48,6 +51,7 @@ export function StockPositionEditor({
   existingSubcategories,
   existingTags,
   prices,
+  onTrade,
 }: StockPositionEditorProps) {
   const id = useId();
   const router = useRouter();
@@ -531,7 +535,7 @@ export function StockPositionEditor({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => { setTransferMode("sell"); setTransferOpen(true); }}
+            onClick={() => { onClose(); onTrade("sell"); }}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-400 hover:text-red-400 hover:bg-zinc-800/50 transition-colors"
             title="Sell this asset"
           >
@@ -539,7 +543,7 @@ export function StockPositionEditor({
           </button>
           <button
             type="button"
-            onClick={() => { setTransferMode("buy"); setTransferOpen(true); }}
+            onClick={() => { onClose(); onTrade("buy"); }}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/50 transition-colors"
             title="Buy more of this asset"
           >
