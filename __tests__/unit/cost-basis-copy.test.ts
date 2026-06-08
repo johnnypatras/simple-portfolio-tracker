@@ -45,8 +45,11 @@ describe("cost-basis copy", () => {
   });
   it("ADJUSTMENT_COPY states the off-book concept in plain words", () => {
     expect(ADJUSTMENT_COPY.optionLabel).toMatch(/cleaning up|correction|not a real money event/i);
-    expect(ADJUSTMENT_COPY.consequence).toMatch(/s&p/i);
-    expect(ADJUSTMENT_COPY.reversibleNote).toMatch(/revers/i);
+    // Strong enough to catch a copy inversion (e.g. "…unchanged" → "…changed").
+    expect(ADJUSTMENT_COPY.consequence).toMatch(/s&p comparison unchanged/i);
+    expect(ADJUSTMENT_COPY.reversibleNote).toMatch(/recalculat/i);
+    expect(ADJUSTMENT_COPY.reversibleNote).toMatch(/reversible/i);
+    expect(ADJUSTMENT_COPY.reversibleNote).not.toMatch(/not reversible|irreversible/i);
   });
   it("ADJUSTMENT_COPY confirm builders are direction-aware and name the amount", () => {
     expect(ADJUSTMENT_COPY.markConfirm("+€2,400")).toMatch(/stop counting/i);
