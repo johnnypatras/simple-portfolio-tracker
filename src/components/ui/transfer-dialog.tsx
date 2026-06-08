@@ -26,6 +26,7 @@ import type {
   AssetCategory,
 } from "@/lib/types";
 import { parseWalletChains } from "@/lib/types";
+import { SEED_BALANCE_DEFAULT_IS_ADJUSTMENT } from "@/lib/benchmark-rule";
 
 // ─── Destination type tabs ──────────────────────────────────
 
@@ -146,7 +147,7 @@ export function TransferDialog({
   type CashState = "auto" | "prompt" | "skipped";
   const [cashState, setCashState] = useState<CashState>("prompt");
   const [cashBalance, setCashBalance] = useState("");
-  const [cashIsAdjustment, setCashIsAdjustment] = useState(true);
+  const [cashIsAdjustment, setCashIsAdjustment] = useState(SEED_BALANCE_DEFAULT_IS_ADJUSTMENT);
   const [existingCashAmount, setExistingCashAmount] = useState<number | null>(null);
   // C7: when multiple cash accounts match (location, currency), user picks one
   const [selectedMatchingCashId, setSelectedMatchingCashId] = useState<string>("");
@@ -257,7 +258,7 @@ export function TransferDialog({
     setBuyDetectedSubcategory(null);
     setCashState("prompt");
     setCashBalance("");
-    setCashIsAdjustment(true);
+    setCashIsAdjustment(SEED_BALANCE_DEFAULT_IS_ADJUSTMENT);
     setExistingCashAmount(null);
     // Source picker reset
     setSrcLocationId("");
