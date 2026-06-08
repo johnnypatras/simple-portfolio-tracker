@@ -21,6 +21,7 @@ import type { InitialSide } from "@/components/ui/transfer-dialog";
 import {
   TransactionModal,
   kindToModalType,
+  type TransactionType,
   type TransactionSubmit,
   type TransactionEditState,
   type CashAccountOption,
@@ -44,6 +45,10 @@ export interface OpenTransactionsTarget {
   walletOptions?: { id: string; name: string }[];
   brokerOptions?: { id: string; name: string }[];
   moveSource?: InitialSide;
+  /** When set, open straight into the add-modal pre-typed (e.g. the position
+   *  editor's Sell/Buy). The drawer is skipped (modal and drawer are mutually
+   *  exclusive). */
+  openAdd?: TransactionType;
 }
 
 interface TransactionsManagerProps {
@@ -67,7 +72,7 @@ interface TransactionsManagerProps {
 /** Modal state: closed (null), add (no row), or edit (a seeded row + its id). */
 type ModalState =
   | null
-  | { mode: "add" }
+  | { mode: "add"; initialType?: TransactionType }
   | { mode: "edit"; rowId: string; edit: TransactionEditState };
 
 /**
@@ -136,6 +141,14 @@ export function TransactionsManager({
   onMutated,
 }: TransactionsManagerProps) {
   const [modal, setModal] = useState<ModalState>(null);
+
+  // A target requesting a direct add (position-editor Sell/Buy) opens the modal
+  // straight away, pre-typed. Keyed on the target identity so re-opens re-fire.
+  useEffect(() => {
+    if (target?.openAdd) {
+      setModal({ mode: "add", initialType: target.openAdd });
+    }
+  }, [target]);
 
   // Keep onClose out of effect deps via a ref — updated synchronously before
   // any effect so the effect always calls the latest version without re-firing
@@ -402,9 +415,13 @@ export function TransactionsManager({
 
       <TransactionModal
         isOpen={modal !== null}
-        onClose={() => setModal(null)}
+        onClose={() => {
+          setModal(null);
+          if (target?.openAdd) onClose();
+        }}
         assetClass={target.assetClass}
         assetName={target.name}
+        initialType={modal?.mode === "add" ? modal.initialType : undefined}
         edit={editState}
         walletOptions={target.assetClass === "crypto" ? target.walletOptions : undefined}
         brokerOptions={target.assetClass === "stock" ? target.brokerOptions : undefined}

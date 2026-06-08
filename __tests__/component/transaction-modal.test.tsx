@@ -39,6 +39,17 @@ function renderOpen(overrides: Partial<TransactionModalProps> = {}) {
   return { ...render(<TransactionModal {...props} />), onSubmit, onClose, props };
 }
 
+// ── Test Group 0: initialType prop ────────────────────────────────────────────
+
+describe("TransactionModal — initialType prop", () => {
+  it("honors initialType as the add-mode default type", () => {
+    renderOpen({ assetClass: "crypto", initialType: "sell" });
+    // The type <select> should show "Sell" selected by default (add-mode, no edit).
+    const typeSelect = screen.getByRole("combobox", { name: /type/i }) as HTMLSelectElement;
+    expect(typeSelect.value).toBe("sell");
+  });
+});
+
 // ── Test Group 1: Type options by asset class ─────────────────────────────────
 
 describe("TransactionModal — type options by asset class", () => {

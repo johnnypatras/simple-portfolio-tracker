@@ -637,3 +637,24 @@ describe("TransactionsManager — late getCashAccounts resolution preserves form
     expect((screen.getByLabelText(/date/i) as HTMLInputElement).value).toBe("2026-01-10");
   });
 });
+
+// ── Test: openAdd opens the modal pre-typed (drawer hidden) ───────────────────
+
+describe("TransactionsManager — openAdd target", () => {
+  it("a target with openAdd opens the modal pre-typed (drawer hidden)", async () => {
+    // NOTE: renderManager takes the target POSITIONALLY: renderManager(target, onClose?).
+    renderManager({
+      assetRef: { class: "crypto", assetId: "a1" },
+      name: "BTC",
+      assetClass: "crypto",
+      walletOptions: [{ id: "w1", name: "Ledger" }],
+      openAdd: "sell",
+    });
+    // Modal open (title "Add transaction — BTC"); drawer absent. The dash is an
+    // EM-DASH (—, U+2014), NOT a hyphen — both titles use it. Copy it literally.
+    expect(await screen.findByText(/add transaction — BTC/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^transactions — BTC$/i)).not.toBeInTheDocument();
+    const typeSelect = screen.getByRole("combobox", { name: /type/i }) as HTMLSelectElement;
+    expect(typeSelect.value).toBe("sell");
+  });
+});

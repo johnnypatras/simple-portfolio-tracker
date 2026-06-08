@@ -112,6 +112,10 @@ export interface TransactionModalProps {
    *  routing option (C2a). Empty/undefined → the tracked option is disabled and
    *  the question auto-falls-back to external-only. */
   cashAccountOptions?: CashAccountOption[];
+  /** Add-mode only: pre-select this transaction type (e.g. "sell" from the
+   *  position editor's Sell button). Ignored in edit mode. Falls back to the
+   *  first type option when absent. */
+  initialType?: TransactionType;
   onSubmit: (value: TransactionSubmit) => Promise<void> | void;
   onContinueToTransfer?: () => void;
   onUnsplit?: () => void;
@@ -192,13 +196,14 @@ export function TransactionModal({
   walletOptions,
   brokerOptions,
   cashAccountOptions,
+  initialType,
   onSubmit,
   onContinueToTransfer,
   onUnsplit,
 }: TransactionModalProps) {
   const id = useId();
   const typeOptions = getTypeOptions(assetClass);
-  const defaultType = edit ? edit.type : typeOptions[0];
+  const defaultType = edit ? edit.type : (initialType ?? typeOptions[0]);
 
   const [type, setType] = useState<TransactionType>(defaultType);
   const [quantityStr, setQuantityStr] = useState(edit ? String(edit.quantity) : "");
@@ -248,7 +253,7 @@ export function TransactionModal({
   useEffect(() => {
     if (isOpen) {
       const opts = getTypeOptions(assetClass);
-      setType(edit ? edit.type : opts[0]);
+      setType(edit ? edit.type : (initialType ?? opts[0]));
       setQuantityStr(edit ? String(edit.quantity) : "");
       setAmountStr(edit?.amount != null ? String(edit.amount) : "");
       setAmountDirty(false);
@@ -273,7 +278,7 @@ export function TransactionModal({
     // (walletOptions/brokerOptions stay identity-stable in the caller, so they're
     // safe as direct deps. The ref is dep-exempt, so exhaustive-deps stays happy
     // without an eslint-disable.)
-  }, [isOpen, edit, assetClass, walletOptions, brokerOptions]);
+  }, [isOpen, edit, assetClass, walletOptions, brokerOptions, initialType]);
 
   // Lockdown flags
   const isTransferLeg = edit?.isTransferLeg === true;
