@@ -28,6 +28,7 @@ import {
   validateSideShape,
   validateTransferSide,
 } from "@/lib/actions/transfer-validation";
+import { conversionLegCost } from "@/lib/transfer-leg-cost";
 
 // ─── Types for cleanup tracking ─────────────────────────────
 
@@ -54,6 +55,15 @@ interface TransferPrices {
   source: SidePrices;
   destination: SidePrices;
 }
+
+/**
+ * Cost override for the POSITION leg of a buy/sell conversion: the cash side's
+ * {amount, currency}. The position primitive FX-converts it at `effectiveDate`
+ * and signs it by the qty delta, so the leg's delta = amount paid (buy) /
+ * received (sell) instead of market. Currency is narrowed to the cost spine's
+ * EUR/USD; an exotic-currency cash account leaves this undefined → market.
+ */
+type ConversionCost = { amount: number; currency: "EUR" | "USD" };
 
 // ─── Main Transfer Action ────────────────────────────────────
 
@@ -189,18 +199,84 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
       originalState = await fetchSourceState(supabase, currentSource, user.id);
       prices = await fetchPrices(supabase, currentSource, destination);
       validateSufficientBalance(currentSource, originalState);
-      await executeSourceLeg(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
+    }
+
+    // ── Conversion cost (buy/sell only): value the POSITION leg from the
+    // counterparty CASH amount, not market. The cash side is the SOURCE for a
+    // buy, the DESTINATION for a sell. We read that account's currency and let
+    // `conversionLegCost` build the {amount, currency} override; the position
+    // primitive FX-converts it at effectiveDate and signs it by the qty delta.
+    // `move` returns null → legs keep market. A single-legged buy (no cash
+    // source) also yields null. Currency must be EUR/USD (the cost spine); an
+    // exotic-currency cash account falls back to market (unchanged behaviour).
+    const cashSide: TransferSide | undefined =
+      input.mode === "buy" ? currentSource
+      : input.mode === "sell" ? destination
+      : undefined;
+    let cashCurrency: string | undefined;
+    if (cashSide?.type === "cash_account") {
+      if (input.mode === "buy" && originalState?.type === "cash_account") {
+        // Buy: the source cash account was already read for balance/rollback.
+        cashCurrency = originalState.currency;
+      } else {
+        // Sell: read the destination cash account's currency up front.
+        const { data: cashAcct, error } = await supabase
+          .from("cash_accounts")
+          .select("currency")
+          .eq("id", cashSide.accountId)
+          .eq("user_id", user.id)
+          .is("deleted_at", null)
+          .single();
+        if (error || !cashAcct) throw new Error("Counterparty cash account not found");
+        cashCurrency = cashAcct.currency;
+      }
+    }
+    const rawConvCost =
+      cashSide && cashCurrency ? conversionLegCost(input.mode, cashSide, cashCurrency) : null;
+    // Narrow to the EUR/USD cost spine; exotic currency → undefined → market.
+    const convCost: ConversionCost | undefined =
+      rawConvCost && (rawConvCost.currency === "EUR" || rawConvCost.currency === "USD")
+        ? { amount: rawConvCost.amount, currency: rawConvCost.currency }
+        : undefined;
+
+    if (currentSource && originalState && transferGroupId) {
+      // For a sell, the position is the SOURCE → pass convCost there. For a buy,
+      // the source is cash → no cost (it goes to the destination position leg).
+      await executeSourceLeg(
+        currentSource,
+        originalState,
+        transferGroupId,
+        prices.source,
+        input.effectiveDate,
+        input.mode === "sell" ? convCost : undefined
+      );
     }
 
     // ── Step 6: Execute destination leg (increase) with rollback on failure
     try {
-      await executeDestLeg(supabase, destination, transferGroupId, prices.destination, user.id, input.effectiveDate);
+      // For a buy, the position is the DESTINATION → pass convCost there.
+      await executeDestLeg(
+        supabase,
+        destination,
+        transferGroupId,
+        prices.destination,
+        user.id,
+        input.effectiveDate,
+        input.mode === "buy" ? convCost : undefined
+      );
     } catch (destErr) {
       if (currentSource && originalState) {
         // Rollback source: restore to original state
         if (!transferGroupId) throw new Error("Transfer logic error: transferGroupId missing during rollback");
         try {
-          await rollbackSource(currentSource, originalState, transferGroupId, prices.source, input.effectiveDate);
+          await rollbackSource(
+            currentSource,
+            originalState,
+            transferGroupId,
+            prices.source,
+            input.effectiveDate,
+            input.mode === "sell" ? convCost : undefined
+          );
         } catch (rollbackErr) {
           // Source modified + rollback failed → partial failure.
           // Skip cleanup — entities may be referenced by the modified source.
@@ -400,7 +476,8 @@ async function executeSourceLeg(
   originalState: SourceOriginalState,
   transferGroupId: string,
   prices: SidePrices,
-  effectiveDate?: string
+  effectiveDate?: string,
+  cost?: ConversionCost
 ): Promise<void> {
   switch (source.type) {
     case "crypto_position": {
@@ -412,13 +489,17 @@ async function executeSourceLeg(
           wallet_id: source.walletId,
           quantity: newQty,
         },
-        {
-          isAdjustment: true,
-          transferGroupId,
-          currentPriceUsd: prices.priceUsd,
-          currentPriceEur: prices.priceEur,
-          effectiveDate,
-        }
+        // Sell: book proceeds = cash received (the position primitive signs it by
+        // the qty delta → disposal = −). Move: no cost → keep market valuation.
+        cost
+          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          : {
+              isAdjustment: true,
+              transferGroupId,
+              currentPriceUsd: prices.priceUsd,
+              currentPriceEur: prices.priceEur,
+              effectiveDate,
+            }
       );
       break;
     }
@@ -431,13 +512,15 @@ async function executeSourceLeg(
           broker_id: source.brokerId,
           quantity: newQty,
         },
-        {
-          isAdjustment: true,
-          transferGroupId,
-          currentPriceNative: prices.priceNative,
-          assetCurrency: prices.currency,
-          effectiveDate,
-        }
+        cost
+          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          : {
+              isAdjustment: true,
+              transferGroupId,
+              currentPriceNative: prices.priceNative,
+              assetCurrency: prices.currency,
+              effectiveDate,
+            }
       );
       break;
     }
@@ -462,7 +545,8 @@ async function executeDestLeg(
   transferGroupId: string | undefined,
   prices: SidePrices,
   userId: string,
-  effectiveDate?: string
+  effectiveDate?: string,
+  cost?: ConversionCost
 ): Promise<void> {
   switch (destination.type) {
     case "crypto_position": {
@@ -481,13 +565,17 @@ async function executeDestLeg(
           wallet_id: destination.walletId,
           quantity: currentQty + destination.quantity,
         },
-        {
-          isAdjustment: true,
-          transferGroupId,
-          currentPriceUsd: prices.priceUsd,
-          currentPriceEur: prices.priceEur,
-          effectiveDate,
-        }
+        // Buy: book cost = cash paid (the position primitive signs it by the
+        // qty delta → acquisition = +). Move: no cost → keep market valuation.
+        cost
+          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          : {
+              isAdjustment: true,
+              transferGroupId,
+              currentPriceUsd: prices.priceUsd,
+              currentPriceEur: prices.priceEur,
+              effectiveDate,
+            }
       );
       break;
     }
@@ -506,13 +594,15 @@ async function executeDestLeg(
           broker_id: destination.brokerId,
           quantity: currentQty + destination.quantity,
         },
-        {
-          isAdjustment: true,
-          transferGroupId,
-          currentPriceNative: prices.priceNative,
-          assetCurrency: prices.currency,
-          effectiveDate,
-        }
+        cost
+          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          : {
+              isAdjustment: true,
+              transferGroupId,
+              currentPriceNative: prices.priceNative,
+              assetCurrency: prices.currency,
+              effectiveDate,
+            }
       );
       break;
     }
@@ -542,7 +632,8 @@ async function rollbackSource(
   originalState: SourceOriginalState,
   transferGroupId: string,
   prices: SidePrices,
-  effectiveDate?: string
+  effectiveDate?: string,
+  cost?: ConversionCost
 ): Promise<void> {
   switch (source.type) {
     case "crypto_position": {
@@ -553,13 +644,17 @@ async function rollbackSource(
           wallet_id: source.walletId,
           quantity: originalState.quantity,
         },
-        {
-          isAdjustment: true,
-          transferGroupId,
-          currentPriceUsd: prices.priceUsd,
-          currentPriceEur: prices.priceEur,
-          effectiveDate,
-        }
+        // Restore qty: the primitive signs the cost by the qty delta (+ here, the
+        // inverse of the sell's − disposal), netting the audit trail to zero.
+        cost
+          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          : {
+              isAdjustment: true,
+              transferGroupId,
+              currentPriceUsd: prices.priceUsd,
+              currentPriceEur: prices.priceEur,
+              effectiveDate,
+            }
       );
       break;
     }
@@ -571,13 +666,15 @@ async function rollbackSource(
           broker_id: source.brokerId,
           quantity: originalState.quantity,
         },
-        {
-          isAdjustment: true,
-          transferGroupId,
-          currentPriceNative: prices.priceNative,
-          assetCurrency: prices.currency,
-          effectiveDate,
-        }
+        cost
+          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          : {
+              isAdjustment: true,
+              transferGroupId,
+              currentPriceNative: prices.priceNative,
+              assetCurrency: prices.currency,
+              effectiveDate,
+            }
       );
       break;
     }
