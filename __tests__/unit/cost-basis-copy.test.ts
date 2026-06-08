@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY } from "@/lib/cost-basis-copy";
+import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY, ADJUSTMENT_COPY } from "@/lib/cost-basis-copy";
 describe("cost-basis copy", () => {
   it("has guidance for every transaction type", () => {
     for (const k of ["buy","sell","yield","deposit","withdrawal","transfer"] as const) {
@@ -42,6 +42,17 @@ describe("cost-basis copy", () => {
     expect(TYPE_GUIDANCE.transfer).toMatch(/same asset/i);
     expect(TYPE_GUIDANCE.transfer).toMatch(/nothing bought or sold/i);
     expect(TYPE_GUIDANCE.transfer).toMatch(/doesn't move/i);
+  });
+  it("ADJUSTMENT_COPY states the off-book concept in plain words", () => {
+    expect(ADJUSTMENT_COPY.optionLabel).toMatch(/cleaning up|correction|not a real money event/i);
+    expect(ADJUSTMENT_COPY.consequence).toMatch(/s&p/i);
+    expect(ADJUSTMENT_COPY.reversibleNote).toMatch(/revers/i);
+  });
+  it("ADJUSTMENT_COPY confirm builders are direction-aware and name the amount", () => {
+    expect(ADJUSTMENT_COPY.markConfirm("+€2,400")).toMatch(/stop counting/i);
+    expect(ADJUSTMENT_COPY.markConfirm("+€2,400")).toContain("+€2,400");
+    expect(ADJUSTMENT_COPY.unmarkConfirm("+€2,400")).toMatch(/count this/i);
+    expect(ADJUSTMENT_COPY.unmarkConfirm("+€2,400")).toContain("+€2,400");
   });
 });
 

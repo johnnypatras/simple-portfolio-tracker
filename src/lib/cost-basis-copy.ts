@@ -81,3 +81,29 @@ export const MONEY_FLOW_COPY = {
   overdraft: (available: string, account: string) =>
     `Only ${available} available in ${account}.`,
 } as const;
+
+/**
+ * Verbatim copy for the "adjustment / off-book" concept — a record correction
+ * that books NO benchmark flow (money that never actually moved). One home for
+ * every surface that exposes it: the history Mark-as-adjustment confirm (#5),
+ * the delete router's "never really here" option (#7/#22), and the editors'
+ * correction path. Mirrors COST_COPY / MONEY_FLOW_COPY above — surfaces import
+ * these strings, never inline their own wording.
+ *
+ * Builders take an already-formatted amount string (e.g. "+€2,400") so the
+ * confirm can name the stakes.
+ */
+export const ADJUSTMENT_COPY = {
+  /** Radio / checkbox label for "this is a correction, not a money event". */
+  optionLabel: "Just cleaning up records — not a real money event",
+  /** The consequence, stated where the choice is made. */
+  consequence: "S&P comparison unchanged",
+  /** Two-step confirm when flagging a counted row as off-book. */
+  markConfirm: (amount: string) =>
+    `Stop counting this ${amount} in the S&P comparison?`,
+  /** Two-step confirm when restoring an off-book row to counted. */
+  unmarkConfirm: (amount: string) =>
+    `Count this ${amount} in the S&P comparison again?`,
+  /** Reassurance under the confirm — the operation is lossless. */
+  reversibleNote: "The benchmark line recalculates. Reversible anytime.",
+} as const;
