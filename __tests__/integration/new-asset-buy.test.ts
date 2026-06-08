@@ -41,6 +41,7 @@ describe("addNewAssetTransaction (integration)", () => {
   let userId: string;
   let cleanup: () => void;
   let walletId: string;
+  let brokerId: string;
 
   beforeAll(async () => {
     const result = await createTestUser();
@@ -56,6 +57,14 @@ describe("addNewAssetTransaction (integration)", () => {
       .single();
     if (error) throw new Error("wallet create failed: " + error.message);
     walletId = wallet!.id;
+
+    const { data: broker, error: brokerErr } = await client
+      .from("brokers")
+      .insert({ user_id: userId, name: "Existing Broker" })
+      .select("id")
+      .single();
+    if (brokerErr) throw new Error("broker create failed: " + brokerErr.message);
+    brokerId = broker!.id;
   });
 
   afterAll(() => cleanup());
@@ -107,5 +116,79 @@ describe("addNewAssetTransaction (integration)", () => {
     expect(log!.cashflow_status).toBe("complete");
     expect(log!.cashflow_user_set).toBe(true);
     expect(Number(log!.cashflow_amount_eur)).toBe(200);
+  });
+
+  it("stock new-money buy into an existing broker books an S&P contribution", async () => {
+    const ticker = `NBY${randomUUID().slice(0, 4).toUpperCase()}`;
+    const res = await addNewAssetTransaction({
+      assetClass: "stock",
+      newStockAsset: { ticker, name: "New Co", yahoo_ticker: ticker, currency: "USD" },
+      locationId: brokerId,
+      quantity: 5,
+      cost: { amount: 1000, currency: "USD" },
+    });
+    expect(res.success).toBe(true);
+
+    const { data: asset } = await client
+      .from("stock_assets")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("ticker", ticker)
+      .is("deleted_at", null)
+      .single();
+    expect(asset).not.toBeNull();
+
+    // Same as the crypto test: the cashflow row is on the POSITION
+    // (`stock_positions`, position id), not the asset. Filter on the position id.
+    const { data: pos } = await client
+      .from("stock_positions")
+      .select("id")
+      .eq("stock_asset_id", asset!.id)
+      .eq("broker_id", brokerId)
+      .is("deleted_at", null)
+      .single();
+    const { data: log } = await client
+      .from("activity_log")
+      .select("is_adjustment, cashflow_status, cashflow_amount_usd, cashflow_user_set")
+      .eq("entity_id", pos!.id)
+      .eq("entity_table", "stock_positions")
+      .single();
+    expect(log!.is_adjustment).toBe(false);
+    expect(log!.cashflow_status).toBe("complete");
+    expect(log!.cashflow_user_set).toBe(true);
+    expect(Number(log!.cashflow_amount_usd)).toBe(1000);
+  });
+
+  it("buying a 'new' asset whose coingecko_id already exists dedups to one asset", async () => {
+    const coingeckoId = `dedup-${randomUUID()}`;
+    const spec = {
+      assetClass: "crypto" as const,
+      newCryptoAsset: { ticker: "DUP", name: "Dup Coin", coingecko_id: coingeckoId },
+      locationId: walletId,
+      quantity: 1,
+    };
+    const first = await addNewAssetTransaction(spec);
+    const second = await addNewAssetTransaction({ ...spec, quantity: 3 });
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+
+    // Only ONE asset row — the second call deduped to the existing id.
+    const { data: assets } = await client
+      .from("crypto_assets")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("coingecko_id", coingeckoId)
+      .is("deleted_at", null);
+    expect(assets).toHaveLength(1);
+
+    // The position accumulated both buys: 1 + 3 = 4.
+    const { data: pos } = await client
+      .from("crypto_positions")
+      .select("quantity")
+      .eq("crypto_asset_id", assets![0].id)
+      .eq("wallet_id", walletId)
+      .is("deleted_at", null)
+      .single();
+    expect(Number(pos!.quantity)).toBe(4);
   });
 });
