@@ -294,7 +294,10 @@ export function TransactionsManager({
             // Editor-delegated (openAdd) flow has no drawer to fall back to —
             // dismiss entirely, matching the modal's own close handler. Without
             // this the history drawer would pop open after a successful trade.
-            if (target?.openAdd) onClose();
+            // Use the ref (not onClose directly) so this callback stays identity-
+            // stable — the tables pass an inline onClose, so a direct dep would
+            // re-create handleSubmitAdd every render (react-hooks memoization).
+            if (target?.openAdd) onCloseRef.current();
             onMutated?.();
             refetch();
           } else {
@@ -326,8 +329,9 @@ export function TransactionsManager({
         toast.success("Transaction added");
         setModal(null);
         // See the tracked branch: an openAdd (editor-delegated) flow dismisses
-        // entirely so the history drawer doesn't pop open after success.
-        if (target?.openAdd) onClose();
+        // entirely so the history drawer doesn't pop open after success. Via the
+        // ref to keep handleSubmitAdd identity-stable (see the tracked branch).
+        if (target?.openAdd) onCloseRef.current();
         onMutated?.();
         refetch();
       } catch (err) {
