@@ -28,6 +28,7 @@
  */
 
 import { classifyAssetClass } from "@/lib/cashflow";
+import { countsInBenchmark } from "@/lib/benchmark-rule";
 import type { FlowStatus, AssetClass, EntityType, UsdEurAmount } from "@/lib/types";
 
 // ─── Shared types ─────────────────────────────────────────
@@ -89,7 +90,9 @@ export function computeActivityFx(opts: {
     opts.amountOverride != null
       ? { usd: dir * Math.abs(opts.amountOverride.usd), eur: dir * Math.abs(opts.amountOverride.eur) }
       : null;
-  if (opts.isAdjustment) {
+  // Off-book corrections fill delta_*; everything that counts fills cashflow_*.
+  // (THE S&P RULE — see benchmark-rule.ts.)
+  if (!countsInBenchmark({ is_adjustment: opts.isAdjustment })) {
     result.deltaUsd = signedOverride?.usd ?? opts.valUsd;
     result.deltaEur = signedOverride?.eur ?? opts.valEur;
     result.deltaStatus = "complete";
@@ -137,7 +140,7 @@ export async function computeActivityFxWithConversion(opts: {
     const dir = opts.direction ?? 1;
     const signedUsd = dir * Math.abs(opts.amountOverride.usd);
     const signedEur = dir * Math.abs(opts.amountOverride.eur);
-    if (opts.isAdjustment) {
+    if (!countsInBenchmark({ is_adjustment: opts.isAdjustment })) {
       result.deltaUsd = signedUsd;
       result.deltaEur = signedEur;
       result.deltaStatus = "complete";
@@ -158,7 +161,7 @@ export async function computeActivityFxWithConversion(opts: {
       opts.currency,
       opts.effectiveDate?.split("T")[0],
     );
-    if (opts.isAdjustment) {
+    if (!countsInBenchmark({ is_adjustment: opts.isAdjustment })) {
       result.deltaUsd = converted.usd;
       result.deltaEur = converted.eur;
       result.deltaStatus = "complete";
@@ -173,7 +176,7 @@ export async function computeActivityFxWithConversion(opts: {
       `[activity-fx] FX conversion failed, marked pending:`,
       err instanceof Error ? err.message : err,
     );
-    if (opts.isAdjustment) result.deltaStatus = "pending";
+    if (!countsInBenchmark({ is_adjustment: opts.isAdjustment })) result.deltaStatus = "pending";
     else result.cashflowStatus = "pending";
   }
   return result;
