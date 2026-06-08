@@ -74,8 +74,10 @@ function makeAsset(positionBrokerIds: string[] = ["b-1", "b-2"]): StockAssetWith
 
 function renderEditor(asset = makeAsset()) {
   const onClose = vi.fn();
+  const onTrade = vi.fn();
   return {
     onClose,
+    onTrade,
     ...render(
       <StockPositionEditor
         open
@@ -85,7 +87,7 @@ function renderEditor(asset = makeAsset()) {
         existingSubcategories={[]}
         existingTags={[]}
         prices={{ "VUSA.AS": { price: 80, currency: "USD" } }}
-        onTrade={vi.fn()}
+        onTrade={onTrade}
       />,
     ),
   };
@@ -263,5 +265,20 @@ describe("stock StockPositionEditor — amount paid (cost spine)", () => {
 
     await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalledTimes(1));
     expect(hoisted.upsertStockPosition.mock.calls[0][1]).not.toHaveProperty("cost");
+  });
+});
+
+describe("StockPositionEditor — Sell/Buy delegate to the trade modal (1a)", () => {
+  it("Sell closes the editor and delegates onTrade('sell')", () => {
+    const { onClose, onTrade } = renderEditor();
+    fireEvent.click(screen.getByTitle(/sell this asset/i));
+    expect(onClose).toHaveBeenCalled();
+    expect(onTrade).toHaveBeenCalledWith("sell");
+  });
+  it("Buy closes the editor and delegates onTrade('buy')", () => {
+    const { onClose, onTrade } = renderEditor();
+    fireEvent.click(screen.getByTitle(/buy more of this asset/i));
+    expect(onClose).toHaveBeenCalled();
+    expect(onTrade).toHaveBeenCalledWith("buy");
   });
 });
