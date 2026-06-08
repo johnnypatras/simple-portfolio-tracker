@@ -115,7 +115,9 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     if (input.newWallet) {
       const walletId = await createWallet({
         name: input.newWallet.name,
-        wallet_type: "custodial",
+        // Custody from the caller's toggle; default custodial when absent (the
+        // existing TransferDialog caller passes no wallet_type).
+        wallet_type: input.newWallet.wallet_type ?? "custodial",
       });
       createdEntities.push({ table: "wallets", id: walletId });
       if (destination.type === "crypto_position") {

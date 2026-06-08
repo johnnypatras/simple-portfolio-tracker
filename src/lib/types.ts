@@ -704,7 +704,8 @@ export interface TransferInput {
   newCryptoAsset?: CryptoAssetInput;
   newStockAsset?: StockAssetInput;
   newBroker?: { name: string };
-  newWallet?: { name: string };
+  /** Custody for the created wallet (crypto buy into a new location). Default custodial. */
+  newWallet?: { name: string; wallet_type?: WalletType };
   newCashDeposit?: { amount: number; currency: string; isAdjustment: boolean };
   /** ISO date string (YYYY-MM-DD) for backdated transfers. Defaults to today. */
   effectiveDate?: string;
