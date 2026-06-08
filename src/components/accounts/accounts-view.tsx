@@ -30,6 +30,7 @@ import { AddStockModal } from "@/components/stocks/add-stock-modal";
 import { CashAccountModal } from "@/components/cash/cash-account-modal";
 import { Modal } from "@/components/ui/modal";
 import { useRouter } from "next/navigation";
+import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { deleteCryptoAsset } from "@/lib/actions/crypto";
 import { deleteStockAsset } from "@/lib/actions/stocks";
@@ -92,6 +93,9 @@ export function AccountsView({
   // Stocks
   const [editingStockAsset, setEditingStockAsset] = useState<StockAssetWithPositions | null>(null);
   const [showAddStock, setShowAddStock] = useState<string | null>(null);
+
+  // Trade modal (Sell/Buy from position editors)
+  const [txnTarget, setTxnTarget] = useState<OpenTransactionsTarget | null>(null);
 
   // Cash (unified)
   const [editingCashAccount, setEditingCashAccount] = useState<CashAccount | null>(null);
@@ -959,6 +963,18 @@ export function AccountsView({
               wallets={wallets}
               existingSubcategories={existingSubcategories}
               existingChains={existingChains}
+              onTrade={(type) => {
+                const a = editingCryptoAsset;
+                if (!a) return;
+                setEditingCryptoAsset(null);
+                setTxnTarget({
+                  assetRef: { class: "crypto", assetId: a.id },
+                  name: a.name,
+                  assetClass: "crypto",
+                  walletOptions: a.positions.map((p) => ({ id: p.wallet_id, name: p.wallet_name })),
+                  openAdd: type,
+                });
+              }}
             />
           )}
           {showAddCrypto && (
@@ -980,6 +996,18 @@ export function AccountsView({
               brokers={brokers}
               existingSubcategories={existingSubcategories}
               existingTags={existingTags}
+              onTrade={(type) => {
+                const a = editingStockAsset;
+                if (!a) return;
+                setEditingStockAsset(null);
+                setTxnTarget({
+                  assetRef: { class: "stock", assetId: a.id },
+                  name: a.name,
+                  assetClass: "stock",
+                  brokerOptions: a.positions.map((p) => ({ id: p.broker_id, name: p.broker_name })),
+                  openAdd: type,
+                });
+              }}
             />
           )}
           {showAddStock && (
@@ -1021,6 +1049,14 @@ export function AccountsView({
                   )?.id
                 : undefined
             }
+          />
+
+          {/* Trade modal (Sell/Buy from position editors) */}
+          <TransactionsManager
+            target={txnTarget}
+            onClose={() => setTxnTarget(null)}
+            currency={primaryCurrency}
+            onMutated={() => router.refresh()}
           />
 
           {/* Delete confirmation */}
