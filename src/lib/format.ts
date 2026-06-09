@@ -136,6 +136,20 @@ export function changeDisplayParts(
   };
 }
 
+/**
+ * At-a-glance new-money disclosure shown next to a snapshot-period change
+ * ("€10,000 deposited" / "€5,000 withdrawn"). Returns null when the deposit
+ * total rounds to zero at display precision, so a negligible flow renders
+ * nothing rather than "€0 deposited". Uses the same compact formatter as the
+ * card's change value for visual parity (full numbers < €1M, compact above).
+ */
+export function formatDepositNote(total: number, currency: string): string | null {
+  if (!isFinite(total)) return null;
+  if (snapDisplayZero(total, 0) === 0) return null;
+  const magnitude = fmtCurrencyCompact(Math.abs(total), currency);
+  return total > 0 ? `${magnitude} deposited` : `${magnitude} withdrawn`;
+}
+
 /** Plain number with fixed decimal places */
 export function formatNumber(n: number, decimals = 2): string {
   return _getNumberFormatter(decimals).format(n);

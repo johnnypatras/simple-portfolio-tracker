@@ -11,6 +11,7 @@ import {
   formatNumber,
   formatQuantity,
   formatBackdateChipDate,
+  formatDepositNote,
 } from "@/lib/format";
 
 // ── fmtCurrency ────────────────────────────────────────────
@@ -338,5 +339,32 @@ describe("changeDisplayParts", () => {
     const d = changeDisplayParts(100, Number.POSITIVE_INFINITY, "EUR", { compact: true });
     expect(d.pct).toBe("—");
     expect(d.isDisplayZero).toBe(false);
+  });
+});
+
+// ── formatDepositNote ──────────────────────────────────────
+
+describe("formatDepositNote (Group C #2)", () => {
+  it("labels a positive total as deposited (full number under €1M)", () => {
+    expect(formatDepositNote(10000, "EUR")).toBe("€10,000 deposited");
+  });
+  it("labels a negative total as withdrawn (magnitude only)", () => {
+    expect(formatDepositNote(-5000, "EUR")).toBe("€5,000 withdrawn");
+  });
+  it("returns null when the total rounds to zero at display precision", () => {
+    expect(formatDepositNote(0, "EUR")).toBeNull();
+    expect(formatDepositNote(0.3, "EUR")).toBeNull();
+    expect(formatDepositNote(-0.4, "EUR")).toBeNull();
+  });
+  it("abbreviates seven-figure flows like the change value does", () => {
+    expect(formatDepositNote(1_500_000, "USD")).toBe("$1.5M deposited");
+  });
+  it("returns null for non-finite input (matches the file's fmtPct convention)", () => {
+    expect(formatDepositNote(NaN, "EUR")).toBeNull();
+    expect(formatDepositNote(Infinity, "EUR")).toBeNull();
+    expect(formatDepositNote(-Infinity, "EUR")).toBeNull();
+  });
+  it("does NOT suppress a flow that rounds to one display unit (€0.50 → €1)", () => {
+    expect(formatDepositNote(0.5, "EUR")).toBe("€1 deposited");
   });
 });
