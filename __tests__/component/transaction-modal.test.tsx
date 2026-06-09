@@ -1378,3 +1378,132 @@ describe("TransactionModal — picker mode with ZERO existing locations (auto + 
     expect(screen.queryByRole("button", { name: "Exchange" })).not.toBeInTheDocument();
   });
 });
+
+// ── Identity step (1b-2b-iii) ─────────────────────────────────────────────────
+
+// A new crypto asset reusing PICKED_SOL's raw shape (carries an `id` so the
+// AssetIdentityStep's existing-chain lookup works).
+const NEW_CRYPTO = PICKED_SOL;
+
+describe("TransactionModal — picker mode identity step (1b-2b-iii)", () => {
+  it("renders the identity step for a new asset before the trade form, then continues to it", async () => {
+    renderOpen({
+      assetClass: "crypto",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: {
+        picked: NEW_CRYPTO,
+        needsIdentity: true,
+        identityValue: { chain: "Solana" },
+        onIdentityChange: vi.fn(),
+        availableChains: ["Solana"],
+        onAssetPicked: vi.fn(),
+        ownedTickers: new Set(),
+      },
+    });
+    // Identity step shown (chain field), trade form NOT yet (no quantity).
+    expect(screen.getByLabelText(/chain/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/quantity/i)).not.toBeInTheDocument();
+    // Continue advances to the trade form.
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(await screen.findByLabelText(/quantity/i)).toBeInTheDocument();
+  });
+
+  it("skips the identity step when needsIdentity is false (owned / single-chain)", () => {
+    renderOpen({
+      assetClass: "crypto",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: {
+        picked: NEW_CRYPTO,
+        needsIdentity: false,
+        onAssetPicked: vi.fn(),
+        ownedTickers: new Set(),
+      },
+    });
+    // Straight to the trade form — no identity gate.
+    expect(screen.getByLabelText(/quantity/i)).toBeInTheDocument();
+  });
+
+  it("preserves the money-flow 'tracked' default across the identity→form transition", async () => {
+    // The identity gate must NOT disturb the money-flow settle-effect: a new
+    // asset with ≥1 cash account should still land on the "tracked" default once
+    // the trade form appears. Pins Fix 1/2 (re-arming the gate is scoped to the
+    // identity transition and never touches moneyFlowTouchedRef / the settle).
+    renderOpen({
+      assetClass: "crypto",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      cashAccountOptions: EUR_ACCOUNTS,
+      pickerMode: {
+        picked: NEW_CRYPTO,
+        needsIdentity: true,
+        identityValue: { chain: "Solana" },
+        onIdentityChange: vi.fn(),
+        availableChains: ["Solana"],
+        onAssetPicked: vi.fn(),
+        ownedTickers: new Set(),
+      },
+    });
+    // Identity step first — no trade form yet.
+    expect(screen.queryByLabelText(/quantity/i)).not.toBeInTheDocument();
+    // Continue → the trade form appears.
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(await screen.findByLabelText(/quantity/i)).toBeInTheDocument();
+    // The money-flow default settled to "tracked" — the identity step did not
+    // disturb the settle-effect.
+    const tracked = screen.getByRole("radio", {
+      name: new RegExp(MONEY_FLOW_COPY.buy.trackedLabel, "i"),
+    }) as HTMLInputElement;
+    expect(tracked.checked).toBe(true);
+  });
+
+  it("re-arms the identity gate on close→reopen with the SAME picked asset", () => {
+    // TransactionModal never unmounts, so identityConfirmed must reset when the
+    // modal reopens — even if the caller keeps the same `picked` reference.
+    // Pins Fix 2 (the reset effect depends on isOpen).
+    const { rerender, props } = renderOpen({
+      assetClass: "crypto",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: {
+        picked: NEW_CRYPTO,
+        needsIdentity: true,
+        identityValue: { chain: "Solana" },
+        onIdentityChange: vi.fn(),
+        availableChains: ["Solana"],
+        onAssetPicked: vi.fn(),
+        ownedTickers: new Set(),
+      },
+    });
+    // Confirm identity → the trade form shows.
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(screen.getByLabelText(/quantity/i)).toBeInTheDocument();
+    // Close then reopen with the SAME picked asset.
+    rerender(<TransactionModal {...props} isOpen={false} />);
+    rerender(<TransactionModal {...props} isOpen={true} />);
+    // The identity step is shown again (gate re-armed); the trade form is gone.
+    expect(screen.getByLabelText(/chain/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/quantity/i)).not.toBeInTheDocument();
+  });
+
+  it("stock new asset: the identity step renders the Currency field", () => {
+    renderOpen({
+      assetClass: "stock",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: {
+        picked: { ...PICKED_SOL, assetClass: "stock", ticker: "VUSA" },
+        needsIdentity: true,
+        identityValue: {},
+        onIdentityChange: vi.fn(),
+        onAssetPicked: vi.fn(),
+        ownedTickers: new Set(),
+      },
+    });
+    // The stock identity branch renders a Currency input in the identity step.
+    expect(screen.getByLabelText(/currency/i)).toBeInTheDocument();
+    // Trade form is gated behind Continue.
+    expect(screen.queryByLabelText(/quantity/i)).not.toBeInTheDocument();
+  });
+});

@@ -5,6 +5,10 @@ import { Modal } from "@/components/ui/modal";
 import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY } from "@/lib/cost-basis-copy";
 import { fmtCurrency } from "@/lib/format";
 import { AssetPicker } from "@/components/transactions/asset-picker";
+import {
+  AssetIdentityStep,
+  type AssetIdentityValue,
+} from "@/components/transactions/asset-identity-step";
 import type { TransactionKind } from "@/lib/transaction-kind";
 import type { PickedAsset, WalletType } from "@/lib/types";
 import {
@@ -134,6 +138,18 @@ export interface TransactionModalProps {
     picked: PickedAsset | null;
     onAssetPicked: (a: PickedAsset) => void;
     ownedTickers: Set<string>;
+    /** New asset that needs an identity-confirm step (1.5) between the pick and
+     *  the trade form. Falsy (owned / single-chain) → straight to the form. */
+    needsIdentity?: boolean;
+    /** Controlled identity value + change handler for the AssetIdentityStep. */
+    identityValue?: AssetIdentityValue;
+    onIdentityChange?: (v: AssetIdentityValue) => void;
+    /** Identity-step datalist seeds (suggested chains, already-used metadata). */
+    availableChains?: string[];
+    existingChains?: string[];
+    existingSubcategories?: string[];
+    existingTags?: string[];
+    existingAssets?: { coingecko_id: string; chain: string | null }[];
   };
   onSubmit: (value: TransactionSubmit) => Promise<void> | void;
   onContinueToTransfer?: () => void;
@@ -275,6 +291,13 @@ export function TransactionModal({
   // so a manual choice is never overridden by late-arriving cash accounts.
   const moneyFlowTouchedRef = useRef(false);
 
+  // ── Identity-confirm step (1.5) ──────────────────────────────────────────
+  // For a NEW picker-Buy asset, an identity-confirm step renders BETWEEN the
+  // asset pick and the trade form. `identityConfirmed` gates that transition;
+  // it's reset only on the pick transition (effect below) — never here, so the
+  // money-flow settle-effect is left untouched (see f4365b0).
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
+
   // Latest-ref for the async-loaded accounts list. The reset effect reads this
   // (never the prop directly) so a late getCashAccounts resolution can't enter
   // its dep array and re-fire the full-form reset. Written in an effect, never
@@ -332,6 +355,34 @@ export function TransactionModal({
     if ((cashAccountOptions?.length ?? 0) > 0) setMoneyFlowTracked(true);
   }, [isOpen, cashAccountOptions]);
 
+  // Re-arm the identity gate on the PICK transition AND on every open/close.
+  // Keyed on the picked asset's STABLE RAW identity — `ticker` is NOT unique
+  // across the asset universe (duplicate crypto symbols; crypto↔stock
+  // collisions), so it can't tell two distinct picks apart. We narrow the
+  // `PickedAsset.raw` union by presence (mirrors asset-identity-step.tsx):
+  // CoinGeckoSearchResult carries `id`, YahooSearchResult carries `symbol`;
+  // fall back to `ticker` only if neither exists. The assetClass prefix
+  // disambiguates a coin `id` that happens to equal a stock `symbol`. `isOpen`
+  // is also a dep so the gate re-arms on close→reopen (TransactionModal never
+  // unmounts, so identityConfirmed would otherwise survive) — this does NOT
+  // depend on the caller nulling `picked`. Deliberately scoped to picked
+  // identity + open state: it does NOT reset `moneyFlowTouchedRef` (re-arming
+  // the settle-effect would silently flip a user's deliberate "New money"
+  // choice back to tracked — see f4365b0).
+  const picked = pickerMode?.picked;
+  const pickedKey = picked
+    ? `${picked.assetClass}:${
+        "id" in picked.raw
+          ? picked.raw.id
+          : "symbol" in picked.raw
+            ? picked.raw.symbol
+            : picked.ticker
+      }`
+    : undefined;
+  useEffect(() => {
+    setIdentityConfirmed(false);
+  }, [pickedKey, isOpen]);
+
   // Lockdown flags
   const isTransferLeg = edit?.isTransferLeg === true;
   const isSplitLocked = edit?.isSplitChild === true || edit?.isUndone === true;
@@ -340,8 +391,19 @@ export function TransactionModal({
   // can't move a row between positions), non-transfer, and only when the matching
   // options prop is provided for this asset class.
   const isEditing = !!edit;
-  // True when the buy form should show: no picker mode, or an asset has been picked.
-  const pickerReady = !pickerMode || pickerMode.picked != null;
+  // True when an asset has been picked (or there is no picker mode at all).
+  const assetPicked = !pickerMode || pickerMode.picked != null;
+  // A new asset that still needs its identity confirmed gates the trade form
+  // behind the identity step (1.5). Falsy `needsIdentity` (owned / single-chain)
+  // → straight to the form, byte-identical to the prior behavior.
+  const showIdentityStep =
+    !!pickerMode &&
+    pickerMode.picked != null &&
+    !!pickerMode.needsIdentity &&
+    !identityConfirmed;
+  // True when the buy/edit form body should show: asset picked AND the identity
+  // step is either not needed or already confirmed.
+  const pickerReady = assetPicked && !showIdentityStep;
   const showWalletSelect =
     !isEditing &&
     assetClass === "crypto" &&
@@ -577,8 +639,46 @@ export function TransactionModal({
           </div>
         )}
 
+        {/* ── Identity-confirm step (1.5) ──────────────────────────
+             A NEW asset that needs identity confirmation renders here, between
+             the pick and the trade form. Continue sets identityConfirmed → the
+             form body (below) takes over. assetClass is "crypto" | "stock" in
+             picker mode (the toolbar Buy never picks cash). */}
+        {showIdentityStep && pickerMode.picked && (
+          <div className="space-y-3" role="group" aria-label="Confirm asset details">
+            <AssetIdentityStep
+              assetClass={assetClass as "crypto" | "stock"}
+              picked={pickerMode.picked}
+              availableChains={pickerMode.availableChains}
+              existingChains={pickerMode.existingChains}
+              existingSubcategories={pickerMode.existingSubcategories}
+              existingTags={pickerMode.existingTags}
+              existingAssets={pickerMode.existingAssets}
+              value={pickerMode.identityValue ?? {}}
+              onChange={pickerMode.onIdentityChange ?? (() => {})}
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setIdentityConfirmed(true)}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* The full buy/edit form — shown only once an asset is chosen (picker mode)
-            or always (every existing caller, where pickerReady defaults true). */}
+            and its identity confirmed when required, or always (every existing
+            caller, where pickerReady defaults true). */}
         {pickerReady && (
           <>
         {/* ── Split-child / undone lockdown ──────────────────────── */}
