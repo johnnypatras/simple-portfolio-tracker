@@ -207,12 +207,6 @@ export function serializeChains(chains: string[]): string | null {
   return filtered.join(",");
 }
 
-/** Get the raw tokens stored in chain (without expanding "evm"). For display purposes. */
-export function getWalletChainTokens(chain: string | null | undefined): string[] {
-  if (!chain) return [];
-  return chain.split(",").map((c) => c.trim()).filter(Boolean);
-}
-
 export interface BrokerInput {
   name: string;
 }

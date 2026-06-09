@@ -3,7 +3,6 @@ import {
   parseWalletChains,
   isEvmChain,
   serializeChains,
-  getWalletChainTokens,
   countryName,
   EVM_CHAINS,
 } from "@/lib/types";
@@ -57,12 +56,6 @@ describe("serializeChains", () => {
 
   it("joins non-EVM chains without evm shorthand", () => {
     expect(serializeChains(["Solana", "Bitcoin"])).toBe("Solana,Bitcoin");
-  });
-});
-
-describe("getWalletChainTokens", () => {
-  it("returns raw tokens without expanding evm", () => {
-    expect(getWalletChainTokens("evm,Solana")).toEqual(["evm", "Solana"]);
   });
 });
 
