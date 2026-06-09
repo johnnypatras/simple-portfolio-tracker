@@ -806,7 +806,7 @@ export function StockPositionEditor({
             onClose={() => { setTransferOpen(false); setMoveSourceBrokerId(null); }}
             onSuccess={() => { router.refresh(); onClose(); }}
             mode={transferMode}
-            initialSource={transferMode !== "buy" ? {
+            initialSource={{
               type: "stock_position",
               assetId: asset.id,
               assetName: asset.name,
@@ -816,18 +816,7 @@ export function StockPositionEditor({
               currentQty: sourcePosition?.quantity ?? 0,
               currency: asset.currency,
               currentPrice: priceData?.price,
-            } : undefined}
-            initialDestination={transferMode === "buy" ? {
-              type: "stock_position",
-              assetId: asset.id,
-              assetName: asset.name,
-              assetTicker: asset.ticker ?? asset.yahoo_ticker ?? "",
-              locationId: asset.positions[0]?.broker_id ?? "",
-              locationName: brokers.find((b) => b.id === asset.positions[0]?.broker_id)?.name ?? "Unknown",
-              currentQty: 0,
-              currency: asset.currency,
-              currentPrice: priceData?.price,
-            } : undefined}
+            }}
           />
         );
       })()}

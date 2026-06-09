@@ -835,7 +835,7 @@ export function PositionEditor({
             onClose={() => { setTransferOpen(false); setMoveSourceWalletId(null); }}
             onSuccess={() => { router.refresh(); onClose(); }}
             mode={transferMode}
-            initialSource={transferMode !== "buy" ? {
+            initialSource={{
               type: "crypto_position",
               assetId: asset.id,
               assetName: asset.name,
@@ -846,19 +846,7 @@ export function PositionEditor({
               currency: "USD",
               currentPriceUsd: priceData?.usd,
               currentPriceEur: priceData?.eur,
-            } : undefined}
-            initialDestination={transferMode === "buy" ? {
-              type: "crypto_position",
-              assetId: asset.id,
-              assetName: asset.name,
-              assetTicker: asset.ticker,
-              locationId: asset.positions[0]?.wallet_id ?? "",
-              locationName: wallets.find((w) => w.id === asset.positions[0]?.wallet_id)?.name ?? "Unknown",
-              currentQty: 0,
-              currency: "USD",
-              currentPriceUsd: priceData?.usd,
-              currentPriceEur: priceData?.eur,
-            } : undefined}
+            }}
           />
         );
       })()}
