@@ -857,6 +857,25 @@ export interface PickedAsset {
   raw: YahooSearchResult | CoinGeckoSearchResult;
 }
 
+/**
+ * A NEW (un-owned) asset selected from the command-palette external search,
+ * handed off to the destination page's `AddAssetManager` so it opens pre-picked.
+ * Only the minimal identity needed to reconstruct a `PickedAsset` is carried —
+ * `coingecko_id` for crypto, `yahoo_ticker` for stock. Owned results are NOT
+ * stashed (they only navigate).
+ */
+export interface PendingAddAsset {
+  class: "crypto" | "stock";
+  ticker: string;
+  coingecko_id?: string;
+  yahoo_ticker?: string;
+  name: string;
+  /** CoinGecko thumb URL — carried so the created asset's image_url is non-empty. */
+  image_url?: string;
+  /** Yahoo quoteType (e.g. "EQUITY", "ETF") — carried so inferCategory seeds the right default. */
+  quoteType?: string;
+}
+
 export interface EditTransactionPatch {
   /**
    * Override the effective date (YYYY-MM-DD). Pass null to clear (→ the entry

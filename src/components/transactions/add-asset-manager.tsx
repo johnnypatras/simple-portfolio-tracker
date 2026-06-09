@@ -14,6 +14,7 @@ import { getCashAccounts } from "@/lib/actions/cash-accounts";
 import { extractBaseTicker, inferCategory } from "@/lib/asset-extract";
 import type {
   PickedAsset,
+  PendingAddAsset,
   TransferSide,
   TransferInput,
   NewAssetBuyInput,
@@ -43,6 +44,14 @@ interface AddAssetManagerProps {
    *  OPTIONAL — the stock-table wires this in a later task (button-merge); absent →
    *  the escape is not rendered and the modal has no manual-NAV path. */
   onAddManualNav?: () => void;
+  /** A NEW asset selected in the command palette, handed off so this manager
+   *  opens PRE-PICKED on it. Consumed ONCE on mount (see onConsumePending);
+   *  only honoured when `pendingAsset.class === assetClass`. OPTIONAL — absent
+   *  → the manager opens in the normal (un-picked) flow. */
+  pendingAsset?: PendingAddAsset | null;
+  /** Called immediately after a pendingAsset has been pre-picked, so the shared
+   *  store clears it (a page refresh, pending already null, must NOT re-open). */
+  onConsumePending?: () => void;
   onMutated: () => void;
 }
 
@@ -68,6 +77,8 @@ export function AddAssetManager({
   existingTags,
   existingAssets,
   onAddManualNav,
+  pendingAsset,
+  onConsumePending,
   onMutated,
 }: AddAssetManagerProps) {
   const [picked, setPicked] = useState<PickedAsset | null>(null);
@@ -119,13 +130,12 @@ export function AddAssetManager({
     };
   }, [open]);
 
-  // On pick: store the asset + seed the identity, then (crypto only) detect
-  // chain/subcategory/availableChains. A generation ref drops a stale /detail
-  // response if the user re-picks quickly.
+  // On pick: store the asset + seed the SYNCHRONOUS identity. The crypto
+  // chain/subcategory detection (the async /detail fetch) is decoupled into the
+  // effect below, keyed on `picked` — so both the modal's pick event and the
+  // command-palette pre-pick (which seeds `picked` during render) trigger the
+  // same detection, and no effect ever calls setState synchronously.
   const handlePick = useCallback((a: PickedAsset) => {
-    // Bump the generation immediately so any in-flight /detail fetch from a prior
-    // pick (regardless of asset class) is invalidated before we branch.
-    const gen = ++detailGenRef.current;
     setPicked(a);
     setChain(null);
     setSubcategory(null);
@@ -135,34 +145,6 @@ export function AddAssetManager({
       // Seed empty (chain unknown until /detail resolves); pending forces the step.
       setIdentityValue({});
       setDetailPending(true);
-      const id = (a.raw as CoinGeckoSearchResult).id;
-      fetch(`/api/crypto/detail?id=${encodeURIComponent(id)}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((detail) => {
-          if (detailGenRef.current !== gen) return;
-          if (!detail) {
-            setDetectionFailed(true);
-            setDetailPending(false);
-            return;
-          }
-          const detectedChain: string | null = detail.chain || null;
-          const detectedSubcategory: string | null = detail.subcategory || null;
-          const chains: string[] = Array.isArray(detail.availableChains) ? detail.availableChains : [];
-          setChain(detectedChain);
-          setSubcategory(detectedSubcategory);
-          setAvailableChains(chains);
-          // Seed the editable identity from the detection.
-          setIdentityValue({
-            chain: detectedChain ?? undefined,
-            subcategory: detectedSubcategory ?? undefined,
-          });
-          setDetailPending(false);
-        })
-        .catch(() => {
-          if (detailGenRef.current !== gen) return;
-          setDetectionFailed(true);
-          setDetailPending(false);
-        });
     } else {
       // Stock: seed what we can infer; the step lets the user confirm/edit.
       const r = a.raw as YahooSearchResult;
@@ -174,6 +156,44 @@ export function AddAssetManager({
     }
   }, []);
 
+  // Crypto chain/subcategory detection. Runs whenever a crypto asset becomes the
+  // picked one (via modal pick OR palette pre-pick). A generation counter drops a
+  // stale response if the user re-picks quickly; setState lives only in the async
+  // callbacks (the sanctioned effect pattern), never synchronously in the body.
+  const pickedCryptoId =
+    picked?.assetClass === "crypto" ? (picked.raw as CoinGeckoSearchResult).id : null;
+  useEffect(() => {
+    if (pickedCryptoId === null) return;
+    const gen = ++detailGenRef.current;
+    fetch(`/api/crypto/detail?id=${encodeURIComponent(pickedCryptoId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((detail) => {
+        if (detailGenRef.current !== gen) return;
+        if (!detail) {
+          setDetectionFailed(true);
+          setDetailPending(false);
+          return;
+        }
+        const detectedChain: string | null = detail.chain || null;
+        const detectedSubcategory: string | null = detail.subcategory || null;
+        const chains: string[] = Array.isArray(detail.availableChains) ? detail.availableChains : [];
+        setChain(detectedChain);
+        setSubcategory(detectedSubcategory);
+        setAvailableChains(chains);
+        // Seed the editable identity from the detection.
+        setIdentityValue({
+          chain: detectedChain ?? undefined,
+          subcategory: detectedSubcategory ?? undefined,
+        });
+        setDetailPending(false);
+      })
+      .catch(() => {
+        if (detailGenRef.current !== gen) return;
+        setDetectionFailed(true);
+        setDetailPending(false);
+      });
+  }, [pickedCryptoId]);
+
   const handleClose = useCallback(() => {
     setPicked(null);
     setIdentityValue({});
@@ -182,6 +202,56 @@ export function AddAssetManager({
     setDetectionFailed(false);
     onClose();
   }, [onClose]);
+
+  // Pre-pick a NEW asset handed off from the command palette. Honour it only for
+  // THIS page's class, and consume it EXACTLY ONCE: a ref keyed on the consumed
+  // object identity guards against re-firing (StrictMode double-invoke, or the
+  // effect re-running before the store's clear() has propagated). Reconstructing
+  // a PickedAsset from the pending fields routes through the normal handlePick
+  // (so crypto still runs /detail detection). onConsumePending() then clears the
+  // store so a refresh — pending already null — never re-opens.
+  const consumedPendingRef = useRef<PendingAddAsset | null>(null);
+  useEffect(() => {
+    if (!pendingAsset || pendingAsset.class !== assetClass) return;
+    if (consumedPendingRef.current === pendingAsset) return;
+    consumedPendingRef.current = pendingAsset;
+    const asset: PickedAsset =
+      pendingAsset.class === "crypto"
+        ? {
+            assetClass: "crypto",
+            ticker: pendingAsset.ticker,
+            name: pendingAsset.name,
+            raw: {
+              id: pendingAsset.coingecko_id ?? "",
+              name: pendingAsset.name,
+              symbol: pendingAsset.ticker.toLowerCase(),
+              thumb: pendingAsset.image_url ?? "",
+              large: pendingAsset.image_url ?? "",
+              market_cap_rank: null,
+            },
+          }
+        : {
+            assetClass: "stock",
+            ticker: pendingAsset.ticker,
+            name: pendingAsset.name,
+            raw: {
+              symbol: pendingAsset.yahoo_ticker ?? pendingAsset.ticker,
+              shortname: pendingAsset.name,
+              longname: pendingAsset.name,
+              quoteType: pendingAsset.quoteType ?? "EQUITY",
+              exchDisp: "",
+              exchange: "",
+            },
+          };
+    // Defer the pick out of the effect's synchronous phase: handlePick cascades
+    // setState (and a /detail fetch), which must not run synchronously inside the
+    // effect (react-hooks/set-state-in-effect). The ref guard above ensures this
+    // schedules at most once per pendingAsset. queueMicrotask runs before paint.
+    queueMicrotask(() => {
+      handlePick(asset);
+      onConsumePending?.();
+    });
+  }, [pendingAsset, assetClass, handlePick, onConsumePending]);
 
   // needsIdentity:
   //   crypto → while the /detail fetch is pending, force the step (never skip a

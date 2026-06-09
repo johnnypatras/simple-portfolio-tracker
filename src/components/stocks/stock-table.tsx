@@ -10,6 +10,7 @@ import { StockPositionEditor } from "./stock-position-editor";
 import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import { AddAssetManager } from "@/components/transactions/add-asset-manager";
+import { useAddAssetContext } from "@/components/transactions/add-asset-context";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -98,6 +99,20 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
   const { isReadOnly } = useSharedView();
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
+  // A NEW stock/ETF selected in the command palette (which navigated here). When
+  // one ARRIVES for THIS class, latch the manager open and hand it the pending
+  // asset; the manager pre-picks once and clears it. We detect the arrival by
+  // comparing against the previous pending during render (React's "adjust state
+  // when a value changes" pattern) — so a refresh (pending already null) never
+  // opens, and the post-consume clear (pending → null) is a falling edge that
+  // does NOT re-open.
+  const { pending: pendingAddAsset, clear: clearPendingAddAsset } = useAddAssetContext();
+  const [prevPending, setPrevPending] = useState(pendingAddAsset);
+  if (prevPending !== pendingAddAsset) {
+    const arrived = pendingAddAsset?.class === "stock" && prevPending?.class !== "stock";
+    setPrevPending(pendingAddAsset);
+    if (arrived) setAddOpen(true);
+  }
   const [addManualOpen, setAddManualOpen] = useState(false);
   const [editingNavAsset, setEditingNavAsset] = useState<StockAssetWithPositions | null>(null);
   const latestNavDatesMap = useMemo(
@@ -1364,6 +1379,8 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
             onAddManualNav={() => setAddManualOpen(true)}
             existingSubcategories={existingSubcategories}
             existingTags={existingTags}
+            pendingAsset={pendingAddAsset?.class === "stock" ? pendingAddAsset : null}
+            onConsumePending={clearPendingAddAsset}
             onMutated={() => router.refresh()}
           />
           {/* Move-mode Transfer dialog (C2a): the modal's Transfer option now

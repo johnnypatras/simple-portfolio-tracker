@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Command } from "cmdk";
 import { useRouter } from "next/navigation";
 import { useSharedView } from "@/components/shared-view-context";
+import { useAddAssetContext } from "@/components/transactions/add-asset-context";
 import {
   Search,
   LayoutDashboard,
@@ -45,10 +46,8 @@ const SHARE_PAGES = [
 ];
 
 const ACTIONS = [
-  { label: "Add Crypto Asset", path: "/dashboard/crypto", icon: Plus, keywords: ["new", "create", "crypto"] },
-  { label: "Add Stock/ETF", path: "/dashboard/stocks", icon: Plus, keywords: ["new", "create", "equity"] },
-  { label: "Record Buy (Crypto)", path: "/dashboard/crypto", icon: TrendingUp, keywords: ["buy", "purchase"] },
-  { label: "Record Buy (Stock)", path: "/dashboard/stocks", icon: TrendingUp, keywords: ["buy", "purchase"] },
+  { label: "Add Crypto Asset", path: "/dashboard/crypto", icon: Plus, keywords: ["new", "create", "crypto", "buy"] },
+  { label: "Add Stock/ETF", path: "/dashboard/stocks", icon: Plus, keywords: ["new", "create", "equity", "buy"] },
   { label: "Transfer", path: "/dashboard", icon: ArrowRightLeft, keywords: ["move", "sell", "buy"] },
   { label: "Export Data", path: "/dashboard/settings", icon: Download, keywords: ["export", "backup", "csv", "json"] },
 ];
@@ -106,6 +105,7 @@ interface ExternalResult {
   ticker: string;
   price?: number;
   icon?: string;
+  quoteType?: string;
   type: "crypto" | "stock";
   detailPath: string;
 }
@@ -144,6 +144,7 @@ function useExternalSearch(query: string, enabled: boolean) {
             ticker: s.symbol as string,
             price: s.price as number | undefined,
             icon: undefined,
+            quoteType: s.quoteType as string | undefined,
             type: "stock" as const,
             detailPath: "/dashboard/stocks",
           })),
@@ -177,6 +178,7 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const router = useRouter();
   const { isReadOnly, shareToken } = useSharedView();
+  const { setPending } = useAddAssetContext();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
 
@@ -217,6 +219,24 @@ export function CommandPalette({
       onClose();
     },
     [router, onClose],
+  );
+
+  // Select an "Add New Asset" external search result. NEW (un-owned) results are
+  // stashed in the shared store so the destination page's AddAssetManager opens
+  // pre-picked on this asset; OWNED results just navigate (owned-launcher is a
+  // future phase). Then navigate + close either way.
+  const selectExternal = useCallback(
+    (r: ExternalResult, isOwned: boolean) => {
+      if (!isOwned) {
+        setPending(
+          r.type === "crypto"
+            ? { class: "crypto", ticker: r.ticker, coingecko_id: r.id, name: r.name, image_url: r.icon }
+            : { class: "stock", ticker: r.ticker, yahoo_ticker: r.id, name: r.name, quoteType: r.quoteType },
+        );
+      }
+      go(r.detailPath);
+    },
+    [setPending, go],
   );
 
   // Build pages list based on context
@@ -427,7 +447,7 @@ export function CommandPalette({
                         <Command.Item
                           key={`ext-${r.type}-${r.id}`}
                           value={`${r.name} ${r.ticker}`}
-                          onSelect={() => go(r.detailPath)}
+                          onSelect={() => selectExternal(r, isOwned)}
                           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer data-[selected=true]:bg-zinc-800 text-zinc-300 data-[selected=true]:text-zinc-100"
                           forceMount
                         >

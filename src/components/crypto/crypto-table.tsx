@@ -8,6 +8,7 @@ import { PositionEditor } from "./position-editor";
 import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
 import { AddAssetManager } from "@/components/transactions/add-asset-manager";
+import { useAddAssetContext } from "@/components/transactions/add-asset-context";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -91,6 +92,20 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
 
   const [addOpen, setAddOpen] = useState(false);
+  // A NEW crypto asset selected in the command palette (which navigated here).
+  // When one ARRIVES for THIS class, latch the manager open and hand it the
+  // pending asset; the manager pre-picks once and clears it. We detect the
+  // arrival by comparing against the previous pending during render (React's
+  // "adjust state when a value changes" pattern) — so a refresh (pending already
+  // null) never opens, and the post-consume clear (pending → null) is a falling
+  // edge that does NOT re-open.
+  const { pending: pendingAddAsset, clear: clearPendingAddAsset } = useAddAssetContext();
+  const [prevPending, setPrevPending] = useState(pendingAddAsset);
+  if (prevPending !== pendingAddAsset) {
+    const arrived = pendingAddAsset?.class === "crypto" && prevPending?.class !== "crypto";
+    setPrevPending(pendingAddAsset);
+    if (arrived) setAddOpen(true);
+  }
   // Move-mode Transfer dialog opened from the transactions modal's Transfer
   // option (C2a move-only). Holds the prefilled source position; null = closed.
   const [moveSource, setMoveSource] = useState<InitialSide | null>(null);
@@ -1409,6 +1424,8 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
             existingChains={existingChains}
             existingSubcategories={existingSubcategories}
             existingAssets={existingAssetsForManager}
+            pendingAsset={pendingAddAsset?.class === "crypto" ? pendingAddAsset : null}
+            onConsumePending={clearPendingAddAsset}
             onMutated={() => router.refresh()}
           />
           {/* Move-mode Transfer dialog (C2a): the modal's Transfer option now
