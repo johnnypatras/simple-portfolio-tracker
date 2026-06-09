@@ -3,9 +3,7 @@
 import { useState, useMemo, useCallback, Fragment, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Plus, Bitcoin, TrendingUp, Pencil, Trash2, History, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
-import dynamic from "next/dynamic";
-const AddCryptoModal = dynamic(() => import("./add-crypto-modal").then(m => m.AddCryptoModal), { ssr: false });
+import { Plus, Bitcoin, Pencil, Trash2, History, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import { PositionEditor } from "./position-editor";
 import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
@@ -93,7 +91,6 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
   const changeKey = `${currencyKey}_24h_change` as "usd_24h_change" | "eur_24h_change";
 
   const [addOpen, setAddOpen] = useState(false);
-  const [buyOpen, setBuyOpen] = useState(false);
   // Move-mode Transfer dialog opened from the transactions modal's Transfer
   // option (C2a move-only). Holds the prefilled source position; null = closed.
   const [moveSource, setMoveSource] = useState<InitialSide | null>(null);
@@ -268,6 +265,12 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
     }
     return [...chains].sort();
   }, [assets]);
+
+  // Stable identity for AddAssetManager — avoids re-creating the array on every render
+  const existingAssetsForManager = useMemo(
+    () => assets.map((a) => ({ coingecko_id: a.coingecko_id, chain: a.chain })),
+    [assets],
+  );
 
   // Sort entries within a group (reuses the same sort key/dir as flat mode)
   const sortEntries = useCallback(
@@ -553,17 +556,11 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
         {!isReadOnly && (
           <div className="ml-auto flex items-center gap-1.5">
             <button
-              onClick={() => setBuyOpen(true)}
-              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
-            >
-              <TrendingUp className="w-3 h-3" />
-              Buy
-            </button>
-            <button
+              type="button"
               onClick={() => setAddOpen(true)}
               className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
             >
-              <Plus className="w-3 h-3" />
+              <Plus className="w-3 h-3" aria-hidden="true" />
               Add
             </button>
           </div>
@@ -1402,14 +1399,16 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
       {/* Modals */}
       {!isReadOnly && (
         <>
-          <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} existingChains={existingChains} existingAssets={assets.map((a) => ({ coingecko_id: a.coingecko_id, chain: a.chain }))} />
           <AddAssetManager
             assetClass="crypto"
-            open={buyOpen}
-            onClose={() => setBuyOpen(false)}
+            open={addOpen}
+            onClose={() => setAddOpen(false)}
             wallets={wallets}
             brokers={[]}
             ownedTickers={ownedCryptoTickers}
+            existingChains={existingChains}
+            existingSubcategories={existingSubcategories}
+            existingAssets={existingAssetsForManager}
             onMutated={() => router.refresh()}
           />
           {/* Move-mode Transfer dialog (C2a): the modal's Transfer option now
