@@ -24,7 +24,7 @@ import type { PortfolioSummary } from "@/lib/portfolio/aggregate";
 import type { DashboardInsights } from "@/lib/portfolio/dashboard-insights";
 import type { PortfolioSnapshot } from "@/lib/types";
 import type { CashFlowEvent } from "@/lib/types";
-import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass, changeDisplayParts } from "@/lib/format";
+import { fmtCurrency, fmtCurrencyCompact, fmtPct, fmtPctPlain, changeColorClass, changeDisplayParts, formatDepositNote } from "@/lib/format";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { useTooltipDismiss } from "@/lib/hooks/use-tooltip-dismiss";
 import { useSharedView } from "@/components/shared-view-context";
@@ -217,8 +217,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
             // decomposition (Market = Total − Deposits) works correctly.
             // Snapshot-based periods (7d/30d/1y) already include deposits.
             const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
+            const depositNote = c.available && changePeriod !== "24h" ? formatDepositNote(dep.total, cur) : null;
             return (
-              <div className="flex items-baseline gap-3 mt-1 flex-nowrap">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-1">
                 <p className="text-3xl sm:text-5xl font-bold text-zinc-100 tabular-nums">
                   {fmtCurrency(totalValue, cur, 0)}
                 </p>
@@ -258,6 +259,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                 )}
                 {!c.available && (
                   <span className="text-sm text-zinc-400">—</span>
+                )}
+                {depositNote && (
+                  <span className="text-[11px] text-zinc-500 whitespace-nowrap">· {depositNote}</span>
                 )}
               </div>
             );
@@ -531,6 +535,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getCryptoChangeForPeriod(changePeriod, changeCtx);
             const d = changeDisplayParts(c.valueChange, c.percent, cur, { compact: true });
+            const dep = getDepositsForPeriod(changePeriod, changeCtx, "crypto");
+            const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
+            const depositNote = c.available && changePeriod !== "24h" ? formatDepositNote(dep.total, cur) : null;
             return (
               <>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
@@ -560,24 +567,21 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                           <span className="ml-1">({d.pct})</span>
                         </>
                       )}
-                      {(() => {
-                        const dep = getDepositsForPeriod(changePeriod, changeCtx, "crypto");
-                        const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
-                        return (
-                          <ChangeTooltip
-                            valueChange={tv}
-                            fxValueChange={c.fxValueChange}
-                            deposits={dep.total}
-                            depositBreakdown={dep.breakdown}
-                            startValue={cryptoValue - tv}
-                            cur={cur}
-                            open={openTooltip === "crypto"}
-                          />
-                        );
-                      })()}
+                      <ChangeTooltip
+                        valueChange={tv}
+                        fxValueChange={c.fxValueChange}
+                        deposits={dep.total}
+                        depositBreakdown={dep.breakdown}
+                        startValue={cryptoValue - tv}
+                        cur={cur}
+                        open={openTooltip === "crypto"}
+                      />
                     </span>
                   ) : (
                     <span className="text-xs text-zinc-400">—</span>
+                  )}
+                  {depositNote && (
+                    <span className="text-[11px] text-zinc-500 whitespace-nowrap">· {depositNote}</span>
                   )}
                 </div>
                 {summary.stablecoinValue > 0 && (
@@ -716,6 +720,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getStockChangeForPeriod(changePeriod, changeCtx);
             const d = changeDisplayParts(c.valueChange, c.percent, cur, { compact: true });
+            const dep = getDepositsForPeriod(changePeriod, changeCtx, "stocks");
+            const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
+            const depositNote = c.available && changePeriod !== "24h" ? formatDepositNote(dep.total, cur) : null;
             return (
               <>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
@@ -745,24 +752,21 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                           <span className="ml-1">({d.pct})</span>
                         </>
                       )}
-                      {(() => {
-                        const dep = getDepositsForPeriod(changePeriod, changeCtx, "stocks");
-                        const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
-                        return (
-                          <ChangeTooltip
-                            valueChange={tv}
-                            fxValueChange={c.fxValueChange}
-                            deposits={dep.total}
-                            depositBreakdown={dep.breakdown}
-                            startValue={stocksValue - tv}
-                            cur={cur}
-                            open={openTooltip === "equities"}
-                          />
-                        );
-                      })()}
+                      <ChangeTooltip
+                        valueChange={tv}
+                        fxValueChange={c.fxValueChange}
+                        deposits={dep.total}
+                        depositBreakdown={dep.breakdown}
+                        startValue={stocksValue - tv}
+                        cur={cur}
+                        open={openTooltip === "equities"}
+                      />
                     </span>
                   ) : (
                     <span className="text-xs text-zinc-400">—</span>
+                  )}
+                  {depositNote && (
+                    <span className="text-[11px] text-zinc-500 whitespace-nowrap">· {depositNote}</span>
                   )}
                 </div>
                 {insights.stocksWeightedYield > 0 && (() => {
@@ -932,6 +936,9 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
           {(() => {
             const c = getCashChangeForPeriod(changePeriod, changeCtx);
             const d = changeDisplayParts(c.valueChange, c.percent, cur, { compact: true });
+            const dep = getDepositsForPeriod(changePeriod, changeCtx, "cash");
+            const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
+            const depositNote = c.available && changePeriod !== "24h" ? formatDepositNote(dep.total, cur) : null;
             return (
               <>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-2">
@@ -961,24 +968,21 @@ export function DashboardGrid({ summary, insights, pastSnapshots, cashFlows }: D
                           <span className="ml-1">({d.pct})</span>
                         </>
                       )}
-                      {(() => {
-                        const dep = getDepositsForPeriod(changePeriod, changeCtx, "cash");
-                        const tv = changePeriod === "24h" ? c.valueChange + dep.total : c.valueChange;
-                        return (
-                          <ChangeTooltip
-                            valueChange={tv}
-                            fxValueChange={c.fxValueChange}
-                            deposits={dep.total}
-                            depositBreakdown={dep.breakdown}
-                            startValue={cashValue - tv}
-                            cur={cur}
-                            open={openTooltip === "cash"}
-                          />
-                        );
-                      })()}
+                      <ChangeTooltip
+                        valueChange={tv}
+                        fxValueChange={c.fxValueChange}
+                        deposits={dep.total}
+                        depositBreakdown={dep.breakdown}
+                        startValue={cashValue - tv}
+                        cur={cur}
+                        open={openTooltip === "cash"}
+                      />
                     </span>
                   ) : (
                     <span className="text-xs text-zinc-400">—</span>
+                  )}
+                  {depositNote && (
+                    <span className="text-[11px] text-zinc-500 whitespace-nowrap">· {depositNote}</span>
                   )}
                 </div>
                 {insights.weightedAvgApy > 0 && (
