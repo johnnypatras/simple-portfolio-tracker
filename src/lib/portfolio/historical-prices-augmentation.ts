@@ -902,6 +902,12 @@ export async function fetchHistoricalPriceInputsFor(
       .eq("user_id", userId)
       .eq("entity_type", "crypto_position")
       .is("undone_at", null)
+      // Exclude undo COMPENSATION rows. A compensation row carries before/after
+      // snapshots (the pre/post-revert quantities) so buildHistoricalLots would
+      // derive a qty delta from it, while its ORIGINAL row is already dropped via
+      // undone_at → the value line would double-count the reversal. Mirrors the
+      // cost-stream reads in asset-transactions.ts.
+      .is("compensates_for", null)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, to);
@@ -914,6 +920,8 @@ export async function fetchHistoricalPriceInputsFor(
       .eq("user_id", userId)
       .eq("entity_type", "stock_position")
       .is("undone_at", null)
+      // Exclude undo COMPENSATION rows (see crypto read above for rationale).
+      .is("compensates_for", null)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, to);
@@ -926,6 +934,8 @@ export async function fetchHistoricalPriceInputsFor(
       .eq("user_id", userId)
       .eq("entity_type", "cash_account")
       .is("undone_at", null)
+      // Exclude undo COMPENSATION rows (see crypto read above for rationale).
+      .is("compensates_for", null)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, to);

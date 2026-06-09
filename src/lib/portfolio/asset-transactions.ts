@@ -183,6 +183,14 @@ export async function getAssetTransactions(
       .eq("user_id", userId) // defense-in-depth: positions carry no user_id; admin bypasses RLS
       .in("entity_id", entityIds) // cash: single-element array is fine
       .is("undone_at", null) // exclude undone rows
+      // Exclude undo COMPENSATION rows: undoing an "updated" position mutation
+      // (buy-more / partial-sell / transfer leg) inserts a compensating row with
+      // is_adjustment=false + cashflow_*=null. The cost engine would read it as a
+      // real €0 transaction → corrupted avg cost / realized / unrealized. The
+      // ORIGINAL row is already excluded (undo sets undone_at on it), so dropping
+      // the compensation too makes the stream behave as "the action never
+      // happened" — exactly correct. (Audit trail / History reads keep it.)
+      .is("compensates_for", null)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true }) // stable secondary key for deterministic pages
       .range(from, to);
@@ -504,6 +512,10 @@ export async function getAllAssetTransactions(
         .eq("user_id", userId) // defense-in-depth — admin bypasses RLS
         .eq("entity_type", entityType)
         .is("undone_at", null)
+        // Exclude undo COMPENSATION rows (see getAssetTransactions for the full
+        // rationale): is_adjustment=false + cashflow_*=null compensation rows
+        // would fold as spurious €0 transactions and corrupt the cost basis.
+        .is("compensates_for", null)
         .order("created_at", { ascending: true })
         .order("id", { ascending: true }) // stable secondary key for deterministic pages
         .range(from, to);

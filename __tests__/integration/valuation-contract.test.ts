@@ -40,6 +40,11 @@ vi.mock("@/lib/prices/fx", () => ({
 }));
 
 import { executeTransfer } from "@/lib/actions/transfers";
+import { createCryptoAsset, upsertPosition } from "@/lib/actions/crypto";
+import { createWallet } from "@/lib/actions/wallets";
+import { undoActivity } from "@/lib/actions/undo";
+import { getAllAssetTransactions, type AssetKey } from "@/lib/portfolio/asset-transactions";
+import { computeAssetPnL } from "@/lib/portfolio/cost-basis";
 
 describe("executeTransfer valuation contract — cost = amount paid, not market (integration)", () => {
   let client: SupabaseClient;
@@ -184,5 +189,153 @@ describe("executeTransfer valuation contract — cost = amount paid, not market 
     const { data: cashAfter } = await client
       .from("cash_accounts").select("balance").eq("id", proceedsCashId).single();
     expect(Number(cashAfter!.balance)).toBe(300);
+  });
+});
+
+describe("undo compensation rows are excluded from the cost stream (integration)", () => {
+  let client: SupabaseClient;
+  let userId: string;
+  let cleanup: () => void;
+
+  beforeAll(async () => {
+    const result = await createTestUser();
+    client = result.client;
+    userId = result.userId;
+    cleanup = result.cleanup;
+    hoisted.testClient = client;
+  });
+
+  afterAll(() => cleanup());
+
+  /** Slice the bulk per-asset map for one crypto asset. */
+  async function costForAsset(assetId: string) {
+    const byAsset = await getAllAssetTransactions(client, userId);
+    const txns = byAsset.get(`crypto:${assetId}` as AssetKey) ?? [];
+    // Low market price irrelevant to costBasis/realized; pass a finite value.
+    const pnl = computeAssetPnL(txns, { valueEur: 0, valueUsd: 0 });
+    return { txns, pnl };
+  }
+
+  // ─── (A) undo a buy-more → cost/avg/realized as-if-never-happened ──────────
+  it("excludes the compensating row so an undone buy-more leaves units 1 / cost €100 / realized 0", async () => {
+    // Asset + wallet for a clean, transfer-group-free position stream.
+    const coingeckoId = `vc-undo-${randomUUID()}`;
+    const assetId = await createCryptoAsset({
+      ticker: "VCU",
+      name: "VC Undo",
+      coingecko_id: coingeckoId,
+    });
+    const walletId = await createWallet({ name: `VC UW ${randomUUID().slice(0, 6)}`, wallet_type: "custodial" });
+
+    // Initial acquisition: 1 unit @ €100 → a "created" row, cashflow_eur=100
+    // (NOT an adjustment — the cost engine reads it as a real buy).
+    await upsertPosition(
+      { crypto_asset_id: assetId, wallet_id: walletId, quantity: 1 },
+      { cost: { amount: 100, currency: "EUR" } },
+    );
+
+    // Buy-more: +1 unit @ €200 → an "updated" row on the SAME position,
+    // cashflow_eur=200, NO transfer_group_id (single-entry undo path).
+    await upsertPosition(
+      { crypto_asset_id: assetId, wallet_id: walletId, quantity: 2 },
+      { cost: { amount: 200, currency: "EUR" } },
+    );
+
+    // Capture the buy-more "updated" row's id (the one we undo).
+    const { data: pos } = await client
+      .from("crypto_positions")
+      .select("id")
+      .eq("crypto_asset_id", assetId)
+      .is("deleted_at", null)
+      .single();
+    const { data: buyMoreRow } = await client
+      .from("activity_log")
+      .select("id")
+      .eq("entity_id", pos!.id)
+      .eq("entity_table", "crypto_positions")
+      .eq("action", "updated")
+      .is("undone_at", null)
+      .single();
+    expect(buyMoreRow).not.toBeNull();
+
+    // Pre-undo sanity: stream folds to units 2 / cost €300 / realized 0.
+    {
+      const { pnl } = await costForAsset(assetId);
+      expect(pnl.eur.costBasis).toBeCloseTo(300, 6);
+    }
+
+    // Undo the buy-more. Single-entry path → reverts qty 2→1 + inserts a
+    // compensating row (is_adjustment:false, cashflow null, compensates_for set)
+    // + marks the original "updated" row undone.
+    const undoRes = await undoActivity(buyMoreRow!.id);
+    expect(undoRes.success).toBe(true);
+
+    // Position reverted to qty 1.
+    const { data: posAfter } = await client
+      .from("crypto_positions")
+      .select("quantity")
+      .eq("id", pos!.id)
+      .is("deleted_at", null)
+      .single();
+    expect(Number(posAfter!.quantity)).toBe(1);
+
+    // The compensating row EXISTS in the raw log (so we know undo ran) …
+    const { data: compRow } = await client
+      .from("activity_log")
+      .select("id, is_adjustment, cashflow_amount_eur, delta_eur")
+      .eq("entity_id", pos!.id)
+      .eq("entity_table", "crypto_positions")
+      .eq("compensates_for", buyMoreRow!.id)
+      .single();
+    expect(compRow).not.toBeNull();
+    expect(compRow!.is_adjustment).toBe(false);
+    expect(compRow!.cashflow_amount_eur).toBeNull();
+
+    // … but is EXCLUDED from the cost stream, AND the original buy-more row is
+    // excluded (undone_at). So the stream is the lone "created" buy.
+    const { txns, pnl } = await costForAsset(assetId);
+    const ids = new Set(txns.map((t) => t.id));
+    expect(ids.has(compRow!.id)).toBe(false); // compensation excluded
+    expect(ids.has(buyMoreRow!.id)).toBe(false); // original excluded (undone_at)
+    expect(txns).toHaveLength(1); // only the "created" acquisition remains
+
+    // As-if-the-buy-more-never-happened: units 1, cost €100, realized 0 —
+    // NOT the corruption (units 0 / cost €0 / realized −€100).
+    expect(pnl.eur.costBasis).toBeCloseTo(100, 6);
+    expect(pnl.eur.avgCost).toBeCloseTo(100, 6);
+    expect(pnl.eur.realized).toBeCloseTo(0, 6);
+  });
+
+  // ─── (B) wallet↔wallet move stays cost-neutral (engine nets the pair) ──────
+  it("a same-asset wallet→wallet move nets to ~0 qty → no cost event (units/cost unchanged)", async () => {
+    const coingeckoId = `vc-move-${randomUUID()}`;
+    const assetId = await createCryptoAsset({
+      ticker: "VCM",
+      name: "VC Move",
+      coingecko_id: coingeckoId,
+    });
+    const fromWallet = await createWallet({ name: `VC MF ${randomUUID().slice(0, 6)}`, wallet_type: "custodial" });
+    const toWallet = await createWallet({ name: `VC MT ${randomUUID().slice(0, 6)}`, wallet_type: "custodial" });
+
+    // Seed 10 units @ €500 in the source wallet.
+    await upsertPosition(
+      { crypto_asset_id: assetId, wallet_id: fromWallet, quantity: 10 },
+      { cost: { amount: 500, currency: "EUR" } },
+    );
+
+    // Move 4 units fromWallet → toWallet (mode "move" → both legs is_adjustment,
+    // no cost; net qty across the group is 0 within the asset stream).
+    const moveRes = await executeTransfer({
+      mode: "move",
+      source: { type: "crypto_position", assetId, walletId: fromWallet, quantity: 4 },
+      destination: { type: "crypto_position", assetId, walletId: toWallet, quantity: 4 },
+    });
+    expect(moveRes.success).toBe(true);
+
+    // The engine merges both wallets into one asset stream and nets the transfer
+    // group to 0 → the move books no cost: units 10, cost €500 unchanged.
+    const { pnl } = await costForAsset(assetId);
+    expect(pnl.eur.costBasis).toBeCloseTo(500, 6);
+    expect(pnl.eur.realized).toBeCloseTo(0, 6);
   });
 });
