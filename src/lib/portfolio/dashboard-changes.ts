@@ -261,7 +261,8 @@ export function getDepositsForPeriod(
   filterClass?: AssetClass,
 ): DepositResult {
   const fxMul = ctx.primaryCurrency === "USD" || ctx.totalValueUsd === 0 ? 1 : ctx.totalValue / ctx.totalValueUsd;
-  return computeDeposits(period, ctx.cashFlows, ctx.primaryCurrency, fxMul, filterClass);
+  const snapshotDate = period === "24h" ? null : (ctx.pastSnapshots[period]?.snapshot_date ?? null);
+  return computeDeposits(period, ctx.cashFlows, ctx.primaryCurrency, fxMul, filterClass, snapshotDate);
 }
 
 /**
@@ -274,14 +275,25 @@ export function computeDeposits(
   primaryCurrency: BaseCurrency,
   fxMul: number,
   filterClass?: AssetClass,
+  snapshotDate?: string | null,
 ): DepositResult {
   const now = new Date();
-  const msMap: Record<ChangePeriod, number> = {
-    "24h": 86400000, "3d": 3 * 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000,
-    "90d": 90 * 86400000, "1y": 365 * 86400000, "all": 100 * 365 * 86400000,
-  };
-  const cutoff = new Date(now.getTime() - msMap[period]);
-  cutoff.setUTCHours(0, 0, 0, 0);
+  let cutoff: Date;
+  if (snapshotDate) {
+    // Group C #1: anchor to the period's base snapshot. The snapshot holds the
+    // end-of-day value on snapshot_date, so the period change already contains
+    // every deposit on-or-before that day; count only deposits strictly AFTER it.
+    // Exclusive lower bound = start of the day after snapshot_date (UTC).
+    cutoff = new Date(`${snapshotDate}T00:00:00Z`);
+    cutoff.setUTCDate(cutoff.getUTCDate() + 1);
+  } else {
+    const msMap: Record<ChangePeriod, number> = {
+      "24h": 86400000, "3d": 3 * 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000,
+      "90d": 90 * 86400000, "1y": 365 * 86400000, "all": 100 * 365 * 86400000,
+    };
+    cutoff = new Date(now.getTime() - msMap[period]);
+    cutoff.setUTCHours(0, 0, 0, 0);
+  }
   // Strip synthetic benchmark-only flows BEFORE date/class filtering. These are
   // produced by buildBenchmarkCashFlows for is_adjustment backdated lots so the
   // S&P benchmark line has cash flows to replay; they were never real deposits

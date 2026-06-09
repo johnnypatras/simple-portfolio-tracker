@@ -6,6 +6,7 @@ import {
   getStockChangeForPeriod,
   getCashChangeForPeriod,
   getDepositsForPeriod,
+  computeDeposits,
 } from "@/lib/portfolio/dashboard-changes";
 import type { ChangeContext } from "@/lib/portfolio/dashboard-changes";
 import type { PortfolioSnapshot } from "@/lib/types";
@@ -492,5 +493,50 @@ describe("getChangeForPeriod — null EUR in snapshot", () => {
     expect(result.percent).toBeCloseTo(12.5, 1);
     expect(result.fxPercent).toBe(0);
     expect(Number.isNaN(result.fxValueChange)).toBe(false);
+  });
+});
+
+// ── computeDeposits — snapshot-anchored window (Group C #1) ──
+
+describe("computeDeposits — snapshot-anchored window (Group C #1)", () => {
+  const flows = [
+    { date: "2026-05-31", amount_usd: 1100, amount_eur: 1000, entity_name: "Salary", asset_class: "cash" as const, synthetic: false as const },
+    { date: "2026-06-01", amount_usd: 2200, amount_eur: 2000, entity_name: "Bonus", asset_class: "cash" as const, synthetic: false as const },
+  ];
+
+  it("excludes deposits dated ON the snapshot date (already in the end-of-day base)", () => {
+    // snapshot_date 2026-05-31 -> cutoff = 2026-06-01T00:00Z. 05-31 excluded, 06-01 in.
+    const r = computeDeposits("30d", flows, "EUR", 1, undefined, "2026-05-31");
+    expect(r.total).toBe(2000);
+    expect(r.breakdown).toEqual([{ name: "Bonus", value: 2000 }]);
+  });
+
+  it("includes a deposit dated the day AFTER the snapshot", () => {
+    const r = computeDeposits("30d", flows, "EUR", 1, undefined, "2026-05-30");
+    expect(r.total).toBe(3000);
+  });
+
+  it("null/undefined snapshotDate keeps the legacy time-based window (24h + detail-page parity)", () => {
+    const a = computeDeposits("30d", flows, "EUR", 1, undefined, null);
+    const b = computeDeposits("30d", flows, "EUR", 1, undefined);
+    expect(a).toEqual(b);
+  });
+});
+
+describe("getDepositsForPeriod — anchors to the period's base snapshot (Group C #1)", () => {
+  it("uses pastSnapshots[period].snapshot_date as the exclusive lower bound", () => {
+    const ctx = makeCtx({
+      cashFlows: [
+        { date: "2026-05-31", amount_usd: 1100, amount_eur: 1000, entity_name: "Salary", asset_class: "cash", synthetic: false },
+        { date: "2026-06-02", amount_usd: 2200, amount_eur: 2000, entity_name: "Bonus", asset_class: "cash", synthetic: false },
+      ],
+      pastSnapshots: { "30d": makeSnapshot({ snapshot_date: "2026-06-01" }) },
+    });
+    expect(getDepositsForPeriod("30d", ctx).total).toBe(2000); // only 06-02
+  });
+
+  it("passes null for 24h (no snapshot base)", () => {
+    const ctx = makeCtx({ cashFlows: [], pastSnapshots: {} });
+    expect(getDepositsForPeriod("24h", ctx).total).toBe(0);
   });
 });
