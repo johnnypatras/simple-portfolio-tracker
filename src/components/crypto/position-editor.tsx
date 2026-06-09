@@ -278,7 +278,11 @@ export function PositionEditor({
         wallet_id: walletId,
         quantity: qty,
         acquisition_method: method,
-        apy: apy || undefined,
+        // `apy` is parseFloat'd above → an explicit 0 is a VALID value (no yield).
+        // `apy || undefined` wrongly collapsed 0 → undefined, which partialUpdate
+        // strips, making it impossible to set APY back to 0. Only a blank/invalid
+        // field (NaN) should defer (undefined = leave the existing value untouched).
+        apy: Number.isNaN(apy) ? undefined : apy,
         network: edit?.network?.trim() || null,
       }, {
         isAdjustment: edit.isAdjustment,

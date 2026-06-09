@@ -368,3 +368,31 @@ describe("PositionEditor — Sell/Buy delegate to the trade modal (1a)", () => {
     expect(onTrade).toHaveBeenCalledWith("buy");
   });
 });
+
+describe("PositionEditor — APY editing", () => {
+  /** A single-row asset whose position starts with a non-zero APY. */
+  function assetWithApy(apy: number): CryptoAssetWithPositions {
+    const a = makeAsset(["w-1"]);
+    a.positions[0].apy = apy;
+    return a;
+  }
+
+  it("persists APY=0 when a non-zero APY is cleared to 0 (regression: `apy || undefined` dropped explicit 0)", async () => {
+    renderEditor(assetWithApy(5));
+    const apyInput = screen.getByTitle("APY %") as HTMLInputElement;
+    expect(apyInput.value).toBe("5");
+    fireEvent.change(apyInput, { target: { value: "0" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+    // The position payload (first arg) must carry an explicit 0 — NOT undefined,
+    // which partialUpdate would strip, leaving the old 5 in the DB.
+    expect(hoisted.upsertPosition.mock.calls[0][0].apy).toBe(0);
+  });
+
+  it("preserves a non-zero APY on save (control)", async () => {
+    renderEditor(assetWithApy(5));
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertPosition.mock.calls[0][0].apy).toBe(5);
+  });
+});
