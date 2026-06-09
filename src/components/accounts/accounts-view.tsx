@@ -24,10 +24,9 @@ import { AddInstitutionModal } from "@/components/accounts/add-institution-modal
 import { AddWalletModal } from "@/components/accounts/add-wallet-modal";
 import { EditWalletModal } from "@/components/accounts/edit-wallet-modal";
 import { PositionEditor } from "@/components/crypto/position-editor";
-import { AddCryptoModal } from "@/components/crypto/add-crypto-modal";
 import { StockPositionEditor } from "@/components/stocks/stock-position-editor";
-import { AddStockModal } from "@/components/stocks/add-stock-modal";
 import { CashAccountModal } from "@/components/cash/cash-account-modal";
+import { AddAssetManager } from "@/components/transactions/add-asset-manager";
 import { Modal } from "@/components/ui/modal";
 import { useRouter } from "next/navigation";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
@@ -142,6 +141,25 @@ export function AccountsView({
   const existingTags = useMemo(
     () => [...new Set(stockAssets.flatMap((a) => a.tags ?? []))] as string[],
     [stockAssets]
+  );
+
+  // Class-specific uppercased ticker sets — drives the "Owned" badge in each picker.
+  // Kept separate so a crypto ticker collision with a stock ticker cannot produce
+  // a spurious "Owned" badge in the wrong picker (mirrors crypto-table / stock-table convention).
+  const ownedCryptoTickers = useMemo(
+    () => new Set(cryptoAssets.map((a) => a.ticker.toUpperCase())),
+    [cryptoAssets]
+  );
+
+  const ownedStockTickers = useMemo(
+    () => new Set(stockAssets.map((a) => a.ticker.toUpperCase())),
+    [stockAssets]
+  );
+
+  // Crypto asset identity seeds for the manager's dedup guard.
+  const existingAssets = useMemo(
+    () => cryptoAssets.map((a) => ({ coingecko_id: a.coingecko_id, chain: a.chain })),
+    [cryptoAssets]
   );
 
   // ── Merge candidates: detect duplicate cash accounts at same institution + currency
@@ -977,15 +995,18 @@ export function AccountsView({
               }}
             />
           )}
-          {showAddCrypto && (
-            <AddCryptoModal
-              open
-              onClose={() => setShowAddCrypto(null)}
-              wallets={walletsForInstitution(showAddCrypto)}
-              existingSubcategories={existingSubcategories}
-              existingChains={existingChains}
-            />
-          )}
+          <AddAssetManager
+            assetClass="crypto"
+            open={!!showAddCrypto}
+            onClose={() => setShowAddCrypto(null)}
+            wallets={showAddCrypto ? walletsForInstitution(showAddCrypto) : []}
+            brokers={[]}
+            ownedTickers={ownedCryptoTickers}
+            existingChains={existingChains}
+            existingSubcategories={existingSubcategories}
+            existingAssets={existingAssets}
+            onMutated={() => router.refresh()}
+          />
 
           {/* Stock modals */}
           {editingStockAsset && (
@@ -1010,15 +1031,17 @@ export function AccountsView({
               }}
             />
           )}
-          {showAddStock && (
-            <AddStockModal
-              open
-              onClose={() => setShowAddStock(null)}
-              brokers={brokersForInstitution(showAddStock)}
-              existingSubcategories={existingSubcategories}
-              existingTags={existingTags}
-            />
-          )}
+          <AddAssetManager
+            assetClass="stock"
+            open={!!showAddStock}
+            onClose={() => setShowAddStock(null)}
+            wallets={[]}
+            brokers={showAddStock ? brokersForInstitution(showAddStock) : []}
+            ownedTickers={ownedStockTickers}
+            existingSubcategories={existingSubcategories}
+            existingTags={existingTags}
+            onMutated={() => router.refresh()}
+          />
 
           {/* Cash modal (unified) */}
           {(editingCashAccount !== null || showAddCash !== null) && (
