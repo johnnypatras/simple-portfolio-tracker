@@ -10,7 +10,7 @@ const UpdateNavModal = dynamic(() => import("./update-nav-modal").then(m => m.Up
 import { StockPositionEditor } from "./stock-position-editor";
 import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
-import { ToolbarBuyManager } from "@/components/transactions/toolbar-buy-manager";
+import { AddAssetManager } from "@/components/transactions/add-asset-manager";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -1444,7 +1444,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               asset={editingNavAsset}
             />
           )}
-          <ToolbarBuyManager
+          <AddAssetManager
             assetClass="stock"
             open={buyOpen}
             onClose={() => setBuyOpen(false)}

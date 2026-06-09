@@ -1507,3 +1507,39 @@ describe("TransactionModal — picker mode identity step (1b-2b-iii)", () => {
     expect(screen.queryByLabelText(/quantity/i)).not.toBeInTheDocument();
   });
 });
+
+// ── Picker mode "Not listed?" escape (pre-pick) ───────────────────────────────
+
+describe("TransactionModal — picker mode 'Not listed?' escape", () => {
+  it("renders the escape in the picker step and clicking it calls onNotListed", () => {
+    const onNotListed = vi.fn();
+    renderOpen({
+      assetClass: "stock",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: {
+        picked: null,
+        onAssetPicked: vi.fn(),
+        ownedTickers: new Set(),
+        onNotListed,
+      },
+    });
+    // Shown in the pre-pick search step (alongside the asset search).
+    expect(screen.getByPlaceholderText(/search stock/i)).toBeInTheDocument();
+    const escape = screen.getByRole("button", { name: /not listed/i });
+    expect(escape).toBeInTheDocument();
+    fireEvent.click(escape);
+    expect(onNotListed).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT render the escape when onNotListed is absent (byte-identical for existing callers)", () => {
+    renderOpen({
+      assetClass: "stock",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      pickerMode: { picked: null, onAssetPicked: vi.fn(), ownedTickers: new Set() },
+    });
+    expect(screen.getByPlaceholderText(/search stock/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /not listed/i })).not.toBeInTheDocument();
+  });
+});

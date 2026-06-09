@@ -9,7 +9,7 @@ const AddCryptoModal = dynamic(() => import("./add-crypto-modal").then(m => m.Ad
 import { PositionEditor } from "./position-editor";
 import { TransferDialog, type InitialSide } from "@/components/ui/transfer-dialog";
 import { TransactionsManager, type OpenTransactionsTarget } from "@/components/transactions/transactions-manager";
-import { ToolbarBuyManager } from "@/components/transactions/toolbar-buy-manager";
+import { AddAssetManager } from "@/components/transactions/add-asset-manager";
 import type { TransferMode } from "@/lib/types";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ColumnSettingsPopover } from "@/components/ui/column-settings-popover";
@@ -1403,7 +1403,7 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
       {!isReadOnly && (
         <>
           <AddCryptoModal open={addOpen} onClose={() => setAddOpen(false)} wallets={wallets} existingSubcategories={existingSubcategories} existingChains={existingChains} existingAssets={assets.map((a) => ({ coingecko_id: a.coingecko_id, chain: a.chain }))} />
-          <ToolbarBuyManager
+          <AddAssetManager
             assetClass="crypto"
             open={buyOpen}
             onClose={() => setBuyOpen(false)}

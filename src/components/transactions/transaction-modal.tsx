@@ -150,6 +150,11 @@ export interface TransactionModalProps {
     existingSubcategories?: string[];
     existingTags?: string[];
     existingAssets?: { coingecko_id: string; chain: string | null }[];
+    /** Optional "Not listed?" escape, rendered in the pre-pick search step below
+     *  the AssetPicker. When set, a subtle button offers a hand-off (e.g. to the
+     *  manual-NAV / illiquid-fund flow). Absent → no link (byte-identical for
+     *  existing callers). */
+    onNotListed?: () => void;
   };
   onSubmit: (value: TransactionSubmit) => Promise<void> | void;
   onContinueToTransfer?: () => void;
@@ -617,6 +622,19 @@ export function TransactionModal({
               ownedTickers={pickerMode.ownedTickers}
               onPick={pickerMode.onAssetPicked}
             />
+            {/* "Not listed?" escape (optional) — for an asset the picker can't
+                find (e.g. an ELTIF/SICAV/illiquid fund), hand off to the
+                manual-NAV flow. Rendered ONLY when the caller wires onNotListed,
+                so existing callers stay byte-identical. */}
+            {pickerMode.onNotListed && (
+              <button
+                type="button"
+                onClick={pickerMode.onNotListed}
+                className="text-xs text-zinc-400 hover:text-zinc-200 underline underline-offset-2 transition-colors"
+              >
+                Not listed? Add a manual-NAV / illiquid fund
+              </button>
+            )}
             {/* In-body Cancel for parity with every other modal mode. */}
             <div className="flex justify-end">
               <button
