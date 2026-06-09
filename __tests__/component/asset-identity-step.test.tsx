@@ -220,3 +220,66 @@ describe("additional crypto identity tests", () => {
     // No crash = pass.
   });
 });
+
+// ─── Stock branch tests ───────────────────────────────────────────────────────
+
+const STOCK_RAW_VWCE: YahooSearchResult = {
+  symbol: "VWCE.DE",
+  shortname: "Vanguard FTSE All-World UCITS ETF",
+  longname: "Vanguard FTSE All-World UCITS ETF",
+  quoteType: "ETF",
+  exchDisp: "XETRA",
+  exchange: "GER",
+  currency: "EUR",
+};
+const STOCK: PickedAsset = { ticker: "VWCE", assetClass: "stock", name: "Vanguard FTSE All-World UCITS ETF", raw: STOCK_RAW_VWCE };
+const STOCK_NO_CCY: PickedAsset = { ...STOCK, raw: { ...STOCK_RAW_VWCE, currency: undefined } };
+
+it("currency is editable + prefilled from the picked result", () => {
+  const onChange = vi.fn();
+  render(<AssetIdentityStep assetClass="stock" picked={STOCK} value={{ currency: "EUR" }} onChange={onChange} />);
+  const ccy = screen.getByLabelText(/currency/i) as HTMLInputElement;
+  expect(ccy.value).toBe("EUR");
+  fireEvent.change(ccy, { target: { value: "GBP" } });
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ currency: "GBP" }));
+});
+
+it("warns when the picked result has NO currency (defaulted to USD — verify)", () => {
+  render(<AssetIdentityStep assetClass="stock" picked={STOCK_NO_CCY} value={{ currency: "USD" }} onChange={vi.fn()} />);
+  expect(screen.getByText(/couldn.t confirm the trading currency/i)).toBeInTheDocument();
+});
+
+it("supports creating a brand-new tag", () => {
+  const onChange = vi.fn();
+  render(<AssetIdentityStep assetClass="stock" picked={STOCK} existingTags={["World"]} value={{ tags: [] }} onChange={onChange} />);
+  const tagInput = screen.getByLabelText(/tags/i);
+  fireEvent.change(tagInput, { target: { value: "Accumulating" } });
+  fireEvent.keyDown(tagInput, { key: "Enter" });
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ tags: ["Accumulating"] }));
+});
+
+it("duplicate tag ignored — onChange is not called when the tag already exists", () => {
+  const onChange = vi.fn();
+  render(<AssetIdentityStep assetClass="stock" picked={STOCK} existingTags={[]} value={{ tags: ["World"] }} onChange={onChange} />);
+  const tagInput = screen.getByLabelText(/tags/i);
+  fireEvent.change(tagInput, { target: { value: "World" } });
+  fireEvent.keyDown(tagInput, { key: "Enter" });
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it("whitespace trimmed — tag text is trimmed before adding", () => {
+  const onChange = vi.fn();
+  render(<AssetIdentityStep assetClass="stock" picked={STOCK} existingTags={[]} value={{ tags: [] }} onChange={onChange} />);
+  const tagInput = screen.getByLabelText(/tags/i);
+  fireEvent.change(tagInput, { target: { value: "  Accumulating  " } });
+  fireEvent.keyDown(tagInput, { key: "Enter" });
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ tags: ["Accumulating"] }));
+});
+
+it("chip removal — clicking Remove button for a tag calls onChange without that tag", () => {
+  const onChange = vi.fn();
+  render(<AssetIdentityStep assetClass="stock" picked={STOCK} existingTags={[]} value={{ tags: ["Acc", "Inc"] }} onChange={onChange} />);
+  const removeBtn = screen.getByRole("button", { name: /remove tag acc/i });
+  fireEvent.click(removeBtn);
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ tags: ["Inc"] }));
+});
