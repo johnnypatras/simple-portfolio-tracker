@@ -98,6 +98,7 @@ vi.mock("@/lib/validation", () => ({
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
 import { mergeCashAccounts, findExistingCash, updateCashAccount, createCashAccount } from "@/lib/actions/cash-accounts";
+import { toUsdAndEur } from "@/lib/actions/activity-log";
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -942,5 +943,107 @@ describe("updateCashAccount — optimistic concurrency (balance guard)", () => {
     };
     const balanceFilter = updateBuilder.eq.mock.calls.find((c) => c[0] === "balance");
     expect(balanceFilter).toBeUndefined();
+  });
+});
+
+// ─── effectiveDate threads into the cashflow FX fallback (Group C #5) ─────────
+//
+// `computeCashflow` is a PRIVATE helper inside a "use server" module — exporting
+// it would mint an unauthenticated, client-callable RPC endpoint that could be
+// abused to hammer the FX API. So we exercise the date-threading through the
+// PUBLIC `updateCashAccount` action instead.
+//
+// Path to the fallback: updateCashAccount → computeFx("updated", …, opts). With
+// opts that have NO isAdjustment, NO cashflowOverride, and NO fxRate, computeFx
+// takes its final `else` branch → computeCashflow(…, opts?.fxRate /*undefined*/,
+// opts?.effectiveDate). Inside computeCashflow, `fxRate` is undefined so the
+// `if (fxRate)` block is skipped entirely and execution reaches the FX-API
+// fallback: toUsdAndEur(delta, currency, effectiveDate?.split("T")[0]). The
+// before/after snapshots carry different balances so a nonzero cashflow delta
+// exists. The third arg must be the YYYY-MM-DD slice when effectiveDate is
+// provided, or undefined when omitted — mirroring computeAdjustmentDelta.
+describe("updateCashAccount — effectiveDate threads into the cashflow FX fallback", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Mock from() sequence for a balance-changing update with no FK display-name
+  // resolution (input + after-snapshot carry null institution/wallet/broker, so
+  // resolveDisplayNames issues no .from() calls):
+  //   1. before snapshot (balance 100)
+  //   2. .update() result — non-empty `data` so the optimistic-concurrency guard
+  //      (`.select("id")` on a balance-carrying update) sees a matched row
+  //   3. after snapshot (balance 250 — different from before → nonzero delta)
+  function balanceChangeClient(): ReturnType<typeof createMockClient> {
+    return createMockClient([
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: null,
+          currency: "GBP",
+          balance: 100,
+          name: "GBP Savings",
+          apy: null,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+      { data: [{ id: "ca-id" }], error: null }, // update
+      {
+        data: {
+          id: "ca-id",
+          user_id: "user-123",
+          institution_id: null,
+          currency: "GBP",
+          balance: 250,
+          name: "GBP Savings",
+          apy: null,
+          region: null,
+          wallet_id: null,
+          broker_id: null,
+        },
+        error: null,
+      },
+    ]);
+  }
+
+  it("threads effectiveDate into the cashflow FX fallback (Group C #5)", async () => {
+    hoisted.mockClient = balanceChangeClient();
+
+    // No fxRate / isAdjustment / cashflowOverride → reaches the toUsdAndEur
+    // fallback. effectiveDate carries a time component — only the date part
+    // (YYYY-MM-DD) must be forwarded.
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { balance: 250 },
+      { effectiveDate: "2026-05-01T00:00:00Z" },
+    );
+
+    expect(vi.mocked(toUsdAndEur)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "2026-05-01",
+    );
+  });
+
+  it("omits the date (today's behavior) when no effectiveDate is given", async () => {
+    hoisted.mockClient = balanceChangeClient();
+
+    // opts WITHOUT effectiveDate → third arg must be undefined (today's FX,
+    // same as before the fix).
+    await updateCashAccount(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+      { balance: 250 },
+      {},
+    );
+
+    expect(vi.mocked(toUsdAndEur)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      undefined,
+    );
   });
 });

@@ -188,6 +188,7 @@ async function computeCashflow(
   afterQty: number,
   currency: string,
   fxRate?: number,
+  effectiveDate?: string,
 ): Promise<
   Pick<
     FxResult,
@@ -221,7 +222,7 @@ async function computeCashflow(
   // Fallback: use FX API
   try {
     const delta = afterQty - beforeQty;
-    const converted = await toUsdAndEur(delta, currency);
+    const converted = await toUsdAndEur(delta, currency, effectiveDate?.split("T")[0]);
     return {
       cashflowUsd: round2(converted.usd),
       cashflowEur: round2(converted.eur),
@@ -768,6 +769,7 @@ async function computeFx(
       afterBal,
       currency,
       opts?.fxRate,
+      opts?.effectiveDate,
     );
     fx.cashflowUsd = cf.cashflowUsd;
     fx.cashflowEur = cf.cashflowEur;
