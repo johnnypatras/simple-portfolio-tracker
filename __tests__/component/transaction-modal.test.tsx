@@ -1223,6 +1223,77 @@ describe("TransactionModal — picker-mode new location + custody (1b-2b-ii-a)",
   });
 });
 
+// ── Group C #3: money-flow default settles to tracked across opens ────────────
+
+describe("TransactionModal — money-flow default settles to tracked (Group C #3)", () => {
+  // The toolbar Buy path loads cash accounts asynchronously AFTER the modal is
+  // already open. The default must end up "tracked" once they arrive, on the
+  // FIRST open too — without re-firing the form reset and without ever
+  // overriding a manual choice. Add-mode crypto buy shows the radios immediately
+  // (no asset pick needed), so [] → populated mirrors the live race.
+  it("settles to 'tracked' when accounts arrive after open (toolbar path)", async () => {
+    const { rerender, props } = renderOpen({
+      assetClass: "crypto",
+      cashAccountOptions: [],
+    });
+    // First render: empty accounts → tracked is disabled, external is the default.
+    expect(
+      screen.getByRole("radio", {
+        name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+      }),
+    ).toBeChecked();
+
+    // Accounts resolve late → re-render with the populated list.
+    rerender(<TransactionModal {...props} cashAccountOptions={EUR_ACCOUNTS} />);
+
+    await waitFor(() => {
+      const tracked = screen.getByRole("radio", {
+        name: new RegExp(MONEY_FLOW_COPY.buy.trackedLabel, "i"),
+      }) as HTMLInputElement;
+      expect(tracked.checked).toBe(true);
+    });
+  });
+
+  it("does NOT override a manual 'New money' choice when the accounts list changes", async () => {
+    // A deliberate "New money" choice is only expressible once tracked is
+    // enabled (accounts exist) — clicking an already-selected/disabled external
+    // radio under empty accounts is a no-op. So start populated (tracked is the
+    // default), actively pick external (a real transition → touch recorded),
+    // then re-render with a fresh list identity (a late refetch). The settle
+    // guard must hold: external stays selected, never re-flipped to tracked.
+    const { rerender, props } = renderOpen({
+      assetClass: "crypto",
+      cashAccountOptions: EUR_ACCOUNTS,
+    });
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+      }),
+    );
+    expect(
+      screen.getByRole("radio", {
+        name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+      }),
+    ).toBeChecked();
+
+    // A fresh array identity (e.g. an async refetch) re-runs the settle-effect.
+    rerender(
+      <TransactionModal
+        {...props}
+        cashAccountOptions={[...EUR_ACCOUNTS]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("radio", {
+          name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+        }) as HTMLInputElement,
+      ).toBeChecked();
+    });
+  });
+});
+
 describe("TransactionModal — picker mode with ZERO existing locations (auto + New)", () => {
   it("crypto with no wallets: shows the new-wallet form directly (no select, no + New button)", () => {
     render(

@@ -270,6 +270,10 @@ export function TransactionModal({
   const hasCashAccounts = (cashAccountOptions?.length ?? 0) > 0;
   const [moneyFlowTracked, setMoneyFlowTracked] = useState(hasCashAccounts);
   const [moneyFlowAccountId, setMoneyFlowAccountId] = useState("");
+  // Guard: flips true once the user touches the money-flow radios. The
+  // settle-effect (below) only seeds the "tracked" default while this is false,
+  // so a manual choice is never overridden by late-arriving cash accounts.
+  const moneyFlowTouchedRef = useRef(false);
 
   // Latest-ref for the async-loaded accounts list. The reset effect reads this
   // (never the prop directly) so a late getCashAccounts resolution can't enter
@@ -302,6 +306,7 @@ export function TransactionModal({
       // accounts list AT OPEN TIME via a ref — see below.
       setMoneyFlowTracked((cashAccountOptionsRef.current?.length ?? 0) > 0);
       setMoneyFlowAccountId("");
+      moneyFlowTouchedRef.current = false;
     }
     // `cashAccountOptions` is intentionally NOT a dependency: it's an async-loaded
     // list (getCashAccounts resolves any time after the drawer opens) and a new
@@ -313,6 +318,19 @@ export function TransactionModal({
     // safe as direct deps. The ref is dep-exempt, so exhaustive-deps stays happy
     // without an eslint-disable.)
   }, [isOpen, edit, assetClass, walletOptions, brokerOptions, initialType]);
+
+  // Group C #3: settle the money-flow default to "tracked" once the async cash
+  // accounts arrive on the FIRST open (the toolbar Buy path loads them after the
+  // modal opens). Narrow + idempotent — it only sets the default, never a form
+  // field — so depending on `cashAccountOptions` directly is safe here (unlike the
+  // full-reset effect above). The touched guard ensures a manual choice is never
+  // overridden, and the money-flow question stays hidden until the user picks an
+  // asset, so this settles before it is ever visible (no flicker).
+  useEffect(() => {
+    if (!isOpen) return;
+    if (moneyFlowTouchedRef.current) return;
+    if ((cashAccountOptions?.length ?? 0) > 0) setMoneyFlowTracked(true);
+  }, [isOpen, cashAccountOptions]);
 
   // Lockdown flags
   const isTransferLeg = edit?.isTransferLeg === true;
@@ -641,7 +659,12 @@ export function TransactionModal({
             idBase={`${id}-mf`}
             type={type as "buy" | "sell"}
             tracked={moneyFlowTracked}
-            onTrackedChange={setMoneyFlowTracked}
+            onTrackedChange={(t) => {
+              // Both radio onChange handlers route through here — record the
+              // manual touch FIRST so the settle-effect never overrides this.
+              moneyFlowTouchedRef.current = true;
+              setMoneyFlowTracked(t);
+            }}
             accounts={cashAccountOptions ?? []}
             accountId={moneyFlowAccountId}
             onAccountChange={setMoneyFlowAccountId}
