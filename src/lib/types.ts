@@ -709,6 +709,11 @@ export interface TransferInput {
   newCashDeposit?: { amount: number; currency: string; isAdjustment: boolean };
   /** ISO date string (YYYY-MM-DD) for backdated transfers. Defaults to today. */
   effectiveDate?: string;
+  /** Crypto-only position metadata for a new-asset buy into a crypto_position
+   *  destination — threaded onto the created position. Ignored for stock/cash
+   *  destinations (those tables have no apy/acquisition_method). */
+  apy?: number;
+  acquisitionMethod?: AcquisitionType;
 }
 
 export type TransferResult =
@@ -792,6 +797,11 @@ export interface AddTransactionParams {
   currentPriceUsd?: number;
   /** Market price in EUR — used for the no-cost fallback (qty × price). */
   currentPriceEur?: number;
+  /** Crypto-only position metadata, forwarded to the crypto upsertPosition only.
+   *  Set on a new-asset first buy; absent on a buy-more (partialUpdate leaves the
+   *  existing position values untouched). Ignored on the stock/cash branches. */
+  apy?: number;
+  acquisitionMethod?: AcquisitionType;
 }
 
 /**
@@ -824,6 +834,9 @@ export interface NewAssetBuyInput {
   cost?: { amount: number; currency: CostCurrency } | null;
   /** Effective date (YYYY-MM-DD). Absent → today. */
   effectiveDate?: string;
+  /** Crypto-only position metadata, set ONLY on a new-asset first buy (not an owned buy-more). */
+  apy?: number;
+  acquisitionMethod?: AcquisitionType;
 }
 
 /** Result of `addNewAssetTransaction` — mirrors `TransferResult`'s success/error shape. */

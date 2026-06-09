@@ -140,6 +140,12 @@ export async function addTransaction(
           crypto_asset_id: assetRef.assetId,
           wallet_id: params.walletId,
           quantity: newAbsolute,
+          // Crypto-only position metadata (apy/acquisition_method live on
+          // crypto_positions). Forwarded ONLY here — the stock branch below
+          // never threads them. Absent on a buy-more → partialUpdate strips the
+          // undefined fields, leaving the existing position values untouched.
+          apy: params.apy,
+          acquisition_method: params.acquisitionMethod,
         },
         {
           currentPriceUsd: params.currentPriceUsd,
@@ -330,6 +336,11 @@ export async function addNewAssetTransaction(
       effectiveDate: input.effectiveDate,
       walletId: input.assetClass === "crypto" ? locationId : undefined,
       brokerId: input.assetClass === "stock" ? locationId : undefined,
+      // Crypto-only position metadata — addTransaction forwards these to the
+      // crypto upsertPosition only (the stock branch ignores them). On a
+      // buy-more both are absent → partialUpdate leaves the existing values.
+      apy: input.apy,
+      acquisitionMethod: input.acquisitionMethod,
     });
 
     return { success: true };

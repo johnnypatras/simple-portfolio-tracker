@@ -14,6 +14,7 @@ import { createWallet } from "@/lib/actions/wallets";
 import { getPrices } from "@/lib/prices/coingecko";
 import { getStockPrices } from "@/lib/prices/yahoo";
 import type {
+  AcquisitionType,
   TransferInput,
   TransferResult,
   TransferSide,
@@ -262,7 +263,10 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
         prices.destination,
         user.id,
         input.effectiveDate,
-        input.mode === "buy" ? convCost : undefined
+        input.mode === "buy" ? convCost : undefined,
+        // Crypto-only position metadata for a new-asset buy — threaded onto the
+        // created crypto position; ignored by the stock/cash dest branches.
+        input.mode === "buy" ? { apy: input.apy, acquisitionMethod: input.acquisitionMethod } : undefined
       );
     } catch (destErr) {
       if (currentSource && originalState) {
@@ -546,7 +550,12 @@ async function executeDestLeg(
   prices: SidePrices,
   userId: string,
   effectiveDate?: string,
-  cost?: ConversionCost
+  cost?: ConversionCost,
+  // Crypto-only position metadata for a new-asset buy into a crypto_position.
+  // Threaded onto the created/updated crypto position; absent on a buy-more →
+  // partialUpdate leaves existing values untouched. Never used by the stock/cash
+  // branches (those tables have no apy/acquisition_method).
+  positionExtras?: { apy?: number; acquisitionMethod?: AcquisitionType }
 ): Promise<void> {
   switch (destination.type) {
     case "crypto_position": {
@@ -564,6 +573,9 @@ async function executeDestLeg(
           crypto_asset_id: destination.assetId,
           wallet_id: destination.walletId,
           quantity: currentQty + destination.quantity,
+          // Crypto-only metadata on a new-asset buy (absent on move/buy-more).
+          apy: positionExtras?.apy,
+          acquisition_method: positionExtras?.acquisitionMethod,
         },
         // Buy: book cost = cash paid (the position primitive signs it by the
         // qty delta → acquisition = +). Move: no cost → keep market valuation.

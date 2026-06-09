@@ -135,4 +135,41 @@ describe("executeTransfer new-wallet custody (integration)", () => {
       .eq("entity_id", cash!.id).eq("entity_table", "cash_accounts").single();
     expect(cashLog!.is_adjustment).toBe(true);
   });
+
+  // Group-C extras on the TRACKED route: a tracked crypto buy carrying apy +
+  // acquisitionMethod must thread them onto the freshly-created crypto position
+  // (apy/acquisition_method are crypto-only). Mirrors the cash-funded buy above.
+  it("tracked new-asset buy: apy + acquisition_method thread onto the new crypto position", async () => {
+    const { data: cash, error: cashErr } = await client
+      .from("cash_accounts")
+      .insert({ user_id: userId, currency: "EUR", balance: 1000, name: "Test Cash GroupC" })
+      .select("id")
+      .single();
+    if (cashErr) throw new Error("cash insert failed: " + cashErr.message);
+    const coingeckoId = `tracked-groupc-${randomUUID()}`;
+    const walletName = `Tracked GC ${randomUUID().slice(0, 6)}`;
+    const res = await executeTransfer({
+      mode: "buy",
+      source: { type: "cash_account", accountId: cash!.id, amount: 150 },
+      destination: { type: "crypto_position", assetId: "PENDING", walletId: "PENDING", quantity: 4 },
+      newCryptoAsset: { ticker: "TGC", name: "Tracked GC Coin", coingecko_id: coingeckoId },
+      newWallet: { name: walletName, wallet_type: "non_custodial" },
+      apy: 12.5,
+      acquisitionMethod: "staked",
+    });
+    expect(res.success).toBe(true);
+
+    const { data: asset } = await client
+      .from("crypto_assets").select("id").eq("user_id", userId)
+      .eq("coingecko_id", coingeckoId).is("deleted_at", null).single();
+    expect(asset).not.toBeNull();
+
+    // The new position persisted the threaded apy + acquisition_method.
+    const { data: pos } = await client
+      .from("crypto_positions").select("apy, acquisition_method, quantity")
+      .eq("crypto_asset_id", asset!.id).is("deleted_at", null).single();
+    expect(Number(pos!.quantity)).toBe(4);
+    expect(Number(pos!.apy)).toBe(12.5);
+    expect(pos!.acquisition_method).toBe("staked");
+  });
 });

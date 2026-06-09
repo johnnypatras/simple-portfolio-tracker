@@ -382,4 +382,72 @@ describe("addNewAssetTransaction (integration)", () => {
       .single();
     expect(w!.wallet_type).toBe("non_custodial");
   });
+
+  // ── Group-C extras: crypto position metadata (apy + acquisition_method) on a
+  //    new-asset first buy. apy/acquisition_method are CRYPTO-ONLY (the columns
+  //    live on crypto_positions, not stock_positions). These two cases share one
+  //    coingecko_id so the second can exercise the buy-more never-clobber path. ──
+  describe("Group-C extras (apy + acquisition_method)", () => {
+    // Distinct per run so the suite stays isolated; shared by both cases so the
+    // second buy accumulates onto the first's position.
+    const groupCId = `groupc-${randomUUID()}`;
+
+    // addNewAssetTransaction returns ONLY { success, error } — resolve the created
+    // position via the asset's coingecko_id + the known wallet (walletId).
+    async function readGroupCPos() {
+      const { data: asset } = await client
+        .from("crypto_assets")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("coingecko_id", groupCId)
+        .is("deleted_at", null)
+        .single();
+      const { data: pos } = await client
+        .from("crypto_positions")
+        .select("apy, acquisition_method, quantity")
+        .eq("crypto_asset_id", asset!.id)
+        .eq("wallet_id", walletId)
+        .is("deleted_at", null)
+        .single();
+      return pos!;
+    }
+
+    it("carries apy + acquisition_method onto a NEW crypto position", async () => {
+      const res = await addNewAssetTransaction({
+        assetClass: "crypto",
+        newCryptoAsset: { ticker: "GC", name: "Group C Coin", coingecko_id: groupCId, chain: "Solana" },
+        locationId: walletId,
+        quantity: 10,
+        cost: { amount: 100, currency: "EUR" },
+        apy: 7.5,
+        acquisitionMethod: "airdrop",
+      });
+      expect(res.success).toBe(true);
+
+      const pos = await readGroupCPos();
+      expect(Number(pos.apy)).toBe(7.5);
+      expect(pos.acquisition_method).toBe("airdrop");
+      expect(Number(pos.quantity)).toBe(10);
+    });
+
+    it("does NOT overwrite an existing position's apy/method on an owned buy-more", async () => {
+      // Buy-more onto the SAME position from the previous case (no apy/method
+      // passed). partialUpdate strips the absent fields → the original
+      // apy=7.5 / method='airdrop' survive untouched; only quantity accumulates.
+      const res = await addNewAssetTransaction({
+        assetClass: "crypto",
+        newCryptoAsset: { ticker: "GC", name: "Group C Coin", coingecko_id: groupCId, chain: "Solana" },
+        locationId: walletId,
+        quantity: 5,
+        cost: { amount: 60, currency: "EUR" },
+        // no apy / acquisitionMethod
+      });
+      expect(res.success).toBe(true);
+
+      const pos = await readGroupCPos();
+      expect(Number(pos.apy)).toBe(7.5);
+      expect(pos.acquisition_method).toBe("airdrop");
+      expect(Number(pos.quantity)).toBe(15); // 10 + 5
+    });
+  });
 });
