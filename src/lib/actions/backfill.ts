@@ -33,7 +33,10 @@ export async function backfillCashflowsAndDeltas(): Promise<{
 
   // Query rows needing cashflow backfill:
   // 1. Legacy rows: cashflow_status IS NULL + entity produces cashflows + not adjustment + not undone
-  // 2. Pending rows: cashflow_status = 'pending' + not recently attempted
+  // 2. Pending OR failed rows: cashflow_status IN ('pending','failed') + not recently attempted.
+  //    'failed' rows are retried under the SAME throttle so they self-heal once
+  //    data (FX / snapshots) becomes available — a 'failed' cashflow contributes
+  //    0 to the S&P benchmark, so leaving it stranded is silently wrong.
   // Exclude rows where the user explicitly set the cashflow amount (cashflow_user_set=true) —
   // overwriting a user-supplied value would discard their intentional entry.
   const { data: cashflowRows } = await supabase
@@ -47,19 +50,22 @@ export async function backfillCashflowsAndDeltas(): Promise<{
     .is("undone_at", null)
     .in("entity_type", [...CASHFLOW_PRODUCING_ENTITY_TYPES])
     .or(
-      `cashflow_status.is.null,and(cashflow_status.eq.pending,or(cashflow_attempted_at.is.null,cashflow_attempted_at.lt.${throttleDate}))`
+      `cashflow_status.is.null,and(cashflow_status.in.(pending,failed),or(cashflow_attempted_at.is.null,cashflow_attempted_at.lt.${throttleDate}))`
     )
     .order("created_at", { ascending: true })
     .limit(BATCH_SIZE);
 
-  // Query rows needing delta backfill
+  // Query rows needing delta backfill: delta_status IN ('pending','failed') +
+  // not recently attempted. 'failed' rows are retried under the SAME throttle
+  // (the .or(delta_attempted_at...) below) so they self-heal once data becomes
+  // available, rather than staying stranded with a stale 0 delta.
   const { data: deltaRows } = await supabase
     .from("activity_log")
     .select(
       "id, action, entity_type, entity_id, entity_table, before_snapshot, after_snapshot, created_at, effective_date, delta_attempted_at"
     )
     .eq("user_id", user.id)
-    .eq("delta_status", "pending")
+    .in("delta_status", ["pending", "failed"])
     .is("undone_at", null)
     .or(`delta_attempted_at.is.null,delta_attempted_at.lt.${throttleDate}`)
     .order("created_at", { ascending: true })
