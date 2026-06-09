@@ -100,7 +100,12 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
   // null) never opens, and the post-consume clear (pending → null) is a falling
   // edge that does NOT re-open.
   const { pending: pendingAddAsset, clear: clearPendingAddAsset } = useAddAssetContext();
-  const [prevPending, setPrevPending] = useState(pendingAddAsset);
+  // Seed with null, NOT the current pending: the palette sets pending BEFORE navigating,
+  // so this table can mount with pending already populated. Seeding prevPending with that
+  // value makes prevPending === pending on the first render → no "arrival" → the manager
+  // never opens (the cross-page ⌘K pre-pick). null makes that first render a genuine
+  // null→pending transition; a plain refresh (pending null) still no-ops.
+  const [prevPending, setPrevPending] = useState<typeof pendingAddAsset>(null);
   if (prevPending !== pendingAddAsset) {
     const arrived = pendingAddAsset?.class === "crypto" && prevPending?.class !== "crypto";
     setPrevPending(pendingAddAsset);

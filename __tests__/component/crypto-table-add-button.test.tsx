@@ -48,6 +48,7 @@ vi.mock("next/image", () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { CryptoTable } from "@/components/crypto/crypto-table";
 import {
   AddAssetProvider,
@@ -158,5 +159,39 @@ describe("CryptoTable — command-palette pre-pick (Phase 1b-3)", () => {
     await waitFor(() => expect(screen.getByTestId("pending")).toHaveTextContent("no"));
     // Manager is open: still rendered (close would unmount its modal). It does NOT
     // re-open on the now-null pending — proven by pending staying "no" and no loop.
+  });
+
+  it("opens the manager when pending is ALREADY set as the table mounts (⌘K → navigate-in)", async () => {
+    // The REAL cross-page flow: the palette calls setPending(...) and THEN navigates,
+    // so the destination page (this table) mounts with `pending` already populated —
+    // the change-detector must still fire on that first render. Regression: `prevPending`
+    // was initialized to the already-set pending, so `prevPending === pending` on mount
+    // → no "arrival" was detected → the manager never opened (verified live 2026-06-10).
+    function Harness() {
+      const { setPending } = useAddAssetContext();
+      const [showTable, setShowTable] = useState(false);
+      return (
+        <>
+          <button
+            onClick={() => {
+              setPending({ class: "crypto", ticker: "ADA", coingecko_id: "cardano", name: "Cardano" });
+              setShowTable(true);
+            }}
+          >
+            go
+          </button>
+          {showTable && <CryptoTable {...MINIMAL_PROPS} />}
+        </>
+      );
+    }
+    render(
+      <AddAssetProvider>
+        <Harness />
+      </AddAssetProvider>,
+    );
+    // setPending + the table's first mount happen in the same commit.
+    fireEvent.click(screen.getByText("go"));
+    // The manager must OPEN (its modal dialog is present), pre-picked.
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
   });
 });
