@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef, Fragment, type ReactNode } from "react";
+import { useState, useMemo, useCallback, Fragment, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, TrendingUp, Pencil, Trash2, History, ChevronsDownUp, ChevronsUpDown, Layers, List, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
-const AddStockModal = dynamic(() => import("./add-stock-modal").then(m => m.AddStockModal), { ssr: false });
 const AddManualNavModal = dynamic(() => import("./add-manual-nav-modal").then(m => m.AddManualNavModal), { ssr: false });
 const UpdateNavModal = dynamic(() => import("./update-nav-modal").then(m => m.UpdateNavModal), { ssr: false });
 import { StockPositionEditor } from "./stock-position-editor";
@@ -100,45 +99,11 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
   const [addManualOpen, setAddManualOpen] = useState(false);
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const addMenuTriggerRef = useRef<HTMLButtonElement>(null);
-  const addMenuRef = useRef<HTMLDivElement>(null);
-
-  // WAI-ARIA menu pattern: when the menu opens, focus the first menuitem so
-  // arrow-key + Enter navigation works for keyboard users. ESC + Tab close
-  // the menu via the onKeyDown handler on the menu container.
-  useEffect(() => {
-    if (!addMenuOpen) return;
-    const first = addMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
-    first?.focus();
-  }, [addMenuOpen]);
-
-  const handleAddMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      setAddMenuOpen(false);
-      addMenuTriggerRef.current?.focus();
-      return;
-    }
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
-    e.preventDefault();
-    const items = Array.from(addMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
-    if (items.length === 0) return;
-    const current = document.activeElement as HTMLElement | null;
-    const currentIndex = items.findIndex((el) => el === current);
-    let nextIndex = currentIndex;
-    if (e.key === "ArrowDown") nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
-    else if (e.key === "ArrowUp") nextIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
-    else if (e.key === "Home") nextIndex = 0;
-    else if (e.key === "End") nextIndex = items.length - 1;
-    items[nextIndex]?.focus();
-  }, []);
   const [editingNavAsset, setEditingNavAsset] = useState<StockAssetWithPositions | null>(null);
   const latestNavDatesMap = useMemo(
     () => new Map(Object.entries(latestManualNavDates ?? {})),
     [latestManualNavDates],
   );
-  const [buyOpen, setBuyOpen] = useState(false);
   // Move-mode Transfer dialog opened from the transactions modal's Transfer
   // option (C2a move-only). Holds the prefilled source position; null = closed.
   const [moveSource, setMoveSource] = useState<InitialSide | null>(null);
@@ -634,67 +599,13 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
         {!isReadOnly && (
           <div className="ml-auto flex items-center gap-1.5">
             <button
-              onClick={() => setBuyOpen(true)}
-              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
             >
-              <TrendingUp className="w-3 h-3" />
-              Buy
+              <Plus className="w-3 h-3" aria-hidden="true" />
+              Add
             </button>
-            <div className="relative">
-              <button
-                ref={addMenuTriggerRef}
-                type="button"
-                onClick={() => setAddMenuOpen((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={addMenuOpen}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-              >
-                <Plus className="w-3 h-3" aria-hidden="true" />
-                Add
-                <ChevronDown className="w-3 h-3 opacity-80" aria-hidden="true" />
-              </button>
-              {addMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-20"
-                    onClick={() => setAddMenuOpen(false)}
-                    aria-hidden="true"
-                  />
-                  <div
-                    ref={addMenuRef}
-                    role="menu"
-                    aria-orientation="vertical"
-                    onKeyDown={handleAddMenuKeyDown}
-                    className="absolute right-0 z-30 mt-1 w-60 rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl overflow-hidden"
-                  >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setAddMenuOpen(false);
-                        setAddOpen(true);
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-zinc-800/60 focus:bg-zinc-800/80 focus:outline-none transition-colors"
-                    >
-                      <div className="text-xs font-medium text-zinc-100">Stock / ETF</div>
-                      <div className="text-[10px] text-zinc-400">Search Yahoo Finance</div>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setAddMenuOpen(false);
-                        setAddManualOpen(true);
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-zinc-800/60 focus:bg-zinc-800/80 focus:outline-none transition-colors border-t border-zinc-800"
-                    >
-                      <div className="text-xs font-medium text-zinc-100">Manual NAV asset</div>
-                      <div className="text-[10px] text-zinc-400">ELTIF, SICAV, closed-end fund</div>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
           </div>
         )}
       </div>
@@ -1432,7 +1343,6 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
       {/* Modals */}
       {!isReadOnly && (
         <>
-          <AddStockModal open={addOpen} onClose={() => setAddOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
           <AddManualNavModal open={addManualOpen} onClose={() => setAddManualOpen(false)} brokers={brokers} existingSubcategories={existingSubcategories} existingTags={existingTags} />
           {editingNavAsset && (
             <UpdateNavModal
@@ -1446,11 +1356,14 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
           )}
           <AddAssetManager
             assetClass="stock"
-            open={buyOpen}
-            onClose={() => setBuyOpen(false)}
+            open={addOpen}
+            onClose={() => setAddOpen(false)}
             wallets={[]}
             brokers={brokers}
             ownedTickers={ownedStockTickers}
+            onAddManualNav={() => setAddManualOpen(true)}
+            existingSubcategories={existingSubcategories}
+            existingTags={existingTags}
             onMutated={() => router.refresh()}
           />
           {/* Move-mode Transfer dialog (C2a): the modal's Transfer option now
