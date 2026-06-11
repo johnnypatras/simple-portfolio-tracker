@@ -353,6 +353,8 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
    */
   cost?: { amount: number; currency: "EUR" | "USD" } | null;
   isYield?: boolean;
+  /** User-entered (or account-resolved) original of this money event. Omitted/null = market-derived (no user input). */
+  original?: { amount: number; currency: string } | null;
 }) {
   return captureAction("stocks.upsertStockPosition", async () => {
   validateUUID(input.stock_asset_id, "Stock asset ID");
@@ -456,6 +458,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
         cashflow_user_set: fx.cashflowUserSet,
         transfer_group_id: opts?.transferGroupId,
         effective_date: opts?.effectiveDate,
+        original: opts?.original,
       });
     }
   } else {
@@ -563,6 +566,7 @@ export async function upsertStockPosition(input: StockPositionInput, opts?: {
       cashflow_user_set: fx.cashflowUserSet,
       transfer_group_id: opts?.transferGroupId,
       effective_date: opts?.effectiveDate,
+      original: opts?.original,
     });
   }
 

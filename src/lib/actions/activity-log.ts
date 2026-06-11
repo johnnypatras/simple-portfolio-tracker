@@ -79,6 +79,8 @@ export async function logActivity(params: {
   cashflow_asset_class?: AssetClass | null;
   cashflow_status?: FlowStatus;
   delta_status?: FlowStatus;
+  /** User-entered (or account-resolved) original of this money event. Omitted/null = market-derived (no user input). */
+  original?: { amount: number; currency: string } | null;
 }): Promise<void> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -110,6 +112,8 @@ export async function logActivity(params: {
       cashflow_asset_class: params.cashflow_asset_class ?? null,
       cashflow_status: params.cashflow_status ?? null,
       delta_status: params.delta_status ?? null,
+      original_amount: params.original?.amount ?? null,
+      original_currency: params.original?.currency ?? null,
     };
     if (params.created_at) row.created_at = params.created_at;
     await supabase.from("activity_log").insert(row);

@@ -337,6 +337,17 @@ export async function createCashAccount(
     opts,
   ) : emptyFx();
 
+  // Account-resolved original: the initial balance is a face value in the
+  // account's own currency — known server-side before any FX conversion, so
+  // it's stamped even when the FX fetch fails (pending rows). Magnitude only;
+  // direction lives in the signed cashflow/delta columns. A zero balance is
+  // no money movement → leave NULL.
+  const initialBalance = created?.balance ?? 0;
+  const original =
+    created && initialBalance !== 0
+      ? { amount: Math.abs(initialBalance), currency: created.currency ?? input.currency }
+      : undefined;
+
   await logActivity({
     action: "created",
     entity_type: "cash_account",
@@ -358,6 +369,7 @@ export async function createCashAccount(
     cashflow_user_set: fx.cashflowUserSet,
     transfer_group_id: opts?.transferGroupId,
     effective_date: opts?.effectiveDate,
+    original,
   });
 
   revalidateCashPaths();
@@ -517,6 +529,17 @@ export async function updateCashAccount(
 
   const fx = await computeFx("updated", beforeBal, afterBal, currency, opts);
 
+  // Account-resolved original: the face-value balance delta in the account's
+  // own currency — known server-side before any FX conversion, so it's stamped
+  // even when the FX fetch fails (pending rows). Magnitude only; direction
+  // lives in the signed cashflow/delta columns. A zero delta (rename/APY-only
+  // update) is no money movement → leave NULL.
+  const balanceDelta = afterBal - beforeBal;
+  const original =
+    balanceDelta !== 0
+      ? { amount: Math.abs(balanceDelta), currency }
+      : undefined;
+
   await logActivity({
     action: "updated",
     entity_type: "cash_account",
@@ -538,6 +561,7 @@ export async function updateCashAccount(
     cashflow_user_set: fx.cashflowUserSet,
     transfer_group_id: opts?.transferGroupId,
     effective_date: opts?.effectiveDate,
+    original,
   });
 
   // If name actually changed in the DB row, refresh entity_name on ALL

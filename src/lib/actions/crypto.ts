@@ -305,6 +305,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
    */
   cost?: { amount: number; currency: "EUR" | "USD" } | null;
   isYield?: boolean;
+  /** User-entered (or account-resolved) original of this money event. Omitted/null = market-derived (no user input). */
+  original?: { amount: number; currency: string } | null;
 }) {
   return captureAction("crypto.upsertPosition", async () => {
   validateUUID(input.crypto_asset_id, "Crypto asset ID");
@@ -421,6 +423,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         cashflow_user_set: fx.cashflowUserSet,
         transfer_group_id: opts?.transferGroupId,
         effective_date: opts?.effectiveDate,
+        original: opts?.original,
       });
     }
   } else {
@@ -540,6 +543,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       cashflow_user_set: fx.cashflowUserSet,
       transfer_group_id: opts?.transferGroupId,
       effective_date: opts?.effectiveDate,
+      original: opts?.original,
     });
   }
 
