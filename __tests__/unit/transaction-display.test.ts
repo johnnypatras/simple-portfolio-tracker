@@ -44,6 +44,8 @@ function makeRow(overrides: Partial<AssetTransactionRow>): AssetTransactionRow {
     details: null,
     effective_date: null,
     created_at: "2026-01-10T12:00:00Z",
+    original_amount: null,
+    original_currency: null,
     ...overrides,
   };
 }
@@ -245,6 +247,80 @@ describe("toTransactionDisplayRows", () => {
     const b = makeRow({ id: "b", created_at: "2026-02-01T00:00:00Z" });
     const out = toTransactionDisplayRows([a, b], "USD");
     expect(out.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+});
+
+// ── Task 9: original (amount, currency) threading ─────────────────────────────
+
+describe("toTransactionDisplayRows — original paid amount/currency (Task 9)", () => {
+  it("maps original_amount/original_currency through when BOTH are present", () => {
+    const row = makeRow({
+      id: "orig-1",
+      before_snapshot: { quantity: 0 },
+      after_snapshot: { quantity: 1 },
+      cashflow_amount_usd: 600,
+      cashflow_amount_eur: 545,
+      original_amount: 500,
+      original_currency: "GBP",
+    });
+
+    const [out] = toTransactionDisplayRows([row], "EUR");
+
+    expect(out.originalAmount).toBe(500);
+    expect(out.originalCurrency).toBe("GBP");
+    // The display currency stays the user's display currency — originals are separate.
+    expect(out.currency).toBe("EUR");
+    expect(out.amount).toBe(545);
+  });
+
+  it("leaves originalAmount/originalCurrency undefined when both columns are NULL", () => {
+    const row = makeRow({
+      id: "orig-2",
+      before_snapshot: { quantity: 0 },
+      after_snapshot: { quantity: 1 },
+      cashflow_amount_usd: 600,
+      cashflow_amount_eur: 545,
+      // makeRow defaults: original_amount: null, original_currency: null
+    });
+
+    const [out] = toTransactionDisplayRows([row], "USD");
+
+    expect(out.originalAmount).toBeUndefined();
+    expect(out.originalCurrency).toBeUndefined();
+  });
+
+  it("populates ONLY when both halves are non-null (a half-stamped row stays absent)", () => {
+    const amountOnly = makeRow({
+      id: "orig-3",
+      original_amount: 500,
+      original_currency: null,
+    });
+    const currencyOnly = makeRow({
+      id: "orig-4",
+      original_amount: null,
+      original_currency: "GBP",
+    });
+
+    const out = toTransactionDisplayRows([amountOnly, currencyOnly], "EUR");
+
+    expect(out[0].originalAmount).toBeUndefined();
+    expect(out[0].originalCurrency).toBeUndefined();
+    expect(out[1].originalAmount).toBeUndefined();
+    expect(out[1].originalCurrency).toBeUndefined();
+  });
+
+  it("maps a same-currency original through unchanged (the drawer decides not to render it)", () => {
+    const row = makeRow({
+      id: "orig-5",
+      original_amount: 1000,
+      original_currency: "EUR",
+    });
+
+    const [out] = toTransactionDisplayRows([row], "EUR");
+
+    // The mapper is mechanical — same-currency suppression is the drawer's rule.
+    expect(out.originalAmount).toBe(1000);
+    expect(out.originalCurrency).toBe("EUR");
   });
 });
 

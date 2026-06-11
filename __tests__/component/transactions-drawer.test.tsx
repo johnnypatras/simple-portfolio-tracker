@@ -206,6 +206,70 @@ describe("TransactionsDrawer — row rendering", () => {
   });
 });
 
+// ── Test Group 1b: original-paid annotation (Task 9) ──────────────────────────
+
+describe("TransactionsDrawer — original paid annotation", () => {
+  it("renders '· paid £850.50' when a GBP original sits on a EUR display row", () => {
+    renderDrawer({ rows: [
+      makeRow({
+        id: "gbp-paid",
+        kind: "buy",
+        quantity: 1,
+        amount: 1000,
+        currency: "EUR",
+        originalAmount: 850.5,
+        originalCurrency: "GBP",
+        date: "2026-05-01",
+      }),
+    ]});
+    const annotation = screen.getByText(/· paid £850\.50/);
+    expect(annotation).toBeInTheDocument();
+    expect(annotation).toHaveClass("text-[10px]", "text-zinc-400");
+    // The display amount itself still renders.
+    expect(screen.getByText(/€1,000\.00/)).toBeInTheDocument();
+  });
+
+  it("renders NO annotation when the originals are absent", () => {
+    renderDrawer({ rows: [
+      makeRow({ id: "no-orig", kind: "buy", quantity: 1, amount: 1000, currency: "EUR" }),
+    ]});
+    expect(screen.queryByText(/paid/)).not.toBeInTheDocument();
+  });
+
+  it("renders NO annotation when the original currency equals the display currency", () => {
+    renderDrawer({ rows: [
+      makeRow({
+        id: "same-cur",
+        kind: "buy",
+        quantity: 1,
+        amount: 1000,
+        currency: "EUR",
+        originalAmount: 1000,
+        originalCurrency: "EUR",
+      }),
+    ]});
+    expect(screen.queryByText(/paid/)).not.toBeInTheDocument();
+  });
+
+  it("renders the annotation beside '—' when the display amount is null but originals exist", () => {
+    // A pending-FX row: no display-currency amount yet, but the user's original
+    // is known — surfacing it is the whole point of the feature.
+    renderDrawer({ rows: [
+      makeRow({
+        id: "pending-fx",
+        kind: "buy",
+        quantity: 1,
+        amount: null,
+        currency: "EUR",
+        originalAmount: 500,
+        originalCurrency: "GBP",
+      }),
+    ]});
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText(/· paid £500\.00/)).toBeInTheDocument();
+  });
+});
+
 // ── Test Group 2: Consecutive-yield grouping ───────────────────────────────────
 
 describe("TransactionsDrawer — consecutive-yield grouping", () => {

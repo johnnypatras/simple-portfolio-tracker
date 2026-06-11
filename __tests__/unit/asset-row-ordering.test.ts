@@ -50,6 +50,8 @@ function cryptoRow(
     details: o.details ?? null,
     effective_date: o.effective_date ?? null,
     created_at: o.created_at,
+    original_amount: o.original_amount ?? null,
+    original_currency: o.original_currency ?? null,
   };
 }
 

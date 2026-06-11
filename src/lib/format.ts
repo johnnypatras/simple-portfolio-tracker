@@ -41,7 +41,19 @@ export function round2(n: number): number {
 
 /** Currency with configurable decimals (default 2 for backward compat) */
 export function fmtCurrency(value: number, currency: string, decimals = 2): string {
-  return _getCurrencyFormatter(currency, decimals).format(value);
+  try {
+    return _getCurrencyFormatter(currency, decimals).format(value);
+  } catch (err) {
+    // Intl.NumberFormat throws RangeError on a malformed ISO code (wrong
+    // length / non-alpha). `original_currency` is server-validated, but a
+    // hand-edited DB row must degrade to a plain "<amount> <code>" rendering
+    // instead of crashing the drawer. Valid codes never reach this branch
+    // (the memoized formatter path above is unchanged).
+    if (err instanceof RangeError) {
+      return `${value.toFixed(decimals)} ${currency}`;
+    }
+    throw err;
+  }
 }
 
 /** Alias used by column renderers — 2-decimal currency */

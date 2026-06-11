@@ -44,6 +44,25 @@ describe("fmtCurrency", () => {
   it("is aliased as formatCurrency", () => {
     expect(formatCurrency).toBe(fmtCurrency);
   });
+
+  // Task 9 guard: original_currency is server-validated, but a hand-edited DB
+  // row must never crash the drawer — Intl.NumberFormat throws RangeError on a
+  // malformed ISO code, so fmtCurrency falls back to "<amount> <code>".
+  it("falls back to '<amount> <code>' on a malformed currency code (too short)", () => {
+    expect(fmtCurrency(100, "EU")).toBe("100.00 EU");
+  });
+
+  it("falls back to '<amount> <code>' on a malformed currency code (too long)", () => {
+    expect(fmtCurrency(1234.5, "ABCD")).toBe("1234.50 ABCD");
+  });
+
+  it("fallback respects the decimals parameter", () => {
+    expect(fmtCurrency(9.12345, "EU", 4)).toBe("9.1235 EU");
+  });
+
+  it("still formats a valid non-EUR/USD ISO code via Intl (no fallback)", () => {
+    expect(fmtCurrency(850.5, "GBP")).toBe("£850.50");
+  });
 });
 
 // ── fmtCurrencyCompact ─────────────────────────────────────

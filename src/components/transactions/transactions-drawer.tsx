@@ -30,6 +30,17 @@ export interface TransactionDisplayRow {
   /** The counterpart account's name (the tracked cash account) — present iff
    *  `transferRole` is sell/buy. Annotated as "(to {name})" / "(from {name})". */
   counterpartName?: string;
+  /**
+   * The original magnitude the user transacted, in `originalCurrency` —
+   * activity_log.original_* threaded through (Task 9). Present iff BOTH columns
+   * were stamped. Rendered as a faint "· paid £500.00" annotation ONLY when
+   * `originalCurrency` differs from the display `currency` (a EUR-paid cost in
+   * a EUR-display app needs no annotation). Reference metadata — never an input
+   * to any math.
+   */
+  originalAmount?: number;
+  /** ISO-4217 code of the original — present iff `originalAmount` is. */
+  originalCurrency?: string;
 }
 
 /** Extended row shape passed by the manager — optional flags default to false. */
@@ -244,9 +255,20 @@ function TransactionRow({
         {formatQty(row.quantity)}
       </div>
 
-      {/* Amount */}
+      {/* Amount — plus the original-paid annotation (Task 9) when the user
+          transacted in a different currency than the display currency. The
+          span is atomic (whitespace-nowrap) so it wraps BELOW the amount as
+          one unit inside the fixed-width cell, never mid-text. */}
       <div className="w-24 shrink-0 text-right text-sm text-zinc-100">
         {row.amount !== null ? fmtCurrency(row.amount, row.currency) : "—"}
+        {row.originalAmount != null &&
+          row.originalCurrency &&
+          row.originalCurrency !== row.currency && (
+            <span className="text-[10px] text-zinc-400 whitespace-nowrap">
+              {" "}
+              · paid {fmtCurrency(row.originalAmount, row.originalCurrency)}
+            </span>
+          )}
       </div>
 
       {/* Date — content-sized and never wrapping; the badge/annotation slot

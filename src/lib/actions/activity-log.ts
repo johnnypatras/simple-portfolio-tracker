@@ -580,6 +580,7 @@ export async function exportActivityLogsCsv(): Promise<string> {
     "Date", "Effective Date", "Action", "Type", "Name", "Description",
     "Adjustment", "Delta USD", "Delta EUR",
     "Transfer Group", "Split From", "Compensates For", "Undone At",
+    "Original Amount", "Original Currency",
   ];
 
   const csvRows = rows.map((row) => [
@@ -596,6 +597,8 @@ export async function exportActivityLogsCsv(): Promise<string> {
     row.split_from_id ?? "",
     row.compensates_for ?? "",
     row.undone_at ?? "",
+    row.original_amount ?? "",
+    row.original_currency ?? "",
   ]);
 
   return toCsv(headers, csvRows);

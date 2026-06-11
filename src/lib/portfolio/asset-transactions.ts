@@ -59,11 +59,18 @@ export interface AssetTransactionRow {
   details: unknown;
   effective_date: string | null;
   created_at: string;
+  /** Magnitude the user transacted, in `original_currency`. Display metadata
+   *  ONLY (drawer "· paid £500" annotation) — the engine never reads it.
+   *  NULL = market-derived or pre-feature row. */
+  original_amount: number | null;
+  /** ISO-4217 code the user transacted in. Stamped together with
+   *  `original_amount` (both-or-neither at the write boundaries). */
+  original_currency: string | null;
 }
 
 /** Columns selected for the activity_log read — kept in one place for parity. */
 const ACTIVITY_SELECT =
-  "id, entity_id, entity_type, action, is_yield, is_adjustment, transfer_group_id, split_from_id, cashflow_amount_usd, cashflow_amount_eur, delta_usd, delta_eur, cashflow_user_set, before_snapshot, after_snapshot, details, effective_date, created_at";
+  "id, entity_id, entity_type, action, is_yield, is_adjustment, transfer_group_id, split_from_id, cashflow_amount_usd, cashflow_amount_eur, delta_usd, delta_eur, cashflow_user_set, before_snapshot, after_snapshot, details, effective_date, created_at, original_amount, original_currency";
 
 /**
  * Resolve a crypto AssetRef to the position ids that belong to `userId`.
@@ -609,6 +616,9 @@ export async function getAllAssetTransactions(
  *       transfer/adjustment legs carry value in delta_*; real buys/sells in
  *       cashflow_*. A null column stays null → the drawer renders "—".
  *   - date     = effective_date ?? created_at
+ *   - originalAmount/originalCurrency = original_* (Task 9), populated only
+ *     when BOTH columns are non-null — the user's as-typed money event for the
+ *     drawer's "· paid £500" annotation.
  *
  * Direction is conveyed by the sign of `quantity` and the kind badge, so `amount`
  * is shown as a magnitude.
@@ -661,6 +671,15 @@ export function toTransactionDisplayRows(
       currency,
       date: row.effective_date ?? row.created_at,
     };
+
+    // Task 9: thread the user's original (amount, currency) through — populated
+    // ONLY when both halves are present (they are stamped together; a half-set
+    // pair is treated as absent). Same-currency suppression is the drawer's
+    // rule, not the mapper's: values pass through mechanically.
+    if (row.original_amount != null && row.original_currency != null) {
+      display.originalAmount = row.original_amount;
+      display.originalCurrency = row.original_currency;
+    }
 
     // C2b: enrich a sell/buy-type transfer leg with its display role + the
     // counterpart account name. `kind` stays "transfer" — this is presentation
