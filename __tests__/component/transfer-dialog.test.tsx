@@ -445,3 +445,59 @@ describe("TransferDialog — submit guard", () => {
     expect(executeButton()).not.toBeDisabled();
   });
 });
+
+// ── Cash-destination currency (any ISO) ──────────────────
+
+describe("TransferDialog — cash destination currency", () => {
+  it("accepts a non-shortlist ISO (SEK) via Other… and executes with the SEK-denominated amount", async () => {
+    renderDialog({ mode: "sell", initialSource: BTC_ON_LEDGER });
+    await waitForForm();
+
+    fireEvent.change(screen.getByLabelText(/quantity/i), {
+      target: { value: "0.5" },
+    });
+    fireEvent.change(screen.getByLabelText(/location/i), {
+      target: { value: "acc-eur" },
+    });
+
+    // SEK is outside the shortlist (and outside the old hardcoded
+    // EUR/USD/GBP/CHF list) — enter it via the shared control's Other… free
+    // entry (accessible names: "Destination currency" / "Destination
+    // currency code", per CurrencyCodeSelect's labelBase contract).
+    fireEvent.change(screen.getByLabelText("Destination currency"), {
+      target: { value: "__other__" },
+    });
+    const codeInput = screen.getByLabelText("Destination currency code");
+    fireEvent.change(codeInput, { target: { value: "SEK" } });
+    fireEvent.blur(codeInput);
+
+    // Committed: the select holds SEK (controlled by the dialog's destCurrency
+    // state — proves the onCurrencyChange wiring)...
+    expect(screen.getByLabelText("Destination currency")).toHaveValue("SEK");
+    // ...and the proceeds preview next to the divider denominates in SEK
+    // (auto-calc fell back to the native price: 0.5 × 60000).
+    expect(
+      screen.getByText(/^~[\d.,\s]+ SEK$/, { selector: "span" }),
+    ).toBeInTheDocument();
+
+    // Type the SEK proceeds explicitly so the executed amount is deterministic.
+    fireEvent.change(screen.getByLabelText(/amount/i), {
+      target: { value: "330000" },
+    });
+    fireEvent.click(executeButton());
+
+    await waitFor(() =>
+      expect(hoisted.executeTransfer).toHaveBeenCalledTimes(1),
+    );
+    const input = hoisted.executeTransfer.mock.calls[0][0] as TransferInput;
+    // TransferSide's cash variant carries no currency string — the server
+    // books into the chosen account and reads ITS currency; the dialog's
+    // control denominates the proceeds entry/auto-calc. The payload therefore
+    // carries the SEK-denominated amount.
+    expect(input.destination).toEqual({
+      type: "cash_account",
+      accountId: "acc-eur",
+      amount: 330000,
+    });
+  });
+});

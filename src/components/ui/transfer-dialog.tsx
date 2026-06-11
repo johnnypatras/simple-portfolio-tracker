@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useId } from "react";
 import { ArrowDown, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { CurrencyCodeSelect } from "@/components/ui/currency-amount-input";
 import { toast } from "sonner";
 import { executeTransfer } from "@/lib/actions/transfers";
 import { getWallets } from "@/lib/actions/wallets";
@@ -763,16 +764,16 @@ export function TransferDialog({
                     <label htmlFor={`${id}-dest-currency`} className="block text-xs text-zinc-400 mb-1">
                       Currency
                     </label>
-                    <select
+                    {/* Cash proceeds are free-ISO — shared any-ISO picker
+                        (announces as "Destination currency"), replacing the
+                        old hardcoded EUR/USD/GBP/CHF list. */}
+                    <CurrencyCodeSelect
                       id={`${id}-dest-currency`}
-                      value={destCurrency}
-                      onChange={(e) => setDestCurrency(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-                    >
-                      {["EUR", "USD", "GBP", "CHF"].map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                      labelBase="Destination"
+                      currency={destCurrency}
+                      onCurrencyChange={setDestCurrency}
+                      defaultCurrency="EUR"
+                    />
                   </div>
                 )}
 
