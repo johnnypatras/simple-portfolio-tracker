@@ -95,6 +95,10 @@ function buildTrackedTransferInput(
   if (submit.moneyFlow?.route !== "tracked") return null;
   if (assetRef.class === "cash") return null; // cash never shows the question
   const accountId = submit.moneyFlow.accountId;
+  // INVARIANT: only `.amount` is consumed here — `cashflowOverride.currency` is
+  // advisory on the tracked route. The cash leg's true currency is resolved
+  // server-side by executeTransfer from the account row, so an any-ISO client
+  // value can never mislabel the ledger.
   const amount = submit.cashflowOverride?.amount;
   if (!accountId || amount == null || !Number.isFinite(amount) || amount <= 0) return null;
 

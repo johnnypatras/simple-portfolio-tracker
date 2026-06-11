@@ -266,6 +266,26 @@ describe("stock StockPositionEditor — amount paid (cost spine)", () => {
     await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalledTimes(1));
     expect(hoisted.upsertStockPosition.mock.calls[0][1]).not.toHaveProperty("cost");
   });
+
+  it("any-ISO cost: CHF entered via Other… flows into the save payload", async () => {
+    renderEditor();
+    // CHF isn't in the EUR/USD shortlist — enter it via the shared control's
+    // Other… free entry (per-instance accessible name: "<label> currency").
+    fireEvent.change(screen.getAllByLabelText("Amount paid (incl. fees) currency")[0], {
+      target: { value: "__other__" },
+    });
+    const codeInput = screen.getByLabelText("Amount paid (incl. fees) currency code");
+    fireEvent.change(codeInput, { target: { value: "CHF" } });
+    fireEvent.blur(codeInput);
+    fireEvent.change(costInput(), { target: { value: "2500" } });
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertStockPosition.mock.calls[0][1].cost).toEqual({
+      amount: 2500,
+      currency: "CHF",
+    });
+  });
 });
 
 // ─── Backdated no-cost entries defer pricing to the backfill ──

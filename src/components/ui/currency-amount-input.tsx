@@ -43,6 +43,12 @@ export interface CurrencyAmountInputProps {
   hint?: string;
   /** Optional blur hook for touched-tracking in callers. */
   onBlur?: () => void;
+  /**
+   * Mirrored onto the AMOUNT input's aria-invalid — for hosts with
+   * touched-gated validation (the transaction modal). Omitted → no attribute,
+   * matching plain cost inputs that carry no validation state.
+   */
+  amountAriaInvalid?: boolean;
 }
 
 /** Sentinel option value that swaps the select for the free-entry code input. */
@@ -79,26 +85,24 @@ const compactControlClasses =
   "text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed";
 
 /**
- * Shared controlled amount + currency input — the single client surface for
- * any-ISO cost entry (the server boundaries already accept any currency and
- * stamp `original_*`). Pure presentational: the amount string is forwarded
- * raw (callers own parsing/validation, matching the house amountStr pattern);
- * the currency is either locked, picked from a deduped shortlist, or typed
- * as a free ISO code via "Other…".
+ * Shared state + behavior for the currency-code control: "Other…" free entry
+ * with ISO validation, committed-code shortlist memory, lock-arrival draft
+ * revert, and select focus restore when the free-entry input unmounts. Used
+ * by CurrencyAmountInput and the standalone CurrencyCodeSelect.
+ *
+ * Returns `{ entry, selectRef }` — the ref is deliberately NOT bundled into
+ * `entry`: a ref inside a data object flowing through render would taint every
+ * member access for the react-hooks/refs rule; kept separate, its only render
+ * use is the blessed `ref={selectRef}` attachment.
  */
-export function CurrencyAmountInput({
-  id,
-  label,
-  value,
-  onChange,
-  defaultCurrency,
-  contextCurrencies,
+function useCurrencyEntry({
   lockedCurrency,
-  disabled,
-  placeholder,
-  hint,
-  onBlur,
-}: CurrencyAmountInputProps) {
+  onCommit,
+}: {
+  lockedCurrency?: string;
+  /** Receives a VALID, uppercased ISO code committed via Other…. */
+  onCommit: (code: string) => void;
+}) {
   // "Other…" entry state. `extraCodes` keeps codes committed via Other…
   // visible in the shortlist for the rest of this mount.
   const [customMode, setCustomMode] = useState(false);
@@ -124,7 +128,7 @@ export function CurrencyAmountInput({
       return;
     }
     setExtraCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
-    onChange({ ...value, currency: code });
+    onCommit(code);
     revertCustom();
   }
 
@@ -150,37 +154,200 @@ export function CurrencyAmountInput({
     if (wasCustom && !customMode) selectRef.current?.focus();
   }, [customMode]);
 
+  return {
+    entry: {
+      customMode,
+      setCustomMode,
+      customStr,
+      setCustomStr,
+      customError,
+      setCustomError,
+      extraCodes,
+      revertCustom,
+      commitCustom,
+    },
+    selectRef,
+  };
+}
+
+type CurrencyEntry = ReturnType<typeof useCurrencyEntry>["entry"];
+
+/**
+ * Deduped uppercase shortlist: defaultCurrency, EUR, USD, context codes, codes
+ * committed via Other…, and the effective currency last — so a caller-hydrated
+ * code outside the shortlist still renders (a controlled <select> whose value
+ * has no matching <option> silently shows the wrong selection).
+ */
+function buildShortlist(
+  defaultCurrency: string,
+  contextCurrencies: string[] | undefined,
+  extraCodes: string[],
+  effectiveCurrency: string,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [
+    defaultCurrency,
+    "EUR",
+    "USD",
+    ...(contextCurrencies ?? []),
+    ...extraCodes,
+    effectiveCurrency,
+  ]) {
+    const code = raw.trim().toUpperCase();
+    if (code === "" || seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
+  }
+  return out;
+}
+
+/**
+ * The three-way currency control: locked static code | Other… free-entry
+ * input | shortlist select. Purely presentational — all state arrives via
+ * `entry` (see useCurrencyEntry); the HOST renders the matching
+ * "Unknown currency code" alert under `errorId`, choosing its placement.
+ */
+function CurrencyCodeControl({
+  entry,
+  selectRef,
+  controlId,
+  labelBase,
+  effectiveCurrency,
+  shortlist,
+  lockedCurrency,
+  disabled,
+  errorId,
+  onPick,
+}: {
+  entry: CurrencyEntry;
+  /** Attached to the shortlist <select> for the Other…-unmount focus restore. */
+  selectRef: React.RefObject<HTMLSelectElement | null>;
+  controlId: string;
+  /** Accessible-name base: "<labelBase> currency" / "<labelBase> currency code". */
+  labelBase: string;
+  effectiveCurrency: string;
+  shortlist: string[];
+  lockedCurrency?: string;
+  disabled?: boolean;
+  /** id of the host-rendered error paragraph (aria-describedby target). */
+  errorId: string;
+  /** A code picked directly from the shortlist (Other… commits route via entry.commitCustom). */
+  onPick: (code: string) => void;
+}) {
+  if (lockedCurrency) {
+    return (
+      <span
+        className="text-xs text-zinc-400"
+        title={MONEY_FLOW_COPY.currencyLockTooltip}
+      >
+        {lockedCurrency}
+      </span>
+    );
+  }
+  if (entry.customMode) {
+    return (
+      <input
+        id={controlId}
+        type="text"
+        value={entry.customStr}
+        maxLength={3}
+        autoFocus
+        disabled={disabled}
+        aria-label={`${labelBase} currency code`}
+        aria-invalid={entry.customError}
+        aria-describedby={entry.customError ? errorId : undefined}
+        onChange={(e) => {
+          entry.setCustomStr(e.target.value.toUpperCase());
+          entry.setCustomError(false);
+        }}
+        onBlur={entry.commitCustom}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault(); // keep the enclosing form from submitting
+            entry.commitCustom();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation(); // React tree + non-document roots (jsdom tests)
+            e.nativeEvent.stopImmediatePropagation(); // same-node document listeners under App Router (Modal close + focus-trap escapeDeactivates)
+            entry.revertCustom();
+          }
+        }}
+        className={`w-14 uppercase text-zinc-100 placeholder:text-zinc-600 ${compactControlClasses}`}
+      />
+    );
+  }
+  return (
+    <select
+      ref={selectRef}
+      id={controlId}
+      value={effectiveCurrency}
+      disabled={disabled}
+      aria-label={`${labelBase} currency`}
+      onChange={(e) => {
+        if (e.target.value === OTHER_SENTINEL) {
+          entry.setCustomMode(true);
+        } else {
+          onPick(e.target.value);
+        }
+      }}
+      className={`text-zinc-400 ${compactControlClasses}`}
+    >
+      {shortlist.map((code) => (
+        <option key={code} value={code}>
+          {code}
+        </option>
+      ))}
+      <option value={OTHER_SENTINEL}>Other…</option>
+    </select>
+  );
+}
+
+/**
+ * Shared controlled amount + currency input — the single client surface for
+ * any-ISO cost entry (the server boundaries already accept any currency and
+ * stamp `original_*`). Pure presentational: the amount string is forwarded
+ * raw (callers own parsing/validation, matching the house amountStr pattern);
+ * the currency is either locked, picked from a deduped shortlist, or typed
+ * as a free ISO code via "Other…".
+ */
+export function CurrencyAmountInput({
+  id,
+  label,
+  value,
+  onChange,
+  defaultCurrency,
+  contextCurrencies,
+  lockedCurrency,
+  disabled,
+  placeholder,
+  hint,
+  onBlur,
+  amountAriaInvalid,
+}: CurrencyAmountInputProps) {
+  const { entry, selectRef } = useCurrencyEntry({
+    lockedCurrency,
+    onCommit: (code) => onChange({ ...value, currency: code }),
+  });
+
   // Currency to display: the controlled value, or the default while empty.
   const effectiveCurrency = (value.currency || defaultCurrency).toUpperCase();
 
-  // Shortlist: defaultCurrency, EUR, USD, context codes — uppercased, deduped,
-  // in that order. Codes committed via Other… append after; the effective
-  // currency appends last if the caller hydrated one outside the shortlist
-  // (a controlled <select> whose value has no matching <option> silently
-  // shows the wrong selection).
-  const shortlist = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const raw of [
-      defaultCurrency,
-      "EUR",
-      "USD",
-      ...(contextCurrencies ?? []),
-      ...extraCodes,
-      effectiveCurrency,
-    ]) {
-      const code = raw.trim().toUpperCase();
-      if (code === "" || seen.has(code)) continue;
-      seen.add(code);
-      out.push(code);
-    }
-    return out;
-  }, [defaultCurrency, contextCurrencies, extraCodes, effectiveCurrency]);
+  const shortlist = useMemo(
+    () =>
+      buildShortlist(
+        defaultCurrency,
+        contextCurrencies,
+        entry.extraCodes,
+        effectiveCurrency,
+      ),
+    [defaultCurrency, contextCurrencies, entry.extraCodes, effectiveCurrency],
+  );
 
   // The amount input is described by the hint and, when present, the currency
   // error — composed so screen readers announce both.
   const amountDescribedBy =
-    [hint ? `${id}-hint` : null, customError ? `${id}-currency-error` : null]
+    [hint ? `${id}-hint` : null, entry.customError ? `${id}-currency-error` : null]
       .filter(Boolean)
       .join(" ") || undefined;
 
@@ -190,66 +357,18 @@ export function CurrencyAmountInput({
         <label htmlFor={id} className="block text-xs text-zinc-400">
           {label}
         </label>
-        {lockedCurrency ? (
-          <span
-            className="text-xs text-zinc-400"
-            title={MONEY_FLOW_COPY.currencyLockTooltip}
-          >
-            {lockedCurrency}
-          </span>
-        ) : customMode ? (
-          <input
-            id={`${id}-currency`}
-            type="text"
-            value={customStr}
-            maxLength={3}
-            autoFocus
-            disabled={disabled}
-            aria-label={`${label} currency code`}
-            aria-invalid={customError}
-            aria-describedby={customError ? `${id}-currency-error` : undefined}
-            onChange={(e) => {
-              setCustomStr(e.target.value.toUpperCase());
-              setCustomError(false);
-            }}
-            onBlur={commitCustom}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault(); // keep the enclosing form from submitting
-                commitCustom();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation(); // React tree + non-document roots (jsdom tests)
-                e.nativeEvent.stopImmediatePropagation(); // same-node document listeners under App Router (Modal close + focus-trap escapeDeactivates)
-                revertCustom();
-              }
-            }}
-            className={`w-14 uppercase text-zinc-100 placeholder:text-zinc-600 ${compactControlClasses}`}
-          />
-        ) : (
-          <select
-            ref={selectRef}
-            id={`${id}-currency`}
-            value={effectiveCurrency}
-            disabled={disabled}
-            aria-label={`${label} currency`}
-            onChange={(e) => {
-              if (e.target.value === OTHER_SENTINEL) {
-                setCustomMode(true);
-              } else {
-                onChange({ ...value, currency: e.target.value });
-              }
-            }}
-            className={`text-zinc-400 ${compactControlClasses}`}
-          >
-            {shortlist.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-            <option value={OTHER_SENTINEL}>Other…</option>
-          </select>
-        )}
+        <CurrencyCodeControl
+          entry={entry}
+          selectRef={selectRef}
+          controlId={`${id}-currency`}
+          labelBase={label}
+          effectiveCurrency={effectiveCurrency}
+          shortlist={shortlist}
+          lockedCurrency={lockedCurrency}
+          disabled={disabled}
+          errorId={`${id}-currency-error`}
+          onPick={(code) => onChange({ ...value, currency: code })}
+        />
       </div>
       <input
         id={id}
@@ -266,10 +385,11 @@ export function CurrencyAmountInput({
         onBlur={onBlur}
         placeholder={placeholder}
         disabled={disabled}
+        aria-invalid={amountAriaInvalid}
         aria-describedby={amountDescribedBy}
         className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
       />
-      {customError && (
+      {entry.customError && (
         <p
           id={`${id}-currency-error`}
           role="alert"
@@ -281,6 +401,78 @@ export function CurrencyAmountInput({
       {hint && (
         <p id={`${id}-hint`} className="text-xs text-zinc-400 mt-1">
           {hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export interface CurrencyCodeSelectProps {
+  /** id for the control element (select / free-entry code input). */
+  id: string;
+  /**
+   * Accessible-name base — the control announces as "<labelBase> currency"
+   * (select) / "<labelBase> currency code" (free entry), mirroring
+   * CurrencyAmountInput's per-instance labels. Hosts own any visible label.
+   */
+  labelBase: string;
+  /** Controlled ISO code; "" pre-initialization displays defaultCurrency (never emitted on its own). */
+  currency: string;
+  /** Receives a valid, uppercased ISO code (shortlist pick or Other… commit). */
+  onCurrencyChange: (code: string) => void;
+  defaultCurrency: string;
+  contextCurrencies?: string[];
+  lockedCurrency?: string;
+  disabled?: boolean;
+}
+
+/**
+ * Standalone any-ISO currency-code picker for amount-less hosts (the split
+ * modal's shared per-leg cost currency; the transfer dialog's cash
+ * destination). Same shortlist + "Other…" free-entry behavior as
+ * CurrencyAmountInput's control; renders its own "Unknown currency code"
+ * alert directly under the control (error id: `${id}-error`).
+ */
+export function CurrencyCodeSelect({
+  id,
+  labelBase,
+  currency,
+  onCurrencyChange,
+  defaultCurrency,
+  contextCurrencies,
+  lockedCurrency,
+  disabled,
+}: CurrencyCodeSelectProps) {
+  const { entry, selectRef } = useCurrencyEntry({ lockedCurrency, onCommit: onCurrencyChange });
+  const effectiveCurrency = (currency || defaultCurrency).toUpperCase();
+  const shortlist = useMemo(
+    () =>
+      buildShortlist(
+        defaultCurrency,
+        contextCurrencies,
+        entry.extraCodes,
+        effectiveCurrency,
+      ),
+    [defaultCurrency, contextCurrencies, entry.extraCodes, effectiveCurrency],
+  );
+
+  return (
+    <div>
+      <CurrencyCodeControl
+        entry={entry}
+        selectRef={selectRef}
+        controlId={id}
+        labelBase={labelBase}
+        effectiveCurrency={effectiveCurrency}
+        shortlist={shortlist}
+        lockedCurrency={lockedCurrency}
+        disabled={disabled}
+        errorId={`${id}-error`}
+        onPick={onCurrencyChange}
+      />
+      {entry.customError && (
+        <p id={`${id}-error`} role="alert" className="text-xs text-red-400 mt-1">
+          Unknown currency code
         </p>
       )}
     </div>

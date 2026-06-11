@@ -322,6 +322,40 @@ describe("SplitModal", () => {
     ]);
   });
 
+  it("any-ISO cost currency: NOK entered via Other… flows into the emitted legs", async () => {
+    const user = userEvent.setup();
+    const onSplit = vi.fn().mockResolvedValue({ success: true, message: "" });
+
+    render(
+      <SplitModal entry={makeEntry()} onClose={vi.fn()} onSplit={onSplit} />,
+    );
+
+    // NOK isn't in the EUR/USD shortlist — enter it via the shared control's
+    // Other… free entry (accessible names: "Cost currency" / "Cost currency code").
+    fireEvent.change(screen.getByLabelText("Cost currency"), {
+      target: { value: "__other__" },
+    });
+    const codeInput = screen.getByLabelText("Cost currency code");
+    fireEvent.change(codeInput, { target: { value: "NOK" } });
+    fireEvent.blur(codeInput);
+
+    await user.click(screen.getByText("Add date"));
+    fireEvent.change(screen.getByLabelText("Allocation 1 date"), { target: { value: "2026-01-05" } });
+    await user.clear(screen.getByLabelText("Allocation 1 quantity"));
+    await user.type(screen.getByLabelText("Allocation 1 quantity"), "0.2");
+    fireEvent.change(screen.getByLabelText("Allocation 2 date"), { target: { value: "2026-01-08" } });
+    await user.clear(screen.getByLabelText("Allocation 2 quantity"));
+    await user.type(screen.getByLabelText("Allocation 2 quantity"), "0.3");
+    await user.type(screen.getByLabelText("Allocation 1 amount paid"), "4000");
+
+    await user.click(screen.getByRole("button", { name: "Split" }));
+
+    expect(onSplit).toHaveBeenCalledWith("log-1", [
+      { effective_date: "2026-01-05", quantity: 0.2, cost: { amount: 4000, currency: "NOK" } },
+      { effective_date: "2026-01-08", quantity: 0.3 },
+    ]);
+  });
+
   it("Σ(cost) hint shows running total and does NOT block save when qty Σ matches", async () => {
     const user = userEvent.setup();
     render(

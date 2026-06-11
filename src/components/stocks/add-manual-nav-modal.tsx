@@ -3,6 +3,7 @@
 import { useState, useEffect, useId } from "react";
 import { Loader2, ChevronDown, ChevronRight, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { CurrencyAmountInput } from "@/components/ui/currency-amount-input";
 import { toast } from "sonner";
 import { addManualNavAsset } from "@/lib/actions/manual-nav";
 import { upsertStockPosition } from "@/lib/actions/stocks";
@@ -71,7 +72,8 @@ export function AddManualNavModal({
   // transaction-modal's provenance gate.
   const [positionCost, setPositionCost] = useState("");
   const [positionCostDirty, setPositionCostDirty] = useState(false);
-  const [positionCostCurrency, setPositionCostCurrency] = useState<"EUR" | "USD">("EUR");
+  // Any ISO-4217 code (the shared control validates picks/free entry).
+  const [positionCostCurrency, setPositionCostCurrency] = useState<string>("EUR");
 
   // ─── Adjustment + effective date ────────────────────────
   const [isAdjustment, setIsAdjustment] = useState(false);
@@ -551,36 +553,31 @@ export function AddManualNavModal({
                     />
                   </div>
                 </div>
-                {/* Amount paid (incl. fees) — optional cost spine. Blank → market/NAV fallback. */}
+                {/* Amount paid (incl. fees) — optional cost spine. Blank → market/NAV fallback.
+                    Shared any-ISO amount+currency control; the hint rides the
+                    component's hint prop (identical text-xs styling + it gains
+                    aria-describedby wiring). */}
                 <div className="mt-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <label htmlFor={`${id}-cost`} className="block text-xs text-zinc-400">
-                      Amount paid (incl. fees)
-                    </label>
-                    <select
-                      id={`${id}-cost-currency`}
-                      value={positionCostCurrency}
-                      onChange={(e) => setPositionCostCurrency(e.target.value as "EUR" | "USD")}
-                      className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70"
-                      aria-label="Amount paid currency"
-                    >
-                      <option value="EUR">EUR</option>
-                      <option value="USD">USD</option>
-                    </select>
-                  </div>
-                  <input
+                  <CurrencyAmountInput
                     id={`${id}-cost`}
-                    type="text"
-                    inputMode="decimal"
-                    value={positionCost}
-                    onChange={(e) => {
-                      setPositionCost(e.target.value);
-                      setPositionCostDirty(true);
+                    label="Amount paid (incl. fees)"
+                    value={{ amountStr: positionCost, currency: positionCostCurrency }}
+                    onChange={(v) => {
+                      // Dirty tracks the AMOUNT only (provenance gate) — a
+                      // currency-only change must not make an untouched field
+                      // emit a cost, matching the old separate select's behavior.
+                      if (v.amountStr !== positionCost) {
+                        setPositionCost(v.amountStr);
+                        setPositionCostDirty(true);
+                      }
+                      if (v.currency !== positionCostCurrency) {
+                        setPositionCostCurrency(v.currency);
+                      }
                     }}
+                    defaultCurrency="EUR"
                     placeholder="Leave blank to use market value"
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums"
+                    hint={COST_COPY.amountOptionalHint}
                   />
-                  <p className="text-xs text-zinc-400 mt-1">{COST_COPY.amountOptionalHint}</p>
                 </div>
               </div>
             )}

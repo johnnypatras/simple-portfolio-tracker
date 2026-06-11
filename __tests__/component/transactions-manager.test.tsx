@@ -422,6 +422,51 @@ describe("TransactionsManager — money-flow tracked routing (C2a)", () => {
     expect(hoisted.addTransaction).not.toHaveBeenCalled();
   });
 
+  it("tracked GBP account → the cash side carries ONLY the amount (currency resolved server-side)", async () => {
+    // Pins the any-ISO invariant: the modal's cashflowOverride.currency ("GBP")
+    // is advisory on the tracked route — buildTrackedTransferInput reads only
+    // `.amount`, so the TransferInput's cash side has NO currency field at all.
+    hoisted.getCashAccounts.mockResolvedValue([
+      {
+        id: "acc-gbp",
+        user_id: "u1",
+        institution_id: null,
+        name: "Wise GBP",
+        currency: "GBP",
+        balance: 5000,
+        apy: 0,
+        region: null,
+        wallet_id: null,
+        broker_id: null,
+        last_was_adjustment: false,
+        last_was_transfer: false,
+        created_at: "2026-01-01",
+        updated_at: "2026-01-01",
+        deleted_at: null,
+      },
+    ]);
+    await openAddModal(CRYPTO_WITH_WALLET);
+
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "0.5" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-gbp" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "750" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(hoisted.executeTransfer).toHaveBeenCalledTimes(1);
+    });
+    // toEqual pins the EXACT cash-side shape — no currency key may leak in.
+    const input = hoisted.executeTransfer.mock.calls[0][0];
+    expect(input.source).toEqual({
+      type: "cash_account",
+      accountId: "acc-gbp",
+      amount: 750,
+    });
+    expect(hoisted.addTransaction).not.toHaveBeenCalled();
+  });
+
   it("tracked SELL → executeTransfer called with position source + cash destination", async () => {
     await openAddModal(CRYPTO_WITH_WALLET);
 

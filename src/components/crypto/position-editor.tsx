@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useId, useRef } from "react"
 import { useRouter } from "next/navigation";
 import { Plus, Save, Trash2, Loader2, Check, ArrowRightLeft, TrendingDown, TrendingUp, History } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { CurrencyAmountInput } from "@/components/ui/currency-amount-input";
 import { TransferDialog } from "@/components/ui/transfer-dialog";
 import { toast } from "sonner";
 import { upsertPosition, deletePosition, updateCryptoAsset } from "@/lib/actions/crypto";
@@ -70,7 +71,8 @@ export function PositionEditor({
   // Mirrors the stock editor + transaction-modal's provenance gate.
   const [costEdits, setCostEdits] = useState<Record<string, string>>({});
   const [costDirty, setCostDirty] = useState<Record<string, boolean>>({});
-  const [costCurrency, setCostCurrency] = useState<Record<string, "EUR" | "USD">>({});
+  // Any ISO-4217 code per row (the shared control validates picks/free entry).
+  const [costCurrency, setCostCurrency] = useState<Record<string, string>>({});
 
   // ─── Correction-date suggest chip ──────────────────────
   // Last-change date per position id — cached after the first resolution for the
@@ -698,39 +700,32 @@ export function PositionEditor({
                   title="L2/Network for this position"
                 />
               </div>
-              {/* Amount paid (incl. fees) — optional cost spine. Blank → market fallback. */}
+              {/* Amount paid (incl. fees) — optional cost spine. Blank → market fallback.
+                  Shared any-ISO amount+currency control; the hint stays outside
+                  (its 10px styling differs from the component's text-xs hint). */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label htmlFor={`${id}-cost-${walletId}`} className="block text-xs text-zinc-400">
-                    Amount paid (incl. fees)
-                  </label>
-                  <select
-                    id={`${id}-cost-currency-${walletId}`}
-                    value={costCurrency[walletId] ?? "EUR"}
-                    onChange={(e) =>
-                      setCostCurrency((prev) => ({ ...prev, [walletId]: e.target.value as "EUR" | "USD" }))
-                    }
-                    disabled={isSaving}
-                    className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50"
-                    aria-label="Amount paid currency"
-                  >
-                    <option value="EUR">EUR</option>
-                    <option value="USD">USD</option>
-                  </select>
-                </div>
-                <input
+                <CurrencyAmountInput
                   id={`${id}-cost-${walletId}`}
-                  type="text"
-                  inputMode="decimal"
-                  value={costEdits[walletId] ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setCostEdits((prev) => ({ ...prev, [walletId]: v }));
-                    setCostDirty((prev) => ({ ...prev, [walletId]: true }));
+                  label="Amount paid (incl. fees)"
+                  value={{
+                    amountStr: costEdits[walletId] ?? "",
+                    currency: costCurrency[walletId] ?? "EUR",
                   }}
-                  placeholder="Leave blank to use market value"
+                  onChange={(v) => {
+                    // Dirty tracks the AMOUNT only (provenance gate) — a
+                    // currency-only change must not make an untouched row emit
+                    // a cost, matching the old separate select's behavior.
+                    if (v.amountStr !== (costEdits[walletId] ?? "")) {
+                      setCostEdits((prev) => ({ ...prev, [walletId]: v.amountStr }));
+                      setCostDirty((prev) => ({ ...prev, [walletId]: true }));
+                    }
+                    if (v.currency !== (costCurrency[walletId] ?? "EUR")) {
+                      setCostCurrency((prev) => ({ ...prev, [walletId]: v.currency }));
+                    }
+                  }}
+                  defaultCurrency="EUR"
                   disabled={isSaving}
-                  className="w-full px-2 sm:px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 tabular-nums disabled:opacity-50"
+                  placeholder="Leave blank to use market value"
                 />
                 <p className="text-[10px] text-zinc-400 mt-1">{COST_COPY.amountDeltaHint}</p>
               </div>

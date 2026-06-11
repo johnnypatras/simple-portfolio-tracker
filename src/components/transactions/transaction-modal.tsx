@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useId, useRef } from "react";
 import { Modal } from "@/components/ui/modal";
+import { CurrencyAmountInput } from "@/components/ui/currency-amount-input";
 import { TYPE_GUIDANCE, COST_COPY, MONEY_FLOW_COPY } from "@/lib/cost-basis-copy";
 import { fmtCurrency } from "@/lib/format";
 import { AssetPicker } from "@/components/transactions/asset-picker";
@@ -51,8 +52,9 @@ export interface TransactionSubmit {
    *  provenance gate for cashflow_user_set. Its PRESENCE is the provenance
    *  signal: a previously-redundant `amountUserSet` boolean (always
    *  `=== (cashflowOverride !== undefined)`) was removed — consumers test
-   *  `cashflowOverride` presence directly. */
-  cashflowOverride?: { amount: number; currency: "EUR" | "USD" };
+   *  `cashflowOverride` presence directly. `currency` is any ISO-4217 code
+   *  (the server cost boundaries validate + derive both stored legs). */
+  cashflowOverride?: { amount: number; currency: string };
   /** Chosen destination wallet (crypto add-mode only — `addTransaction` needs it). */
   walletId?: string;
   /** Chosen destination broker (stock add-mode only — `addTransaction` needs it). */
@@ -72,7 +74,7 @@ export interface CashAccountOption {
   id: string;
   name: string;
   balance: number;
-  /** ISO 4217 — EUR/USD snap the mini-select; others render a static code. */
+  /** ISO 4217 — locks the Amount's currency control to the account currency. */
   currency: string;
 }
 
@@ -260,7 +262,9 @@ export function TransactionModal({
   );
   const [amountDirty, setAmountDirty] = useState(false);
   const [dateStr, setDateStr] = useState(edit?.date ?? "");
-  const [amountCurrency, setAmountCurrency] = useState<"EUR" | "USD">(
+  // Any ISO-4217 code (the shared control validates picks/free entry); "EUR"
+  // seed matches the pre-any-ISO default.
+  const [amountCurrency, setAmountCurrency] = useState<string>(
     edit?.amountCurrency ?? "EUR",
   );
   // Destination selection (add-mode only). Defaults to the first option the
@@ -444,11 +448,10 @@ export function TransactionModal({
       : undefined;
 
   // When the tracked option is active, the cash leg's amount is in THAT
-  // account's currency — the EUR/USD mini-select snaps + locks to it (EUR/USD)
-  // or is replaced by a static code label (other ISO). lockedCurrency drives
-  // both the displayed code and the effective currency emitted on submit.
+  // account's currency — the shared control renders it as a locked static code
+  // (any ISO, EUR/USD included). lockedCurrency drives both the displayed code
+  // and the effective currency emitted on submit.
   const lockedCurrency = selectedAccount?.currency;
-  const lockIsEurUsd = lockedCurrency === "EUR" || lockedCurrency === "USD";
   // The currency the Amount actually represents right now.
   const effectiveCurrency: string =
     showMoneyFlow && moneyFlowTracked && lockedCurrency ? lockedCurrency : amountCurrency;
@@ -576,20 +579,15 @@ export function TransactionModal({
     // Tracked route: the cash leg's amount is REQUIRED (guarded by isSaveBlocked)
     // and denominated in the account's currency. Emit it as the cashflowOverride
     // so the transfer carries the exact value — the blank-amount market fallback
-    // does not apply here. EUR/USD accounts pass through directly; any other ISO
-    // currency still flows as the account-currency cost (the transfer machinery
-    // handles non-EUR/USD cash sides server-side).
+    // does not apply here.
     if (payload.moneyFlow?.route === "tracked") {
       const amt = parseFloat(amountStr);
       if (Number.isFinite(amt)) {
         payload.cashflowOverride = {
           amount: amt,
-          // On the tracked route the manager consumes ONLY `.amount`. The
-          // `currency` label below is intentionally unused/dead on this path —
-          // the cash leg's true currency is resolved server-side by
-          // executeTransfer from the account row, so the value here (a best-effort
-          // EUR/USD narrowing of the account currency) never reaches the ledger.
-          currency: (effectiveCurrency === "USD" ? "USD" : "EUR") as "EUR" | "USD",
+          // Advisory on this route — the manager consumes only `.amount`; the
+          // tracked cash leg's currency is resolved server-side from the account row.
+          currency: effectiveCurrency,
         };
       }
     } else if (amountDirty && !amountIsBlank) {
@@ -1006,68 +1004,38 @@ export function TransactionModal({
             {/* Amount — hidden for yield (cost 0 by definition) */}
             {type !== "yield" && (
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label
-                    htmlFor={`${id}-amount`}
-                    className="block text-xs text-zinc-400"
-                  >
-                    {isManualNav ? "Subscription Amount" : "Amount"}
-                  </label>
-                  {/* Currency control. Default: free EUR/USD select. When a
-                      tracked account is chosen (C2a), the amount is in THAT
-                      account's currency — snap+disable the select for EUR/USD,
-                      or replace it with a static code label for any other ISO. */}
-                  {showMoneyFlow && moneyFlowTracked && lockedCurrency && !lockIsEurUsd ? (
-                    <span className="text-xs text-zinc-400" title={MONEY_FLOW_COPY.currencyLockTooltip}>
-                      {lockedCurrency}
-                    </span>
-                  ) : (
-                    <select
-                      id={`${id}-amount-currency`}
-                      value={
-                        showMoneyFlow && moneyFlowTracked && lockIsEurUsd
-                          ? lockedCurrency
-                          : amountCurrency
-                      }
-                      onChange={(e) =>
-                        setAmountCurrency(e.target.value as "EUR" | "USD")
-                      }
-                      disabled={
-                        isTransferLeg ||
-                        // Locked to the account currency while tracked is active.
-                        (showMoneyFlow && moneyFlowTracked && lockIsEurUsd)
-                      }
-                      title={
-                        showMoneyFlow && moneyFlowTracked && lockIsEurUsd
-                          ? MONEY_FLOW_COPY.currencyLockTooltip
-                          : undefined
-                      }
-                      className="text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
-                      aria-label="Amount currency"
-                    >
-                      <option value="EUR">EUR</option>
-                      <option value="USD">USD</option>
-                    </select>
-                  )}
-                </div>
-                <input
+                {/* Shared any-ISO amount+currency control. When a tracked
+                    account is chosen (C2a) the amount is in THAT account's
+                    currency: lockedCurrency (already undefined unless the
+                    tracked route is active with an account picked) renders a
+                    locked static code — any ISO, EUR/USD included. */}
+                <CurrencyAmountInput
                   id={`${id}-amount`}
-                  type="text"
-                  inputMode="decimal"
-                  value={amountStr}
-                  onChange={(e) => {
-                    setAmountStr(e.target.value);
-                    setAmountDirty(true);
+                  label={isManualNav ? "Subscription Amount" : "Amount"}
+                  value={{ amountStr, currency: amountCurrency }}
+                  onChange={(v) => {
+                    if (v.amountStr !== amountStr) {
+                      setAmountStr(v.amountStr);
+                      setAmountDirty(true);
+                    }
+                    // While locked, emissions echo the account currency — do
+                    // NOT write it into amountCurrency, so the user's own pick
+                    // survives a tracked → external switch (the lock never
+                    // mutated the select's state before either).
+                    if (!lockedCurrency && v.currency !== amountCurrency) {
+                      setAmountCurrency(v.currency);
+                    }
                   }}
-                  onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
-                  aria-invalid={touched.amount && amountError !== null}
+                  defaultCurrency="EUR"
+                  lockedCurrency={lockedCurrency}
+                  disabled={isTransferLeg}
                   placeholder={
                     showMoneyFlow && moneyFlowTracked
                       ? "0.00"
                       : "Leave blank to use market value"
                   }
-                  disabled={isTransferLeg}
-                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
+                  amountAriaInvalid={touched.amount && amountError !== null}
                 />
                 {/* Amount hint. Tracked route REQUIRES the amount (it's the cash
                     leg's value — no market fallback); a blank amount surfaces the

@@ -268,13 +268,43 @@ describe("crypto PositionEditor — amount paid (cost spine)", () => {
 
   it("typed amount honors the per-row currency select (USD)", async () => {
     renderEditor();
-    const currencySelect = screen.getAllByLabelText("Amount paid currency")[0];
+    // Shared control: per-instance accessible name is "<label> currency".
+    const currencySelect = screen.getAllByLabelText("Amount paid (incl. fees) currency")[0];
     fireEvent.change(currencySelect, { target: { value: "USD" } });
     fireEvent.change(costInput(), { target: { value: "999" } });
     fireEvent.click(firstRowSave());
 
     await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
     expect(hoisted.upsertPosition.mock.calls[0][1].cost).toEqual({ amount: 999, currency: "USD" });
+  });
+
+  it("any-ISO cost: CHF entered via Other… flows into the save payload", async () => {
+    renderEditor();
+    // CHF isn't in the EUR/USD shortlist — enter it via the Other… free entry.
+    fireEvent.change(screen.getAllByLabelText("Amount paid (incl. fees) currency")[0], {
+      target: { value: "__other__" },
+    });
+    const codeInput = screen.getByLabelText("Amount paid (incl. fees) currency code");
+    fireEvent.change(codeInput, { target: { value: "CHF" } });
+    fireEvent.blur(codeInput);
+    fireEvent.change(costInput(), { target: { value: "750" } });
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertPosition.mock.calls[0][1].cost).toEqual({ amount: 750, currency: "CHF" });
+  });
+
+  it("currency-only change does NOT mark the row dirty (no cost emitted)", async () => {
+    renderEditor();
+    // Picking a currency without typing an amount must keep the provenance
+    // gate closed — the old separate select behaved the same way.
+    fireEvent.change(screen.getAllByLabelText("Amount paid (incl. fees) currency")[0], {
+      target: { value: "USD" },
+    });
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertPosition.mock.calls[0][1]).not.toHaveProperty("cost");
   });
 
   it("dirty-then-blanked → no cost (market fallback)", async () => {

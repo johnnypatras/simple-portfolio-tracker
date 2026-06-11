@@ -3,6 +3,7 @@ import { useState } from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import {
   CurrencyAmountInput,
+  CurrencyCodeSelect,
   type CurrencyAmountValue,
 } from "@/components/ui/currency-amount-input";
 import { Modal } from "@/components/ui/modal";
@@ -367,5 +368,109 @@ describe("CurrencyAmountInput", () => {
     const select = screen.getByRole("combobox", { name: SELECT_NAME });
     expect(select).toHaveValue("SEK");
     expect(optionTexts(select)).toEqual(["EUR", "USD", "SEK", OTHER_OPTION_LABEL]);
+  });
+
+  it("amountAriaInvalid mirrors aria-invalid on the amount input; omitted → attribute absent", () => {
+    // Hosts with touched-gated validation (transaction modal) pass a boolean —
+    // both true and false must render, matching the inline input it replaces.
+    const { rerender } = render(
+      <CurrencyAmountInput {...baseProps({ amountAriaInvalid: true })} />,
+    );
+    expect(screen.getByLabelText(AMOUNT_LABEL)).toHaveAttribute("aria-invalid", "true");
+
+    rerender(<CurrencyAmountInput {...baseProps({ amountAriaInvalid: false })} />);
+    expect(screen.getByLabelText(AMOUNT_LABEL)).toHaveAttribute("aria-invalid", "false");
+
+    // Hosts without validation pass nothing → no attribute (plain cost inputs).
+    rerender(<CurrencyAmountInput {...baseProps()} />);
+    expect(screen.getByLabelText(AMOUNT_LABEL)).not.toHaveAttribute("aria-invalid");
+  });
+});
+
+// ── Standalone CurrencyCodeSelect (amount-less hosts) ────────────────────────
+
+const CODE_SELECT_NAME = "Cost currency";
+const CODE_SELECT_INPUT_NAME = "Cost currency code";
+
+/** Stateful harness — the standalone control round-trips like a real caller. */
+function CodeSelectHarness({
+  spy,
+  lockedCurrency,
+}: {
+  spy: (code: string) => void;
+  lockedCurrency?: string;
+}) {
+  const [currency, setCurrency] = useState("EUR");
+  return (
+    <CurrencyCodeSelect
+      id="cost-currency"
+      labelBase="Cost"
+      currency={currency}
+      onCurrencyChange={(code) => {
+        spy(code);
+        setCurrency(code);
+      }}
+      defaultCurrency="EUR"
+      lockedCurrency={lockedCurrency}
+    />
+  );
+}
+
+describe("CurrencyCodeSelect", () => {
+  it("renders the deduped shortlist + Other… and emits a picked code", () => {
+    const spy = vi.fn();
+    render(<CodeSelectHarness spy={spy} />);
+
+    const select = screen.getByRole("combobox", { name: CODE_SELECT_NAME });
+    expect(optionTexts(select)).toEqual(["EUR", "USD", OTHER_OPTION_LABEL]);
+
+    fireEvent.change(select, { target: { value: "USD" } });
+    expect(spy).toHaveBeenCalledWith("USD");
+    expect(select).toHaveValue("USD");
+  });
+
+  it("Other… flow commits a valid free-typed code (uppercased) and adds it to the shortlist", () => {
+    const spy = vi.fn();
+    render(<CodeSelectHarness spy={spy} />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: CODE_SELECT_NAME }), {
+      target: { value: "__other__" },
+    });
+    const codeInput = screen.getByLabelText(CODE_SELECT_INPUT_NAME);
+    fireEvent.change(codeInput, { target: { value: "nok" } });
+    fireEvent.blur(codeInput);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith("NOK");
+    const select = screen.getByRole("combobox", { name: CODE_SELECT_NAME });
+    expect(select).toHaveValue("NOK");
+    expect(optionTexts(select)).toContain("NOK");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("Other… flow rejects an unknown code with its own alert wired via aria-describedby", () => {
+    const spy = vi.fn();
+    render(<CodeSelectHarness spy={spy} />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: CODE_SELECT_NAME }), {
+      target: { value: "__other__" },
+    });
+    const codeInput = screen.getByLabelText(CODE_SELECT_INPUT_NAME);
+    fireEvent.change(codeInput, { target: { value: "XX" } });
+    fireEvent.blur(codeInput);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Unknown currency code");
+    expect(codeInput).toHaveAttribute("aria-describedby", "cost-currency-error");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("lockedCurrency renders the static code with the lock tooltip, no combobox", () => {
+    render(<CodeSelectHarness spy={vi.fn()} lockedCurrency="NOK" />);
+
+    expect(screen.getByText("NOK")).toHaveAttribute(
+      "title",
+      MONEY_FLOW_COPY.currencyLockTooltip,
+    );
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 });

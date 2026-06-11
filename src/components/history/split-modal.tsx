@@ -3,9 +3,10 @@
 import { useState, useEffect, useId, useCallback } from "react";
 import { X, Plus } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { CurrencyCodeSelect } from "@/components/ui/currency-amount-input";
 import { extractQuantity } from "@/lib/split-helpers";
 import { fmtCurrency } from "@/lib/format";
-import type { ActivityLog, CostCurrency } from "@/lib/types";
+import type { ActivityLog, SplitLeg } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -23,15 +24,11 @@ interface SplitLegDraft {
 interface SplitModalProps {
   entry: ActivityLog | null;
   onClose: () => void;
+  /** Legs use the server-action `SplitLeg` shape directly — per-leg cost in
+   *  any ISO-4217 currency (`splitActivityEntry` validates + derives legs). */
   onSplit: (
     parentId: string,
-    legs: {
-      effective_date: string;
-      quantity: number;
-      // Optional per-leg cost (DCA). The UI field that populates this is Task 4.2;
-      // the type lives here now so the server-action contract is type-complete.
-      cost?: { amount: number; currency: "EUR" | "USD" };
-    }[],
+    legs: SplitLeg[],
   ) => Promise<{ success: boolean; message: string }>;
 }
 
@@ -84,7 +81,8 @@ function formatOriginalDate(entry: ActivityLog): string {
 export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
   const id = useId();
   const [legs, setLegs] = useState<SplitLegDraft[]>([{ effective_date: "", quantity: "", cost: "" }]);
-  const [costCurrency, setCostCurrency] = useState<CostCurrency>("EUR");
+  // Any ISO-4217 code, shared by all legs (the control validates picks/free entry).
+  const [costCurrency, setCostCurrency] = useState<string>("EUR");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -201,7 +199,7 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
 
     try {
       // Build final legs array
-      const finalLegs: { effective_date: string; quantity: number; cost?: { amount: number; currency: "EUR" | "USD" } }[] = legs.map((l, i) => {
+      const finalLegs: SplitLeg[] = legs.map((l, i) => {
         const parsedCost = parsedLegCosts[i];
         const base = {
           effective_date: l.effective_date,
@@ -266,15 +264,15 @@ export function SplitModal({ entry, onClose, onSplit }: SplitModalProps) {
             {showCostFields && (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-zinc-400">Currency:</span>
-                <select
-                  value={costCurrency}
-                  onChange={(e) => setCostCurrency(e.target.value as CostCurrency)}
-                  aria-label="Cost currency"
-                  className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-                >
-                  <option value="EUR">EUR</option>
-                  <option value="USD">USD</option>
-                </select>
+                {/* Shared any-ISO code picker (announces as "Cost currency",
+                    matching the old select's aria-label). */}
+                <CurrencyCodeSelect
+                  id={`${id}-cost-currency`}
+                  labelBase="Cost"
+                  currency={costCurrency}
+                  onCurrencyChange={setCostCurrency}
+                  defaultCurrency="EUR"
+                />
               </div>
             )}
           </div>

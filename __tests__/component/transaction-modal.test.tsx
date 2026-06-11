@@ -845,28 +845,32 @@ describe("TransactionModal — tracked routing blocks", () => {
 // ── Test Group 13: Currency lock ──────────────────────────────────────────────
 
 describe("TransactionModal — currency lock under tracked", () => {
-  it("EUR account: currency select snaps to EUR and is disabled", () => {
+  it("EUR account: the amount currency locks to a static EUR code (no select)", () => {
     renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
     fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
       target: { value: "acc-eur" },
     });
-    const curSelect = screen.getByRole("combobox", {
-      name: /amount currency/i,
-    }) as HTMLSelectElement;
-    expect(curSelect.value).toBe("EUR");
-    expect(curSelect).toBeDisabled();
+    // The shared control renders the locked account currency as a static code
+    // for EVERY ISO — EUR/USD included (the old snap+disable select is gone).
+    expect(
+      screen.queryByRole("combobox", { name: /amount currency/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTitle(MONEY_FLOW_COPY.currencyLockTooltip),
+    ).toHaveTextContent("EUR");
   });
 
-  it("USD account: currency select snaps to USD and is disabled", () => {
+  it("USD account: the amount currency locks to a static USD code (no select)", () => {
     renderOpen({ assetClass: "stock", cashAccountOptions: USD_ACCOUNTS });
     fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
       target: { value: "acc-usd" },
     });
-    const curSelect = screen.getByRole("combobox", {
-      name: /amount currency/i,
-    }) as HTMLSelectElement;
-    expect(curSelect.value).toBe("USD");
-    expect(curSelect).toBeDisabled();
+    expect(
+      screen.queryByRole("combobox", { name: /amount currency/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTitle(MONEY_FLOW_COPY.currencyLockTooltip),
+    ).toHaveTextContent("USD");
   });
 
   it("non-EUR/USD account (GBP): renders a static code label, no select", () => {
@@ -1004,6 +1008,52 @@ describe("TransactionModal — money-flow submit payload", () => {
     fireEvent.submit(document.querySelector("form")!);
     const payload = onSubmit.mock.calls[0][0];
     expect(payload.cashflowOverride).toEqual({ amount: 400, currency: "EUR" });
+  });
+
+  it("external route: GBP picked via Other… → cashflowOverride { amount: 500, currency: 'GBP' }", () => {
+    const { onSubmit } = renderOpen({ assetClass: "crypto", cashAccountOptions: EUR_ACCOUNTS });
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: new RegExp(MONEY_FLOW_COPY.buy.externalLabel, "i"),
+      }),
+    );
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "1" } });
+    // GBP isn't in the EUR/USD shortlist — enter it via the Other… free entry.
+    fireEvent.change(screen.getByRole("combobox", { name: /amount currency/i }), {
+      target: { value: "__other__" },
+    });
+    const codeInput = screen.getByLabelText(/amount currency code/i);
+    fireEvent.change(codeInput, { target: { value: "GBP" } });
+    fireEvent.blur(codeInput);
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "500" } });
+    fireEvent.submit(document.querySelector("form")!);
+    expect(onSubmit).toHaveBeenCalledOnce();
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.moneyFlow).toEqual({ route: "external" });
+    expect(payload.cashflowOverride).toEqual({ amount: 500, currency: "GBP" });
+  });
+
+  it("tracked GBP account → locked GBP code + override currency 'GBP' (advisory — the manager consumes only .amount)", () => {
+    const { onSubmit } = renderOpen({ assetClass: "stock", cashAccountOptions: GBP_ACCOUNTS });
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "2" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /tracked account/i }), {
+      target: { value: "acc-gbp" },
+    });
+    // Locked to the account currency: static GBP code, no select.
+    expect(
+      screen.queryByRole("combobox", { name: /amount currency/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTitle(MONEY_FLOW_COPY.currencyLockTooltip),
+    ).toHaveTextContent("GBP");
+    // Within the 1000 GBP balance (over would trip the overdraft guard).
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "800" } });
+    fireEvent.submit(document.querySelector("form")!);
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.moneyFlow).toEqual({ route: "tracked", accountId: "acc-gbp" });
+    // The REAL account ISO — no EUR/USD narrowing. buildTrackedTransferInput
+    // reads only `.amount`; the cash leg's currency resolves server-side.
+    expect(payload.cashflowOverride).toEqual({ amount: 800, currency: "GBP" });
   });
 });
 
