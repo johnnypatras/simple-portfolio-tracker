@@ -13,7 +13,7 @@ import {
   validateUUID,
   validateQuantity,
   validateAmount,
-  validateBaseCurrency,
+  validateCurrency,
   validatePastOrTodayDate,
 } from "@/lib/validation";
 import { round2 } from "@/lib/format";
@@ -89,18 +89,20 @@ export async function addTransaction(
     }
     if (params.cost != null) {
       validateAmount(params.cost.amount, "Cost");
-      validateBaseCurrency(params.cost.currency, "Cost currency");
+      validateCurrency(params.cost.currency);
     }
 
     const isYield = params.type === "yield";
 
     // ── Single-currency cost → dual-currency override (case-16 FX) ────────
     // toUsdAndEur calls getFXRates, which THROWS on FX failure — a bad rate
-    // never silently writes a wrong cost. The user's typed currency is stored
-    // EXACTLY (preserving all decimals); only the cross-currency derived leg
-    // is rounded to 2 dp (round2 keeps the derived currency clean money, no
-    // float dust). Yield carries no override (cost 0).
+    // never silently writes a wrong cost. An EUR/USD-typed cost is stored
+    // EXACTLY (preserving all decimals) with only the cross-currency derived
+    // leg rounded to 2 dp; any other ISO has no stored leg of its own, so BOTH
+    // legs are derived + round2'd (the typed number survives in original_*).
+    // Yield carries no override (cost 0).
     let cashflowOverride: UsdEurAmount | undefined;
+    let costOriginal: { amount: number; currency: string } | undefined;
     if (params.cost != null && !isYield) {
       const derived = await toUsdAndEur(
         params.cost.amount,
@@ -110,7 +112,11 @@ export async function addTransaction(
       cashflowOverride =
         params.cost.currency === "EUR"
           ? { eur: params.cost.amount, usd: round2(derived.usd) }
-          : { usd: params.cost.amount, eur: round2(derived.eur) };
+          : params.cost.currency === "USD"
+            ? { usd: params.cost.amount, eur: round2(derived.eur) }
+            : { usd: round2(derived.usd), eur: round2(derived.eur) };
+      // The literal (magnitude, ISO) the user typed — reference metadata only.
+      costOriginal = { amount: params.cost.amount, currency: params.cost.currency };
     }
 
     if (assetRef.class === "crypto") {
@@ -151,6 +157,7 @@ export async function addTransaction(
           currentPriceUsd: params.currentPriceUsd,
           currentPriceEur: params.currentPriceEur,
           cashflowOverride,
+          original: costOriginal,
           isAdjustment: params.isAdjustment,
           isYield,
           effectiveDate: params.effectiveDate,
@@ -198,6 +205,7 @@ export async function addTransaction(
           currentPriceNative,
           assetCurrency,
           cashflowOverride,
+          original: costOriginal,
           isAdjustment: params.isAdjustment,
           isYield,
           effectiveDate: params.effectiveDate,
@@ -284,7 +292,7 @@ export async function addNewAssetTransaction(
     }
     if (input.cost != null) {
       validateAmount(input.cost.amount, "Cost");
-      validateBaseCurrency(input.cost.currency, "Cost currency");
+      validateCurrency(input.cost.currency);
     }
     if (input.assetClass === "crypto" && !input.newCryptoAsset) {
       throw new Error("newCryptoAsset is required for a crypto buy");
@@ -501,7 +509,7 @@ export async function editTransaction(
     validateUUID(entryId, "Entry ID");
     if (patch.cost != null) {
       validateAmount(patch.cost.amount, "Cost");
-      validateBaseCurrency(patch.cost.currency, "Cost currency");
+      validateCurrency(patch.cost.currency);
     }
     if (patch.effectiveDate != null) {
       validatePastOrTodayDate(patch.effectiveDate, "Date");
@@ -568,6 +576,8 @@ export async function editTransaction(
       cashflow_status?: FlowStatus | null;
       cashflow_asset_class?: string | null;
       cashflow_user_set?: boolean;
+      original_amount?: number;
+      original_currency?: string;
     } = {};
 
     if (patch.effectiveDate !== undefined) {
@@ -589,13 +599,23 @@ export async function editTransaction(
         patch.cost.currency,
         fxDate,
       );
-      // Preserve the typed leg verbatim (all decimals); round only the derived
-      // cross-currency leg to clean money (round2 — no float dust). This is a
+      // Preserve an EUR/USD-typed leg verbatim (all decimals); round only the
+      // derived cross-currency leg to clean money (round2 — no float dust). Any
+      // other ISO has no stored leg of its own — BOTH legs are derived +
+      // round2'd (the typed number survives in original_*). This is a
       // MAGNITUDE — the sign is applied below from the row's own direction.
       const magnitude: UsdEurAmount =
         patch.cost.currency === "EUR"
           ? { eur: patch.cost.amount, usd: round2(derived.usd) }
-          : { usd: patch.cost.amount, eur: round2(derived.eur) };
+          : patch.cost.currency === "USD"
+            ? { usd: patch.cost.amount, eur: round2(derived.eur) }
+            : { usd: round2(derived.usd), eur: round2(derived.eur) };
+
+      // Original-currency stamp (reference metadata, orthogonal to the
+      // cashflow/delta never-both rule below): the literal (magnitude, ISO)
+      // the user typed. Re-stamped on every cost edit; never signed.
+      updatePayload.original_amount = patch.cost.amount;
+      updatePayload.original_currency = patch.cost.currency;
 
       // THE SIGN CONTRACT: keep the row's existing direction. Precedence:
       //   1. quantityDelta(row) sign (the operation — disposal − / acquisition +).

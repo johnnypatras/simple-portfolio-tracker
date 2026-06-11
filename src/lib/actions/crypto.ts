@@ -13,7 +13,7 @@ import type {
 import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
 import { partialUpdate } from "@/lib/partial-update";
-import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy, validateAmount, validateBaseCurrency } from "@/lib/validation";
+import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy, validateAmount, validateCurrency } from "@/lib/validation";
 import { round2 } from "@/lib/format";
 import { computeActivityFx, emptyFx } from "@/lib/activity-fx";
 import { captureAction } from "@/lib/actions/with-sentry";
@@ -295,15 +295,16 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   effectiveDate?: string;
   cashflowOverride?: UsdEurAmount;
   /**
-   * Single-currency cost the user typed (incl. fees) — the position cost spine.
-   * When present AND no `cashflowOverride` was already given, the other currency
-   * is derived here via FX-at-date (`toUsdAndEur`, which THROWS on FX failure so
-   * a bad rate never silently writes a wrong cost) and the resulting { usd, eur }
-   * pair becomes the `cashflowOverride`. The user's typed currency is stored
-   * EXACTLY; only the derived leg is round2'd. EXACTLY the upsertStockPosition /
-   * addTransaction pattern. Ignored for yield (cost 0).
+   * Single-currency cost the user typed (incl. fees) — the position cost spine,
+   * any ISO-4217 currency. When present AND no `cashflowOverride` was already
+   * given, the stored { usd, eur } pair is derived here via FX-at-date
+   * (`toUsdAndEur`, which THROWS on FX failure so a bad rate never silently
+   * writes a wrong cost) and becomes the `cashflowOverride`: an EUR/USD-typed
+   * leg is stored EXACTLY with only the derived sibling round2'd; any other ISO
+   * derives BOTH legs (the typed number survives in original_*). EXACTLY the
+   * upsertStockPosition / addTransaction pattern. Ignored for yield (cost 0).
    */
-  cost?: { amount: number; currency: "EUR" | "USD" } | null;
+  cost?: { amount: number; currency: string } | null;
   isYield?: boolean;
   /** User-entered (or account-resolved) original of this money event. Omitted/null = market-derived (no user input). */
   original?: { amount: number; currency: string } | null;
@@ -329,12 +330,14 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   // Only when a cost was supplied, no explicit cashflowOverride was already given
   // (the override wins — it carries both currencies verbatim), and this is not a
   // yield (yield has no cost). toUsdAndEur calls getFXRates, which THROWS on FX
-  // failure — a bad rate never silently writes a wrong cost. The typed currency is
-  // stored verbatim; only the cross-currency derived leg is round2'd.
+  // failure — a bad rate never silently writes a wrong cost. An EUR/USD-typed
+  // cost is stored verbatim with only the cross-currency derived leg round2'd;
+  // any other ISO derives BOTH legs (the typed number survives in original_*).
   let cashflowOverride = opts?.cashflowOverride;
+  let original = opts?.original;
   if (opts?.cost != null && cashflowOverride == null && !opts?.isYield) {
     validateAmount(opts.cost.amount, "Cost");
-    validateBaseCurrency(opts.cost.currency, "Cost currency");
+    validateCurrency(opts.cost.currency);
     const derived = await toUsdAndEur(
       opts.cost.amount,
       opts.cost.currency,
@@ -343,7 +346,12 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
     cashflowOverride =
       opts.cost.currency === "EUR"
         ? { eur: opts.cost.amount, usd: round2(derived.usd) }
-        : { usd: opts.cost.amount, eur: round2(derived.eur) };
+        : opts.cost.currency === "USD"
+          ? { usd: opts.cost.amount, eur: round2(derived.eur) }
+          : { usd: round2(derived.usd), eur: round2(derived.eur) };
+    // A consumed cost IS the user-entered original — stamp it unless the
+    // caller already resolved one (an explicit opts.original wins).
+    original ??= { amount: opts.cost.amount, currency: opts.cost.currency };
   }
 
   // Fetch asset ticker and subcategory for logging and cashflow classification
@@ -423,7 +431,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
         cashflow_user_set: fx.cashflowUserSet,
         transfer_group_id: opts?.transferGroupId,
         effective_date: opts?.effectiveDate,
-        original: opts?.original,
+        original,
       });
     }
   } else {
@@ -543,7 +551,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       cashflow_user_set: fx.cashflowUserSet,
       transfer_group_id: opts?.transferGroupId,
       effective_date: opts?.effectiveDate,
-      original: opts?.original,
+      original,
     });
   }
 

@@ -749,13 +749,15 @@ export interface SplitLeg {
   effective_date: string;
   quantity: number;
   /**
-   * Optional real cost the user paid for THIS leg (DCA). When present, the
-   * child's `cashflow_amount_*` is set to this amount (the cross-currency leg
-   * derived via FX-at-`effective_date`) and `cashflow_user_set=true`. Absent →
-   * the leg falls back to the proportional split of the parent's amounts.
-   * Legs are always positive; cost is always a positive magnitude.
+   * Optional real cost the user paid for THIS leg (DCA), in ANY ISO-4217
+   * currency. When present, the child's `cashflow_amount_*` is set to this
+   * amount (EUR/USD-typed → that leg verbatim + sibling derived; other ISO →
+   * BOTH legs derived via FX-at-`effective_date`) and `cashflow_user_set=true`;
+   * the typed (amount, currency) is stamped as the child's `original_*`.
+   * Absent → the leg falls back to the proportional split of the parent's
+   * amounts. Legs are always positive; cost is always a positive magnitude.
    */
-  cost?: { amount: number; currency: CostCurrency };
+  cost?: { amount: number; currency: string };
 }
 
 // ── Transaction action shapes ──
@@ -774,16 +776,18 @@ export interface AddTransactionParams {
   /** Units TRANSACTED (a positive delta). For cash this IS the cash amount. */
   quantity: number;
   /**
-   * Single-currency cost the user typed (incl. fees) — a MAGNITUDE. When
-   * present, the other currency is derived via FX-at-date (`toUsdAndEur`, which
-   * THROWS on FX failure so a bad rate never silently writes a wrong cost) and
-   * the pair is stored (`cashflow_user_set=true`), bypassing qty × price. The
-   * stored SIGN comes from the transaction TYPE (buy/deposit/yield → +,
-   * sell/withdrawal → −), applied at the signing locus in @/lib/activity-fx —
-   * never from the amount itself. Absent → market-value fallback
-   * (`cashflow_user_set=false`).
+   * Single-currency cost the user typed (incl. fees) — a MAGNITUDE, in ANY
+   * ISO-4217 currency. When present, the stored EUR+USD pair is derived via
+   * FX-at-date (`toUsdAndEur`, which THROWS on FX failure so a bad rate never
+   * silently writes a wrong cost): an EUR/USD-typed leg is stored verbatim with
+   * the sibling derived; any other ISO derives BOTH legs. The pair is stored
+   * (`cashflow_user_set=true`), bypassing qty × price, and the typed
+   * (amount, currency) is stamped as the row's `original_*`. The stored SIGN
+   * comes from the transaction TYPE (buy/deposit/yield → +, sell/withdrawal →
+   * −), applied at the signing locus in @/lib/activity-fx — never from the
+   * amount itself. Absent → market-value fallback (`cashflow_user_set=false`).
    */
-  cost?: { amount: number; currency: CostCurrency } | null;
+  cost?: { amount: number; currency: string } | null;
   /** Effective date (YYYY-MM-DD). Absent → today. */
   effectiveDate?: string;
   isAdjustment?: boolean;
@@ -828,8 +832,8 @@ export interface NewAssetBuyInput {
   walletType?: WalletType;
   /** Units transacted (a positive delta). */
   quantity: number;
-  /** Actual amount paid incl. fees (a MAGNITUDE). Absent → market-value fallback. */
-  cost?: { amount: number; currency: CostCurrency } | null;
+  /** Actual amount paid incl. fees (a MAGNITUDE, any ISO-4217 currency). Absent → market-value fallback. */
+  cost?: { amount: number; currency: string } | null;
   /** Effective date (YYYY-MM-DD). Absent → today. */
   effectiveDate?: string;
   /** Crypto-only position metadata, set ONLY on a new-asset first buy (not an owned buy-more). */
@@ -881,14 +885,16 @@ export interface EditTransactionPatch {
    */
   effectiveDate?: string | null;
   /**
-   * New single-currency cost the user typed (incl. fees). When present, the
-   * other currency is derived via FX-at-the-entry's-date (`toUsdAndEur`, which
-   * THROWS on FX failure so a bad rate never silently writes a wrong cost) and
-   * the row's amount columns are rewritten. Pass null (or omit) to leave the
-   * amount untouched. `is_yield` is NOT toggled here — that goes through the
-   * separate guarded `markAsYield` action.
+   * New single-currency cost the user typed (incl. fees), in ANY ISO-4217
+   * currency. When present, the stored EUR+USD pair is derived via
+   * FX-at-the-entry's-date (`toUsdAndEur`, which THROWS on FX failure so a bad
+   * rate never silently writes a wrong cost): an EUR/USD-typed leg is stored
+   * verbatim with the sibling derived; any other ISO derives BOTH legs. The
+   * row's amount columns are rewritten and `original_*` re-stamped. Pass null
+   * (or omit) to leave the amount untouched. `is_yield` is NOT toggled here —
+   * that goes through the separate guarded `markAsYield` action.
    */
-  cost?: { amount: number; currency: CostCurrency } | null;
+  cost?: { amount: number; currency: string } | null;
 }
 
 export interface EditTransactionResult {

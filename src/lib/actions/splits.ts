@@ -2,7 +2,7 @@
 
 import { revalidateDashboard } from "@/lib/actions/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { validateUUID, validateAmount, validateBaseCurrency } from "@/lib/validation";
+import { validateUUID, validateAmount, validateCurrency } from "@/lib/validation";
 import { isValidPastOrTodayDate, extractQuantity, splitDirectionForParent } from "@/lib/split-helpers";
 import type { ActivityLog, EntityType, SplitLeg } from "@/lib/types";
 import { round2 } from "@/lib/format";
@@ -205,7 +205,7 @@ export async function splitActivityEntry(
         return { success: false, message: "Cannot set a per-leg cost on an adjustment split" };
       }
       validateAmount(leg.cost.amount, "Cost");
-      validateBaseCurrency(leg.cost.currency, "Cost currency");
+      validateCurrency(leg.cost.currency);
     }
   }
 
@@ -228,9 +228,10 @@ export async function splitActivityEntry(
 
   // ── Per-leg cost overrides (DCA) ──
   // Resolve the dual-currency cost for each leg that carries an explicit cost
-  // BEFORE the synchronous distribution pass. The user's typed currency is
-  // stored EXACTLY (all decimals preserved); only the cross-currency derived
-  // leg is round2'd — the addTransaction case-16 pattern. toUsdAndEur THROWS on
+  // BEFORE the synchronous distribution pass. An EUR/USD-typed cost is stored
+  // EXACTLY (all decimals preserved) with only the cross-currency derived leg
+  // round2'd; any other ISO derives BOTH legs (the typed number survives in
+  // the child's original_*) — the addTransaction pattern. toUsdAndEur THROWS on
   // FX failure (never silently writes a 1:1 rate); captureAction surfaces it.
   // Cost-bearing legs are EXCLUDED from the proportional pool below.
   const legCostOverrides = new Array<{ usd: number; eur: number } | null>(legs.length).fill(null);
@@ -241,7 +242,9 @@ export async function splitActivityEntry(
     legCostOverrides[i] =
       cost.currency === "EUR"
         ? { eur: cost.amount, usd: round2(derived.usd) }
-        : { usd: cost.amount, eur: round2(derived.eur) };
+        : cost.currency === "USD"
+          ? { usd: cost.amount, eur: round2(derived.eur) }
+          : { usd: round2(derived.usd), eur: round2(derived.eur) };
   }
 
   // The proportional remainder ("last child absorbs the rounding penny") is
@@ -373,6 +376,11 @@ export async function splitActivityEntry(
       cashflow_amount_eur: childCashflowEur,
       cashflow_asset_class: isAdj ? null : parent.cashflow_asset_class,
       cashflow_status: isAdj ? null : "complete",
+      // Original-currency stamp (reference metadata): a costed leg records the
+      // literal (magnitude, ISO) the user typed; a proportional no-cost leg
+      // carries no user-entered original → NULL.
+      original_amount: leg.cost?.amount ?? null,
+      original_currency: leg.cost?.currency ?? null,
       before_snapshot: null,
       after_snapshot: null,
     });

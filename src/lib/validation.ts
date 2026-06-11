@@ -29,13 +29,12 @@ export function validateCurrency(s: string): void {
 }
 
 /**
- * Narrow a string to {@link CostCurrency} (EUR or USD). Assertion-style on
- * purpose: a COST is stored as a dual EUR+USD pair, so a third currency has no
- * column to land in — the `else` branch at every cost write would silently file
- * the raw magnitude under the USD column. Use this at the boundary of any cost
- * write (server actions are direct POST endpoints, so a crafted body can carry
- * `currency: "GBP"`). Distinct from {@link validateCurrency}, which accepts ANY
- * 3-letter ISO code (asset trading currencies legitimately span GBP/CHF/etc.).
+ * Narrow a string to {@link CostCurrency} (EUR or USD), assertion-style.
+ * Since the 2026-06-11 currency-uniform fix the COST boundaries accept ANY
+ * ISO code via {@link validateCurrency} (a non-EUR/USD cost derives BOTH
+ * stored legs and keeps the typed original in `original_*`), so this is no
+ * longer the cost-write gate. Retained for boundaries that are genuinely
+ * EUR/USD-only by design (e.g. profile/display-currency inputs).
  */
 export function validateBaseCurrency(s: string, label = "Currency"): asserts s is CostCurrency {
   if (s !== "EUR" && s !== "USD") throw new Error(`${label} must be EUR or USD`);
