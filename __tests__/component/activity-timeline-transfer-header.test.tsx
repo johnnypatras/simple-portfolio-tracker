@@ -65,6 +65,8 @@ function makeLog(overrides: Partial<ActivityLog> = {}): ActivityLog {
     delta_status: null,
     cashflow_attempted_at: null,
     delta_attempted_at: null,
+    original_amount: null,
+    original_currency: null,
     // All in the same calendar day so they group together under one date header.
     created_at: "2026-05-15T10:00:00Z",
     ...overrides,

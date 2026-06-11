@@ -677,6 +677,10 @@ export interface ActivityLog {
   delta_status: FlowStatus;
   cashflow_attempted_at: string | null;
   delta_attempted_at: string | null;
+  /** Magnitude the user transacted, in original_currency. Reference metadata only — all math reads the EUR/USD columns. NULL = market-derived or pre-feature row. */
+  original_amount: number | null;
+  /** ISO-4217 code the user transacted in. */
+  original_currency: string | null;
   created_at: string;
   effective_date?: string | null;
   split_from_id?: string | null;

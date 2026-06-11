@@ -61,6 +61,8 @@ export type Database = {
           id: string
           is_adjustment: boolean
           is_yield: boolean
+          original_amount: number | null
+          original_currency: string | null
           split_from_id: string | null
           transfer_group_id: string | null
           undone_at: string | null
@@ -92,6 +94,8 @@ export type Database = {
           id?: string
           is_adjustment?: boolean
           is_yield?: boolean
+          original_amount?: number | null
+          original_currency?: string | null
           split_from_id?: string | null
           transfer_group_id?: string | null
           undone_at?: string | null
@@ -123,6 +127,8 @@ export type Database = {
           id?: string
           is_adjustment?: boolean
           is_yield?: boolean
+          original_amount?: number | null
+          original_currency?: string | null
           split_from_id?: string | null
           transfer_group_id?: string | null
           undone_at?: string | null

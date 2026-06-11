@@ -76,6 +76,8 @@ function makeActivityLog(overrides: Partial<ActivityLog> = {}): ActivityLog {
     delta_status: null,
     cashflow_attempted_at: null,
     delta_attempted_at: null,
+    original_amount: null,
+    original_currency: null,
     created_at: "2026-03-18T10:00:00Z",
     ...overrides,
   };

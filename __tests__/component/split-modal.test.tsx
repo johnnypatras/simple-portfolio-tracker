@@ -41,6 +41,8 @@ function makeEntry(overrides: Partial<ActivityLog> = {}): ActivityLog {
     delta_status: null,
     cashflow_attempted_at: null,
     delta_attempted_at: null,
+    original_amount: null,
+    original_currency: null,
     created_at: "2026-01-10T12:00:00Z",
     effective_date: null,
     split_from_id: null,
