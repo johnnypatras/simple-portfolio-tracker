@@ -1,12 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MONEY_FLOW_COPY } from "@/lib/cost-basis-copy";
 
 export interface CurrencyAmountValue {
   /** Raw input string (caller parses — matches the app's existing amountStr pattern). */
   amountStr: string;
-  /** ISO-4217 code, uppercase. */
+  /**
+   * ISO-4217 code, uppercase. May be "" only pre-initialization: the UI then
+   * displays `defaultCurrency` as a fallback, but typing an amount never
+   * backfills it — callers must seed `currency` (typically `defaultCurrency`
+   * or `lockedCurrency`) before submit; the server's `validateCurrency`
+   * rejects "" loudly.
+   */
   currency: string;
 }
 
@@ -15,11 +21,20 @@ export interface CurrencyAmountInputProps {
   label: string;
   value: CurrencyAmountValue;
   onChange: (v: CurrencyAmountValue) => void;
-  /** Currency to show when value.currency is empty; also first in the shortlist. */
+  /**
+   * Currency to show when value.currency is empty; also first in the shortlist.
+   * Display-only fallback — it is never emitted on its own: callers must seed
+   * `value.currency` before submit (see CurrencyAmountValue.currency).
+   */
   defaultCurrency: string;
   /** Extra ISO codes for the shortlist (e.g. currencies already used in the portfolio). */
   contextCurrencies?: string[];
-  /** When set, the currency is fixed (e.g. a tracked account's currency): render a static code, no selector. */
+  /**
+   * When set, the currency is fixed (e.g. a tracked account's currency):
+   * render a static code, no selector; also forced into every onChange
+   * emission, so the emitted value is always self-consistent with what the
+   * user sees.
+   */
   lockedCurrency?: string;
   disabled?: boolean;
   /** Amount input placeholder. */
@@ -37,7 +52,8 @@ const OTHER_SENTINEL = "__other__";
  * Minimal majors fallback, used ONLY when `Intl.supportedValuesOf` is
  * unavailable (the API ships in Node 24 and all evergreen browsers, but an
  * exotic embedded runtime without it must not break currency entry — better
- * a reduced shortlist than a crash).
+ * a reduced accept set, where codes outside these majors are rejected as
+ * unknown, than a crash).
  */
 const FALLBACK_MAJORS = [
   "EUR", "USD", "GBP", "CHF", "JPY", "AUD", "CAD", "SEK", "NOK", "DKK",
@@ -58,6 +74,9 @@ function getIsoCurrencies(): ReadonlySet<string> {
   }
   return isoCurrencies;
 }
+
+const compactControlClasses =
+  "text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed";
 
 /**
  * Shared controlled amount + currency input — the single client surface for
@@ -86,6 +105,50 @@ export function CurrencyAmountInput({
   const [customStr, setCustomStr] = useState("");
   const [customError, setCustomError] = useState(false);
   const [extraCodes, setExtraCodes] = useState<string[]>([]);
+  const selectRef = useRef<HTMLSelectElement>(null);
+
+  function revertCustom() {
+    setCustomMode(false);
+    setCustomStr("");
+    setCustomError(false);
+  }
+
+  function commitCustom() {
+    const code = customStr.trim().toUpperCase();
+    if (code === "") {
+      revertCustom();
+      return;
+    }
+    if (!getIsoCurrencies().has(code)) {
+      setCustomError(true);
+      return;
+    }
+    setExtraCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
+    onChange({ ...value, currency: code });
+    revertCustom();
+  }
+
+  // A lock arriving while Other… entry is open unmounts the selector UI —
+  // drop the draft/error so they can't resurface stale after a later unlock.
+  // Render-time "adjust state when a prop changes" (same prev-tracking shape
+  // as crypto-table's prevPending).
+  const [prevLocked, setPrevLocked] = useState(lockedCurrency);
+  if (lockedCurrency !== prevLocked) {
+    setPrevLocked(lockedCurrency);
+    if (lockedCurrency && (customMode || customError)) revertCustom();
+  }
+
+  // Focus restore: when the Other… code input unmounts (Enter-commit, Escape,
+  // blank-blur revert) focus would drop to <body>; put it on the currency
+  // select instead. Fires only on the customMode true→false transition —
+  // never on initial mount — and the DOM focus call is the only side effect
+  // (no setState here).
+  const prevCustomModeRef = useRef(customMode);
+  useEffect(() => {
+    const wasCustom = prevCustomModeRef.current;
+    prevCustomModeRef.current = customMode;
+    if (wasCustom && !customMode) selectRef.current?.focus();
+  }, [customMode]);
 
   // Currency to display: the controlled value, or the default while empty.
   const effectiveCurrency = (value.currency || defaultCurrency).toUpperCase();
@@ -114,29 +177,12 @@ export function CurrencyAmountInput({
     return out;
   }, [defaultCurrency, contextCurrencies, extraCodes, effectiveCurrency]);
 
-  function revertCustom() {
-    setCustomMode(false);
-    setCustomStr("");
-    setCustomError(false);
-  }
-
-  function commitCustom() {
-    const code = customStr.trim().toUpperCase();
-    if (code === "") {
-      revertCustom();
-      return;
-    }
-    if (!getIsoCurrencies().has(code)) {
-      setCustomError(true);
-      return;
-    }
-    setExtraCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
-    onChange({ ...value, currency: code });
-    revertCustom();
-  }
-
-  const compactControlClasses =
-    "text-xs bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed";
+  // The amount input is described by the hint and, when present, the currency
+  // error — composed so screen readers announce both.
+  const amountDescribedBy =
+    [hint ? `${id}-hint` : null, customError ? `${id}-currency-error` : null]
+      .filter(Boolean)
+      .join(" ") || undefined;
 
   return (
     <div>
@@ -159,7 +205,7 @@ export function CurrencyAmountInput({
             maxLength={3}
             autoFocus
             disabled={disabled}
-            aria-label="Currency code"
+            aria-label={`${label} currency code`}
             aria-invalid={customError}
             aria-describedby={customError ? `${id}-currency-error` : undefined}
             onChange={(e) => {
@@ -172,6 +218,9 @@ export function CurrencyAmountInput({
                 e.preventDefault(); // keep the enclosing form from submitting
                 commitCustom();
               } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation(); // React tree + non-document roots (jsdom tests)
+                e.nativeEvent.stopImmediatePropagation(); // same-node document listeners under App Router (Modal close + focus-trap escapeDeactivates)
                 revertCustom();
               }
             }}
@@ -179,10 +228,11 @@ export function CurrencyAmountInput({
           />
         ) : (
           <select
+            ref={selectRef}
             id={`${id}-currency`}
             value={effectiveCurrency}
             disabled={disabled}
-            aria-label="Amount currency"
+            aria-label={`${label} currency`}
             onChange={(e) => {
               if (e.target.value === OTHER_SENTINEL) {
                 setCustomMode(true);
@@ -206,10 +256,17 @@ export function CurrencyAmountInput({
         type="text"
         inputMode="decimal"
         value={value.amountStr}
-        onChange={(e) => onChange({ ...value, amountStr: e.target.value })}
+        onChange={(e) =>
+          onChange({
+            ...value,
+            amountStr: e.target.value,
+            currency: lockedCurrency ?? value.currency,
+          })
+        }
         onBlur={onBlur}
         placeholder={placeholder}
         disabled={disabled}
+        aria-describedby={amountDescribedBy}
         className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed"
       />
       {customError && (
@@ -221,7 +278,11 @@ export function CurrencyAmountInput({
           Unknown currency code
         </p>
       )}
-      {hint && <p className="text-xs text-zinc-400 mt-1">{hint}</p>}
+      {hint && (
+        <p id={`${id}-hint`} className="text-xs text-zinc-400 mt-1">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
