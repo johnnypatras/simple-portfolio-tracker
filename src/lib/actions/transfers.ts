@@ -18,8 +18,11 @@ import type {
   TransferInput,
   TransferResult,
   TransferSide,
+  UsdEurAmount,
 } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { toUsdAndEur } from "@/lib/actions/activity-log";
+import { round2 } from "@/lib/format";
 import {
   validateAmount,
   validateCurrency,
@@ -58,13 +61,20 @@ interface TransferPrices {
 }
 
 /**
- * Cost override for the POSITION leg of a buy/sell conversion: the cash side's
- * {amount, currency}. The position primitive FX-converts it at `effectiveDate`
- * and signs it by the qty delta, so the leg's delta = amount paid (buy) /
- * received (sell) instead of market. Currency is narrowed to the cost spine's
- * EUR/USD; an exotic-currency cash account leaves this undefined → market.
+ * Pre-converted cost for the POSITION leg of a buy/sell conversion. The cash
+ * side's amount — ANY ISO currency — is converted ONCE in `executeTransfer`
+ * (before either leg writes) to the dual `{usd, eur}` the primitives'
+ * `cashflowOverride` channel consumes verbatim (override-wins, no
+ * re-conversion inside); the primitive signs it by the qty delta, so the
+ * leg's delta = amount paid (buy) / received (sell) instead of market.
+ * `original` carries the account-resolved face {amount, currency} for the
+ * activity row's `original_*` stamp — the primitives auto-stamp only on the
+ * single-currency `cost` channel, which transfers no longer use.
  */
-type ConversionCost = { amount: number; currency: "EUR" | "USD" };
+interface ConversionCost {
+  override: UsdEurAmount;
+  original: { amount: number; currency: string };
+}
 
 // ─── Main Transfer Action ────────────────────────────────────
 
@@ -204,12 +214,12 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
 
     // ── Conversion cost (buy/sell only): value the POSITION leg from the
     // counterparty CASH amount, not market. The cash side is the SOURCE for a
-    // buy, the DESTINATION for a sell. We read that account's currency and let
-    // `conversionLegCost` build the {amount, currency} override; the position
-    // primitive FX-converts it at effectiveDate and signs it by the qty delta.
+    // buy, the DESTINATION for a sell. We read that account's currency, let
+    // `conversionLegCost` build the {amount, currency}, and convert it HERE —
+    // once, BEFORE either leg writes — to the dual {usd, eur} override the
+    // position primitive consumes verbatim and signs by the qty delta.
     // `move` returns null → legs keep market. A single-legged buy (no cash
-    // source) also yields null. Currency must be EUR/USD (the cost spine); an
-    // exotic-currency cash account falls back to market (unchanged behaviour).
+    // source) also yields null.
     const cashSide: TransferSide | undefined =
       input.mode === "buy" ? currentSource
       : input.mode === "sell" ? destination
@@ -234,11 +244,35 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     }
     const rawConvCost =
       cashSide && cashCurrency ? conversionLegCost(input.mode, cashSide, cashCurrency) : null;
-    // Narrow to the EUR/USD cost spine; exotic currency → undefined → market.
-    const convCost: ConversionCost | undefined =
-      rawConvCost && (rawConvCost.currency === "EUR" || rawConvCost.currency === "USD")
-        ? { amount: rawConvCost.amount, currency: rawConvCost.currency }
-        : undefined;
+    // Convert the cash amount up front — ANY ISO currency books its REAL
+    // converted value (the former EUR/USD narrowing silently fell back to
+    // market, corrupting the asset's cost-basis P&L for foreign-funded
+    // buys/sells). `toUsdAndEur` THROWS on FX failure, and no leg has written
+    // yet, so a bad rate aborts the whole transfer cleanly (setup entities are
+    // cleaned up by the catch) — never a half-transfer. An EUR/USD-typed
+    // amount keeps that leg verbatim with only the derived sibling round2'd;
+    // any other ISO derives BOTH legs (the face amount survives in
+    // `original_*`) — the exact shape of the primitives' cost channel.
+    let convCost: ConversionCost | undefined;
+    if (rawConvCost) {
+      // Amounts were shape-validated up top; the currency comes from the
+      // account row — re-validate it before it reaches FX + original_currency.
+      validateCurrency(rawConvCost.currency);
+      const derived = await toUsdAndEur(
+        rawConvCost.amount,
+        rawConvCost.currency,
+        input.effectiveDate,
+      );
+      convCost = {
+        override:
+          rawConvCost.currency === "EUR"
+            ? { eur: rawConvCost.amount, usd: round2(derived.usd) }
+            : rawConvCost.currency === "USD"
+              ? { usd: rawConvCost.amount, eur: round2(derived.eur) }
+              : { usd: round2(derived.usd), eur: round2(derived.eur) },
+        original: { amount: rawConvCost.amount, currency: rawConvCost.currency },
+      };
+    }
 
     if (currentSource && originalState && transferGroupId) {
       // For a sell, the position is the SOURCE → pass convCost there. For a buy,
@@ -496,7 +530,13 @@ async function executeSourceLeg(
         // Sell: book proceeds = cash received (the position primitive signs it by
         // the qty delta → disposal = −). Move: no cost → keep market valuation.
         cost
-          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          ? {
+              isAdjustment: true,
+              transferGroupId,
+              cashflowOverride: cost.override,
+              original: cost.original,
+              effectiveDate,
+            }
           : {
               isAdjustment: true,
               transferGroupId,
@@ -517,7 +557,13 @@ async function executeSourceLeg(
           quantity: newQty,
         },
         cost
-          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          ? {
+              isAdjustment: true,
+              transferGroupId,
+              cashflowOverride: cost.override,
+              original: cost.original,
+              effectiveDate,
+            }
           : {
               isAdjustment: true,
               transferGroupId,
@@ -580,7 +626,13 @@ async function executeDestLeg(
         // Buy: book cost = cash paid (the position primitive signs it by the
         // qty delta → acquisition = +). Move: no cost → keep market valuation.
         cost
-          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          ? {
+              isAdjustment: true,
+              transferGroupId,
+              cashflowOverride: cost.override,
+              original: cost.original,
+              effectiveDate,
+            }
           : {
               isAdjustment: true,
               transferGroupId,
@@ -607,7 +659,13 @@ async function executeDestLeg(
           quantity: currentQty + destination.quantity,
         },
         cost
-          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          ? {
+              isAdjustment: true,
+              transferGroupId,
+              cashflowOverride: cost.override,
+              original: cost.original,
+              effectiveDate,
+            }
           : {
               isAdjustment: true,
               transferGroupId,
@@ -659,7 +717,13 @@ async function rollbackSource(
         // Restore qty: the primitive signs the cost by the qty delta (+ here, the
         // inverse of the sell's − disposal), netting the audit trail to zero.
         cost
-          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          ? {
+              isAdjustment: true,
+              transferGroupId,
+              cashflowOverride: cost.override,
+              original: cost.original,
+              effectiveDate,
+            }
           : {
               isAdjustment: true,
               transferGroupId,
@@ -679,7 +743,13 @@ async function rollbackSource(
           quantity: originalState.quantity,
         },
         cost
-          ? { isAdjustment: true, transferGroupId, cost, effectiveDate }
+          ? {
+              isAdjustment: true,
+              transferGroupId,
+              cashflowOverride: cost.override,
+              original: cost.original,
+              effectiveDate,
+            }
           : {
               isAdjustment: true,
               transferGroupId,
