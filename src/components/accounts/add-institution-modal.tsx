@@ -9,6 +9,7 @@ import { createCashAccount } from "@/lib/actions/cash-accounts";
 import { findOrCreateInstitution } from "@/lib/actions/institutions";
 import type { PrivacyLabel } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, serializeChains } from "@/lib/types";
+import { CurrencyCodeSelect } from "@/components/ui/currency-amount-input";
 
 interface AddInstitutionModalProps {
   open: boolean;
@@ -271,15 +272,14 @@ export function AddInstitutionModal({ open, onClose }: AddInstitutionModalProps)
                 <label htmlFor={`${id}-bank-currency`} className="block text-xs text-zinc-400 mb-1">
                   Currency
                 </label>
-                <select
+                {/* Cash accounts are free-ISO — shared any-ISO picker, not EUR/USD-only. */}
+                <CurrencyCodeSelect
                   id={`${id}-bank-currency`}
-                  value={bankCurrency}
-                  onChange={(e) => setBankCurrency(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-                >
-                  <option value="EUR">EUR</option>
-                  <option value="USD">USD</option>
-                </select>
+                  labelBase="Bank account"
+                  currency={bankCurrency}
+                  onCurrencyChange={setBankCurrency}
+                  defaultCurrency="EUR"
+                />
               </div>
             </div>
           </div>

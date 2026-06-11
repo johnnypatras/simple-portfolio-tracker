@@ -11,6 +11,7 @@ import { findOrCreateInstitution } from "@/lib/actions/institutions";
 import type { CashAccount, CashAccountCreateInput, CashAccountUpdateInput, Institution } from "@/lib/types";
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
+import { CurrencyCodeSelect } from "@/components/ui/currency-amount-input";
 
 /** Sentinel <option> value for the "create a new bank" choice in the bank picker. */
 const NEW_BANK = "__new_bank__";
@@ -51,6 +52,9 @@ export function CashAccountModal({
   // Form state
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState<string>("EUR");
+  // Edit mode shows the stored currency read-only; the "Change" affordance
+  // reveals the full control for the rare deliberate currency change.
+  const [changingCurrency, setChangingCurrency] = useState(false);
   const [balance, setBalance] = useState("");
   const [apy, setApy] = useState("");
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
@@ -85,6 +89,7 @@ export function CashAccountModal({
     if (isOpen && cashAccount) {
       setName(cashAccount.name ?? "");
       setCurrency(cashAccount.currency);
+      setChangingCurrency(false);
       setBalance(cashAccount.balance.toString());
       setApy(cashAccount.apy.toString());
       setError(null);
@@ -95,6 +100,7 @@ export function CashAccountModal({
     } else if (isOpen) {
       setName("");
       setCurrency("EUR");
+      setChangingCurrency(false);
       setBalance("");
       setApy("");
       setError(null);
@@ -141,11 +147,17 @@ export function CashAccountModal({
       }
 
       if (isEditing) {
+        // OMIT `currency` unless the user opened the Change affordance AND
+        // actually picked a different code — updateCashAccount routes through
+        // partialUpdate, so an omitted key leaves the stored (free-ISO)
+        // currency untouched on ordinary balance/APY edits.
+        const currencyChanged =
+          changingCurrency && currency !== cashAccount.currency;
         const input: CashAccountUpdateInput = {
-          currency,
           balance: parsedBalance,
           apy: parsedApy,
           name: isBankOrigin ? name : undefined,
+          ...(currencyChanged ? { currency } : {}),
           // Only set institution when the picker resolved one (fixing an orphan).
           // A normal edit omits it so partialUpdate leaves the existing bank intact.
           ...(showInstitutionPicker ? { institution_id: resolvedInstitutionId } : {}),
@@ -251,21 +263,41 @@ export function CashAccountModal({
           </div>
         )}
 
-        {/* Currency + Balance */}
+        {/* Currency + Balance. The account currency is free-ISO (imports and
+            transfers create GBP/CHF/... accounts), so the control is the shared
+            any-ISO picker. Edit mode shows the stored code read-only with a
+            "Change" affordance — the payload then omits `currency` unless it
+            was deliberately changed, so a save can never rewrite it. */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-400 mb-1">
-              Currency
-            </label>
-            <select
-              id={`${id}-currency`}
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-            >
-              <option value="EUR">EUR</option>
-              <option value="USD">USD</option>
-            </select>
+            {isEditing && !changingCurrency ? (
+              <>
+                <span className="block text-xs text-zinc-400 mb-1">Currency</span>
+                <div className="flex items-baseline gap-2 py-2.5">
+                  <span className="text-sm text-zinc-100">{currency}</span>
+                  <button
+                    type="button"
+                    onClick={() => setChangingCurrency(true)}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    Change
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-400 mb-1">
+                  Currency
+                </label>
+                <CurrencyCodeSelect
+                  id={`${id}-currency`}
+                  labelBase="Account"
+                  currency={currency}
+                  onCurrencyChange={setCurrency}
+                  defaultCurrency="EUR"
+                />
+              </>
+            )}
           </div>
           <div>
             <label htmlFor={`${id}-balance`} className="block text-xs text-zinc-400 mb-1">

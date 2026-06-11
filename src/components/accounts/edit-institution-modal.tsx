@@ -9,6 +9,7 @@ import { updateWallet } from "@/lib/actions/wallets";
 import type { InstitutionWithRoles, Wallet, PrivacyLabel } from "@/lib/types";
 import { EVM_CHAINS, NON_EVM_CHAINS, isEvmChain, parseWalletChains, serializeChains } from "@/lib/types";
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
+import { CurrencyCodeSelect } from "@/components/ui/currency-amount-input";
 
 interface EditInstitutionModalProps {
   open: boolean;
@@ -83,7 +84,10 @@ export function EditInstitutionModal({
         wallet_chain: chainStr,
         also_broker: addBroker && !hasBroker,
         also_bank: addBank && !hasBank,
-        bank_currency: bankCurrency,
+        // bank_currency only qualifies the also_bank creation of a NEW sibling
+        // cash account — omit it otherwise so an existing bank's (free-ISO)
+        // currency can never be touched from this path.
+        ...(addBank && !hasBank ? { bank_currency: bankCurrency } : {}),
       });
 
       // Update existing wallet settings (type, privacy, chains)
@@ -398,15 +402,14 @@ export function EditInstitutionModal({
               <label htmlFor={`${id}-bank-currency`} className="block text-xs text-zinc-400 mb-1">
                 Currency
               </label>
-              <select
+              {/* Cash accounts are free-ISO — shared any-ISO picker, not EUR/USD-only. */}
+              <CurrencyCodeSelect
                 id={`${id}-bank-currency`}
-                value={bankCurrency}
-                onChange={(e) => setBankCurrency(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-              >
-                <option value="EUR">EUR</option>
-                <option value="USD">USD</option>
-              </select>
+                labelBase="Bank account"
+                currency={bankCurrency}
+                onCurrencyChange={setBankCurrency}
+                defaultCurrency="EUR"
+              />
             </div>
           </div>
         )}

@@ -149,3 +149,46 @@ describe("AddInstitutionModal — bank-only branch", () => {
     expect(input).toMatchObject({ name: "Premium Savings" });
   });
 });
+
+// ─── Bank currency: any ISO (was EUR/USD-only) ──────────────────────────────
+//
+// CashAccount.currency is free-ISO; the bank-currency field used to narrow it
+// to a hardcoded EUR/USD <select>. It now uses the shared CurrencyCodeSelect
+// (shortlist + Other… free entry).
+
+describe("AddInstitutionModal — bank currency widens beyond EUR/USD", () => {
+  beforeEach(() => {
+    findOrCreateInstitution.mockReset();
+    createCashAccount.mockReset();
+    createWallet.mockReset();
+    createBroker.mockReset();
+  });
+
+  it("defaults to EUR and accepts any ISO via Other… (NOK)", async () => {
+    findOrCreateInstitution.mockResolvedValue("inst-id-9");
+    createCashAccount.mockResolvedValue("ca-id-9");
+
+    render(<AddInstitutionModal open onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Institution Name"), {
+      target: { value: "Nordea" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Exchange/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Bank/i }));
+
+    const select = screen.getByRole("combobox", { name: "Bank account currency" });
+    expect(select).toHaveValue("EUR");
+    fireEvent.change(select, { target: { value: "__other__" } });
+    const codeInput = screen.getByLabelText("Bank account currency code");
+    fireEvent.change(codeInput, { target: { value: "NOK" } });
+    fireEvent.blur(codeInput);
+
+    fireEvent.click(screen.getByRole("button", { name: /Create Institution/i }));
+
+    await waitFor(() => {
+      expect(createCashAccount).toHaveBeenCalled();
+    });
+    const [input] = createCashAccount.mock.calls[0];
+    expect(input).toMatchObject({ currency: "NOK" });
+  });
+});

@@ -484,3 +484,99 @@ describe("CashAccountModal — bank picker (orphan fix)", () => {
     expect(vi.mocked(instActions.findOrCreateInstitution)).not.toHaveBeenCalled();
   });
 });
+
+// ─── Currency: any-ISO on create + no-rewrite on edit ──────────────────────
+//
+// Regression coverage for the currency-audit CRITICAL: `CashAccount.currency`
+// is free-ISO (imports and transfers create GBP/CHF accounts), but the modal
+// hardcoded an EUR/USD <select> — opening a GBP account displayed EUR and
+// saving REWROTE the real stored currency. Edit mode now shows the stored
+// code read-only with a deliberate "Change" affordance, and the payload omits
+// `currency` unless it was actually changed (updateCashAccount's partialUpdate
+// then leaves the column untouched).
+
+describe("CashAccountModal — currency (any-ISO + no-rewrite)", () => {
+  beforeEach(() => {
+    vi.mocked(cashActions.createCashAccount).mockReset();
+    vi.mocked(cashActions.updateCashAccount).mockReset();
+  });
+
+  it("edit shows the REAL stored ISO (GBP) and a balance-only save omits currency", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ currency: "GBP" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    // The stored code is displayed (read-only) — not an EUR-defaulted select.
+    expect(screen.getByText("GBP")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Account currency" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "2000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
+    const [, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
+    expect(input).toMatchObject({ balance: 2000 });
+    // THE regression: an ordinary edit must never carry a currency key.
+    expect(input).not.toHaveProperty("currency");
+  });
+
+  it("edit: Change → pick CHF via Other… → payload carries currency: 'CHF'", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ currency: "GBP" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    const select = screen.getByRole("combobox", { name: "Account currency" });
+    // Seeded from the account's real currency, not EUR.
+    expect(select).toHaveValue("GBP");
+
+    fireEvent.change(select, { target: { value: "__other__" } });
+    const codeInput = screen.getByLabelText("Account currency code");
+    fireEvent.change(codeInput, { target: { value: "CHF" } });
+    fireEvent.blur(codeInput);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
+    const [, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
+    expect(input).toMatchObject({ currency: "CHF" });
+  });
+
+  it("edit: Change opened but code left untouched → currency still omitted", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ currency: "GBP" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
+    const [, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
+    expect(input).not.toHaveProperty("currency");
+  });
+
+  it("create: defaults to EUR and accepts any ISO via Other… (SEK)", async () => {
+    vi.mocked(cashActions.createCashAccount).mockResolvedValue("new-id");
+    const { container } = render(
+      <CashAccountModal isOpen onClose={vi.fn()} institutionId="inst-1" institutionName="Revolut" />,
+    );
+
+    const select = screen.getByRole("combobox", { name: "Account currency" });
+    expect(select).toHaveValue("EUR");
+
+    fireEvent.change(select, { target: { value: "__other__" } });
+    const codeInput = screen.getByLabelText("Account currency code");
+    fireEvent.change(codeInput, { target: { value: "SEK" } });
+    fireEvent.blur(codeInput);
+
+    fireEvent.change(screen.getByLabelText("Account Name"), { target: { value: "Savings" } });
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText(/APY/), { target: { value: "0" } });
+    fireEvent.submit(container.querySelector("form")!);
+
+    await waitFor(() => expect(vi.mocked(cashActions.createCashAccount)).toHaveBeenCalled());
+    const [input] = vi.mocked(cashActions.createCashAccount).mock.calls[0];
+    expect(input).toMatchObject({ currency: "SEK" });
+  });
+});
