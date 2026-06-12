@@ -240,22 +240,32 @@ export function CashAccountModal({
     await performSave(isEditing ? false : isAdjustment);
   }
 
-  // ─── Intent step values (computed when step === "intent") ─────────────────
-  const parsedBalanceForIntent = parseFloat(balance);
-  const delta = isEditing && Number.isFinite(parsedBalanceForIntent)
-    ? parsedBalanceForIntent - cashAccount.balance
-    : 0;
+  // ─── Intent step values (computed only when step === "intent") ───────────
+  // Short-circuited here so approxDeltaValueEur / fmtCurrency are never
+  // called in create mode or when the form is still open — avoids spurious
+  // [fx] "No rate…" console warnings from a foreign currency with no rate.
+  const parsedBalanceForIntent = step === "intent" ? parseFloat(balance) : NaN;
+  const delta =
+    step === "intent" && isEditing && Number.isFinite(parsedBalanceForIntent)
+      ? parsedBalanceForIntent - cashAccount.balance
+      : 0;
   const absDelta = Math.abs(delta);
-  const approxEur = approxDeltaValueEur({
-    kind: "cash",
-    absDelta,
-    currency: isEditing ? cashAccount.currency : currency,
-    fxRates,
-  });
+  const approxEur =
+    step === "intent"
+      ? approxDeltaValueEur({
+          kind: "cash",
+          absDelta,
+          currency: cashAccount?.currency ?? currency,
+          fxRates,
+        })
+      : null;
   // approxEur is the EUR-converted value — the guard always names € (the
   // threshold's currency), never the account symbol (spec §8.11).
-  const guardLabel = fmtCurrency(approxEur ?? absDelta, "EUR");
-  const intentHeader = `On save · ${delta >= 0 ? "+" : ""}${fmtCurrency(delta, isEditing ? cashAccount.currency : currency)}`;
+  const guardLabel = step === "intent" ? fmtCurrency(approxEur ?? absDelta, "EUR") : "";
+  const intentHeader =
+    step === "intent"
+      ? `On save · ${delta >= 0 ? "+" : ""}${fmtCurrency(delta, cashAccount?.currency ?? currency)}`
+      : "";
 
   return (
     <Modal open={isOpen} onClose={onClose} title={getTitle()}>

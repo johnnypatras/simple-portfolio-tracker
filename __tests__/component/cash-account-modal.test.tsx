@@ -831,4 +831,68 @@ describe("CashAccountModal — C3 edit-mode intent question", () => {
     );
     expect(screen.getByLabelText("Portfolio adjustment")).toBeInTheDocument();
   });
+
+  it("a failed save on the intent path shows the error inside the step", async () => {
+    // Edit mode — change balance (+5) to reach the intent step, then mock a
+    // server-side failure. The alert must appear inside the step (not navigate
+    // the user back to the form or close the modal).
+    vi.mocked(cashActions.updateCashAccount).mockRejectedValueOnce(new Error("boom"));
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} fxRates={{}} />);
+
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "1505" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    // Wait for the intent step to appear (Yes pre-selected)
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+
+    // Click Continue — triggers performSave which will reject
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    // Error surfaces inside the step
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/boom/);
+    });
+    // User is NOT bounced back to the form
+    expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+  });
+
+  it("a failed cosmetic-guard proceed shows the error inside the step", async () => {
+    // Edit mode — change balance (+500) to arm the cosmetic guard, then mock a
+    // server-side failure on the guard's proceed button.
+    vi.mocked(cashActions.updateCashAccount).mockRejectedValueOnce(new Error("boom"));
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} fxRates={{}} />);
+
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "2000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+
+    // Select the cosmetic radio and continue — arms the guard
+    const [, cosmeticRadio] = screen.getAllByRole("radio");
+    fireEvent.click(cosmeticRadio);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    // Guard is armed
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/Stop counting/));
+
+    // Reset the mock so only the proceed click is rejected
+    vi.mocked(cashActions.updateCashAccount).mockRejectedValueOnce(new Error("boom"));
+
+    // Click the guard's proceed button
+    fireEvent.click(screen.getByRole("button", { name: INTENT_COPY.cosmeticGuardProceed }));
+
+    // Error surfaces inside the step alongside the guard alert; the intent
+    // question must still be shown (user was NOT bounced back to the form).
+    await waitFor(() => {
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts.some((el) => el.textContent?.includes("boom"))).toBe(true);
+    });
+    expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+  });
 });
