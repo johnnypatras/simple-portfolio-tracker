@@ -23,6 +23,7 @@ import { isStablecoin } from "@/lib/cashflow";
 import type {
   CryptoAssetWithPositions,
   CoinGeckoPriceData,
+  EditorTradePrefill,
   Wallet,
   WalletType,
 } from "@/lib/types";
@@ -1453,16 +1454,23 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
               existingSubcategories={existingSubcategories}
               existingChains={existingChains}
               prices={prices}
-              onTrade={(type) => {
+              onTrade={(type, prefill?: EditorTradePrefill) => {
                 const a = editingAsset;
                 if (!a) return;
                 setEditingAsset(null);
+                const walletOptions = a.positions.map((p) => ({ id: p.wallet_id, name: p.wallet_name }));
+                // A new-row buy targets a wallet with no position yet — append it
+                // so the modal's destination select can offer (and pre-select) it.
+                if (prefill?.walletOption && !walletOptions.some((w) => w.id === prefill.walletOption?.id)) {
+                  walletOptions.push(prefill.walletOption);
+                }
                 setTxnTarget({
                   assetRef: { class: "crypto", assetId: a.id },
                   name: a.name,
                   assetClass: "crypto",
-                  walletOptions: a.positions.map((p) => ({ id: p.wallet_id, name: p.wallet_name })),
+                  walletOptions,
                   openAdd: type,
+                  addPrefill: prefill,
                 });
               }}
             />

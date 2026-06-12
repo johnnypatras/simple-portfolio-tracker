@@ -34,6 +34,7 @@ import { HIDDEN_BELOW } from "@/lib/constants";
 import type {
   StockAssetWithPositions,
   Broker,
+  EditorTradePrefill,
   YahooStockPriceData,
   YahooDividendMap,
 } from "@/lib/types";
@@ -1408,16 +1409,21 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               existingSubcategories={existingSubcategories}
               existingTags={existingTags}
               prices={prices}
-              onTrade={(type) => {
+              onTrade={(type, prefill?: EditorTradePrefill) => {
                 const a = editingAsset;
                 if (!a) return;
                 setEditingAsset(null);
+                const brokerOptions = a.positions.map((p) => ({ id: p.broker_id, name: p.broker_name }));
+                if (prefill?.brokerOption && !brokerOptions.some((b) => b.id === prefill.brokerOption?.id)) {
+                  brokerOptions.push(prefill.brokerOption);
+                }
                 setTxnTarget({
                   assetRef: { class: "stock", assetId: a.id },
                   name: a.name,
                   assetClass: "stock",
-                  brokerOptions: a.positions.map((p) => ({ id: p.broker_id, name: p.broker_name })),
+                  brokerOptions,
                   openAdd: type,
+                  addPrefill: prefill,
                 });
               }}
             />
