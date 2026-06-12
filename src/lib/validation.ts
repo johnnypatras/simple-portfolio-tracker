@@ -4,7 +4,7 @@
  */
 
 import { MAX_NAME_LENGTH } from "@/lib/constants";
-import type { CostCurrency } from "@/lib/types";
+import type { BaseCurrency } from "@/lib/types";
 
 const MAX_AMOUNT = 1_000_000_000; // 1 billion — sanity cap
 
@@ -29,14 +29,14 @@ export function validateCurrency(s: string): void {
 }
 
 /**
- * Narrow a string to {@link CostCurrency} (EUR or USD), assertion-style.
- * Since the 2026-06-11 currency-uniform fix the COST boundaries accept ANY
- * ISO code via {@link validateCurrency} (a non-EUR/USD cost derives BOTH
- * stored legs and keeps the typed original in `original_*`), so this is no
- * longer the cost-write gate. Retained for boundaries that are genuinely
- * EUR/USD-only by design (e.g. profile/display-currency inputs).
+ * Narrow a string to {@link BaseCurrency} (EUR or USD), assertion-style.
+ * The profile/display-currency boundary: the dashboard renders in exactly one
+ * of the two base currencies, so `profiles.primary_currency` is EUR/USD-only
+ * by design (used by `updateProfile`). NOT a cost-write gate — since the
+ * 2026-06-11 currency-uniform fix the cost boundaries accept ANY ISO code via
+ * {@link validateCurrency}.
  */
-export function validateBaseCurrency(s: string, label = "Currency"): asserts s is CostCurrency {
+export function validateBaseCurrency(s: string, label = "Currency"): asserts s is BaseCurrency {
   if (s !== "EUR" && s !== "USD") throw new Error(`${label} must be EUR or USD`);
 }
 

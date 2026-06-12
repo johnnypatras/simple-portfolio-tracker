@@ -22,7 +22,7 @@ import type {
 } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toUsdAndEur } from "@/lib/actions/activity-log";
-import { round2 } from "@/lib/format";
+import { deriveDualAmount } from "@/lib/dual-amount";
 import {
   validateAmount,
   validateCurrency,
@@ -249,10 +249,10 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     // market, corrupting the asset's cost-basis P&L for foreign-funded
     // buys/sells). `toUsdAndEur` THROWS on FX failure, and no leg has written
     // yet, so a bad rate aborts the whole transfer cleanly (setup entities are
-    // cleaned up by the catch) — never a half-transfer. An EUR/USD-typed
-    // amount keeps that leg verbatim with only the derived sibling round2'd;
-    // any other ISO derives BOTH legs (the face amount survives in
-    // `original_*`) — the exact shape of the primitives' cost channel.
+    // cleaned up by the catch) — never a half-transfer. deriveDualAmount
+    // applies THE VERBATIM-LEG RULE (EUR/USD-typed leg verbatim, derived
+    // sibling round2'd; any other ISO derives both, the face amount surviving
+    // in `original_*`) — the exact shape of the primitives' cost channel.
     let convCost: ConversionCost | undefined;
     if (rawConvCost) {
       // Amounts were shape-validated up top; the currency comes from the
@@ -264,12 +264,7 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
         input.effectiveDate,
       );
       convCost = {
-        override:
-          rawConvCost.currency === "EUR"
-            ? { eur: rawConvCost.amount, usd: round2(derived.usd) }
-            : rawConvCost.currency === "USD"
-              ? { usd: rawConvCost.amount, eur: round2(derived.eur) }
-              : { usd: round2(derived.usd), eur: round2(derived.eur) },
+        override: deriveDualAmount(rawConvCost.amount, rawConvCost.currency, derived),
         original: { amount: rawConvCost.amount, currency: rawConvCost.currency },
       };
     }

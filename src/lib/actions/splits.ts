@@ -6,6 +6,7 @@ import { validateUUID, validateAmount, validateCurrency } from "@/lib/validation
 import { isValidPastOrTodayDate, extractQuantity, splitDirectionForParent } from "@/lib/split-helpers";
 import type { ActivityLog, EntityType, SplitLeg } from "@/lib/types";
 import { round2 } from "@/lib/format";
+import { deriveDualAmount } from "@/lib/dual-amount";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { CASHFLOW_PRODUCING_ENTITY_TYPES } from "@/lib/cashflow";
 import { computeDeltaFromSnapshots, toUsdAndEur } from "@/lib/actions/activity-log";
@@ -228,23 +229,19 @@ export async function splitActivityEntry(
 
   // ── Per-leg cost overrides (DCA) ──
   // Resolve the dual-currency cost for each leg that carries an explicit cost
-  // BEFORE the synchronous distribution pass. An EUR/USD-typed cost is stored
-  // EXACTLY (all decimals preserved) with only the cross-currency derived leg
-  // round2'd; any other ISO derives BOTH legs (the typed number survives in
-  // the child's original_*) — the addTransaction pattern. toUsdAndEur THROWS on
-  // FX failure (never silently writes a 1:1 rate); captureAction surfaces it.
-  // Cost-bearing legs are EXCLUDED from the proportional pool below.
+  // BEFORE the synchronous distribution pass. deriveDualAmount applies THE
+  // VERBATIM-LEG RULE: an EUR/USD-typed cost keeps that leg byte-exact with
+  // only the derived sibling round2'd; any other ISO derives BOTH legs (the
+  // typed number survives in the child's original_*) — the addTransaction
+  // pattern. toUsdAndEur THROWS on FX failure (never silently writes a 1:1
+  // rate); captureAction surfaces it. Cost-bearing legs are EXCLUDED from the
+  // proportional pool below.
   const legCostOverrides = new Array<{ usd: number; eur: number } | null>(legs.length).fill(null);
   for (let i = 0; i < legs.length; i++) {
     const cost = legs[i].cost;
     if (cost == null) continue;
     const derived = await toUsdAndEur(cost.amount, cost.currency, legs[i].effective_date);
-    legCostOverrides[i] =
-      cost.currency === "EUR"
-        ? { eur: cost.amount, usd: round2(derived.usd) }
-        : cost.currency === "USD"
-          ? { usd: cost.amount, eur: round2(derived.eur) }
-          : { usd: round2(derived.usd), eur: round2(derived.eur) };
+    legCostOverrides[i] = deriveDualAmount(cost.amount, cost.currency, derived);
   }
 
   // The proportional remainder ("last child absorbs the rounding penny") is

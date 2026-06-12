@@ -109,10 +109,10 @@ describe("updateProfile — input validation", () => {
     ).rejects.toThrow("Last name");
   });
 
-  it("throws for an invalid primary_currency", async () => {
+  it("throws for an invalid primary_currency (validateBaseCurrency at the boundary)", async () => {
     await expect(
       updateProfile({ primary_currency: "GBP" as "EUR" })
-    ).rejects.toThrow("Invalid currency");
+    ).rejects.toThrow("Primary currency must be EUR or USD");
   });
 
   it("throws for an invalid theme", async () => {

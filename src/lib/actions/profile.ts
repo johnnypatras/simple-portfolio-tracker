@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Profile, BaseCurrency } from "@/lib/types";
 import { partialUpdate } from "@/lib/partial-update";
-import { validateName } from "@/lib/validation";
+import { validateName, validateBaseCurrency } from "@/lib/validation";
 import { VALID_THEMES } from "@/lib/constants";
 import { captureAction } from "@/lib/actions/with-sentry";
 
@@ -40,8 +40,10 @@ export async function updateProfile(input: {
   if (input.first_name) validateName(input.first_name, 100, "First name");
   if (input.last_name) validateName(input.last_name, 100, "Last name");
   if (input.display_name) validateName(input.display_name, 100, "Display name");
-  if (input.primary_currency && !["USD", "EUR"].includes(input.primary_currency)) {
-    throw new Error("Invalid currency. Must be USD or EUR.");
+  // Runtime guard at the server-action boundary — the BaseCurrency type only
+  // constrains honest callers; a forged request body can carry anything.
+  if (input.primary_currency) {
+    validateBaseCurrency(input.primary_currency, "Primary currency");
   }
   if (input.theme && !(VALID_THEMES as readonly string[]).includes(input.theme)) {
     throw new Error("Invalid theme.");

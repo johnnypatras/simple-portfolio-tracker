@@ -14,7 +14,7 @@ import { logActivity, toUsdAndEur } from "@/lib/actions/activity-log";
 import { getCoinImage } from "@/lib/prices/coingecko";
 import { partialUpdate } from "@/lib/partial-update";
 import { validateQuantity, validateUUID, validateCoinGeckoId, validateName, validateImageUrl, validateApy, validateAmount, validateCurrency } from "@/lib/validation";
-import { round2 } from "@/lib/format";
+import { deriveDualAmount } from "@/lib/dual-amount";
 import { computeActivityFx, emptyFx } from "@/lib/activity-fx";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { PG_UNIQUE_VIOLATION } from "@/lib/supabase/error-codes";
@@ -330,9 +330,10 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
   // Only when a cost was supplied, no explicit cashflowOverride was already given
   // (the override wins — it carries both currencies verbatim), and this is not a
   // yield (yield has no cost). toUsdAndEur calls getFXRates, which THROWS on FX
-  // failure — a bad rate never silently writes a wrong cost. An EUR/USD-typed
-  // cost is stored verbatim with only the cross-currency derived leg round2'd;
-  // any other ISO derives BOTH legs (the typed number survives in original_*).
+  // failure — a bad rate never silently writes a wrong cost. deriveDualAmount
+  // applies THE VERBATIM-LEG RULE: an EUR/USD-typed cost keeps that leg
+  // byte-exact with only the derived sibling round2'd; any other ISO derives
+  // BOTH legs (the typed number survives in original_*).
   let cashflowOverride = opts?.cashflowOverride;
   let original = opts?.original;
   if (opts?.cost != null && cashflowOverride == null && !opts?.isYield) {
@@ -343,12 +344,7 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
       opts.cost.currency,
       opts.effectiveDate,
     );
-    cashflowOverride =
-      opts.cost.currency === "EUR"
-        ? { eur: opts.cost.amount, usd: round2(derived.usd) }
-        : opts.cost.currency === "USD"
-          ? { usd: opts.cost.amount, eur: round2(derived.eur) }
-          : { usd: round2(derived.usd), eur: round2(derived.eur) };
+    cashflowOverride = deriveDualAmount(opts.cost.amount, opts.cost.currency, derived);
     // A consumed cost IS the user-entered original — stamp it unless the
     // caller already resolved one (an explicit opts.original wins).
     original ??= { amount: opts.cost.amount, currency: opts.cost.currency };

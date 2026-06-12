@@ -16,7 +16,7 @@ import {
   validateCurrency,
   validatePastOrTodayDate,
 } from "@/lib/validation";
-import { round2 } from "@/lib/format";
+import { deriveDualAmount } from "@/lib/dual-amount";
 import { captureAction } from "@/lib/actions/with-sentry";
 import { COST_COPY } from "@/lib/cost-basis-copy";
 import { quantityDelta, asSnapshot } from "@/lib/transaction-kind";
@@ -96,11 +96,11 @@ export async function addTransaction(
 
     // ── Single-currency cost → dual-currency override (case-16 FX) ────────
     // toUsdAndEur calls getFXRates, which THROWS on FX failure — a bad rate
-    // never silently writes a wrong cost. An EUR/USD-typed cost is stored
-    // EXACTLY (preserving all decimals) with only the cross-currency derived
-    // leg rounded to 2 dp; any other ISO has no stored leg of its own, so BOTH
-    // legs are derived + round2'd (the typed number survives in original_*).
-    // Yield carries no override (cost 0).
+    // never silently writes a wrong cost. deriveDualAmount applies THE
+    // VERBATIM-LEG RULE: an EUR/USD-typed cost keeps that leg byte-exact with
+    // only the derived sibling round2'd; any other ISO derives BOTH legs
+    // (the typed number survives in original_*). Yield carries no override
+    // (cost 0).
     let cashflowOverride: UsdEurAmount | undefined;
     let costOriginal: { amount: number; currency: string } | undefined;
     if (params.cost != null && !isYield) {
@@ -109,12 +109,11 @@ export async function addTransaction(
         params.cost.currency,
         params.effectiveDate,
       );
-      cashflowOverride =
-        params.cost.currency === "EUR"
-          ? { eur: params.cost.amount, usd: round2(derived.usd) }
-          : params.cost.currency === "USD"
-            ? { usd: params.cost.amount, eur: round2(derived.eur) }
-            : { usd: round2(derived.usd), eur: round2(derived.eur) };
+      cashflowOverride = deriveDualAmount(
+        params.cost.amount,
+        params.cost.currency,
+        derived,
+      );
       // The literal (magnitude, ISO) the user typed — reference metadata only.
       costOriginal = { amount: params.cost.amount, currency: params.cost.currency };
     }
@@ -599,17 +598,16 @@ export async function editTransaction(
         patch.cost.currency,
         fxDate,
       );
-      // Preserve an EUR/USD-typed leg verbatim (all decimals); round only the
-      // derived cross-currency leg to clean money (round2 — no float dust). Any
-      // other ISO has no stored leg of its own — BOTH legs are derived +
-      // round2'd (the typed number survives in original_*). This is a
-      // MAGNITUDE — the sign is applied below from the row's own direction.
-      const magnitude: UsdEurAmount =
-        patch.cost.currency === "EUR"
-          ? { eur: patch.cost.amount, usd: round2(derived.usd) }
-          : patch.cost.currency === "USD"
-            ? { usd: patch.cost.amount, eur: round2(derived.eur) }
-            : { usd: round2(derived.usd), eur: round2(derived.eur) };
+      // deriveDualAmount applies THE VERBATIM-LEG RULE: an EUR/USD-typed leg
+      // stays byte-exact (all decimals) with only the derived sibling
+      // round2'd; any other ISO derives BOTH legs (the typed number survives
+      // in original_*). This is a MAGNITUDE — the sign is applied below from
+      // the row's own direction.
+      const magnitude: UsdEurAmount = deriveDualAmount(
+        patch.cost.amount,
+        patch.cost.currency,
+        derived,
+      );
 
       // Original-currency stamp (reference metadata, orthogonal to the
       // cashflow/delta never-both rule below): the literal (magnitude, ISO)

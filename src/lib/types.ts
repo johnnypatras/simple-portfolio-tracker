@@ -62,8 +62,6 @@ export type WalletType = "custodial" | "non_custodial";
 export type PrivacyLabel = "anon" | "doxxed";
 /** User's base/display currency (EUR or USD) */
 export type BaseCurrency = "USD" | "EUR";
-/** The currency a user typed a COST amount in — distinct from BaseCurrency (the profile/display currency). */
-export type CostCurrency = "EUR" | "USD";
 /** @deprecated Use `string` directly — this alias provides no type safety. Retained for deprecated type consumers. */
 export type CurrencyType = string;
 

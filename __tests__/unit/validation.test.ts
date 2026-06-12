@@ -128,12 +128,12 @@ describe("validateCurrency", () => {
 });
 
 describe("validateBaseCurrency", () => {
-  it("accepts EUR and USD (the two cost-storage currencies)", () => {
+  it("accepts EUR and USD (the two profile/display currencies)", () => {
     expect(() => validateBaseCurrency("EUR")).not.toThrow();
     expect(() => validateBaseCurrency("USD")).not.toThrow();
   });
 
-  it("rejects any other ISO 4217 code (no column to land in)", () => {
+  it("rejects any other ISO 4217 code (the dashboard renders in EUR or USD only)", () => {
     expect(() => validateBaseCurrency("GBP")).toThrow("must be EUR or USD");
     expect(() => validateBaseCurrency("CHF")).toThrow("must be EUR or USD");
     expect(() => validateBaseCurrency("JPY")).toThrow("must be EUR or USD");
@@ -148,9 +148,9 @@ describe("validateBaseCurrency", () => {
     expect(() => validateBaseCurrency("")).toThrow("must be EUR or USD");
   });
 
-  it("uses the custom label in the error message", () => {
-    expect(() => validateBaseCurrency("GBP", "Cost currency")).toThrow(
-      "Cost currency must be EUR or USD",
+  it("uses the custom label in the error message (updateProfile passes 'Primary currency')", () => {
+    expect(() => validateBaseCurrency("GBP", "Primary currency")).toThrow(
+      "Primary currency must be EUR or USD",
     );
   });
 });
