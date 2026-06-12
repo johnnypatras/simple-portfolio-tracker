@@ -789,6 +789,32 @@ describe("CashAccountModal — C3 edit-mode intent question", () => {
     });
   });
 
+  it("guard label names the EUR approximation, not the account symbol (spec §8.11)", async () => {
+    // GBP account, fxRates { GBP: 0.85 } → 1 EUR = 0.85 GBP → £500 ≈ €588.24
+    // The guard text must contain "€588.24" and must NOT contain "£".
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "GBP" });
+    render(
+      <CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} fxRates={{ GBP: 0.85 }} />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "2000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+
+    const [, cosmeticRadio] = screen.getAllByRole("radio");
+    fireEvent.click(cosmeticRadio);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    const alertText = screen.getByRole("alert").textContent ?? "";
+    expect(alertText).toContain("€588.24");
+    expect(alertText).not.toContain("£");
+  });
+
   it("edit mode has no IsAdjustmentCheckbox; create mode still has it", () => {
     // Edit mode: no checkbox
     const account = makeCashAccount();

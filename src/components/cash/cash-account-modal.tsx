@@ -252,7 +252,9 @@ export function CashAccountModal({
     currency: isEditing ? cashAccount.currency : currency,
     fxRates,
   });
-  const guardLabel = fmtCurrency(approxEur ?? absDelta, isEditing ? cashAccount.currency : currency);
+  // approxEur is the EUR-converted value — the guard always names € (the
+  // threshold's currency), never the account symbol (spec §8.11).
+  const guardLabel = fmtCurrency(approxEur ?? absDelta, "EUR");
   const intentHeader = `On save · ${delta >= 0 ? "+" : ""}${fmtCurrency(delta, isEditing ? cashAccount.currency : currency)}`;
 
   return (
