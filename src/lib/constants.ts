@@ -137,3 +137,9 @@ export const IS_ADJUSTMENT_TOGGLE_ON_LABEL =
  * internal adjustment so the S&P benchmark ignores it.
  */
 export const IS_ADJUSTMENT_TOGGLE_OFF_LABEL = "Mark as portfolio adjustment";
+
+/** Cosmetic/off-book saves at or above this approximate EUR value get the
+ *  amber "stop counting this €X?" confirm; below it they save quietly.
+ *  Dust, rounding and typo fixes are single-digit €; anything ≥ this
+ *  materially distorts a personal benchmark. User-set 2026-06-12. */
+export const COSMETIC_GUARD_THRESHOLD_EUR = 10;
