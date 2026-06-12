@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PositionEditor } from "@/components/crypto/position-editor";
-import { formatBackdateChipDate } from "@/lib/format";
+import { INTENT_COPY } from "@/lib/cost-basis-copy";
 import type { CryptoAssetWithPositions, Wallet } from "@/lib/types";
 
 // ── Mocks ────────────────────────────────────────────────
@@ -11,6 +11,7 @@ const hoisted = vi.hoisted(() => ({
   deletePosition: vi.fn(),
   updateCryptoAsset: vi.fn(),
   loadLastChangeDate: vi.fn(),
+  addTransaction: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/crypto", () => ({
@@ -21,6 +22,7 @@ vi.mock("@/lib/actions/crypto", () => ({
 
 vi.mock("@/lib/actions/transactions", () => ({
   loadLastChangeDate: hoisted.loadLastChangeDate,
+  addTransaction: hoisted.addTransaction,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -94,259 +96,273 @@ function renderEditor(asset = makeAsset()) {
   };
 }
 
-/** The per-row adjustment checkboxes (label "Adj."). One per position row. */
-function adjCheckboxes(): HTMLInputElement[] {
-  return screen
-    .getAllByRole("checkbox")
-    .filter((el) => el instanceof HTMLInputElement) as HTMLInputElement[];
-}
-
-function chipButton(): HTMLElement | null {
-  return screen.queryByRole("button", { name: /backdate the effective date/i });
-}
-
-function dateInput(): HTMLInputElement {
-  // Exact label text — avoids matching the chip's aria-label, which also
-  // contains the phrase "effective date".
-  return screen.getByLabelText("Effective date (optional)") as HTMLInputElement;
-}
+// Provide prices so approxValueEur is computable: priceEur €0.50/unit keeps a
+// ±10-unit change at €5 (below the €10 gate → quiet cosmetic), and a ±100-unit
+// change at €50 (≥ €10 → guard fires).
+const PRICES = { bitcoin: { usd: 0.55, eur: 0.5 } };
 
 beforeEach(() => {
   hoisted.upsertPosition.mockReset();
   hoisted.upsertPosition.mockResolvedValue(undefined);
   hoisted.deletePosition.mockReset();
+  hoisted.deletePosition.mockResolvedValue(undefined);
   hoisted.updateCryptoAsset.mockReset();
   hoisted.loadLastChangeDate.mockReset();
+  hoisted.loadLastChangeDate.mockResolvedValue(null);
+  hoisted.addTransaction.mockReset();
+  hoisted.addTransaction.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
-// ─── Correction-date suggest chip ─────────────────────────
+// ─── C3 intent step ────────────────────────────────────────
+// These tests cover the new C3 behavior: Save dispatches to the intent step,
+// trash routes through it as a full-quantity decrease, and the removed
+// Adj checkbox / per-row cost / footer date are gone.
 
-describe("crypto PositionEditor — correction-date chip", () => {
-  it("appears when exactly one adjustment checkbox is ON and the fetch resolves a date", async () => {
+describe("PositionEditor — C3 intent step", () => {
+  it("quantity change + Save opens the intent step (no immediate write)", () => {
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText(INTENT_COPY.questionIncrease)).toBeInTheDocument();
+    expect(hoisted.upsertPosition).not.toHaveBeenCalled();
+  });
+
+  it("metadata-only Save (qty untouched) saves silently with the ORIGINAL qty", async () => {
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByTitle("APY %"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalled());
+    expect(screen.queryByText(INTENT_COPY.questionIncrease)).toBeNull();
+    expect(hoisted.upsertPosition.mock.calls[0][0]).toMatchObject({ quantity: 1, apy: 4 });
+    expect(hoisted.upsertPosition.mock.calls[0][1]).not.toMatchObject({ isAdjustment: true });
+  });
+
+  it("Yes + typed cost routes to Buy with the prefill (no upsert)", async () => {
+    const onTrade = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <PositionEditor open onClose={onClose} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={onTrade} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.change(screen.getByLabelText("Amount paid (incl. fees)"), { target: { value: "8.70" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(onTrade).toHaveBeenCalled());
+    expect(onTrade).toHaveBeenCalledWith("buy", {
+      quantity: 10,
+      amount: 8.7,
+      amountCurrency: "EUR",
+      walletId: "w-1",
+      walletOption: { id: "w-1", name: "Ledger" },
+    });
+    expect(onClose).toHaveBeenCalled();
+    expect(hoisted.upsertPosition).not.toHaveBeenCalled();
+  });
+
+  it("metadata + qty change routes Buy AFTER a zero-delta metadata save", async () => {
+    const onTrade = vi.fn();
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={onTrade} />,
+    );
+    fireEvent.change(screen.getByTitle("APY %"), { target: { value: "4" } });
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(onTrade).toHaveBeenCalled());
+    // Metadata persisted FIRST at the ORIGINAL quantity (zero-delta, benchmark-invisible)
+    expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1);
+    expect(hoisted.upsertPosition.mock.calls[0][0]).toMatchObject({ quantity: 1, apy: 4 });
+  });
+
+  it("free toggle books yield directly via addTransaction", async () => {
+    const onClose = vi.fn();
+    render(
+      <PositionEditor open onClose={onClose} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: new RegExp("These were free") }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(hoisted.addTransaction).toHaveBeenCalled());
+    expect(hoisted.addTransaction).toHaveBeenCalledWith(
+      { class: "crypto", assetId: "ca-1" },
+      expect.objectContaining({ type: "yield", quantity: 10, walletId: "w-1" }),
+    );
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("cosmetic below the gate saves off-book directly", async () => {
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } }); // +10 ≈ €5 < €10
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalled());
+    expect(hoisted.upsertPosition.mock.calls[0][0]).toMatchObject({ quantity: 11 });
+    expect(hoisted.upsertPosition.mock.calls[0][1]).toMatchObject({ isAdjustment: true });
+  });
+
+  it("cosmetic at/above the gate arms the guard first", async () => {
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "101" } }); // +100 ≈ €50
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(hoisted.upsertPosition).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Stop counting/);
+    fireEvent.click(screen.getByRole("button", { name: INTENT_COPY.cosmeticGuardProceed }));
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalled());
+    expect(hoisted.upsertPosition.mock.calls[0][1]).toMatchObject({ isAdjustment: true });
+  });
+
+  it("trash opens the step as a full-quantity decrease; cosmetic calls deletePosition", async () => {
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.getByText(INTENT_COPY.questionDecrease)).toBeInTheDocument();
+    expect(hoisted.deletePosition).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" })); // qty 1 ≈ €0.50 < €10 → quiet
+    await waitFor(() => expect(hoisted.deletePosition).toHaveBeenCalled());
+    expect(hoisted.deletePosition).toHaveBeenCalledWith("pos-w-1", expect.objectContaining({ isAdjustment: true }));
+  });
+
+  it("the Adj checkbox, per-row cost field, and footer date are gone", () => {
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    expect(screen.queryByRole("checkbox", { name: /adj/i })).toBeNull();
+    expect(screen.queryByLabelText("Amount paid (incl. fees)")).toBeNull();
+    expect(screen.queryByLabelText(/effective date/i)).toBeNull();
+  });
+});
+
+// ─── Correction-date chip (via intent step) ────────────────
+// The chip now lives INSIDE the EditorIntentStep (cosmetic path), not the
+// footer. Tests confirm it appears when a position has history and the user
+// opens the cosmetic path after a quantity-changing save (or trash).
+
+describe("crypto PositionEditor — correction-date chip (intent step)", () => {
+  it("chip appears in the intent step when position has history and cosmetic path chosen", async () => {
     hoisted.loadLastChangeDate.mockResolvedValue("2026-03-02");
-    renderEditor();
-    expect(chipButton()).toBeNull();
-
-    fireEvent.click(adjCheckboxes()[0]);
-
-    await waitFor(() => expect(chipButton()).not.toBeNull());
-    expect(chipButton()!).toHaveTextContent(formatBackdateChipDate("2026-03-02"));
-  });
-
-  it("is hidden when ZERO checkboxes are checked", () => {
-    hoisted.loadLastChangeDate.mockResolvedValue("2026-03-02");
-    renderEditor();
-    expect(chipButton()).toBeNull();
-    expect(hoisted.loadLastChangeDate).not.toHaveBeenCalled();
-  });
-
-  it("is hidden when MULTIPLE checkboxes are checked (ambiguous)", async () => {
-    hoisted.loadLastChangeDate.mockResolvedValue("2026-03-02");
-    renderEditor();
-
-    fireEvent.click(adjCheckboxes()[0]);
-    await waitFor(() => expect(chipButton()).not.toBeNull());
-
-    // Check the second row too → ambiguous → chip disappears.
-    fireEvent.click(adjCheckboxes()[1]);
-    expect(chipButton()).toBeNull();
-  });
-
-  it("is hidden when the fetch resolves null (no history)", async () => {
-    hoisted.loadLastChangeDate.mockResolvedValue(null);
-    renderEditor();
-
-    fireEvent.click(adjCheckboxes()[0]);
-    await waitFor(() => expect(hoisted.loadLastChangeDate).toHaveBeenCalledTimes(1));
-    expect(chipButton()).toBeNull();
-  });
-
-  it("is hidden when the fetch rejects (failure → no dead end)", async () => {
-    hoisted.loadLastChangeDate.mockRejectedValue(new Error("boom"));
-    renderEditor();
-
-    fireEvent.click(adjCheckboxes()[0]);
-    await waitFor(() => expect(hoisted.loadLastChangeDate).toHaveBeenCalledTimes(1));
-    expect(chipButton()).toBeNull();
-    // The date field still works — no dead end.
-    expect(dateInput()).toBeEnabled();
-  });
-
-  it("click fills the effective-date input with the fetched date", async () => {
-    hoisted.loadLastChangeDate.mockResolvedValue("2026-03-02");
-    renderEditor();
-
-    fireEvent.click(adjCheckboxes()[0]);
-    await waitFor(() => expect(chipButton()).not.toBeNull());
-    expect(dateInput().value).toBe("");
-
-    fireEvent.click(chipButton()!);
-    expect(dateInput().value).toBe("2026-03-02");
-  });
-
-  it("the chip label contains the formatted date", async () => {
-    hoisted.loadLastChangeDate.mockResolvedValue("2026-03-02");
-    renderEditor();
-
-    fireEvent.click(adjCheckboxes()[0]);
-    await waitFor(() => expect(chipButton()).not.toBeNull());
-    expect(chipButton()!).toHaveTextContent(
-      `Backdate to last change (${formatBackdateChipDate("2026-03-02")})?`,
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    // Intent step open — switch to cosmetic
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    // Chip should appear once the fetch resolves
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /backdate the effective date/i })).not.toBeNull()
     );
   });
 
-  it("lazily fetches once per position (cached across toggles)", async () => {
-    hoisted.loadLastChangeDate.mockResolvedValue("2026-03-02");
-    renderEditor();
-
-    fireEvent.click(adjCheckboxes()[0]); // ON → fetch
-    await waitFor(() => expect(hoisted.loadLastChangeDate).toHaveBeenCalledTimes(1));
-    fireEvent.click(adjCheckboxes()[0]); // OFF
-    fireEvent.click(adjCheckboxes()[0]); // ON again → cached, no re-fetch
-
-    await waitFor(() => expect(chipButton()).not.toBeNull());
-    expect(hoisted.loadLastChangeDate).toHaveBeenCalledTimes(1);
-    expect(hoisted.loadLastChangeDate).toHaveBeenCalledWith("pos-w-1");
-  });
-});
-
-// ─── Date prominence toggles with checkbox state ──────────
-
-describe("crypto PositionEditor — date prominence", () => {
-  it("the date label is amber while a correction is checked and zinc otherwise", async () => {
+  it("chip is absent when fetch resolves null (no history)", async () => {
     hoisted.loadLastChangeDate.mockResolvedValue(null);
-    renderEditor();
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    await waitFor(() => expect(hoisted.loadLastChangeDate).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /backdate the effective date/i })).toBeNull();
+  });
 
-    const label = screen.getByText(/effective date/i);
-    expect(label.className).toContain("text-zinc-400");
-    expect(label.className).not.toContain("text-amber-400");
+  it("chip is absent when fetch rejects (failure → no dead end)", async () => {
+    hoisted.loadLastChangeDate.mockRejectedValue(new Error("boom"));
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    await waitFor(() => expect(hoisted.loadLastChangeDate).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /backdate the effective date/i })).toBeNull();
+  });
 
-    fireEvent.click(adjCheckboxes()[0]);
-    expect(label.className).toContain("text-amber-400");
+  it("chip does not appear for new positions (no positionId)", async () => {
+    // New wallet row (w-2 not yet a position) — no positionId → no fetch
+    hoisted.loadLastChangeDate.mockResolvedValue("2026-03-02");
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    // Add w-2 as a new row — the wallet select has placeholder "Add to wallet / exchange..."
+    const walletSelect = screen.getByRole("option", { name: /add to wallet/i })
+      ?.closest("select") as HTMLSelectElement;
+    fireEvent.change(walletSelect, { target: { value: "w-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to selected wallet" }));
+    // Change the new row's quantity (second quantity input)
+    const qtyInputs = screen.getAllByPlaceholderText("Quantity");
+    fireEvent.change(qtyInputs[1], { target: { value: "5" } });
+    const saveButtons = screen.getAllByRole("button", { name: "Save" });
+    fireEvent.click(saveButtons[1]);
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    // Give time for any async fetch that should NOT have been called
+    await waitFor(() => expect(hoisted.loadLastChangeDate).not.toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /backdate the effective date/i })).toBeNull();
+  });
 
-    fireEvent.click(adjCheckboxes()[0]);
-    expect(label.className).toContain("text-zinc-400");
-    expect(label.className).not.toContain("text-amber-400");
+  it("trash also exposes chip when position has history and cosmetic path chosen", async () => {
+    hoisted.loadLastChangeDate.mockResolvedValue("2026-05-01");
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /backdate the effective date/i })).not.toBeNull()
+    );
   });
 });
 
-// ─── Crypto "Amount paid (incl. fees)" cost spine ─────────
+// ─── Backdated no-cost cosmetic defers pricing to backfill ──
+// Previously the footer effective-date + per-row cost field drove this.
+// Now the cosmetic path in the intent step passes a date to handleIntentCosmetic
+// which calls omitWriteTimePrice to decide whether to strip the write-time price.
 
-describe("crypto PositionEditor — amount paid (cost spine)", () => {
-  /** Find the cost input for a given wallet row by its label. */
-  function costInput(): HTMLInputElement {
-    return screen.getAllByLabelText("Amount paid (incl. fees)")[0] as HTMLInputElement;
-  }
-
-  /** The Save button inside the FIRST position row. */
-  function firstRowSave(): HTMLElement {
-    return screen.getAllByRole("button", { name: "Save" })[0];
-  }
-
-  it("untouched → save payload contains NO cost", async () => {
-    renderEditor();
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
-    const opts = hoisted.upsertPosition.mock.calls[0][1];
-    expect(opts).not.toHaveProperty("cost");
-  });
-
-  it("typed amount → payload carries { amount, currency } (default EUR)", async () => {
-    renderEditor();
-    fireEvent.change(costInput(), { target: { value: "1234.56" } });
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
-    const opts = hoisted.upsertPosition.mock.calls[0][1];
-    expect(opts.cost).toEqual({ amount: 1234.56, currency: "EUR" });
-  });
-
-  it("typed amount honors the per-row currency select (USD)", async () => {
-    renderEditor();
-    // Shared control: per-instance accessible name is "<label> currency".
-    const currencySelect = screen.getAllByLabelText("Amount paid (incl. fees) currency")[0];
-    fireEvent.change(currencySelect, { target: { value: "USD" } });
-    fireEvent.change(costInput(), { target: { value: "999" } });
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
-    expect(hoisted.upsertPosition.mock.calls[0][1].cost).toEqual({ amount: 999, currency: "USD" });
-  });
-
-  it("any-ISO cost: CHF entered via Other… flows into the save payload", async () => {
-    renderEditor();
-    // CHF isn't in the EUR/USD shortlist — enter it via the Other… free entry.
-    fireEvent.change(screen.getAllByLabelText("Amount paid (incl. fees) currency")[0], {
-      target: { value: "__other__" },
-    });
-    const codeInput = screen.getByLabelText("Amount paid (incl. fees) currency code");
-    fireEvent.change(codeInput, { target: { value: "CHF" } });
-    fireEvent.blur(codeInput);
-    fireEvent.change(costInput(), { target: { value: "750" } });
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
-    expect(hoisted.upsertPosition.mock.calls[0][1].cost).toEqual({ amount: 750, currency: "CHF" });
-  });
-
-  it("currency-only change does NOT mark the row dirty (no cost emitted)", async () => {
-    renderEditor();
-    // Picking a currency without typing an amount must keep the provenance
-    // gate closed — the old separate select behaved the same way.
-    fireEvent.change(screen.getAllByLabelText("Amount paid (incl. fees) currency")[0], {
-      target: { value: "USD" },
-    });
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
-    expect(hoisted.upsertPosition.mock.calls[0][1]).not.toHaveProperty("cost");
-  });
-
-  it("dirty-then-blanked → no cost (market fallback)", async () => {
-    renderEditor();
-    fireEvent.change(costInput(), { target: { value: "500" } });
-    fireEvent.change(costInput(), { target: { value: "" } });
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
-    expect(hoisted.upsertPosition.mock.calls[0][1]).not.toHaveProperty("cost");
-  });
-
-  it("non-numeric typed value → no cost emitted (provenance gate)", async () => {
-    renderEditor();
-    fireEvent.change(costInput(), { target: { value: "abc" } });
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
-    expect(hoisted.upsertPosition.mock.calls[0][1]).not.toHaveProperty("cost");
-  });
-});
-
-// ─── Backdated no-cost entries defer pricing to the backfill ──
-// A backdated row with NO user cost must NOT carry a write-time market price,
-// so the row lands cashflow_status=null and the date-aware backfill prices it
-// at effective_date. A today (no effectiveDate) no-cost row keeps the price —
-// today's price IS the effective-date price.
-
-describe("crypto PositionEditor — backdated no-cost defers to backfill", () => {
-  function costInput(): HTMLInputElement {
-    return screen.getAllByLabelText("Amount paid (incl. fees)")[0] as HTMLInputElement;
-  }
-  function firstRowSave(): HTMLElement {
-    return screen.getAllByRole("button", { name: "Save" })[0];
-  }
-
-  it("backdated + no cost → upsertPosition called WITHOUT currentPriceUsd/Eur", async () => {
-    renderEditor();
-    fireEvent.change(dateInput(), { target: { value: "2026-03-02" } });
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+describe("crypto PositionEditor — backdated cosmetic defers to backfill", () => {
+  it("cosmetic with a past date → upsertPosition called WITHOUT currentPriceUsd/Eur", async () => {
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } }); // +10 ≈ €5 < €10 gate
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    // Set a past date in the cosmetic date input
+    const dateInput = screen.getByLabelText("Effective date") as HTMLInputElement;
+    fireEvent.change(dateInput, { target: { value: "2026-03-02" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalled());
     expect(hoisted.upsertPosition).toHaveBeenCalledWith(
       expect.anything(),
       expect.not.objectContaining({ currentPriceUsd: expect.anything() }),
@@ -355,34 +371,29 @@ describe("crypto PositionEditor — backdated no-cost defers to backfill", () =>
       expect.anything(),
       expect.not.objectContaining({ currentPriceEur: expect.anything() }),
     );
-    // The backdate itself is still threaded.
     expect(hoisted.upsertPosition.mock.calls[0][1].effectiveDate).toBe("2026-03-02");
   });
 
-  it("today (no effectiveDate) + no cost → upsertPosition called WITH the prices", async () => {
-    renderEditor();
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
-    expect(hoisted.upsertPosition).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ currentPriceUsd: 60000, currentPriceEur: 55000 }),
+  it("cosmetic with today's default date → upsertPosition called WITH the prices", async () => {
+    // EditorIntentStep defaults cosmeticDate to today — omitWriteTimePrice("today", false) = false → prices pass
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
     );
-  });
-
-  it("backdated WITH a user cost → prices still pass (cost is stored verbatim)", async () => {
-    renderEditor();
-    fireEvent.change(dateInput(), { target: { value: "2026-03-02" } });
-    fireEvent.change(costInput(), { target: { value: "1000" } });
-    fireEvent.click(firstRowSave());
-
-    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
+    // Leave the date at the step's default (today) — don't change it
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalled());
     expect(hoisted.upsertPosition).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ currentPriceUsd: 60000, currentPriceEur: 55000 }),
+      expect.objectContaining({ currentPriceUsd: 0.55, currentPriceEur: 0.5 }),
     );
   });
 });
+
+// ─── Sell/Buy header buttons (unchanged from 1a) ──────────
 
 describe("PositionEditor — Sell/Buy delegate to the trade modal (1a)", () => {
   it("Sell closes the editor and delegates onTrade('sell')", () => {
@@ -399,6 +410,8 @@ describe("PositionEditor — Sell/Buy delegate to the trade modal (1a)", () => {
   });
 });
 
+// ─── APY editing (unchanged behavior) ─────────────────────
+
 describe("PositionEditor — APY editing", () => {
   /** A single-row asset whose position starts with a non-zero APY. */
   function assetWithApy(apy: number): CryptoAssetWithPositions {
@@ -412,6 +425,7 @@ describe("PositionEditor — APY editing", () => {
     const apyInput = screen.getByTitle("APY %") as HTMLInputElement;
     expect(apyInput.value).toBe("5");
     fireEvent.change(apyInput, { target: { value: "0" } });
+    // APY change is metadata-only (qty unchanged) → silent save
     fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
     await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
     // The position payload (first arg) must carry an explicit 0 — NOT undefined,
@@ -421,6 +435,7 @@ describe("PositionEditor — APY editing", () => {
 
   it("preserves a non-zero APY on save (control)", async () => {
     renderEditor(assetWithApy(5));
+    // No qty change → metadata-only save
     fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
     await waitFor(() => expect(hoisted.upsertPosition).toHaveBeenCalledTimes(1));
     expect(hoisted.upsertPosition.mock.calls[0][0].apy).toBe(5);
