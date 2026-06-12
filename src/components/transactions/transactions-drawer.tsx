@@ -262,12 +262,14 @@ function TransactionRow({
       <div className="w-24 shrink-0 text-right text-sm text-zinc-100">
         {row.amount !== null ? fmtCurrency(row.amount, row.currency) : "—"}
         {row.originalAmount != null &&
-          row.originalCurrency &&
+          row.originalCurrency != null &&
           row.originalCurrency !== row.currency && (
-            <span className="text-[10px] text-zinc-400 whitespace-nowrap">
+            <>
               {" "}
-              · paid {fmtCurrency(row.originalAmount, row.originalCurrency)}
-            </span>
+              <span className="text-[10px] text-zinc-400 whitespace-nowrap">
+                · paid {fmtCurrency(row.originalAmount, row.originalCurrency)}
+              </span>
+            </>
           )}
       </div>
 

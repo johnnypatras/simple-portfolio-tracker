@@ -224,7 +224,7 @@ describe("TransactionsDrawer — original paid annotation", () => {
     ]});
     const annotation = screen.getByText(/· paid £850\.50/);
     expect(annotation).toBeInTheDocument();
-    expect(annotation).toHaveClass("text-[10px]", "text-zinc-400");
+    expect(annotation).toHaveClass("text-[10px]", "text-zinc-400", "whitespace-nowrap");
     // The display amount itself still renders.
     expect(screen.getByText(/€1,000\.00/)).toBeInTheDocument();
   });

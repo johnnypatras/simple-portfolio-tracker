@@ -50,7 +50,7 @@ export function fmtCurrency(value: number, currency: string, decimals = 2): stri
     // instead of crashing the drawer. Valid codes never reach this branch
     // (the memoized formatter path above is unchanged).
     if (err instanceof RangeError) {
-      return `${value.toFixed(decimals)} ${currency}`;
+      return `${formatNumber(value, decimals)} ${currency}`;
     }
     throw err;
   }

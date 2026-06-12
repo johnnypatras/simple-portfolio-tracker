@@ -47,13 +47,14 @@ describe("fmtCurrency", () => {
 
   // Task 9 guard: original_currency is server-validated, but a hand-edited DB
   // row must never crash the drawer — Intl.NumberFormat throws RangeError on a
-  // malformed ISO code, so fmtCurrency falls back to "<amount> <code>".
+  // malformed ISO code, so fmtCurrency falls back to "<amount> <code>" via
+  // formatNumber (thousands grouping preserved on the degraded path).
   it("falls back to '<amount> <code>' on a malformed currency code (too short)", () => {
     expect(fmtCurrency(100, "EU")).toBe("100.00 EU");
   });
 
-  it("falls back to '<amount> <code>' on a malformed currency code (too long)", () => {
-    expect(fmtCurrency(1234.5, "ABCD")).toBe("1234.50 ABCD");
+  it("keeps thousands grouping in the fallback (>1000, malformed code too long)", () => {
+    expect(fmtCurrency(1234.5, "ABCD")).toBe("1,234.50 ABCD");
   });
 
   it("fallback respects the decimals parameter", () => {
