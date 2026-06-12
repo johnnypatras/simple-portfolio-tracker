@@ -1461,8 +1461,9 @@ export function CryptoTable({ assets, prices, wallets, primaryCurrency, fxRates,
                 const walletOptions = a.positions.map((p) => ({ id: p.wallet_id, name: p.wallet_name }));
                 // A new-row buy targets a wallet with no position yet — append it
                 // so the modal's destination select can offer (and pre-select) it.
-                if (prefill?.walletOption && !walletOptions.some((w) => w.id === prefill.walletOption?.id)) {
-                  walletOptions.push(prefill.walletOption);
+                const opt = prefill?.walletOption;
+                if (opt && !walletOptions.some((w) => w.id === opt.id)) {
+                  walletOptions.push(opt);
                 }
                 setTxnTarget({
                   assetRef: { class: "crypto", assetId: a.id },

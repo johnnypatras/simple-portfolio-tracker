@@ -117,6 +117,7 @@ export const ADJUSTMENT_COPY = {
  * modal show on every quantity/balance-changing save. Mirrors the other
  * copy blocks above: surfaces import these strings, never inline wording.
  * The cosmetic guard's title/reassurance come from ADJUSTMENT_COPY.
+ * Note: yesTransferNudgeSub conditionally REPLACES yesIncreaseSub/yesDecreaseSub whenever the transfer nudge is visible.
  */
 export const INTENT_COPY = {
   questionIncrease: "Does this reflect real value you gained?",
@@ -126,9 +127,9 @@ export const INTENT_COPY = {
   yesIncreaseSub: "bought, received, or found them",
   yesDecreaseLabel: "Yes — I sold or lost them",
   yesDecreaseSub: "opens Sell to record where it went",
-  // Shown as the Yes option's sub WHENEVER the transfer nudge is visible
-  // (verbatim mock §4 wording; reads correctly for both directions — the
-  // point is "independent of the transfer").
+  /** Shown as the Yes option's sub WHENEVER the transfer nudge is visible
+   *  (verbatim mock §4 wording; reads correctly for both directions — the
+   *  point is "independent of the transfer"). */
   yesTransferNudgeSub: "a new buy/yield, independent of the transfer",
   yesCashLabel: "Money came in / went out",
   yesCashSub: "deposit / withdrawal — moves the S&P",
@@ -138,7 +139,7 @@ export const INTENT_COPY = {
   chipOffBook: "off-book",
   freeToggle: "These were free — interest, staking, airdrop, reward",
   yieldConsequence:
-    "Cost €0 · counts toward the S&P at market value on the date received (all gain).",
+    "Cost €0 · counts toward the S&P at market value on the date received (all gain).", // EUR intentional — spec §8.11: consequence/guard lines always render in EUR.
   yieldDateLabel: "Date received",
   yieldDateHint: "defaults to today — backdate if it accrued earlier",
   cosmeticQuietNote: "Won't affect your S&P comparison.",

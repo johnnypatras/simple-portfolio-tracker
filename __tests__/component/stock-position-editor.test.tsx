@@ -442,60 +442,8 @@ describe("StockPositionEditor — C3 intent step", () => {
       expect(screen.queryByRole("button", { name: /backdate the effective date/i })).not.toBeNull()
     );
   });
-});
 
-// ─── Sell/Buy header buttons ───────────────────────────────
-// Rewritten: the old tests remain valid (1a behavior unchanged);
-// onTrade signature now accepts prefill as second arg.
-
-describe("StockPositionEditor — Sell/Buy delegate to the trade modal (1a)", () => {
-  it("Sell closes the editor and delegates onTrade('sell')", () => {
-    const { onClose, onTrade } = renderEditor();
-    fireEvent.click(screen.getByTitle(/sell this asset/i));
-    expect(onClose).toHaveBeenCalled();
-    expect(onTrade).toHaveBeenCalledWith("sell");
-  });
-  it("Buy closes the editor and delegates onTrade('buy')", () => {
-    const { onClose, onTrade } = renderEditor();
-    fireEvent.click(screen.getByTitle(/buy more of this asset/i));
-    expect(onClose).toHaveBeenCalled();
-    expect(onTrade).toHaveBeenCalledWith("buy");
-  });
-});
-
-// ─── Correction-date chip (intent step, via qty-change flow) ──
-// Previously the chip lived in the footer; now it lives inside EditorIntentStep.
-// These tests confirm it appears/disappears correctly after Save opens the step
-// and the user selects the cosmetic path.
-
-describe("stock StockPositionEditor — correction-date chip (intent step)", () => {
-  it("appears when position has history and cosmetic path is chosen after Save", async () => {
-    hoisted.loadLastChangeDate.mockResolvedValue("2026-03-02");
-    render(
-      <StockPositionEditor open onClose={vi.fn()} asset={makeAsset(["b-1"])} brokers={BROKERS}
-        existingSubcategories={[]} existingTags={[]} prices={PRICES_EUR} fxRates={{}} onTrade={vi.fn()} />,
-    );
-    expect(chipButton()).toBeNull();
-    fireEvent.change(firstQtyInput(), { target: { value: "20" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
-    await waitFor(() => expect(chipButton()).not.toBeNull());
-  });
-
-  it("is hidden when the fetch resolves null (no history)", async () => {
-    hoisted.loadLastChangeDate.mockResolvedValue(null);
-    render(
-      <StockPositionEditor open onClose={vi.fn()} asset={makeAsset(["b-1"])} brokers={BROKERS}
-        existingSubcategories={[]} existingTags={[]} prices={PRICES_EUR} fxRates={{}} onTrade={vi.fn()} />,
-    );
-    fireEvent.change(firstQtyInput(), { target: { value: "20" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
-    await waitFor(() => expect(hoisted.loadLastChangeDate).toHaveBeenCalledTimes(1));
-    expect(chipButton()).toBeNull();
-  });
-
-  it("is hidden when the fetch rejects (failure → no dead end)", async () => {
+  it("chip is hidden when the fetch rejects (failure → no dead end)", async () => {
     hoisted.loadLastChangeDate.mockRejectedValue(new Error("boom"));
     render(
       <StockPositionEditor open onClose={vi.fn()} asset={makeAsset(["b-1"])} brokers={BROKERS}
@@ -521,5 +469,24 @@ describe("stock StockPositionEditor — correction-date chip (intent step)", () 
     fireEvent.click(screen.getByRole("radio", { name: new RegExp(INTENT_COPY.noLabel) }));
     await waitFor(() => expect(hoisted.loadLastChangeDate).toHaveBeenCalledTimes(1));
     expect(hoisted.loadLastChangeDate).toHaveBeenCalledWith("pos-b-1");
+  });
+});
+
+// ─── Sell/Buy header buttons ───────────────────────────────
+// Rewritten: the old tests remain valid (1a behavior unchanged);
+// onTrade signature now accepts prefill as second arg.
+
+describe("StockPositionEditor — Sell/Buy delegate to the trade modal (1a)", () => {
+  it("Sell closes the editor and delegates onTrade('sell')", () => {
+    const { onClose, onTrade } = renderEditor();
+    fireEvent.click(screen.getByTitle(/sell this asset/i));
+    expect(onClose).toHaveBeenCalled();
+    expect(onTrade).toHaveBeenCalledWith("sell");
+  });
+  it("Buy closes the editor and delegates onTrade('buy')", () => {
+    const { onClose, onTrade } = renderEditor();
+    fireEvent.click(screen.getByTitle(/buy more of this asset/i));
+    expect(onClose).toHaveBeenCalled();
+    expect(onTrade).toHaveBeenCalledWith("buy");
   });
 });

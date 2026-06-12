@@ -71,15 +71,15 @@ describe("editor intent writes (integration)", () => {
       .insert({ user_id: userId, name: "Intent Wallet", wallet_type: "custodial" })
       .select("id")
       .single();
-    expect(wErr).toBeNull();
+    if (wErr) throw new Error("Failed to create wallet: " + wErr.message);
     walletId = wallet!.id;
 
     const { data: asset, error: aErr } = await client
       .from("crypto_assets")
-      .insert({ user_id: userId, ticker: "GHO", name: "GHO", coingecko_id: "gho" })
+      .insert({ user_id: userId, ticker: "GHO", name: "GHO", coingecko_id: `gho-intent-${Date.now()}` })
       .select("id")
       .single();
-    expect(aErr).toBeNull();
+    if (aErr) throw new Error("Failed to create asset: " + aErr.message);
     assetId = asset!.id;
 
     const { error: pErr } = await client.from("crypto_positions").insert({
@@ -99,6 +99,7 @@ describe("editor intent writes (integration)", () => {
       .from("activity_log")
       .select("*")
       .eq("user_id", userId)
+      .eq("entity_type", "crypto_position")
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
@@ -164,7 +165,10 @@ describe("editor intent writes (integration)", () => {
 
     const row = await latestActivity();
     expect(row.is_adjustment).toBe(false);
-    expect(Number(row.cashflow_amount_eur ?? 0)).toBe(0);
+    // A zero-delta save books a structurally-present but zero-amount cashflow
+    // row (status complete) — economically nothing, and delta_* stays empty.
+    expect(Number(row.cashflow_amount_eur)).toBe(0);
+    expect(row.cashflow_status).toBe("complete");
     expect(row.delta_eur).toBeNull();
   });
 });

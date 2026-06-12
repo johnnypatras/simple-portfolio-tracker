@@ -520,7 +520,8 @@ export async function upsertPosition(input: CryptoPositionInput, opts?: {
     const valEur = qtyDelta * (opts?.currentPriceEur ?? 0);
     // Override direction comes from the qty delta (sign of the operation): a
     // quantity DROP is a disposal (−1), a rise is an acquisition (+1). qtyDelta
-    // is never 0 here (a no-op write produces no qty change to log a cost on).
+    // CAN be 0 (metadata-only saves); direction defaults to +1 there, harmlessly —
+    // the zero val* path stores zero-amount flows and any cost override is gated upstream.
     const direction: 1 | -1 = qtyDelta < 0 ? -1 : 1;
     const fx = (opts?.currentPriceUsd != null || opts?.currentPriceEur != null || cashflowOverride != null)
       ? await computeActivityFx({ valUsd, valEur, isAdjustment: opts?.isAdjustment, entityType: "crypto_position", isStable, amountOverride: cashflowOverride, direction })

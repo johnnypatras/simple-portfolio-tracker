@@ -1215,6 +1215,7 @@ export type AssetRef =
  *  Buy/Sell route. `amount` present ⇒ user-typed (provenance-dirty: it must
  *  emit as cashflowOverride). Consumed by TransactionModal via the manager. */
 export interface AddPrefill {
+  /** Must be > 0 — the intent step validates before building the prefill (its delta is never 0). */
   quantity: number;
   amount?: number;
   /** Any ISO-4217 code (the modal's currency control accepts free ISO). */

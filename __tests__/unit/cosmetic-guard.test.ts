@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { approxDeltaValueEur, needsCosmeticConfirm } from "@/lib/cosmetic-guard";
 import { COSMETIC_GUARD_THRESHOLD_EUR } from "@/lib/constants";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("approxDeltaValueEur", () => {
   it("crypto: absDelta × priceEur", () => {
@@ -21,6 +25,11 @@ describe("approxDeltaValueEur", () => {
     ).toBeNull();
   });
 
+  it("crypto: zero price values to 0 (quiet) — pin against a null-refactor", () => {
+    expect(approxDeltaValueEur({ kind: "crypto", absDelta: 10, priceEur: 0 })).toBe(0);
+    expect(needsCosmeticConfirm(0)).toBe(false);
+  });
+
   it("stock: EUR-native needs no conversion", () => {
     expect(
       approxDeltaValueEur({
@@ -39,13 +48,12 @@ describe("approxDeltaValueEur", () => {
   });
 
   it("stock: missing rate falls back 1:1 (built into convertToBase, warns)", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(
       approxDeltaValueEur({
         kind: "stock", absDelta: 1, priceNative: 80, currency: "SEK", fxRates: {},
       }),
     ).toBe(80);
-    warn.mockRestore();
   });
 
   it("stock: missing price → null", () => {
@@ -63,11 +71,17 @@ describe("approxDeltaValueEur", () => {
   });
 
   it("cash: foreign with no rates → 1:1 (over-warns — the safe direction)", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(
       approxDeltaValueEur({ kind: "cash", absDelta: 1000, currency: "SEK", fxRates: undefined }),
     ).toBe(1000);
-    warn.mockRestore();
+  });
+
+  it("cash: converts with a provided rate (happy path)", () => {
+    // EUR-based rates: 1 EUR = 11 SEK → 1100 SEK ≙ €100.
+    expect(
+      approxDeltaValueEur({ kind: "cash", absDelta: 1100, currency: "SEK", fxRates: { SEK: 11 } }),
+    ).toBeCloseTo(100);
   });
 });
 

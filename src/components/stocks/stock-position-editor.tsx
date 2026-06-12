@@ -229,7 +229,7 @@ export function StockPositionEditor({
     try {
       await upsertStockPosition(
         { stock_asset_id: asset.id, broker_id: brokerId, quantity: qty },
-        { ...(priceData ? { currentPriceNative: priceData.price, assetCurrency: priceData.currency ?? asset.currency } : {}) },
+        { ...(priceData ? { currentPriceNative: priceData.price, assetCurrency: priceData.currency } : {}) },
       );
       setJustSavedId(brokerId);
       toast.success("Position saved");
@@ -406,8 +406,7 @@ export function StockPositionEditor({
             kind: "stock",
             absDelta: Math.abs(intentFor.delta),
             priceNative: asset.yahoo_ticker ? prices?.[asset.yahoo_ticker]?.price : undefined,
-            currency:
-              (asset.yahoo_ticker ? prices?.[asset.yahoo_ticker]?.currency : undefined) ?? asset.currency,
+            currency: asset.currency, // asset.currency, not the live quote's — parity with buildStockRows' valuation.
             fxRates,
           })}
           lastWasTransfer={

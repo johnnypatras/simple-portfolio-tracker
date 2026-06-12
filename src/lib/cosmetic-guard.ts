@@ -20,9 +20,9 @@ export type DeltaValueArgs =
  *
  * FX notes: `convertToBase` already returns the amount UNCONVERTED (with a
  * console warn) on a missing/zero rate — the 1:1 fallback is built in, so no
- * guard is added here. Callers pass display-base-keyed fxRates; a USD-display
- * conversion is off by ~the EUR/USD rate — acceptable for a warning threshold
- * (approximate by design; exact for the EUR-display case).
+ * guard is added here. Rates must include the path from `currency` to EUR
+ * (EUR-keyed is exact; USD-keyed is off by ~the EUR/USD rate — acceptable for
+ * a warning threshold, approximate by design).
  */
 export function approxDeltaValueEur(args: DeltaValueArgs): number | null {
   switch (args.kind) {

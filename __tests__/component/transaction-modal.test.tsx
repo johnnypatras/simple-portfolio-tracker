@@ -1637,4 +1637,15 @@ describe("TransactionModal — initialValues (add-mode prefill)", () => {
     // Amount is type="text" — toHaveValue expects a string for text inputs.
     expect(screen.getByLabelText("Amount")).toHaveValue("100");
   });
+
+  it("seeds brokerId for stocks", () => {
+    renderOpen({
+      assetClass: "stock",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      brokerOptions: [{ id: "b-1", name: "DEGIRO" }, { id: "b-2", name: "Revolut" }],
+      initialValues: { quantity: 5, brokerId: "b-2" },
+    });
+    expect((screen.getByRole("combobox", { name: /broker/i }) as HTMLSelectElement).value).toBe("b-2");
+  });
 });

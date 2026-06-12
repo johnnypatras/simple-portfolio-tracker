@@ -342,6 +342,22 @@ describe("PositionEditor — C3 intent step", () => {
       walletOption: { id: "w-2", name: "Binance" },
     }));
   });
+
+  it("any-ISO cost currency is forwarded via amountCurrency", async () => {
+    const onTrade = vi.fn();
+    render(
+      <PositionEditor open onClose={vi.fn()} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={onTrade} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } }); // +10
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    // In the intent step: type a cost amount and switch currency to USD
+    fireEvent.change(screen.getByLabelText("Amount paid (incl. fees)"), { target: { value: "8.70" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Amount paid (incl. fees) currency" }), { target: { value: "USD" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(onTrade).toHaveBeenCalled());
+    expect(onTrade).toHaveBeenCalledWith("buy", expect.objectContaining({ amountCurrency: "USD" }));
+  });
 });
 
 // ─── Correction-date chip (via intent step) ────────────────

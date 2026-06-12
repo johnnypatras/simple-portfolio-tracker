@@ -1415,8 +1415,9 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
                 if (!a) return;
                 setEditingAsset(null);
                 const brokerOptions = a.positions.map((p) => ({ id: p.broker_id, name: p.broker_name }));
-                if (prefill?.brokerOption && !brokerOptions.some((b) => b.id === prefill.brokerOption?.id)) {
-                  brokerOptions.push(prefill.brokerOption);
+                const opt = prefill?.brokerOption;
+                if (opt && !brokerOptions.some((b) => b.id === opt.id)) {
+                  brokerOptions.push(opt);
                 }
                 setTxnTarget({
                   assetRef: { class: "stock", assetId: a.id },
