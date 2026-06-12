@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { EditorIntentStep } from "@/components/transactions/editor-intent-step";
+import { EditorIntentStep, CosmeticConfirm } from "@/components/transactions/editor-intent-step";
 import { INTENT_COPY, ADJUSTMENT_COPY } from "@/lib/cost-basis-copy";
 import { formatBackdateChipDate } from "@/lib/format";
 
@@ -149,5 +149,56 @@ describe("EditorIntentStep — transfer nudge + navigation", () => {
     const r = renderStep();
     fireEvent.keyDown(screen.getByLabelText("Amount paid (incl. fees)"), { key: "Escape" });
     expect(r.onBack).toHaveBeenCalled();
+  });
+});
+
+describe("EditorIntentStep — cost rejection", () => {
+  it("typed 0 → Continue emits onBuy(null) (zero/negative costs never reach the Buy machinery)", () => {
+    const r = renderStep();
+    fireEvent.change(screen.getByLabelText("Amount paid (incl. fees)"), {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(r.onBuy).toHaveBeenCalledWith(null);
+  });
+
+  it("negative typed cost → onBuy(null)", () => {
+    const r = renderStep();
+    fireEvent.change(screen.getByLabelText("Amount paid (incl. fees)"), {
+      target: { value: "-5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(r.onBuy).toHaveBeenCalledWith(null);
+  });
+
+  it("per-unit hint renders for a typed cost", () => {
+    renderStep({ delta: 10 });
+    fireEvent.change(screen.getByLabelText("Amount paid (incl. fees)"), {
+      target: { value: "8.70" },
+    });
+    expect(screen.getByText(/0\.87\/unit/)).toBeInTheDocument();
+  });
+});
+
+describe("EditorIntentStep — pending guard", () => {
+  it("pending disables Continue", () => {
+    renderStep({ pending: true });
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+  });
+
+  it("pending disables the guard's proceed button", () => {
+    const spy = vi.fn();
+    render(
+      <CosmeticConfirm
+        amountLabel="€5,000.00"
+        onReal={vi.fn()}
+        onProceed={spy}
+        pending
+      />,
+    );
+    const proceedBtn = screen.getByRole("button", { name: INTENT_COPY.cosmeticGuardProceed });
+    expect(proceedBtn).toBeDisabled();
+    fireEvent.click(proceedBtn);
+    expect(spy).not.toHaveBeenCalled();
   });
 });

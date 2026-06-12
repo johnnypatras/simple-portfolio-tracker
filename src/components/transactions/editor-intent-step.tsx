@@ -26,6 +26,8 @@ export interface EditorIntentStepProps {
   lastWasTransfer: boolean;
   /** undefined = not loaded · null = no history · string = backdate-chip date. */
   lastChangeDate: string | null | undefined;
+  /** True while the host is awaiting a write from this step — disables the submit buttons (double-click = double booking). */
+  pending?: boolean;
   onBack: () => void;
   onBuy: (cost: { amount: number; currency: string } | null) => void;
   onYield: (date: string | null) => void;
@@ -42,11 +44,14 @@ export function CosmeticConfirm({
   amountLabel,
   onReal,
   onProceed,
+  pending,
 }: {
   /** Pre-formatted stakes — "€5,000.00", or "-10 GHO" when no value is known. */
   amountLabel: string;
   onReal: () => void;
   onProceed: () => void;
+  /** True while the host is awaiting a write from this step — disables the submit buttons (double-click = double booking). */
+  pending?: boolean;
 }) {
   return (
     <div role="alert" className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2.5">
@@ -67,7 +72,9 @@ export function CosmeticConfirm({
         <button
           type="button"
           onClick={onProceed}
-          className="px-2.5 py-1 rounded text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+          disabled={pending}
+          aria-busy={pending}
+          className="px-2.5 py-1 rounded text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:bg-zinc-800 disabled:text-zinc-600 transition-colors"
         >
           {INTENT_COPY.cosmeticGuardProceed}
         </button>
@@ -87,6 +94,7 @@ export function EditorIntentStep({
   approxValueEur,
   lastWasTransfer,
   lastChangeDate,
+  pending,
   onBack,
   onBuy,
   onYield,
@@ -271,7 +279,10 @@ export function EditorIntentStep({
             type="radio"
             name={`${id}-intent`}
             checked={choice === "cosmetic"}
-            onChange={() => setChoice("cosmetic")}
+            onChange={() => {
+              // No disarm needed here — only the Yes path can leave an armed guard behind (arming requires cosmetic already selected).
+              setChoice("cosmetic");
+            }}
             className="mt-0.5 accent-zinc-400"
           />
           <span className="flex-1 min-w-0">
@@ -319,6 +330,7 @@ export function EditorIntentStep({
                   setGuardArmed(false);
                 }}
                 onProceed={() => onCosmetic(cosmeticDate || null)}
+                pending={pending}
               />
             )}
           </div>
@@ -337,7 +349,9 @@ export function EditorIntentStep({
           <button
             type="button"
             onClick={handleContinue}
-            className={`px-4 py-2 text-sm rounded-lg text-white transition-colors ${
+            disabled={pending}
+            aria-busy={pending}
+            className={`px-4 py-2 text-sm rounded-lg text-white transition-colors disabled:bg-zinc-800 disabled:text-zinc-600 ${
               choice === "yes" && increase && free
                 ? "bg-teal-600 hover:bg-teal-500"
                 : "bg-blue-600 hover:bg-blue-500"
