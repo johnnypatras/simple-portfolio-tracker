@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CashAccountModal } from "@/components/cash/cash-account-modal";
 import * as cashActions from "@/lib/actions/cash-accounts";
 import * as instActions from "@/lib/actions/institutions";
+import { INTENT_COPY } from "@/lib/cost-basis-copy";
 import type { CashAccount, Institution } from "@/lib/types";
 
 // ── Mocks ────────────────────────────────────────────────
@@ -290,7 +291,9 @@ describe("CashAccountModal — input validation", () => {
     expect(vi.mocked(cashActions.updateCashAccount)).not.toHaveBeenCalled();
   });
 
-  it("allows save on edit with explicit balance=0 (zero is a valid number)", async () => {
+  it("allows save on edit with explicit balance=0 — goes through the intent question", async () => {
+    // C3: balance changes (1500 → 0) triggers the intent step; Yes is pre-selected,
+    // so clicking Continue saves with isAdjustment: false.
     vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
     const account = makeCashAccount({ balance: 1500, apy: 1.5 });
 
@@ -300,6 +303,12 @@ describe("CashAccountModal — input validation", () => {
     fireEvent.change(balanceInput, { target: { value: "0" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    // Intent step appears — Yes is pre-selected, Continue saves
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => {
       expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled();
@@ -317,6 +326,7 @@ describe("CashAccountModal — input validation", () => {
     const apyInput = screen.getByLabelText(/APY/) as HTMLInputElement;
     fireEvent.change(apyInput, { target: { value: "0" } });
 
+    // Balance unchanged → saves silently (no intent step)
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => {
@@ -501,7 +511,9 @@ describe("CashAccountModal — currency (any-ISO + no-rewrite)", () => {
     vi.mocked(cashActions.updateCashAccount).mockReset();
   });
 
-  it("edit shows the REAL stored ISO (GBP) and a balance-only save omits currency", async () => {
+  it("edit shows the REAL stored ISO (GBP) and a balance-only save goes through the intent step", async () => {
+    // C3: balance changes (1500 → 2000) triggers the intent step; Yes is
+    // pre-selected, so Continue saves. The currency key must still be absent.
     vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
     const account = makeCashAccount({ currency: "GBP" });
     render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
@@ -514,6 +526,12 @@ describe("CashAccountModal — currency (any-ISO + no-rewrite)", () => {
 
     fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "2000" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    // Intent step appears — Yes pre-selected → Continue saves
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
     const [, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
@@ -539,6 +557,8 @@ describe("CashAccountModal — currency (any-ISO + no-rewrite)", () => {
     fireEvent.change(codeInput, { target: { value: "CHF" } });
     fireEvent.blur(codeInput);
 
+    // Balance is unchanged (pre-filled 1500 === cashAccount.balance 1500)
+    // → saves silently without the intent step
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
     await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
     const [, input] = vi.mocked(cashActions.updateCashAccount).mock.calls[0];
@@ -580,5 +600,209 @@ describe("CashAccountModal — currency (any-ISO + no-rewrite)", () => {
     await waitFor(() => expect(vi.mocked(cashActions.createCashAccount)).toHaveBeenCalled());
     const [input] = vi.mocked(cashActions.createCashAccount).mock.calls[0];
     expect(input).toMatchObject({ currency: "SEK" });
+  });
+});
+
+// ─── C3 edit-mode intent question ──────────────────────────────────────────
+//
+// In edit mode, a balance change shows the "Does this reflect real money
+// moving?" question before saving. The answer controls isAdjustment.
+// APY-only / name-only changes save silently (no intent step).
+
+describe("CashAccountModal — C3 edit-mode intent question", () => {
+  beforeEach(() => {
+    vi.mocked(cashActions.createCashAccount).mockReset();
+    vi.mocked(cashActions.updateCashAccount).mockReset();
+  });
+
+  it("balance change → submit shows the cash question instead of saving", () => {
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    // Change balance by +5 (1500 → 1505)
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "1505" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    expect(vi.mocked(cashActions.updateCashAccount)).not.toHaveBeenCalled();
+  });
+
+  it("'Money came in / went out' saves counted (isAdjustment false)", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    // Δ +5: change balance, submit → intent step; Yes is pre-selected
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "1505" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+    // Yes radio is pre-selected — click Continue
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
+    expect(vi.mocked(cashActions.updateCashAccount).mock.calls[0][2]).toMatchObject({
+      isAdjustment: false,
+    });
+  });
+
+  it("cosmetic below €10 saves off-book quietly (no guard)", async () => {
+    // Δ +5 (EUR) → approxEur = 5 < 10 → no guard, saves immediately on Continue
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} fxRates={{}} />);
+
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "1505" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+
+    // Select the cosmetic radio (second radio in the intent fieldset)
+    const [, cosmeticRadio] = screen.getAllByRole("radio");
+    fireEvent.click(cosmeticRadio);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
+    expect(vi.mocked(cashActions.updateCashAccount).mock.calls[0][2]).toMatchObject({
+      isAdjustment: true,
+    });
+    // Guard must NOT have appeared
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("cosmetic ≥ €10 arms the guard first, then saves on confirm", async () => {
+    // Δ +500 (EUR) → approxEur = 500 ≥ 10 → guard fires
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} fxRates={{}} />);
+
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "2000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+
+    // Select the cosmetic radio (second radio in the intent fieldset)
+    const [, cosmeticRadio] = screen.getAllByRole("radio");
+    fireEvent.click(cosmeticRadio);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    // Guard is now armed — save has NOT been called
+    expect(screen.getByRole("alert")).toHaveTextContent(/Stop counting/);
+    expect(vi.mocked(cashActions.updateCashAccount)).not.toHaveBeenCalled();
+
+    // Confirming the guard saves as adjustment
+    fireEvent.click(screen.getByRole("button", { name: INTENT_COPY.cosmeticGuardProceed }));
+    await waitFor(() =>
+      expect(vi.mocked(cashActions.updateCashAccount).mock.calls[0][2]).toMatchObject({
+        isAdjustment: true,
+      }),
+    );
+  });
+
+  it("'It's real value' returns to the Yes answer", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} fxRates={{}} />);
+
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "2000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+
+    // Arm the guard — second radio is cosmetic
+    const [, cosmeticRadio] = screen.getAllByRole("radio");
+    fireEvent.click(cosmeticRadio);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+
+    // Click "← It's real value" → guard gone, Yes radio should be checked
+    fireEvent.click(screen.getByRole("button", { name: INTENT_COPY.cosmeticGuardReal }));
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    // First radio is Yes — should now be checked
+    const [yesRadio] = screen.getAllByRole("radio");
+    expect(yesRadio).toBeChecked();
+  });
+
+  it("Back returns to the form with values intact", async () => {
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "1505" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    // Back to the form — Balance input retains the typed value
+    const balanceInput = screen.getByLabelText("Balance") as HTMLInputElement;
+    expect(balanceInput.value).toBe("1505");
+  });
+
+  it("APY-only edit saves silently (no question)", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    // Change only APY; balance stays at pre-filled 1500
+    fireEvent.change(screen.getByLabelText(/APY/), { target: { value: "2.0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
+    expect(screen.queryByText(INTENT_COPY.questionCash)).toBeNull();
+  });
+
+  it("the effective date typed in the form is carried through the intent save", async () => {
+    vi.mocked(cashActions.updateCashAccount).mockResolvedValue();
+    const account = makeCashAccount({ balance: 1500, apy: 1.5, currency: "EUR" });
+    render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
+
+    // Set effective date in the form
+    fireEvent.change(screen.getByLabelText(/Effective date/), {
+      target: { value: "2026-01-15" },
+    });
+    // Change balance to trigger intent step
+    fireEvent.change(screen.getByLabelText("Balance"), { target: { value: "1505" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(INTENT_COPY.questionCash)).toBeInTheDocument();
+    });
+    // Yes pre-selected → Continue
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());
+    expect(vi.mocked(cashActions.updateCashAccount).mock.calls[0][2]).toMatchObject({
+      effectiveDate: "2026-01-15",
+    });
+  });
+
+  it("edit mode has no IsAdjustmentCheckbox; create mode still has it", () => {
+    // Edit mode: no checkbox
+    const account = makeCashAccount();
+    const { unmount } = render(
+      <CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />,
+    );
+    // IsAdjustmentCheckbox renders a label "Portfolio adjustment"
+    expect(screen.queryByLabelText("Portfolio adjustment")).toBeNull();
+    unmount();
+
+    // Create mode: checkbox present
+    render(
+      <CashAccountModal isOpen onClose={vi.fn()} institutionId="inst-1" institutionName="Revolut" />,
+    );
+    expect(screen.getByLabelText("Portfolio adjustment")).toBeInTheDocument();
   });
 });

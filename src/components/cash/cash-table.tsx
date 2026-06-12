@@ -727,6 +727,7 @@ export function CashTable({
           walletName={editingCash?.wallet_name ?? undefined}
           brokerId={editingCash?.broker_id ?? undefined}
           brokerName={editingCash?.broker_name ?? undefined}
+          fxRates={fxRates}
         />
       )}
       {!isReadOnly && (

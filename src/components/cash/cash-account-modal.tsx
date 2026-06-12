@@ -12,6 +12,11 @@ import type { CashAccount, CashAccountCreateInput, CashAccountUpdateInput, Insti
 import { IS_ADJUSTMENT_TOOLTIP_TEXT } from "@/lib/constants";
 import { IsAdjustmentCheckbox } from "@/components/ui/is-adjustment-checkbox";
 import { CurrencyCodeSelect } from "@/components/ui/currency-amount-input";
+import { INTENT_COPY } from "@/lib/cost-basis-copy";
+import { approxDeltaValueEur, needsCosmeticConfirm } from "@/lib/cosmetic-guard";
+import { CosmeticConfirm } from "@/components/transactions/editor-intent-step";
+import { fmtCurrency } from "@/lib/format";
+import type { FXRates } from "@/lib/prices/fx";
 
 /** Sentinel <option> value for the "create a new bank" choice in the bank picker. */
 const NEW_BANK = "__new_bank__";
@@ -28,6 +33,9 @@ interface CashAccountModalProps {
   walletName?: string;
   brokerId?: string;
   brokerName?: string;
+  /** Display-base FX rates — feeds the cosmetic guard's approximate EUR
+   *  valuation of the balance delta. Optional; absent → 1:1 fallback. */
+  fxRates?: FXRates;
 }
 
 export function CashAccountModal({
@@ -41,6 +49,7 @@ export function CashAccountModal({
   walletName,
   brokerId,
   brokerName,
+  fxRates,
 }: CashAccountModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +68,11 @@ export function CashAccountModal({
   const [apy, setApy] = useState("");
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [newBankName, setNewBankName] = useState("");
+
+  // ─── C3 edit-mode intent step ───────────────────────────
+  const [step, setStep] = useState<"form" | "intent">("form");
+  const [intentChoice, setIntentChoice] = useState<"yes" | "cosmetic">("yes");
+  const [guardArmed, setGuardArmed] = useState(false);
 
   // Bank-origin accounts show the name field; deposits (wallet/broker) do not
   const isBankOrigin = !walletId && !brokerId && !cashAccount?.wallet_id && !cashAccount?.broker_id;
@@ -97,6 +111,9 @@ export function CashAccountModal({
       setEffectiveDate("");
       setSelectedInstitutionId("");
       setNewBankName("");
+      setStep("form");
+      setIntentChoice("yes");
+      setGuardArmed(false);
     } else if (isOpen) {
       setName("");
       setCurrency("EUR");
@@ -108,19 +125,21 @@ export function CashAccountModal({
       setEffectiveDate("");
       setSelectedInstitutionId("");
       setNewBankName("");
+      setStep("form");
+      setIntentChoice("yes");
+      setGuardArmed(false);
     }
   }, [isOpen, cashAccount]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
+  /**
+   * Core save logic — extracted from handleSubmit so both the form-submit path
+   * (create mode / APY-only edit) and the intent-step Continue button can call
+   * it directly with the resolved isAdjustment flag.
+   */
+  async function performSave(isAdj: boolean) {
     setLoading(true);
-
+    setError(null);
     try {
-      // Parse numeric inputs explicitly. Empty / non-numeric values were
-      // previously coerced to 0 by `parseFloat(x) || 0`, silently resetting
-      // the user's balance/APY on save when the field was accidentally
-      // cleared. Block the save instead and surface a clear error.
       const parsedBalance = parseFloat(balance);
       if (!Number.isFinite(parsedBalance)) {
         throw new Error("Balance must be a valid number");
@@ -163,7 +182,7 @@ export function CashAccountModal({
           ...(showInstitutionPicker ? { institution_id: resolvedInstitutionId } : {}),
         };
         await updateCashAccount(cashAccount.id, input, {
-          isAdjustment,
+          isAdjustment: isAdj,
           ...(effectiveDate ? { effectiveDate } : {}),
         });
       } else {
@@ -177,12 +196,12 @@ export function CashAccountModal({
           broker_id: brokerId ?? null,
         };
         await createCashAccount(input, {
-          isAdjustment,
+          isAdjustment: isAdj,
           ...(effectiveDate ? { effectiveDate } : {}),
         });
       }
       onClose();
-      const adjLabel = isAdjustment ? " (adjustment)" : "";
+      const adjLabel = isAdj ? " (adjustment)" : "";
       const verb = isEditing ? "updated" : "added";
       const noun = isBankOrigin ? "Bank account" : "Deposit";
       toast.success(`${noun} ${verb}${adjLabel}`);
@@ -193,201 +212,383 @@ export function CashAccountModal({
     }
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    // Parse numeric inputs up-front to surface errors before any navigation.
+    const parsedBalance = parseFloat(balance);
+    if (!Number.isFinite(parsedBalance)) {
+      setError("Balance must be a valid number");
+      return;
+    }
+    const parsedApy = parseFloat(apy);
+    if (!Number.isFinite(parsedApy)) {
+      setError("APY must be a valid number");
+      return;
+    }
+
+    // Edit mode: if the balance changed, ask the intent question instead of
+    // saving immediately. APY-only / name-only edits save silently.
+    if (isEditing && parsedBalance !== cashAccount.balance) {
+      setIntentChoice("yes");
+      setGuardArmed(false);
+      setStep("intent");
+      return;
+    }
+
+    await performSave(isEditing ? false : isAdjustment);
+  }
+
+  // ─── Intent step values (computed when step === "intent") ─────────────────
+  const parsedBalanceForIntent = parseFloat(balance);
+  const delta = isEditing && Number.isFinite(parsedBalanceForIntent)
+    ? parsedBalanceForIntent - cashAccount.balance
+    : 0;
+  const absDelta = Math.abs(delta);
+  const approxEur = approxDeltaValueEur({
+    kind: "cash",
+    absDelta,
+    currency: isEditing ? cashAccount.currency : currency,
+    fxRates,
+  });
+  const guardLabel = fmtCurrency(approxEur ?? absDelta, isEditing ? cashAccount.currency : currency);
+  const intentHeader = `On save · ${delta >= 0 ? "+" : ""}${fmtCurrency(delta, isEditing ? cashAccount.currency : currency)}`;
+
   return (
     <Modal open={isOpen} onClose={onClose} title={getTitle()}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Transfer / Adjustment badge (edit mode only) */}
-        {cashAccount?.last_was_transfer && (
-          <div className="flex items-center gap-1.5 -mt-2 mb-1">
-            <span className="text-[10px] text-teal-400 font-medium" title="Last change was a sell/buy/move transfer">Xfer</span>
-            <span className="text-[10px] text-zinc-400">Last changed via transfer</span>
-          </div>
-        )}
-        {!cashAccount?.last_was_transfer && cashAccount?.last_was_adjustment && (
-          <div className="flex items-center gap-1.5 -mt-2 mb-1">
-            <span className="text-[10px] text-amber-400 font-medium" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>Adj.</span>
-            <span className="text-[10px] text-zinc-400">Last saved as portfolio adjustment</span>
-          </div>
-        )}
+        {step === "intent" && isEditing ? (
+          /* ── C3 intent step ─────────────────────────────────────────── */
+          <div
+            className="space-y-4"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                // Contain Escape: Back to the form, never closing the host modal.
+                // Same containment trio as EditorIntentStep.
+                e.preventDefault();
+                e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
+                setStep("form");
+              }
+            }}
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+              {intentHeader}
+            </p>
 
-        {/* Bank picker — shown when a bank-origin account has no parent bank:
-            a context-free "Add Cash", or fixing an existing "Unknown Bank" orphan */}
-        {showInstitutionPicker && (
-          <div>
-            <label htmlFor={`${id}-bank`} className="block text-xs text-zinc-400 mb-1">
-              Bank
-            </label>
-            <select
-              id={`${id}-bank`}
-              value={selectedInstitutionId}
-              onChange={(e) => setSelectedInstitutionId(e.target.value)}
-              required
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-            >
-              <option value="">Select bank…</option>
-              {institutions.map((inst) => (
-                <option key={inst.id} value={inst.id}>
-                  {inst.name}
-                </option>
-              ))}
-              <option value={NEW_BANK}>+ New bank…</option>
-            </select>
-            {selectedInstitutionId === NEW_BANK && (
-              <input
-                type="text"
-                value={newBankName}
-                onChange={(e) => setNewBankName(e.target.value)}
-                placeholder="New bank name (e.g. Alpha Bank)"
-                required
-                className="w-full mt-2 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+            <fieldset>
+              <legend className="text-sm font-medium text-zinc-200 mb-2">
+                {INTENT_COPY.questionCash}
+              </legend>
+
+              {/* Yes — the value-bearing primary */}
+              <label
+                className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+                  intentChoice === "yes"
+                    ? "border-emerald-500/50 bg-emerald-500/5"
+                    : "border-zinc-800"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name={`${id}-cash-intent`}
+                  checked={intentChoice === "yes"}
+                  onChange={() => {
+                    setIntentChoice("yes");
+                    setGuardArmed(false);
+                  }}
+                  className="mt-0.5 accent-emerald-500"
+                />
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-zinc-100">{INTENT_COPY.yesCashLabel}</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                      {INTENT_COPY.chipCounts}
+                    </span>
+                  </span>
+                  <span className="block text-[10px] text-zinc-400 mt-0.5">{INTENT_COPY.yesCashSub}</span>
+                </span>
+              </label>
+
+              {/* No — the subordinate cosmetic escape */}
+              <label
+                className={`mt-2 flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2 cursor-pointer transition-colors ${
+                  intentChoice === "cosmetic"
+                    ? "border-zinc-500 bg-zinc-500/5"
+                    : "border-zinc-800 opacity-60"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name={`${id}-cash-intent`}
+                  checked={intentChoice === "cosmetic"}
+                  onChange={() => {
+                    // No disarm needed here — only the Yes path can leave an armed guard behind.
+                    setIntentChoice("cosmetic");
+                  }}
+                  className="mt-0.5 accent-zinc-400"
+                />
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-zinc-300">{INTENT_COPY.noCashLabel}</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-400 border border-zinc-600/40">
+                      {INTENT_COPY.chipOffBook}
+                    </span>
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+
+            {intentChoice === "cosmetic" && guardArmed && (
+              <CosmeticConfirm
+                amountLabel={guardLabel}
+                pending={loading}
+                onReal={() => {
+                  setIntentChoice("yes");
+                  setGuardArmed(false);
+                }}
+                onProceed={() => void performSave(true)}
               />
             )}
-          </div>
-        )}
 
-        {/* Name field — bank-origin only */}
-        {isBankOrigin && (
-          <div>
-            <label htmlFor={`${id}-name`} className="block text-xs text-zinc-400 mb-1">
-              Account Name
-            </label>
-            <input
-              id={`${id}-name`}
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Savings, Current"
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-              required
-            />
-          </div>
-        )}
-
-        {/* Currency + Balance. The account currency is free-ISO (imports and
-            transfers create GBP/CHF/... accounts), so the control is the shared
-            any-ISO picker. Edit mode shows the stored code read-only with a
-            "Change" affordance — the payload then omits `currency` unless it
-            was deliberately changed, so a save can never rewrite it. */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            {isEditing && !changingCurrency ? (
-              <>
-                <span className="block text-xs text-zinc-400 mb-1">Currency</span>
-                <div className="flex items-baseline gap-2 py-2.5">
-                  <span className="text-sm text-zinc-100">{currency}</span>
-                  <button
-                    type="button"
-                    onClick={() => setChangingCurrency(true)}
-                    // Visible text "Change" is contained in the accessible
-                    // name (WCAG 2.5.3); the suffix disambiguates the target
-                    // for screen-reader users scanning the form.
-                    aria-label="Change currency"
-                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    Change
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-400 mb-1">
-                  Currency
-                </label>
-                <CurrencyCodeSelect
-                  id={`${id}-currency`}
-                  labelBase="Account"
-                  currency={currency}
-                  onCurrencyChange={setCurrency}
-                  defaultCurrency="EUR"
-                />
-              </>
+            {error && (
+              <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+                {error}
+              </p>
             )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setStep("form")}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Back
+              </button>
+              {!guardArmed && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  aria-busy={loading}
+                  onClick={() => {
+                    if (intentChoice === "yes") {
+                      void performSave(false);
+                      return;
+                    }
+                    if (needsCosmeticConfirm(approxEur)) {
+                      setGuardArmed(true);
+                      return;
+                    }
+                    void performSave(true);
+                  }}
+                  className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+                >
+                  Continue
+                </button>
+              )}
+            </div>
           </div>
-          <div>
-            <label htmlFor={`${id}-balance`} className="block text-xs text-zinc-400 mb-1">
-              {isBankOrigin ? "Balance" : "Amount"}
-            </label>
-            <input
-              id={`${id}-balance`}
-              type="number"
-              step="0.01"
-              value={balance}
-              onChange={(e) => setBalance(e.target.value)}
-              placeholder="0.00"
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-              required
-            />
-          </div>
-        </div>
+        ) : (
+          /* ── Form step ──────────────────────────────────────────────── */
+          <>
+            {/* Transfer / Adjustment badge (edit mode only) */}
+            {cashAccount?.last_was_transfer && (
+              <div className="flex items-center gap-1.5 -mt-2 mb-1">
+                <span className="text-[10px] text-teal-400 font-medium" title="Last change was a sell/buy/move transfer">Xfer</span>
+                <span className="text-[10px] text-zinc-400">Last changed via transfer</span>
+              </div>
+            )}
+            {!cashAccount?.last_was_transfer && cashAccount?.last_was_adjustment && (
+              <div className="flex items-center gap-1.5 -mt-2 mb-1">
+                <span className="text-[10px] text-amber-400 font-medium" title={IS_ADJUSTMENT_TOOLTIP_TEXT}>Adj.</span>
+                <span className="text-[10px] text-zinc-400">Last saved as portfolio adjustment</span>
+              </div>
+            )}
 
-        {/* APY */}
-        <div>
-          <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-400 mb-1">
-            APY % <span className="text-zinc-400">(optional)</span>
-          </label>
-          <input
-            id={`${id}-apy`}
-            type="number"
-            step="0.01"
-            value={apy}
-            onChange={(e) => setApy(e.target.value)}
-            placeholder="0.00"
-            className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
-          />
-        </div>
+            {/* Bank picker — shown when a bank-origin account has no parent bank:
+                a context-free "Add Cash", or fixing an existing "Unknown Bank" orphan */}
+            {showInstitutionPicker && (
+              <div>
+                <label htmlFor={`${id}-bank`} className="block text-xs text-zinc-400 mb-1">
+                  Bank
+                </label>
+                <select
+                  id={`${id}-bank`}
+                  value={selectedInstitutionId}
+                  onChange={(e) => setSelectedInstitutionId(e.target.value)}
+                  required
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                >
+                  <option value="">Select bank…</option>
+                  {institutions.map((inst) => (
+                    <option key={inst.id} value={inst.id}>
+                      {inst.name}
+                    </option>
+                  ))}
+                  <option value={NEW_BANK}>+ New bank…</option>
+                </select>
+                {selectedInstitutionId === NEW_BANK && (
+                  <input
+                    type="text"
+                    value={newBankName}
+                    onChange={(e) => setNewBankName(e.target.value)}
+                    placeholder="New bank name (e.g. Alpha Bank)"
+                    required
+                    className="w-full mt-2 px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  />
+                )}
+              </div>
+            )}
 
-        {/* Effective date (optional) */}
-        <div>
-          <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
-            Effective date (optional)
-          </label>
-          <input
-            id={`${id}-effective-date`}
-            type="date"
-            max={new Date().toISOString().split("T")[0]}
-            value={effectiveDate}
-            onChange={(e) => setEffectiveDate(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
-          />
-          <p className="text-xs text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
-        </div>
+            {/* Name field — bank-origin only */}
+            {isBankOrigin && (
+              <div>
+                <label htmlFor={`${id}-name`} className="block text-xs text-zinc-400 mb-1">
+                  Account Name
+                </label>
+                <input
+                  id={`${id}-name`}
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Savings, Current"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  required
+                />
+              </div>
+            )}
 
-        {/* Error display */}
-        {error && (
-          <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
-            {error}
-          </p>
+            {/* Currency + Balance. The account currency is free-ISO (imports and
+                transfers create GBP/CHF/... accounts), so the control is the shared
+                any-ISO picker. Edit mode shows the stored code read-only with a
+                "Change" affordance — the payload then omits `currency` unless it
+                was deliberately changed, so a save can never rewrite it. */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                {isEditing && !changingCurrency ? (
+                  <>
+                    <span className="block text-xs text-zinc-400 mb-1">Currency</span>
+                    <div className="flex items-baseline gap-2 py-2.5">
+                      <span className="text-sm text-zinc-100">{currency}</span>
+                      <button
+                        type="button"
+                        onClick={() => setChangingCurrency(true)}
+                        // Visible text "Change" is contained in the accessible
+                        // name (WCAG 2.5.3); the suffix disambiguates the target
+                        // for screen-reader users scanning the form.
+                        aria-label="Change currency"
+                        className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor={`${id}-currency`} className="block text-xs text-zinc-400 mb-1">
+                      Currency
+                    </label>
+                    <CurrencyCodeSelect
+                      id={`${id}-currency`}
+                      labelBase="Account"
+                      currency={currency}
+                      onCurrencyChange={setCurrency}
+                      defaultCurrency="EUR"
+                    />
+                  </>
+                )}
+              </div>
+              <div>
+                <label htmlFor={`${id}-balance`} className="block text-xs text-zinc-400 mb-1">
+                  {isBankOrigin ? "Balance" : "Amount"}
+                </label>
+                <input
+                  id={`${id}-balance`}
+                  type="number"
+                  step="0.01"
+                  value={balance}
+                  onChange={(e) => setBalance(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* APY */}
+            <div>
+              <label htmlFor={`${id}-apy`} className="block text-xs text-zinc-400 mb-1">
+                APY % <span className="text-zinc-400">(optional)</span>
+              </label>
+              <input
+                id={`${id}-apy`}
+                type="number"
+                step="0.01"
+                value={apy}
+                onChange={(e) => setApy(e.target.value)}
+                placeholder="0.00"
+                className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+              />
+            </div>
+
+            {/* Effective date (optional) */}
+            <div>
+              <label htmlFor={`${id}-effective-date`} className="block text-xs text-zinc-400 mb-1">
+                Effective date (optional)
+              </label>
+              <input
+                id={`${id}-effective-date`}
+                type="date"
+                max={new Date().toISOString().split("T")[0]}
+                value={effectiveDate}
+                onChange={(e) => setEffectiveDate(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-zinc-100 text-sm"
+              />
+              <p className="text-xs text-zinc-400 mt-1">Leave empty to use today&apos;s date</p>
+            </div>
+
+            {/* Error display */}
+            {error && (
+              <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+                {error}
+              </p>
+            )}
+
+            {/* Adjustment checkbox — CREATE mode only (the opening-balance fork,
+                backlog #9, owns its future). Edit mode asks the C3 question. */}
+            {!isEditing && (
+              <div className="pt-2">
+                <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="cash" />
+              </div>
+            )}
+
+            {/* Footer: action buttons */}
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                aria-busy={loading}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
+              >
+                {loading
+                  ? "Saving..."
+                  : isEditing
+                    ? "Save Changes"
+                    : isBankOrigin
+                      ? "Add Account"
+                      : "Add Deposit"}
+              </button>
+            </div>
+          </>
         )}
-
-        {/* Adjustment checkbox + helper text */}
-        <div className="pt-2">
-          <IsAdjustmentCheckbox checked={isAdjustment} onChange={setIsAdjustment} idSlug="cash" />
-        </div>
-
-        {/* Footer: action buttons */}
-        <div className="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            aria-busy={loading}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
-          >
-            {loading
-              ? "Saving..."
-              : isEditing
-                ? "Save Changes"
-                : isBankOrigin
-                  ? "Add Account"
-                  : "Add Deposit"}
-          </button>
-        </div>
       </form>
     </Modal>
   );

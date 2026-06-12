@@ -1055,6 +1055,7 @@ export function AccountsView({
               walletName={editingCashAccount?.wallet_name ?? undefined}
               brokerId={editingCashAccount?.broker_id ?? showAddCash?.brokerId}
               brokerName={editingCashAccount?.broker_name ?? undefined}
+              fxRates={fxRates}
             />
           )}
 
