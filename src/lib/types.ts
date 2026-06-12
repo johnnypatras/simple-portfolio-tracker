@@ -1208,3 +1208,25 @@ export type AssetRef =
   | { class: "crypto"; assetId: string }
   | { class: "stock"; assetId: string }
   | { class: "cash"; accountId: string };
+
+// ── C3 editor-intent prefill ────────────────────────────────────────────────
+
+/** Add-mode seed for the trade modal — what the editor intent step hands the
+ *  Buy/Sell route. `amount` present ⇒ user-typed (provenance-dirty: it must
+ *  emit as cashflowOverride). Consumed by TransactionModal via the manager. */
+export interface AddPrefill {
+  quantity: number;
+  amount?: number;
+  /** Any ISO-4217 code (the modal's currency control accepts free ISO). */
+  amountCurrency?: string;
+  walletId?: string;
+  brokerId?: string;
+}
+
+/** What the EDITOR hands the TABLE via onTrade — AddPrefill plus the location's
+ *  display name, so the table can append a not-yet-listed location (a new-row
+ *  buy) to walletOptions/brokerOptions before building the manager target. */
+export type EditorTradePrefill = AddPrefill & {
+  walletOption?: { id: string; name: string };
+  brokerOption?: { id: string; name: string };
+};

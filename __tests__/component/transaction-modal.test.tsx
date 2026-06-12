@@ -1593,3 +1593,48 @@ describe("TransactionModal — picker mode 'Not listed?' escape", () => {
     expect(screen.queryByRole("button", { name: /not listed/i })).not.toBeInTheDocument();
   });
 });
+
+// ── Test Group: initialValues (C3 add-mode prefill) ──────────────────────────
+
+describe("TransactionModal — initialValues (add-mode prefill)", () => {
+  it("seeds quantity, amount (provenance-dirty), currency, and wallet", async () => {
+    const { onSubmit } = renderOpen({
+      assetClass: "crypto",
+      initialType: "buy",
+      allowedTypes: ["buy"],
+      walletOptions: [
+        { id: "w-1", name: "Ledger" },
+        { id: "w-2", name: "Binance" },
+      ],
+      initialValues: { quantity: 10, amount: 8.7, amountCurrency: "EUR", walletId: "w-2" },
+    });
+    expect(screen.getByLabelText(/quantity/i)).toHaveValue(10);
+    // Amount is type="text" — toHaveValue expects a string for text inputs.
+    expect(screen.getByLabelText("Amount")).toHaveValue("8.7");
+    expect((screen.getByRole("combobox", { name: /wallet/i }) as HTMLSelectElement).value).toBe("w-2");
+
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    // The seeded amount was user-typed in the intent step → must emit as
+    // cashflowOverride (provenance contract).
+    expect(onSubmit.mock.calls[0][0].cashflowOverride).toEqual({ amount: 8.7, currency: "EUR" });
+  });
+
+  it("absent initialValues leaves the form blank (byte-compat)", () => {
+    renderOpen({ assetClass: "crypto", initialType: "buy", allowedTypes: ["buy"] });
+    // quantity is type="number" → null when empty; Amount is type="text" → empty string.
+    expect(screen.getByLabelText(/quantity/i)).toHaveValue(null);
+    expect(screen.getByLabelText("Amount")).toHaveValue("");
+  });
+
+  it("edit mode ignores initialValues entirely", () => {
+    renderOpen({
+      assetClass: "crypto",
+      edit: { type: "buy", quantity: 3, amount: 100, amountCurrency: "EUR", date: "2026-05-01" },
+      initialValues: { quantity: 99, amount: 1, amountCurrency: "USD" },
+    });
+    expect(screen.getByLabelText(/quantity/i)).toHaveValue(3);
+    // Amount is type="text" — toHaveValue expects a string for text inputs.
+    expect(screen.getByLabelText("Amount")).toHaveValue("100");
+  });
+});

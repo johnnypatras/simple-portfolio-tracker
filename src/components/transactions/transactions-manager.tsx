@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type {
+  AddPrefill,
   AssetRef,
   TransferInput,
   TransferSide,
@@ -49,6 +50,9 @@ export interface OpenTransactionsTarget {
    *  editor's Sell/Buy). The drawer is skipped (modal and drawer are mutually
    *  exclusive). */
   openAdd?: TransactionType;
+  /** Optional add-mode seed forwarded to the modal (C3 editor intent prefill).
+   *  Meaningful only together with `openAdd`. */
+  addPrefill?: AddPrefill;
 }
 
 interface TransactionsManagerProps {
@@ -72,7 +76,7 @@ interface TransactionsManagerProps {
 /** Modal state: closed (null), add (no row), or edit (a seeded row + its id). */
 type ModalState =
   | null
-  | { mode: "add"; initialType?: TransactionType }
+  | { mode: "add"; initialType?: TransactionType; initialValues?: AddPrefill }
   | { mode: "edit"; rowId: string; edit: TransactionEditState };
 
 /**
@@ -152,7 +156,7 @@ export function TransactionsManager({
   if (target !== modalTarget) {
     setModalTarget(target);
     if (target?.openAdd) {
-      setModal({ mode: "add", initialType: target.openAdd });
+      setModal({ mode: "add", initialType: target.openAdd, initialValues: target.addPrefill });
     }
   }
 
@@ -439,6 +443,7 @@ export function TransactionsManager({
         assetClass={target.assetClass}
         assetName={target.name}
         initialType={modal?.mode === "add" ? modal.initialType : undefined}
+        initialValues={modal?.mode === "add" ? modal.initialValues : undefined}
         edit={editState}
         walletOptions={target.assetClass === "crypto" ? target.walletOptions : undefined}
         brokerOptions={target.assetClass === "stock" ? target.brokerOptions : undefined}

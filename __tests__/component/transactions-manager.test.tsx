@@ -730,3 +730,23 @@ describe("TransactionsManager — openAdd success dismissal (BUG1 regression)", 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 });
+
+// ── Test: openAdd + addPrefill seeds the modal ────────────────────────────────
+
+describe("TransactionsManager — openAdd + addPrefill (C3 prefill plumbing)", () => {
+  it("openAdd + addPrefill open the modal seeded", async () => {
+    // Arrange exactly like the existing openAdd/crypto-target case, PLUS addPrefill.
+    renderManager({
+      assetRef: { class: "crypto", assetId: "a1" },
+      name: "BTC",
+      assetClass: "crypto",
+      walletOptions: [{ id: "w-1", name: "Ledger" }],
+      openAdd: "buy",
+      addPrefill: { quantity: 10, amount: 8.7, amountCurrency: "EUR", walletId: "w-1" },
+    });
+    // Modal opens immediately (openAdd target) — wait for the quantity input.
+    // quantity is type="number" → numeric; Amount is type="text" → string.
+    expect(await screen.findByLabelText(/quantity/i)).toHaveValue(10);
+    expect(screen.getByLabelText("Amount")).toHaveValue("8.7");
+  });
+});

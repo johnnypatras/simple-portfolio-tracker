@@ -11,7 +11,7 @@ import {
   type AssetIdentityValue,
 } from "@/components/transactions/asset-identity-step";
 import type { TransactionKind } from "@/lib/transaction-kind";
-import type { PickedAsset, WalletType } from "@/lib/types";
+import type { AddPrefill, PickedAsset, WalletType } from "@/lib/types";
 import {
   validateQuantity,
   validateAmount,
@@ -136,6 +136,11 @@ export interface TransactionModalProps {
   /** Add-mode only: restrict the Type selector to this subset (toolbar Buy passes
    *  ["buy"]). Absent → all class-appropriate types. */
   allowedTypes?: TransactionType[];
+  /** Add-mode only: seed quantity/amount/currency/location (the C3 editor
+   *  intent step's prefill). A present `amount` seeds DIRTY — it was user-typed
+   *  upstream and must emit as cashflowOverride. Ignored in edit mode; absent →
+   *  byte-identical to the pre-C3 behavior. */
+  initialValues?: AddPrefill;
   /** Toolbar-Buy picker mode: when set, the modal renders an asset SEARCH first and
    *  hides the buy fields until `picked` is non-null. The PARENT owns the picked
    *  state (it builds the submit payload). Absent → existing asset-scoped behavior. */
@@ -243,6 +248,7 @@ export function TransactionModal({
   cashAccountOptions,
   initialType,
   allowedTypes,
+  initialValues,
   pickerMode,
   onSubmit,
   onContinueToTransfer,
@@ -258,22 +264,27 @@ export function TransactionModal({
     : allOptions;
   const defaultType = edit ? edit.type : (initialType ?? typeOptions[0]);
 
+  // Add-mode seed (C3 prefill). Edit mode always wins; absent seed = blank.
+  const seed = edit ? null : (initialValues ?? null);
+
   const [type, setType] = useState<TransactionType>(defaultType);
-  const [quantityStr, setQuantityStr] = useState(edit ? String(edit.quantity) : "");
-  const [amountStr, setAmountStr] = useState(
-    edit?.amount != null ? String(edit.amount) : "",
+  const [quantityStr, setQuantityStr] = useState(
+    edit ? String(edit.quantity) : seed?.quantity != null ? String(seed.quantity) : "",
   );
-  const [amountDirty, setAmountDirty] = useState(false);
+  const [amountStr, setAmountStr] = useState(
+    edit?.amount != null ? String(edit.amount) : seed?.amount != null ? String(seed.amount) : "",
+  );
+  const [amountDirty, setAmountDirty] = useState(seed?.amount != null);
   const [dateStr, setDateStr] = useState(edit?.date ?? "");
   // Any ISO-4217 code (the shared control validates picks/free entry); "EUR"
   // seed matches the pre-any-ISO default.
   const [amountCurrency, setAmountCurrency] = useState<string>(
-    edit?.amountCurrency ?? "EUR",
+    edit?.amountCurrency ?? seed?.amountCurrency ?? "EUR",
   );
   // Destination selection (add-mode only). Defaults to the first option the
   // caller passed (the asset's existing position wallets/brokers).
-  const [walletId, setWalletId] = useState<string>(walletOptions?.[0]?.id ?? "");
-  const [brokerId, setBrokerId] = useState<string>(brokerOptions?.[0]?.id ?? "");
+  const [walletId, setWalletId] = useState<string>(seed?.walletId ?? walletOptions?.[0]?.id ?? "");
+  const [brokerId, setBrokerId] = useState<string>(seed?.brokerId ?? brokerOptions?.[0]?.id ?? "");
   // Picker-Buy "+ New" location (local state — no async identity trap, safe in reset).
   const [creatingNewLocation, setCreatingNewLocation] = useState(false);
   const [newLocationName, setNewLocationName] = useState("");
@@ -324,13 +335,18 @@ export function TransactionModal({
     if (isOpen) {
       const opts = getTypeOptions(assetClass);
       setType(edit ? edit.type : (initialType ?? opts[0]));
-      setQuantityStr(edit ? String(edit.quantity) : "");
-      setAmountStr(edit?.amount != null ? String(edit.amount) : "");
-      setAmountDirty(false);
+      // Compute seed inside the effect (do NOT reference the render-scope const —
+      // react-hooks/exhaustive-deps would demand `seed` itself as a dep).
+      // initialValues arrives from the manager's modal STATE (stable identity per
+      // open), so adding it here cannot re-fire mid-edit.
+      const seed = edit ? null : (initialValues ?? null);
+      setQuantityStr(edit ? String(edit.quantity) : seed?.quantity != null ? String(seed.quantity) : "");
+      setAmountStr(edit?.amount != null ? String(edit.amount) : seed?.amount != null ? String(seed.amount) : "");
+      setAmountDirty(seed?.amount != null);
       setDateStr(edit?.date ?? "");
-      setAmountCurrency(edit?.amountCurrency ?? "EUR");
-      setWalletId(walletOptions?.[0]?.id ?? "");
-      setBrokerId(brokerOptions?.[0]?.id ?? "");
+      setAmountCurrency(edit?.amountCurrency ?? seed?.amountCurrency ?? "EUR");
+      setWalletId(seed?.walletId ?? walletOptions?.[0]?.id ?? "");
+      setBrokerId(seed?.brokerId ?? brokerOptions?.[0]?.id ?? "");
       setCreatingNewLocation(false);
       setNewLocationName("");
       setWalletType("custodial");
@@ -352,7 +368,9 @@ export function TransactionModal({
     // (walletOptions/brokerOptions stay identity-stable in the caller, so they're
     // safe as direct deps. The ref is dep-exempt, so exhaustive-deps stays happy
     // without an eslint-disable.)
-  }, [isOpen, edit, assetClass, walletOptions, brokerOptions, initialType]);
+    // initialValues arrives from modal STATE (stable identity per open) — it
+    // cannot cause a spurious re-fire mid-edit when included as a dep.
+  }, [isOpen, edit, assetClass, walletOptions, brokerOptions, initialType, initialValues]);
 
   // Group C #3: settle the money-flow default to "tracked" once the async cash
   // accounts arrive on the FIRST open (the toolbar Buy path loads them after the
