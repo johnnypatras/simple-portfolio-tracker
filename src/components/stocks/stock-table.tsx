@@ -1409,6 +1409,7 @@ export function StockTable({ assets, brokers, prices, primaryCurrency, fxRates, 
               existingSubcategories={existingSubcategories}
               existingTags={existingTags}
               prices={prices}
+              fxRates={fxRates}
               onTrade={(type, prefill?: EditorTradePrefill) => {
                 const a = editingAsset;
                 if (!a) return;
