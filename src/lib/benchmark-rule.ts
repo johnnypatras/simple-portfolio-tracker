@@ -9,6 +9,10 @@
  *   CORRECT        record ≠ reality, no money moved               → off-book
  *   UNDO           the record was a mistake                       → excluded (undone_at)
  *
+ * C3 (2026-06): editing surfaces now frame CORRECT as the subordinate
+ * "cosmetic number fix" escape behind the "Does this reflect real value?"
+ * question — no longer a peer verb in editor UI. Mechanics unchanged.
+ *
  * Mechanically, benchmark participation is encoded at WRITE time by
  * `is_adjustment`: adjustments fill `delta_*` (off-book); everything else fills
  * `cashflow_*` (counts). UNDO is a separate lifecycle filter (`undone_at`), not

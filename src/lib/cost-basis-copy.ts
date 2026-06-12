@@ -110,3 +110,46 @@ export const ADJUSTMENT_COPY = {
   /** Reassurance under the confirm — the operation is lossless. */
   reversibleNote: "The benchmark line recalculates. Reversible anytime.",
 } as const;
+
+/**
+ * Verbatim copy for the C3 editor intent question — the direction-aware
+ * "Does this reflect real value?" step that position editors and the cash
+ * modal show on every quantity/balance-changing save. Mirrors the other
+ * copy blocks above: surfaces import these strings, never inline wording.
+ * The cosmetic guard's title/reassurance come from ADJUSTMENT_COPY.
+ */
+export const INTENT_COPY = {
+  questionIncrease: "Does this reflect real value you gained?",
+  questionDecrease: "Does this reflect real value?",
+  questionCash: "Does this reflect real money moving?",
+  yesIncreaseLabel: "Yes — real units I have",
+  yesIncreaseSub: "bought, received, or found them",
+  yesDecreaseLabel: "Yes — I sold or lost them",
+  yesDecreaseSub: "opens Sell to record where it went",
+  // Shown as the Yes option's sub WHENEVER the transfer nudge is visible
+  // (verbatim mock §4 wording; reads correctly for both directions — the
+  // point is "independent of the transfer").
+  yesTransferNudgeSub: "a new buy/yield, independent of the transfer",
+  yesCashLabel: "Money came in / went out",
+  yesCashSub: "deposit / withdrawal — moves the S&P",
+  noLabel: "No — cosmetic number fix",
+  noCashLabel: "Cosmetic fix (interest already logged, rounding…)",
+  chipCounts: "counts",
+  chipOffBook: "off-book",
+  freeToggle: "These were free — interest, staking, airdrop, reward",
+  yieldConsequence:
+    "Cost €0 · counts toward the S&P at market value on the date received (all gain).",
+  yieldDateLabel: "Date received",
+  yieldDateHint: "defaults to today — backdate if it accrued earlier",
+  cosmeticQuietNote: "Won't affect your S&P comparison.",
+  cosmeticGuardBody:
+    'If you sold or lost them, choose "real value" instead — else your benchmark shows a phantom gap.',
+  cosmeticGuardReal: "← It's real value",
+  cosmeticGuardProceed: "Yes, cosmetic",
+  nudgeTitle: "↔ Last change here was a transfer",
+  nudgeBody:
+    "If you're correcting that transfer, edit it on the Transfer screen so both sides stay in sync. Otherwise this records a new trade.",
+  nudgeButton: "Open Transfer screen",
+  toastYield: "Yield recorded",
+  toastCosmetic: "Saved as cosmetic fix — S&P comparison unchanged.",
+} as const;
