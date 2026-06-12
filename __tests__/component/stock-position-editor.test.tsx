@@ -286,6 +286,20 @@ describe("stock StockPositionEditor — amount paid (cost spine)", () => {
       currency: "CHF",
     });
   });
+
+  it("currency-only change does NOT mark the row dirty (no cost emitted)", async () => {
+    renderEditor();
+    // Picking a currency without typing an amount must keep the provenance
+    // gate closed — the old separate select behaved the same way. (Mirrors
+    // the crypto editor's guard; the inline onChange guard is identical.)
+    fireEvent.change(screen.getAllByLabelText("Amount paid (incl. fees) currency")[0], {
+      target: { value: "USD" },
+    });
+    fireEvent.click(firstRowSave());
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalledTimes(1));
+    expect(hoisted.upsertStockPosition.mock.calls[0][1]).not.toHaveProperty("cost");
+  });
 });
 
 // ─── Backdated no-cost entries defer pricing to the backfill ──

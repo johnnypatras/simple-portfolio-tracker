@@ -427,11 +427,12 @@ export interface CurrencyCodeSelectProps {
 }
 
 /**
- * Standalone any-ISO currency-code picker for amount-less hosts (the split
- * modal's shared per-leg cost currency; the transfer dialog's cash
- * destination). Same shortlist + "Other…" free-entry behavior as
- * CurrencyAmountInput's control; renders its own "Unknown currency code"
- * alert directly under the control (error id: `${id}-error`).
+ * Standalone any-ISO currency-code picker for amount-less hosts: the split
+ * modal's shared per-leg cost currency, the transfer dialog's cash
+ * destination, the cash-account modal's account currency, and the add/edit
+ * institution modals' account rows. Same shortlist + "Other…" free-entry
+ * behavior as CurrencyAmountInput's control; renders its own "Unknown
+ * currency code" alert directly under the control (error id: `${id}-error`).
  */
 export function CurrencyCodeSelect({
   id,

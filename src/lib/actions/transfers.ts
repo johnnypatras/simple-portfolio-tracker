@@ -203,9 +203,10 @@ export async function executeTransfer(input: TransferInput): Promise<TransferRes
     let prices: TransferPrices = { source: {}, destination: {} };
 
     if (currentSource) {
-      // currentSource truthy ⇒ transferGroupId was set on line 161. Narrow
-      // explicitly instead of using `!` so a future refactor that moves the
-      // assignment fails loudly rather than silently passing `undefined`.
+      // currentSource truthy ⇒ transferGroupId was set above (right after
+      // Step 0's entity creation). Narrow explicitly instead of using `!` so
+      // a future refactor that moves the assignment fails loudly rather than
+      // silently passing `undefined`.
       if (!transferGroupId) throw new Error("Transfer logic error: transferGroupId not set for two-legged transfer");
       originalState = await fetchSourceState(supabase, currentSource, user.id);
       prices = await fetchPrices(supabase, currentSource, destination);

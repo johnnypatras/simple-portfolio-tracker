@@ -83,6 +83,9 @@ export interface TransactionEditState {
   type: TransactionType;
   quantity: number;
   amount?: number; // prefilled market or prior user amount
+  // Deliberately EUR/USD-only: edit seeds come from the STORED display legs
+  // (the drawer's display currency), not original_* — widening to any-ISO is
+  // meaningless until edit mode hydrates the original.
   amountCurrency?: "EUR" | "USD";
   date: string; // YYYY-MM-DD
   isTransferLeg?: boolean; // → transferLegLocked

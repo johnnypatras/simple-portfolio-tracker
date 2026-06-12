@@ -154,30 +154,38 @@ describe("executeTransfer conversion cost — any-ISO cash funding (integration)
     expect(Number(cashAfter!.balance)).toBe(500);
   });
 
-  it("EUR control: typed leg stays verbatim, sibling round2'd — byte-identical to the pre-change EUR path", async () => {
+  it("EUR control: typed leg passes VERBATIM (Postgres rounds the 3-dp payload), sibling round2'd", async () => {
     const cashId = await createCash("EUR", 1000);
     const { walletId, assetId } = await createWalletAndAsset();
 
     const res = await executeTransfer({
       mode: "buy",
-      source: { type: "cash_account", accountId: cashId, amount: 200 },
+      source: { type: "cash_account", accountId: cashId, amount: 256.025 },
       destination: { type: "crypto_position", assetId, walletId, quantity: 1 },
     });
     if (!res.success) throw new Error("transfer failed: " + res.error);
 
-    // EUR is the typed/account leg → stored EXACTLY (200); USD is the derived
-    // sibling → round2(200 × 1.1) = 220. Exact equality guards the channel
-    // switch against any regression from today's cost-channel behaviour.
+    // 256.025 is chosen to DISCRIMINATE verbatim vs round2 through the
+    // NUMERIC(18,2) delta columns. The double nearest 256.025 sits just BELOW
+    // the decimal half (256.025 × 100 → 25602.4999…), so:
+    //   verbatim payload  → PG parses the literal "256.025" and rounds the
+    //                       exact decimal half away from zero → 256.03 ✓
+    //   round2 regression → JS Math.round(25602.4999…) = 25602 → stores 256.02 ✗
+    // (A 2-dp amount like the old 200 was indistinguishable; a half-up amount
+    // like 200.555 rounds to .56 on BOTH paths.) USD stays the derived
+    // sibling: round2(256.025 × 1.1) = 281.63.
     const posLeg = await legRow(res.transferGroupId, "crypto_positions");
     expect(posLeg.delta_status).toBe("complete");
-    expect(Number(posLeg.delta_eur)).toBe(200);
-    expect(Number(posLeg.delta_usd)).toBe(220);
-    expect(Number(posLeg.original_amount)).toBe(200);
+    expect(Number(posLeg.delta_eur)).toBe(256.03);
+    expect(Number(posLeg.delta_usd)).toBe(281.63);
+    // original_amount is NUMERIC(18,4) — the typed face survives un-rounded.
+    expect(Number(posLeg.original_amount)).toBe(256.025);
     expect(posLeg.original_currency).toBe("EUR");
 
     const { data: cashAfter } = await client
       .from("cash_accounts").select("balance").eq("id", cashId).single();
-    expect(Number(cashAfter!.balance)).toBe(800);
+    // balance is NUMERIC(18,2): 1000 − 256.025 = 743.975 → PG rounds → 743.98.
+    expect(Number(cashAfter!.balance)).toBe(743.98);
   });
 
   it("GBP sell mirror: position leg books converted proceeds, disposal-signed; originals on both legs", async () => {
@@ -256,5 +264,70 @@ describe("executeTransfer conversion cost — any-ISO cash funding (integration)
     expect(Number(posLeg.delta_eur)).toBeCloseTo(454.55, 2);
     expect(Number(posLeg.original_amount)).toBe(500);
     expect(posLeg.original_currency).toBe("GBP");
+  });
+
+  it("GBP STOCK-sell mirror: source stock leg books converted proceeds, disposal-signed; originals on both legs", async () => {
+    // The buy mirror above pins the DESTINATION stock leg; this pins the
+    // SOURCE stock leg (executeSourceLeg's stock branch) — the 4th
+    // mode × primitive combination.
+    const cashId = await createCash("GBP", 100);
+    const { data: broker, error: bErr } = await client
+      .from("brokers")
+      .insert({ user_id: userId, name: `Conv Broker ${randomUUID().slice(0, 6)}` })
+      .select("id")
+      .single();
+    if (bErr) throw new Error("broker insert failed: " + bErr.message);
+    const { data: stockAsset, error: sErr } = await client
+      .from("stock_assets")
+      .insert({
+        user_id: userId,
+        ticker: "CNVQ",
+        name: "Conv Stock Sell",
+        yahoo_ticker: `CNVQ-${randomUUID().slice(0, 6)}.DE`,
+        currency: "EUR",
+      })
+      .select("id")
+      .single();
+    if (sErr) throw new Error("stock asset insert failed: " + sErr.message);
+    const { error: posErr } = await client
+      .from("stock_positions")
+      .insert({ stock_asset_id: stockAsset!.id, broker_id: broker!.id, quantity: 10 });
+    if (posErr) throw new Error("position insert failed: " + posErr.message);
+
+    const res = await executeTransfer({
+      mode: "sell",
+      source: { type: "stock_position", assetId: stockAsset!.id, brokerId: broker!.id, quantity: 4 },
+      destination: { type: "cash_account", accountId: cashId, amount: 300 },
+    });
+    if (!res.success) throw new Error("transfer failed: " + res.error);
+
+    // Disposal via the STOCK primitive: toUsdAndEur(300, GBP) = {usd 330,
+    // eur 272.73}, signed − by the qty drop. The yahoo mock prices nothing,
+    // so a regression to the market fallback would leave no complete delta.
+    const posLeg = await legRow(res.transferGroupId, "stock_positions");
+    expect(posLeg.is_adjustment).toBe(true);
+    expect(posLeg.delta_status).toBe("complete");
+    expect(Number(posLeg.delta_usd)).toBeCloseTo(-330, 2);
+    expect(Number(posLeg.delta_eur)).toBeCloseTo(-272.73, 2);
+    expect(Number(posLeg.original_amount)).toBe(300);
+    expect(posLeg.original_currency).toBe("GBP");
+
+    const cashLeg = await legRow(res.transferGroupId, "cash_accounts");
+    expect(cashLeg.is_adjustment).toBe(true);
+    expect(Number(cashLeg.original_amount)).toBe(300);
+    expect(cashLeg.original_currency).toBe("GBP");
+
+    // Quantity reduced, proceeds landed.
+    const { data: pos } = await client
+      .from("stock_positions")
+      .select("quantity")
+      .eq("stock_asset_id", stockAsset!.id)
+      .eq("broker_id", broker!.id)
+      .is("deleted_at", null)
+      .single();
+    expect(Number(pos!.quantity)).toBe(6);
+    const { data: cashAfter } = await client
+      .from("cash_accounts").select("balance").eq("id", cashId).single();
+    expect(Number(cashAfter!.balance)).toBe(400);
   });
 });

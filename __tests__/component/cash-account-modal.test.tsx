@@ -527,7 +527,9 @@ describe("CashAccountModal — currency (any-ISO + no-rewrite)", () => {
     const account = makeCashAccount({ currency: "GBP" });
     render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    // Accessible name is "Change currency" (aria-label contains the visible
+    // "Change" — WCAG 2.5.3).
+    fireEvent.click(screen.getByRole("button", { name: "Change currency" }));
     const select = screen.getByRole("combobox", { name: "Account currency" });
     // Seeded from the account's real currency, not EUR.
     expect(select).toHaveValue("GBP");
@@ -548,7 +550,7 @@ describe("CashAccountModal — currency (any-ISO + no-rewrite)", () => {
     const account = makeCashAccount({ currency: "GBP" });
     render(<CashAccountModal isOpen onClose={vi.fn()} cashAccount={account} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change currency" }));
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => expect(vi.mocked(cashActions.updateCashAccount)).toHaveBeenCalled());

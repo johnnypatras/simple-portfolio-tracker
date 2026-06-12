@@ -265,6 +265,26 @@ describe("AddManualNavModal", () => {
     expect(opts.cost).toEqual({ amount: 1500, currency: "GBP" });
   });
 
+  it("currency-only change does NOT mark the field dirty (no cost emitted)", async () => {
+    renderOpen();
+    fireEvent.change(screen.getByLabelText(/Ticker/i), { target: { value: "ENXF" } });
+    fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: "EQT Nexus" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add initial position/i }));
+    fireEvent.change(screen.getByLabelText(/Broker/i), { target: { value: "broker-1" } });
+    fireEvent.change(screen.getByLabelText(/Shares/i), { target: { value: "50" } });
+    // Picking a currency without typing an amount must keep the provenance
+    // gate closed — the old separate select behaved the same way. (Mirrors
+    // the position editors' guard; the inline onChange guard is identical.)
+    fireEvent.change(screen.getByLabelText("Amount paid (incl. fees) currency"), {
+      target: { value: "USD" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Add to Portfolio/i }));
+
+    await waitFor(() => expect(hoisted.upsertStockPosition).toHaveBeenCalled());
+    const [, opts] = hoisted.upsertStockPosition.mock.calls[0];
+    expect(opts.cost).toBeUndefined();
+  });
+
   it("resets state when the modal re-opens after closing", () => {
     const { rerender } = renderOpen();
     fireEvent.change(screen.getByLabelText(/Ticker/i), { target: { value: "DIRTY" } });

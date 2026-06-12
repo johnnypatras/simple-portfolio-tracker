@@ -1,11 +1,13 @@
 import type { TransferSide } from "@/lib/types";
 
 /**
- * The COST override for a transfer's POSITION leg in a cash↔position conversion.
- * A buy/sell is a conversion: cost basis (buy) / proceeds (sell) = the cash moved,
- * NOT the position's market value. Returns the cash side's {amount, currency} so the
- * position primitive books delta = amount-paid. Returns null for `move` (keep market)
- * or a defensively non-cash side. THE position primitive signs it by quantityDelta.
+ * The conversion INPUT for a transfer's POSITION leg in a cash↔position
+ * conversion. A buy/sell is a conversion: cost basis (buy) / proceeds (sell) =
+ * the cash moved, NOT the position's market value. Returns the cash side's
+ * {amount, currency}; `executeTransfer` converts it ONCE (toUsdAndEur +
+ * deriveDualAmount) into the dual {usd, eur} override the position primitive
+ * consumes — the primitive signs it by quantityDelta. Returns null for `move`
+ * (keep market) or a defensively non-cash side.
  */
 export function conversionLegCost(
   mode: "buy" | "sell" | "move",

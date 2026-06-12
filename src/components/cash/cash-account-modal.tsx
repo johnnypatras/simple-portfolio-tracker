@@ -278,6 +278,10 @@ export function CashAccountModal({
                   <button
                     type="button"
                     onClick={() => setChangingCurrency(true)}
+                    // Visible text "Change" is contained in the accessible
+                    // name (WCAG 2.5.3); the suffix disambiguates the target
+                    // for screen-reader users scanning the form.
+                    aria-label="Change currency"
                     className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
                   >
                     Change
