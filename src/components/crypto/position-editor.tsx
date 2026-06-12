@@ -298,6 +298,7 @@ export function PositionEditor({
     const existingPosition = asset.positions.find((p) => p.wallet_id === walletId);
     const priceData = prices?.[asset.coingecko_id];
     try {
+      // The fallback only triggers for a new row saved at qty 0 — persists the metadata shell, books no flow.
       await upsertPosition(
         rowInput(walletId, existingPosition?.quantity ?? parseFloat(edits[walletId]?.quantity ?? "0")),
         { currentPriceUsd: priceData?.usd, currentPriceEur: priceData?.eur },
@@ -314,10 +315,12 @@ export function PositionEditor({
   // ─── Intent-step outcome handlers ─────────────────────────
 
   async function handleIntentBuy(cost: { amount: number; currency: string } | null) {
+    setError(null);
     if (!intentFor) return;
     const { walletId, delta } = intentFor;
     const wallet = wallets.find((w) => w.id === walletId);
     try {
+      // Metadata commits independently of the trade outcome — cancelling the trade modal keeps the saved metadata (deliberate; the old single-save was atomic but blocked routing).
       await persistMetadataIfDirty(walletId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
@@ -334,10 +337,12 @@ export function PositionEditor({
   }
 
   async function handleIntentSell() {
+    setError(null);
     if (!intentFor) return;
     const { walletId, delta } = intentFor;
     const wallet = wallets.find((w) => w.id === walletId);
     try {
+      // Metadata commits independently of the trade outcome — cancelling the trade modal keeps the saved metadata (deliberate; the old single-save was atomic but blocked routing).
       await persistMetadataIfDirty(walletId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
@@ -353,6 +358,7 @@ export function PositionEditor({
   }
 
   async function handleIntentYield(date: string | null) {
+    setError(null);
     if (!intentFor) return;
     const { walletId, delta } = intentFor;
     setSavingId(walletId);
@@ -373,6 +379,7 @@ export function PositionEditor({
   }
 
   async function handleIntentCosmetic(date: string | null) {
+    setError(null);
     if (!intentFor) return;
     const { walletId, deleteRow } = intentFor;
     const edit = edits[walletId];
@@ -492,6 +499,7 @@ export function PositionEditor({
           }
           lastChangeDate={intentFor.positionId ? lastChangeDates[intentFor.positionId] : null}
           pending={savingId !== null}
+          error={error}
           onBack={() => setIntentFor(null)}
           onBuy={handleIntentBuy}
           onYield={handleIntentYield}

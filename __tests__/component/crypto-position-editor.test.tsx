@@ -10,20 +10,33 @@ const hoisted = vi.hoisted(() => ({
   upsertPosition: vi.fn(),
   deletePosition: vi.fn(),
   updateCryptoAsset: vi.fn(),
+  getCryptoAssetsWithPositions: vi.fn(),
   loadLastChangeDate: vi.fn(),
   addTransaction: vi.fn(),
+  getWallets: vi.fn(),
+  getBrokers: vi.fn(),
+  getCashAccounts: vi.fn(),
+  getStockAssetsWithPositions: vi.fn(),
+  executeTransfer: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/crypto", () => ({
   upsertPosition: hoisted.upsertPosition,
   deletePosition: hoisted.deletePosition,
   updateCryptoAsset: hoisted.updateCryptoAsset,
+  getCryptoAssetsWithPositions: hoisted.getCryptoAssetsWithPositions,
 }));
 
 vi.mock("@/lib/actions/transactions", () => ({
   loadLastChangeDate: hoisted.loadLastChangeDate,
   addTransaction: hoisted.addTransaction,
 }));
+
+vi.mock("@/lib/actions/wallets", () => ({ getWallets: hoisted.getWallets }));
+vi.mock("@/lib/actions/brokers", () => ({ getBrokers: hoisted.getBrokers }));
+vi.mock("@/lib/actions/cash-accounts", () => ({ getCashAccounts: hoisted.getCashAccounts }));
+vi.mock("@/lib/actions/stocks", () => ({ getStockAssetsWithPositions: hoisted.getStockAssetsWithPositions }));
+vi.mock("@/lib/actions/transfers", () => ({ executeTransfer: hoisted.executeTransfer }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
@@ -107,10 +120,22 @@ beforeEach(() => {
   hoisted.deletePosition.mockReset();
   hoisted.deletePosition.mockResolvedValue(undefined);
   hoisted.updateCryptoAsset.mockReset();
+  hoisted.getCryptoAssetsWithPositions.mockReset();
+  hoisted.getCryptoAssetsWithPositions.mockResolvedValue([]);
   hoisted.loadLastChangeDate.mockReset();
   hoisted.loadLastChangeDate.mockResolvedValue(null);
   hoisted.addTransaction.mockReset();
   hoisted.addTransaction.mockResolvedValue(undefined);
+  hoisted.getWallets.mockReset();
+  hoisted.getWallets.mockResolvedValue([]);
+  hoisted.getBrokers.mockReset();
+  hoisted.getBrokers.mockResolvedValue([]);
+  hoisted.getCashAccounts.mockReset();
+  hoisted.getCashAccounts.mockResolvedValue([]);
+  hoisted.getStockAssetsWithPositions.mockReset();
+  hoisted.getStockAssetsWithPositions.mockResolvedValue([]);
+  hoisted.executeTransfer.mockReset();
+  hoisted.executeTransfer.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -256,6 +281,66 @@ describe("PositionEditor — C3 intent step", () => {
     expect(screen.queryByRole("checkbox", { name: /adj/i })).toBeNull();
     expect(screen.queryByLabelText("Amount paid (incl. fees)")).toBeNull();
     expect(screen.queryByLabelText(/effective date/i)).toBeNull();
+  });
+
+  it("a failed yield keeps the step open and shows the error", async () => {
+    const onClose = vi.fn();
+    hoisted.addTransaction.mockRejectedValueOnce(new Error("Failed to record yield"));
+    render(
+      <PositionEditor open onClose={onClose} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: new RegExp("These were free") }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Failed to record yield"));
+    expect(screen.getByText(INTENT_COPY.questionIncrease)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("the transfer nudge button closes the step and opens the move dialog", async () => {
+    const asset = makeAsset(["w-1"]);
+    asset.positions[0].last_was_transfer = true;
+    const onClose = vi.fn();
+    render(
+      <PositionEditor open onClose={onClose} asset={asset} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText(INTENT_COPY.nudgeTitle)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: INTENT_COPY.nudgeButton }));
+    expect(screen.queryByText(INTENT_COPY.questionIncrease)).toBeNull();
+    // The editor modal stays open (onClose not called) and the TransferDialog is mounted
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("a new-row Buy forwards the walletOption prefill", async () => {
+    const onTrade = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <PositionEditor open onClose={onClose} asset={makeAsset(["w-1"])} wallets={WALLETS}
+        existingSubcategories={[]} existingChains={[]} prices={PRICES} onTrade={onTrade} />,
+    );
+    // Add w-2 as a new row
+    const walletSelect = screen.getByRole("option", { name: /add to wallet/i })
+      ?.closest("select") as HTMLSelectElement;
+    fireEvent.change(walletSelect, { target: { value: "w-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to selected wallet" }));
+    // Set qty on the new row (second quantity input)
+    const qtyInputs = screen.getAllByPlaceholderText("Quantity");
+    fireEvent.change(qtyInputs[1], { target: { value: "5" } });
+    const saveButtons = screen.getAllByRole("button", { name: "Save" });
+    fireEvent.click(saveButtons[1]);
+    // Step is open — Continue without cost (blank)
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(onTrade).toHaveBeenCalled());
+    expect(onTrade).toHaveBeenCalledWith("buy", expect.objectContaining({
+      quantity: 5,
+      walletId: "w-2",
+      walletOption: { id: "w-2", name: "Binance" },
+    }));
   });
 });
 

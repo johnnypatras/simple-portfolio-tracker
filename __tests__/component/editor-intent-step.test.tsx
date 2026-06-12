@@ -180,6 +180,13 @@ describe("EditorIntentStep — cost rejection", () => {
   });
 });
 
+describe("EditorIntentStep — host error display", () => {
+  it("renders a host error inside the step", () => {
+    renderStep({ error: "Failed to record yield" });
+    expect(screen.getByRole("alert")).toHaveTextContent("Failed to record yield");
+  });
+});
+
 describe("EditorIntentStep — pending guard", () => {
   it("pending disables Continue", () => {
     renderStep({ pending: true });

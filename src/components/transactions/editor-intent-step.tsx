@@ -28,6 +28,9 @@ export interface EditorIntentStepProps {
   lastChangeDate: string | null | undefined;
   /** True while the host is awaiting a write from this step — disables the submit buttons (double-click = double booking). */
   pending?: boolean;
+  /** Host-surfaced write failure — rendered inside the step so a failed
+   *  yield/cosmetic save is visible without leaving the question. */
+  error?: string | null;
   onBack: () => void;
   onBuy: (cost: { amount: number; currency: string } | null) => void;
   onYield: (date: string | null) => void;
@@ -95,6 +98,7 @@ export function EditorIntentStep({
   lastWasTransfer,
   lastChangeDate,
   pending,
+  error,
   onBack,
   onBuy,
   onYield,
@@ -336,6 +340,12 @@ export function EditorIntentStep({
           </div>
         )}
       </fieldset>
+
+      {error && (
+        <p role="alert" className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+          {error}
+        </p>
+      )}
 
       <div className="flex items-center justify-end gap-2">
         <button
