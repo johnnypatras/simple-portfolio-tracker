@@ -23,7 +23,7 @@
     "test:coverage:full": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor && vitest run --project unit --project component --project integration --coverage && supabase stop"
   },
   "dependencies": {
-    "@sentry/nextjs": "^10.51.0",
+    "@sentry/nextjs": "^10.59.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
     "@vercel/analytics": "^2.0.1",
